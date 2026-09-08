@@ -1,0 +1,6 @@
+services:
+  api:
+    command: ["node", "--inspect=0.0.0.0:9229", "dist/main.js"]
+    ports:
+      - "3001:3001"
+      - "9229:9229"
