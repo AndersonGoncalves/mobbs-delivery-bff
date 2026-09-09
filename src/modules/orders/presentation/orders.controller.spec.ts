@@ -14,6 +14,12 @@ function buildFakeApplication() {
     post: (path: string, ...handlers: RouteHandler[]) => {
       routes[`POST ${path}`] = handlers;
     },
+    get: (path: string, ...handlers: RouteHandler[]) => {
+      routes[`GET ${path}`] = handlers;
+    },
+    patch: (path: string, ...handlers: RouteHandler[]) => {
+      routes[`PATCH ${path}`] = handlers;
+    },
   };
   return { application: application as unknown as Server, routes };
 }
@@ -22,6 +28,14 @@ function buildFakeApplication() {
 // manualmente, como o middleware real faria.
 async function runAuthenticatedChain(handlers: RouteHandler[], req: FakeRequest, res: FakeResponse): Promise<void> {
   for (const handler of handlers.slice(1)) {
+    await handler(req, res);
+  }
+}
+
+// GET /orders/track/:token não tem firebaseAuthMiddleware (rota pública, REQ-8) — roda todos os
+// handlers, sem pular o primeiro.
+async function runPublicChain(handlers: RouteHandler[], req: FakeRequest, res: FakeResponse): Promise<void> {
+  for (const handler of handlers) {
     await handler(req, res);
   }
 }
@@ -62,6 +76,28 @@ function buildValidBody(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function buildOrder(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'o-1',
+    orderNumber: 1,
+    trackingToken: 'token-1',
+    customerId: 'customer-1',
+    restaurantId: 'r-1',
+    items: [buildItem()],
+    orderType: 'delivery',
+    deliveryAddress: 'Rua A, 123',
+    status: 'aguardandoConfirmacao',
+    statusHistory: [{ status: 'aguardandoConfirmacao', changedAt: new Date().toISOString() }],
+    subtotal: 25,
+    deliveryFee: 5,
+    discount: 0,
+    total: 30,
+    paymentMethod: 'cash',
+    createdAt: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
 describe('OrdersController', () => {
   function setup(overrides: { orderRepository?: Partial<IOrderRepository>; restaurantRepository?: Partial<IRestaurantRepository> } = {}) {
     const orderRepository: Partial<IOrderRepository> = {
@@ -73,6 +109,14 @@ describe('OrdersController', () => {
         statusHistory: [],
         createdAt: new Date().toISOString(),
         ...input,
+      })),
+      findManyByCustomer: jest.fn().mockResolvedValue([buildOrder()]),
+      findById: jest.fn().mockResolvedValue(buildOrder()),
+      findByTrackingToken: jest.fn().mockResolvedValue(buildOrder()),
+      updateStatus: jest.fn().mockImplementation(async (id, status, changedBy) => ({
+        ...buildOrder(),
+        status,
+        statusHistory: [...buildOrder().statusHistory, { status, changedAt: new Date().toISOString(), changedBy }],
       })),
       ...overrides.orderRepository,
     };
@@ -162,6 +206,100 @@ describe('OrdersController', () => {
 
     await expect(
       runAuthenticatedChain(routes['POST /orders'], { body: buildValidBody(), user: { uid: 'customer-1' } }, { json: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('AC-1: GET /orders lista os pedidos do próprio cliente', async () => {
+    const { orderRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runAuthenticatedChain(routes['GET /orders'], { user: { uid: 'customer-1' } }, { json });
+
+    expect(orderRepository.findManyByCustomer).toHaveBeenCalledWith('customer-1');
+    expect(json).toHaveBeenCalledWith(200, [expect.objectContaining({ id: 'o-1' })]);
+  });
+
+  it('AC-2: GET /orders/:id retorna o detalhe de um pedido do próprio cliente', async () => {
+    const { routes } = setup();
+    const json = jest.fn();
+
+    await runAuthenticatedChain(routes['GET /orders/:id'], { params: { id: 'o-1' }, user: { uid: 'customer-1' } }, { json });
+
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ id: 'o-1' }));
+  });
+
+  it('GET /orders/:id lança 404 quando o pedido é de outro cliente', async () => {
+    const { routes } = setup();
+
+    await expect(
+      runAuthenticatedChain(
+        routes['GET /orders/:id'],
+        { params: { id: 'o-1' }, user: { uid: 'outro-customer' } },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('AC-6: PATCH /orders/:id/cancel cancela um pedido aguardandoConfirmacao', async () => {
+    const { orderRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runAuthenticatedChain(
+      routes['PATCH /orders/:id/cancel'],
+      { params: { id: 'o-1' }, user: { uid: 'customer-1' } },
+      { json },
+    );
+
+    expect(orderRepository.updateStatus).toHaveBeenCalledWith('o-1', 'cancelado', 'customer-1');
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ status: 'cancelado' }));
+  });
+
+  it('AC-6: PATCH /orders/:id/cancel rejeita quando o pedido não está mais aguardandoConfirmacao', async () => {
+    const { orderRepository, routes } = setup({
+      orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ status: 'confirmado' })) },
+    });
+
+    await expect(
+      runAuthenticatedChain(
+        routes['PATCH /orders/:id/cancel'],
+        { params: { id: 'o-1' }, user: { uid: 'customer-1' } },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(orderRepository.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it('PATCH /orders/:id/cancel lança 404 quando o pedido é de outro cliente', async () => {
+    const { routes } = setup();
+
+    await expect(
+      runAuthenticatedChain(
+        routes['PATCH /orders/:id/cancel'],
+        { params: { id: 'o-1' }, user: { uid: 'outro-customer' } },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('AC-8: GET /orders/track/:token é público e devolve só o necessário pra tela', async () => {
+    const { orderRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runPublicChain(routes['GET /orders/track/:token'], { params: { token: 'token-1' } }, { json });
+
+    expect(orderRepository.findByTrackingToken).toHaveBeenCalledWith('token-1');
+    const [, payload] = json.mock.calls[0] as [number, Record<string, unknown>];
+    expect(payload).toMatchObject({ orderNumber: 1, status: 'aguardandoConfirmacao' });
+    expect(payload).not.toHaveProperty('customerId');
+    expect(payload).not.toHaveProperty('restaurantId');
+    expect(payload).not.toHaveProperty('deliveryAddress');
+  });
+
+  it('GET /orders/track/:token lança 404 quando o token não existe', async () => {
+    const { routes } = setup({ orderRepository: { findByTrackingToken: jest.fn().mockResolvedValue(null) } });
+
+    await expect(
+      runPublicChain(routes['GET /orders/track/:token'], { params: { token: 'inexistente' } }, { json: jest.fn() }),
     ).rejects.toMatchObject({ statusCode: 404 });
   });
 });
