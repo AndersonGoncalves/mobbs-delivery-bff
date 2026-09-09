@@ -3,6 +3,7 @@ import * as admin from 'firebase-admin';
 
 import { IAddressRepository } from '../domain/repositories/address.repository.interface';
 import { ICustomerRepository } from '../domain/repositories/customer.repository.interface';
+import { IFavoriteRepository } from '../domain/repositories/favorite.repository.interface';
 import { CustomersController } from './customers.controller';
 
 jest.mock('firebase-admin', () => ({
@@ -11,7 +12,9 @@ jest.mock('firebase-admin', () => ({
   auth: jest.fn(),
 }));
 
-type FakeRequest = Partial<Pick<Request, 'params' | 'body'>> & { user?: { uid: string; email?: string; name?: string; picture?: string } };
+type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & {
+  user?: { uid: string; email?: string; name?: string; picture?: string };
+};
 type FakeResponse = Partial<Pick<Response, 'json' | 'send'>>;
 type RouteHandler = (req: FakeRequest, res: FakeResponse) => Promise<void>;
 
@@ -37,6 +40,17 @@ function buildCustomer(overrides: Record<string, unknown> = {}) {
   return { id: 'c-1', name: 'Ana', email: 'ana@example.com', ...overrides };
 }
 
+function buildFavorite(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'f-1',
+    customerId: 'c-1',
+    restaurantId: 'r-1',
+    productId: 'p-1',
+    createdAt: '2026-09-09T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
 function buildAddress(overrides: Record<string, unknown> = {}) {
   return {
     id: 'a-1',
@@ -54,7 +68,13 @@ function buildAddress(overrides: Record<string, unknown> = {}) {
 }
 
 describe('CustomersController', () => {
-  function setup(overrides: { customerRepository?: Partial<ICustomerRepository>; addressRepository?: Partial<IAddressRepository> } = {}) {
+  function setup(
+    overrides: {
+      customerRepository?: Partial<ICustomerRepository>;
+      addressRepository?: Partial<IAddressRepository>;
+      favoriteRepository?: Partial<IFavoriteRepository>;
+    } = {},
+  ) {
     const customerRepository: Partial<ICustomerRepository> = {
       findById: jest.fn().mockResolvedValue(buildCustomer()),
       upsertProfile: jest.fn().mockImplementation(async (id, patch) => ({ id, ...patch })),
@@ -76,11 +96,19 @@ describe('CustomersController', () => {
       removeAllByCustomer: jest.fn().mockResolvedValue(undefined),
       ...overrides.addressRepository,
     };
+    const favoriteRepository: Partial<IFavoriteRepository> = {
+      listByRestaurant: jest.fn().mockResolvedValue([buildFavorite()]),
+      add: jest.fn().mockResolvedValue(buildFavorite()),
+      remove: jest.fn().mockResolvedValue(undefined),
+      ...overrides.favoriteRepository,
+    };
     const { application, routes } = buildFakeApplication();
-    new CustomersController(customerRepository as ICustomerRepository, addressRepository as IAddressRepository).initializeRoutes(
-      application,
-    );
-    return { customerRepository, addressRepository, routes };
+    new CustomersController(
+      customerRepository as ICustomerRepository,
+      addressRepository as IAddressRepository,
+      favoriteRepository as IFavoriteRepository,
+    ).initializeRoutes(application);
+    return { customerRepository, addressRepository, favoriteRepository, routes };
   }
 
   it('AC-1: GET /customers/me devolve o Customer persistido quando já existe', async () => {
@@ -283,6 +311,62 @@ describe('CustomersController', () => {
         { json: jest.fn() },
       ),
     ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  describe('favoritos (specs/0012-favoritos)', () => {
+    it('AC-3: GET /customers/me/favorites lista os favoritos do restaurante atual', async () => {
+      const { favoriteRepository, routes } = setup();
+      const json = jest.fn();
+
+      await runAuthenticatedChain(
+        routes['GET /customers/me/favorites'],
+        { user: { uid: 'c-1' }, query: { restaurantId: 'r-1' } },
+        { json },
+      );
+
+      expect(favoriteRepository.listByRestaurant).toHaveBeenCalledWith('c-1', 'r-1');
+      expect(json).toHaveBeenCalledWith(200, [expect.objectContaining({ id: 'f-1' })]);
+    });
+
+    it('GET /customers/me/favorites rejeita sem restaurantId na query', async () => {
+      const { routes } = setup();
+
+      await expect(
+        runAuthenticatedChain(
+          routes['GET /customers/me/favorites'],
+          { user: { uid: 'c-1' }, query: {} },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it('AC-1: POST /customers/me/favorites favorita um produto pro cliente do token', async () => {
+      const { favoriteRepository, routes } = setup();
+      const json = jest.fn();
+
+      await runAuthenticatedChain(
+        routes['POST /customers/me/favorites'],
+        { user: { uid: 'c-1' }, body: { restaurantId: 'r-1', productId: 'p-1' } },
+        { json },
+      );
+
+      expect(favoriteRepository.add).toHaveBeenCalledWith('c-1', 'r-1', 'p-1');
+      expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ id: 'f-1' }));
+    });
+
+    it('AC-2: DELETE /customers/me/favorites/:productId desfavorita', async () => {
+      const { favoriteRepository, routes } = setup();
+      const send = jest.fn();
+
+      await runAuthenticatedChain(
+        routes['DEL /customers/me/favorites/:productId'],
+        { user: { uid: 'c-1' }, params: { productId: 'p-1' } },
+        { send },
+      );
+
+      expect(favoriteRepository.remove).toHaveBeenCalledWith('c-1', 'p-1');
+      expect(send).toHaveBeenCalledWith(204);
+    });
   });
 
   describe('DELETE /customers/me (specs/0017-lgpd-privacidade)', () => {

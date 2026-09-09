@@ -9,7 +9,14 @@ import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middl
 import { IAddress } from '../domain/entities/customer.entity';
 import { IAddressRepository } from '../domain/repositories/address.repository.interface';
 import { ICustomerRepository } from '../domain/repositories/customer.repository.interface';
-import { acceptTermsSchema, saveAddressSchema, updateCustomerProfileSchema } from './customers.schemas';
+import { IFavoriteRepository } from '../domain/repositories/favorite.repository.interface';
+import {
+  acceptTermsSchema,
+  addFavoriteSchema,
+  listFavoritesQuerySchema,
+  saveAddressSchema,
+  updateCustomerProfileSchema,
+} from './customers.schemas';
 
 /**
  * specs/0011-perfil-cliente — todas as rotas resolvem `customerId` do UID do Firebase no token
@@ -22,6 +29,7 @@ export class CustomersController extends BaseRouter {
   constructor(
     private readonly customerRepository: ICustomerRepository,
     private readonly addressRepository: IAddressRepository,
+    private readonly favoriteRepository: IFavoriteRepository,
   ) {
     super();
   }
@@ -103,6 +111,34 @@ export class CustomersController extends BaseRouter {
         await this.findOwnedAddress(req.params.id, req.user!.uid);
         const addresses = await this.addressRepository.setDefault(req.user!.uid, req.params.id);
         res.json(200, addresses);
+      },
+    );
+
+    // REQ-3 (specs/0012-favoritos) — restaurantId por query param (não implícito por contexto,
+    // que exigiria um interceptor/header novo inexistente hoje — mesmo padrão explícito de
+    // `CatalogApiService`, `GET /restaurants/:id/menu-categories`).
+    application.get('/customers/me/favorites', firebaseAuthMiddleware, async (req: Request, res: Response) => {
+      const { restaurantId } = parseBody(listFavoritesQuerySchema, req.query);
+      const favorites = await this.favoriteRepository.listByRestaurant(req.user!.uid, restaurantId);
+      res.json(200, favorites);
+    });
+
+    // REQ-1 — upsert idempotente (`FavoriteMongooseRepository.add`), sem checar `isFavorite`
+    // antes: o app decide add/remove a partir do próprio estado local (`ToggleFavoriteUseCase`).
+    application.post('/customers/me/favorites', firebaseAuthMiddleware, async (req: Request, res: Response) => {
+      const { restaurantId, productId } = parseBody(addFavoriteSchema, req.body);
+      const favorite = await this.favoriteRepository.add(req.user!.uid, restaurantId, productId);
+      res.json(201, favorite);
+    });
+
+    // REQ-2 — remove pelo par (customerId, productId); sem checagem de dono (a chave já é
+    // escopada pelo próprio customerId do token, diferente de endereço que usa um `id` opaco).
+    application.del(
+      '/customers/me/favorites/:productId',
+      firebaseAuthMiddleware,
+      async (req: Request, res: Response) => {
+        await this.favoriteRepository.remove(req.user!.uid, req.params.productId);
+        res.send(204);
       },
     );
 

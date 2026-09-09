@@ -13,6 +13,7 @@ import { RawMaterialMongooseRepository } from './modules/raw-materials/infra/rep
 import { RawMaterialsController } from './modules/raw-materials/presentation/raw-materials.controller';
 import { AddressMongooseRepository } from './modules/customers/infra/repositories/address.mongoose.repository';
 import { CustomerMongooseRepository } from './modules/customers/infra/repositories/customer.mongoose.repository';
+import { FavoriteMongooseRepository } from './modules/customers/infra/repositories/favorite.mongoose.repository';
 import { CustomersController } from './modules/customers/presentation/customers.controller';
 
 const server = new Server();
@@ -29,7 +30,11 @@ server
     new CatalogController(new MenuCategoryMongooseRepository(), productRepository, restaurantOperatorMiddleware),
     new OrdersController(new OrderMongooseRepository(), restaurantRepository, restaurantOperatorMiddleware),
     new RawMaterialsController(new RawMaterialMongooseRepository(), productRepository, restaurantOperatorMiddleware),
-    new CustomersController(new CustomerMongooseRepository(), new AddressMongooseRepository()),
+    new CustomersController(
+      new CustomerMongooseRepository(),
+      new AddressMongooseRepository(),
+      new FavoriteMongooseRepository(),
+    ),
   ])
   .catch((error) => {
     // eslint-disable-next-line no-console
