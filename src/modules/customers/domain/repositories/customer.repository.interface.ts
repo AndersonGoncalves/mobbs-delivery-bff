@@ -13,4 +13,14 @@ export interface ICustomerRepository {
 
   /** REQ-1 (`specs/0011-perfil-cliente`) — cria se ainda não existir, atualiza se existir. */
   upsertProfile(id: string, patch: CustomerProfileUpsert): Promise<ICustomer>;
+
+  /** REQ-2/REQ-4 (`specs/0017-lgpd-privacidade`). */
+  acceptTerms(id: string, version: string): Promise<ICustomer>;
+
+  /**
+   * REQ-6/REQ-7 — anonimiza `name`/`email`/`phone`/`document`/`photoUrl` (substituídos por
+   * valor genérico ou removidos) e marca `deletedAt`; o documento em si **não é apagado**
+   * (preserva `id` pra não deixar `Order.customerId` órfão).
+   */
+  anonymize(id: string): Promise<void>;
 }

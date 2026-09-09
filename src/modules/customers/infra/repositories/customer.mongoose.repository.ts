@@ -9,6 +9,9 @@ interface CustomerLeanDocument {
   photoUrl?: string;
   phone?: string;
   document?: string;
+  termsAcceptedAt?: Date;
+  termsVersionAccepted?: string;
+  deletedAt?: Date;
 }
 
 function toEntity(doc: CustomerLeanDocument): ICustomer {
@@ -19,8 +22,12 @@ function toEntity(doc: CustomerLeanDocument): ICustomer {
     photoUrl: doc.photoUrl,
     phone: doc.phone,
     document: doc.document,
+    termsAcceptedAt: doc.termsAcceptedAt?.toISOString(),
+    termsVersionAccepted: doc.termsVersionAccepted,
+    deletedAt: doc.deletedAt?.toISOString(),
   };
 }
+
 
 export class CustomerMongooseRepository implements ICustomerRepository {
   async findById(id: string): Promise<ICustomer | null> {
@@ -35,5 +42,23 @@ export class CustomerMongooseRepository implements ICustomerRepository {
       { new: true, upsert: true },
     ).lean<CustomerLeanDocument>();
     return toEntity(doc as CustomerLeanDocument);
+  }
+
+  async acceptTerms(id: string, version: string): Promise<ICustomer> {
+    const doc = await CustomerModel.findByIdAndUpdate(
+      id,
+      { $set: { termsAcceptedAt: new Date(), termsVersionAccepted: version } },
+      { new: true },
+    ).lean<CustomerLeanDocument>();
+    return toEntity(doc as CustomerLeanDocument);
+  }
+
+  /** REQ-6 — `$unset` (não `$set: undefined`, que o Mongoose ignora silenciosamente) pra
+   * remover `phone`/`document`/`photoUrl` de verdade. */
+  async anonymize(id: string): Promise<void> {
+    await CustomerModel.findByIdAndUpdate(id, {
+      $set: { name: 'Cliente removido', email: `${id}@removido.mobbs-delivery.local`, deletedAt: new Date() },
+      $unset: { phone: '', document: '', photoUrl: '' },
+    });
   }
 }

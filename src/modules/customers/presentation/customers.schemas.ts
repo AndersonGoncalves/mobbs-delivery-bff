@@ -15,6 +15,11 @@ export const updateCustomerProfileSchema = z
     path: ['document'],
   });
 
+/** REQ-2 (`specs/0017-lgpd-privacidade`) — versão dos termos que o cliente aceitou. */
+export const acceptTermsSchema = z.object({
+  version: z.string().min(1),
+});
+
 /** REQ-3/REQ-4 (`specs/0011-perfil-cliente`) — criar/editar endereço. */
 export const saveAddressSchema = z.object({
   label: z.string().min(1),

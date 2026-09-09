@@ -1,13 +1,15 @@
 import type { Request, Response, Server } from 'restify';
 import { NotFoundError } from 'restify-errors';
+import * as admin from 'firebase-admin';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
+import { ensureFirebaseAdminInitialized } from '../../../shared/config/firebase-admin';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
 import { IAddress } from '../domain/entities/customer.entity';
 import { IAddressRepository } from '../domain/repositories/address.repository.interface';
 import { ICustomerRepository } from '../domain/repositories/customer.repository.interface';
-import { saveAddressSchema, updateCustomerProfileSchema } from './customers.schemas';
+import { acceptTermsSchema, saveAddressSchema, updateCustomerProfileSchema } from './customers.schemas';
 
 /**
  * specs/0011-perfil-cliente — todas as rotas resolvem `customerId` do UID do Firebase no token
@@ -103,6 +105,36 @@ export class CustomersController extends BaseRouter {
         res.json(200, addresses);
       },
     );
+
+    // REQ-2/REQ-4 (specs/0017-lgpd-privacidade) — grava o aceite; REQ-4 (tratar versão antiga
+    // como não aceita) é decidido pelo cliente comparando `termsVersionAccepted` com a versão
+    // vigente, não aqui (esta rota só registra o que foi aceito).
+    application.patch(
+      '/customers/me/terms-acceptance',
+      firebaseAuthMiddleware,
+      async (req: Request, res: Response) => {
+        const { version } = parseBody(acceptTermsSchema, req.body);
+        const customer = await this.customerRepository.acceptTerms(req.user!.uid, version);
+        res.json(200, customer);
+      },
+    );
+
+    // REQ-6/REQ-7: anonimiza o Customer + apaga os Address (a), depois exclui a conta no
+    // Firebase Auth (b) — nessa ordem (não o inverso): se (b) falhar depois de (a) já ter
+    // gravado, o pior caso é uma conta anonimizada com o Firebase Auth ainda ativo (cliente
+    // consegue logar de novo vendo perfil vazio) em vez de perder o Firebase mas manter PII.
+    // `Order`s do cliente não são tocados (REQ-7) — só têm `customerId`, sem outra referência a
+    // limpar aqui.
+    application.del('/customers/me', firebaseAuthMiddleware, async (req: Request, res: Response) => {
+      const uid = req.user!.uid;
+      await this.customerRepository.anonymize(uid);
+      await this.addressRepository.removeAllByCustomer(uid);
+
+      ensureFirebaseAdminInitialized();
+      await admin.auth().deleteUser(uid);
+
+      res.send(204);
+    });
   }
 
   private async findOwnedAddress(id: string, customerId: string): Promise<IAddress> {
