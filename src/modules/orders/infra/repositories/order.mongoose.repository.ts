@@ -1,6 +1,6 @@
 import { randomBytes } from 'crypto';
 
-import { IOrder, IOrderItem, OrderType, PaymentMethod } from '../../domain/entities/order.entity';
+import { IOrder, IOrderItem, OrderStatus, OrderType, PaymentMethod } from '../../domain/entities/order.entity';
 import { IOrderRepository, NewOrderInput } from '../../domain/repositories/order.repository.interface';
 import { OrderCounterModel } from '../models/order-counter.mongoose.model';
 import { OrderModel } from '../models/order.mongoose.model';
@@ -99,5 +99,30 @@ export class OrderMongooseRepository implements IOrderRepository {
       { upsert: true, new: true },
     );
     return counter!.seq;
+  }
+
+  /** REQ-1 (`specs/0006-acompanhamento-pedido`) — mais recente primeiro. */
+  async findManyByCustomer(customerId: string): Promise<IOrder[]> {
+    const docs = await OrderModel.find({ customerId }).sort({ createdAt: -1 }).lean<OrderLeanDocument[]>();
+    return docs.map(toEntity);
+  }
+
+  async findById(id: string): Promise<IOrder | null> {
+    const doc = await OrderModel.findById(id).lean<OrderLeanDocument>();
+    return doc ? toEntity(doc) : null;
+  }
+
+  async findByTrackingToken(token: string): Promise<IOrder | null> {
+    const doc = await OrderModel.findOne({ trackingToken: token }).lean<OrderLeanDocument>();
+    return doc ? toEntity(doc) : null;
+  }
+
+  async updateStatus(id: string, status: OrderStatus, changedBy?: string): Promise<IOrder> {
+    const doc = await OrderModel.findByIdAndUpdate(
+      id,
+      { $set: { status }, $push: { statusHistory: { status, changedAt: new Date(), changedBy } } },
+      { new: true },
+    ).lean<OrderLeanDocument>();
+    return toEntity(doc as OrderLeanDocument);
   }
 }

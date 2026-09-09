@@ -1,4 +1,4 @@
-import { IOrder, IOrderItem, OrderType, PaymentMethod } from '../entities/order.entity';
+import { IOrder, IOrderItem, OrderStatus, OrderType, PaymentMethod } from '../entities/order.entity';
 
 /**
  * specs/0005-checkout REQ-2/REQ-5 — `create()` gera `orderNumber` (sequencial por
@@ -24,4 +24,19 @@ export interface NewOrderInput {
 
 export interface IOrderRepository {
   create(input: NewOrderInput): Promise<IOrder>;
+
+  /** REQ-1 (`specs/0006-acompanhamento-pedido`) — mais recente primeiro. */
+  findManyByCustomer(customerId: string): Promise<IOrder[]>;
+
+  findById(id: string): Promise<IOrder | null>;
+
+  /** REQ-8 — resolve pelo token opaco, nunca pelo `id` sequencial/interno. */
+  findByTrackingToken(token: string): Promise<IOrder | null>;
+
+  /**
+   * REQ-6 — quem decide **se** a transição é permitida (dono do pedido, status atual) é o
+   * controller (`OrdersController`); este método só aplica a mudança e empilha em
+   * `statusHistory`.
+   */
+  updateStatus(id: string, status: OrderStatus, changedBy?: string): Promise<IOrder>;
 }
