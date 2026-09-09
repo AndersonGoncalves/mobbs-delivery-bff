@@ -34,6 +34,12 @@ export interface IOrderStatusHistory {
   status: OrderStatus;
   changedAt: string;
   changedBy?: string;
+  /**
+   * specs/0008-acompanhamento-vendas REQ-3 — motivo do cancelamento pelo operador da retaguarda;
+   * só presente quando `status === 'cancelado'` por essa via (cancelamento pelo próprio cliente,
+   * specs/0006 REQ-6, não exige motivo).
+   */
+  reason?: string;
 }
 
 /**
@@ -76,4 +82,19 @@ export interface IPayment {
   status: PaymentStatus;
   amount: number;
   externalReference?: string;
+}
+
+/**
+ * docs/architecture/data-model.md §SalesSummary — agregado calculado on demand
+ * (`specs/0008-acompanhamento-vendas` REQ-4), nunca persistido. `totalRevenue` soma só pedidos
+ * `entregue` (receita realizada); `totalOrders` conta todos os pedidos criados no período,
+ * independente do status.
+ */
+export interface ISalesSummary {
+  restaurantId: string;
+  periodStart: string;
+  periodEnd: string;
+  totalOrders: number;
+  totalRevenue: number;
+  cancelledOrders: number;
 }

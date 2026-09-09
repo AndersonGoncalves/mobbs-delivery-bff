@@ -57,3 +57,23 @@ export const createOrderSchema = z
   });
 
 export type CreateOrderPayload = z.infer<typeof createOrderSchema>;
+
+const orderStatusEnum = z.enum(['aguardandoConfirmacao', 'confirmado', 'emPreparo', 'saiuParaEntrega', 'entregue', 'cancelado']);
+
+/** specs/0008-acompanhamento-vendas REQ-2/REQ-5 — status de destino; a transição em si é validada pelo controller. */
+export const updateOrderStatusSchema = z.object({
+  status: orderStatusEnum,
+});
+
+/** REQ-3 — motivo é obrigatório pro cancelamento pela retaguarda (diferente do cancelamento do cliente, specs/0006). */
+export const cancelOrderWithReasonSchema = z.object({
+  reason: z.string().min(1, 'Motivo do cancelamento é obrigatório'),
+});
+
+const isoDateString = z.string().refine((value) => !Number.isNaN(Date.parse(value)), 'Data inválida');
+
+/** REQ-4 — período do painel de vendas, vindo de query params (`GET /restaurants/me/sales-summary?from=...&to=...`). */
+export const salesSummaryQuerySchema = z.object({
+  from: isoDateString,
+  to: isoDateString,
+});

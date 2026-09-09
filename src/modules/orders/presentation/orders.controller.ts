@@ -6,8 +6,11 @@ import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IOrder } from '../domain/entities/order.entity';
+import { isOrderCancellable, isValidOrderStatusTransition } from '../domain/order-status-transitions';
 import { IOrderRepository } from '../domain/repositories/order.repository.interface';
-import { createOrderSchema } from './orders.schemas';
+import { cancelOrderWithReasonSchema, createOrderSchema, salesSummaryQuerySchema, updateOrderStatusSchema } from './orders.schemas';
+
+type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
 /**
  * REQ-2 (`specs/0005-checkout`) — qualquer `Customer` autenticado pode criar um pedido pra
@@ -25,6 +28,7 @@ export class OrdersController extends BaseRouter {
   constructor(
     private readonly orderRepository: IOrderRepository,
     private readonly restaurantRepository: IRestaurantRepository,
+    private readonly restaurantOperatorMiddleware: AsyncHandler,
   ) {
     super();
   }
@@ -85,6 +89,61 @@ export class OrdersController extends BaseRouter {
       res.json(200, updated);
     });
 
+    const operatorAuthenticated: AsyncHandler[] = [firebaseAuthMiddleware, this.restaurantOperatorMiddleware];
+
+    // specs/0008-acompanhamento-vendas REQ-1 — pedidos em andamento do restaurante do operador
+    // logado (mais antigo primeiro, `findActiveByRestaurant`); nunca por parâmetro de rota
+    // (isolamento multi-tenant, mesmo padrão de `specs/0007`/`0010`).
+    application.get('/restaurants/me/orders', ...operatorAuthenticated, async (req: Request, res: Response) => {
+      const orders = await this.orderRepository.findActiveByRestaurant(req.restaurantId!);
+      res.json(200, orders);
+    });
+
+    // REQ-2/REQ-5: só avança um passo por vez (`isValidOrderStatusTransition`) — fonte de
+    // verdade da regra é o BFF, a retaguarda só espelha pra feedback imediato (plan.md, ADR).
+    application.patch(
+      '/restaurants/me/orders/:id/status',
+      ...operatorAuthenticated,
+      async (req: Request, res: Response) => {
+        const { status } = parseBody(updateOrderStatusSchema, req.body);
+        const order = await this.findOwnedOrderForRestaurant(req.params.id, req.restaurantId!);
+
+        if (!isValidOrderStatusTransition(order.status, status)) {
+          throw new BadRequestError(`Não é possível mudar de "${order.status}" para "${status}"`);
+        }
+
+        const updated = await this.orderRepository.updateStatus(order.id, status, req.restaurantId);
+        res.json(200, updated);
+      },
+    );
+
+    // REQ-3: cancelamento pela retaguarda exige motivo (registrado na linha do tempo) e é
+    // permitido num conjunto de estados mais amplo que o autocancelamento do cliente
+    // (`isOrderCancellable`, specs/0006 REQ-6 é mais restrito).
+    application.patch(
+      '/restaurants/me/orders/:id/cancel',
+      ...operatorAuthenticated,
+      async (req: Request, res: Response) => {
+        const { reason } = parseBody(cancelOrderWithReasonSchema, req.body);
+        const order = await this.findOwnedOrderForRestaurant(req.params.id, req.restaurantId!);
+
+        if (!isOrderCancellable(order.status)) {
+          throw new BadRequestError('Pedido não pode mais ser cancelado');
+        }
+
+        const updated = await this.orderRepository.updateStatus(order.id, 'cancelado', req.restaurantId, reason);
+        res.json(200, updated);
+      },
+    );
+
+    // REQ-4 — agregado calculado on demand, sempre escopado ao restaurante do operador logado
+    // (nunca por parâmetro de rota).
+    application.get('/restaurants/me/sales-summary', ...operatorAuthenticated, async (req: Request, res: Response) => {
+      const { from, to } = parseBody(salesSummaryQuerySchema, req.query);
+      const summary = await this.orderRepository.getSalesSummary(req.restaurantId!, new Date(from), new Date(to));
+      res.json(200, summary);
+    });
+
     // REQ-8: rota **pública** (sem `firebaseAuthMiddleware`) — resolve só pelo `trackingToken`
     // (aleatório, não sequencial), nunca pelo `id`; devolve um subconjunto do pedido (sem
     // `customerId`/`restaurantId`/`deliveryAddress`, que identificariam o cliente).
@@ -98,6 +157,12 @@ export class OrdersController extends BaseRouter {
   private async findOwnedOrder(id: string, customerId: string): Promise<IOrder> {
     const order = await this.orderRepository.findById(id);
     if (!order || order.customerId !== customerId) throw new NotFoundError('Pedido não encontrado');
+    return order;
+  }
+
+  private async findOwnedOrderForRestaurant(id: string, restaurantId: string): Promise<IOrder> {
+    const order = await this.orderRepository.findById(id);
+    if (!order || order.restaurantId !== restaurantId) throw new NotFoundError('Pedido não encontrado');
     return order;
   }
 
