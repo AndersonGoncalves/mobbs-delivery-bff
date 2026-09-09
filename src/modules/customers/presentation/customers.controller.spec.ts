@@ -1,11 +1,18 @@
 import type { Request, Response, Server } from 'restify';
+import * as admin from 'firebase-admin';
 
 import { IAddressRepository } from '../domain/repositories/address.repository.interface';
 import { ICustomerRepository } from '../domain/repositories/customer.repository.interface';
 import { CustomersController } from './customers.controller';
 
+jest.mock('firebase-admin', () => ({
+  apps: [],
+  initializeApp: jest.fn(),
+  auth: jest.fn(),
+}));
+
 type FakeRequest = Partial<Pick<Request, 'params' | 'body'>> & { user?: { uid: string; email?: string; name?: string; picture?: string } };
-type FakeResponse = Pick<Response, 'json'>;
+type FakeResponse = Partial<Pick<Response, 'json' | 'send'>>;
 type RouteHandler = (req: FakeRequest, res: FakeResponse) => Promise<void>;
 
 function buildFakeApplication() {
@@ -51,6 +58,12 @@ describe('CustomersController', () => {
     const customerRepository: Partial<ICustomerRepository> = {
       findById: jest.fn().mockResolvedValue(buildCustomer()),
       upsertProfile: jest.fn().mockImplementation(async (id, patch) => ({ id, ...patch })),
+      acceptTerms: jest.fn().mockImplementation(async (id, version) => ({
+        ...buildCustomer(),
+        termsAcceptedAt: '2026-09-09T00:00:00.000Z',
+        termsVersionAccepted: version,
+      })),
+      anonymize: jest.fn().mockResolvedValue(undefined),
       ...overrides.customerRepository,
     };
     const addressRepository: Partial<IAddressRepository> = {
@@ -60,6 +73,7 @@ describe('CustomersController', () => {
       update: jest.fn().mockResolvedValue(buildAddress({ label: 'Trabalho' })),
       remove: jest.fn().mockResolvedValue([]),
       setDefault: jest.fn().mockResolvedValue([buildAddress()]),
+      removeAllByCustomer: jest.fn().mockResolvedValue(undefined),
       ...overrides.addressRepository,
     };
     const { application, routes } = buildFakeApplication();
@@ -243,5 +257,61 @@ describe('CustomersController', () => {
 
     expect(addressRepository.setDefault).toHaveBeenCalledWith('c-1', 'a-1');
     expect(json).toHaveBeenCalledWith(200, [expect.objectContaining({ id: 'a-1' })]);
+  });
+
+  it('AC-2: PATCH /customers/me/terms-acceptance grava a versão aceita', async () => {
+    const { customerRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runAuthenticatedChain(
+      routes['PATCH /customers/me/terms-acceptance'],
+      { user: { uid: 'c-1' }, body: { version: '2026-09-08' } },
+      { json },
+    );
+
+    expect(customerRepository.acceptTerms).toHaveBeenCalledWith('c-1', '2026-09-08');
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ termsVersionAccepted: '2026-09-08' }));
+  });
+
+  it('PATCH /customers/me/terms-acceptance rejeita corpo sem version', async () => {
+    const { routes } = setup();
+
+    await expect(
+      runAuthenticatedChain(
+        routes['PATCH /customers/me/terms-acceptance'],
+        { user: { uid: 'c-1' }, body: {} },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  describe('DELETE /customers/me (specs/0017-lgpd-privacidade)', () => {
+    beforeEach(() => {
+      (admin.auth as unknown as jest.Mock).mockReturnValue({ deleteUser: jest.fn().mockResolvedValue(undefined) });
+    });
+
+    it('AC-5: anonimiza o Customer, apaga os Address e exclui a conta no Firebase, nessa ordem', async () => {
+      const { addressRepository, customerRepository, routes } = setup();
+      const send = jest.fn();
+      const callOrder: string[] = [];
+      (customerRepository.anonymize as jest.Mock).mockImplementation(async () => {
+        callOrder.push('anonymize');
+      });
+      (addressRepository.removeAllByCustomer as jest.Mock).mockImplementation(async () => {
+        callOrder.push('removeAllByCustomer');
+      });
+      const deleteUser = jest.fn().mockImplementation(async () => {
+        callOrder.push('deleteUser');
+      });
+      (admin.auth as unknown as jest.Mock).mockReturnValue({ deleteUser });
+
+      await runAuthenticatedChain(routes['DEL /customers/me'], { user: { uid: 'c-1' } }, { send });
+
+      expect(customerRepository.anonymize).toHaveBeenCalledWith('c-1');
+      expect(addressRepository.removeAllByCustomer).toHaveBeenCalledWith('c-1');
+      expect(deleteUser).toHaveBeenCalledWith('c-1');
+      expect(callOrder).toEqual(['anonymize', 'removeAllByCustomer', 'deleteUser']);
+      expect(send).toHaveBeenCalledWith(204);
+    });
   });
 });

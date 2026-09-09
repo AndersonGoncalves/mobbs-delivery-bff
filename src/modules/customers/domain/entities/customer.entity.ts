@@ -12,6 +12,12 @@ export interface ICustomer {
   photoUrl?: string;
   phone?: string;
   document?: string;
+  /** specs/0017-lgpd-privacidade REQ-2/REQ-4. */
+  termsAcceptedAt?: string;
+  termsVersionAccepted?: string;
+  /** REQ-6 — presente só depois de anonimizado (`anonymize()`); `Order`s vinculados permanecem
+   * intactos (REQ-7), só o `Customer` perde os dados de identificação. */
+  deletedAt?: string;
 }
 
 /**

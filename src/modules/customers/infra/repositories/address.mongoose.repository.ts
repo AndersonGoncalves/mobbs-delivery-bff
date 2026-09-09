@@ -83,4 +83,8 @@ export class AddressMongooseRepository implements IAddressRepository {
     await AddressModel.updateOne({ _id: addressId, customerId }, { $set: { isDefault: true } });
     return this.listByCustomer(customerId);
   }
+
+  async removeAllByCustomer(customerId: string): Promise<void> {
+    await AddressModel.deleteMany({ customerId });
+  }
 }

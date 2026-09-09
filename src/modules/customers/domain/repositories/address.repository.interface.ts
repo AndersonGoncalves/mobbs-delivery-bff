@@ -22,4 +22,8 @@ export interface IAddressRepository {
 
   /** REQ-6 — só um padrão por vez; desmarca qualquer outro do mesmo `customerId`. */
   setDefault(customerId: string, addressId: string): Promise<IAddress[]>;
+
+  /** REQ-6a (`specs/0017-lgpd-privacidade`) — apaga todos os endereços do cliente (exclusão de
+   * conta; diferente de `remove()`, que é um endereço por vez e reatribui padrão). */
+  removeAllByCustomer(customerId: string): Promise<void>;
 }

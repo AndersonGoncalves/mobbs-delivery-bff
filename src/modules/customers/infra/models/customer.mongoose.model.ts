@@ -10,6 +10,9 @@ const customerSchema = new Schema(
     photoUrl: { type: String },
     phone: { type: String },
     document: { type: String },
+    termsAcceptedAt: { type: Date },
+    termsVersionAccepted: { type: String },
+    deletedAt: { type: Date },
   },
   { _id: false, timestamps: true },
 );
