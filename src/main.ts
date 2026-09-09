@@ -4,6 +4,9 @@ import { RestaurantMongooseRepository } from './modules/restaurants/infra/reposi
 import { RestaurantsController } from './modules/restaurants/presentation/restaurants.controller';
 import { RestaurantOperatorMongooseRepository } from './modules/restaurant-operators/infra/repositories/restaurant-operator.mongoose.repository';
 import { RestaurantOperatorsController } from './modules/restaurant-operators/presentation/restaurant-operators.controller';
+import { MenuCategoryMongooseRepository } from './modules/catalog/infra/repositories/menu-category.mongoose.repository';
+import { ProductMongooseRepository } from './modules/catalog/infra/repositories/product.mongoose.repository';
+import { CatalogController } from './modules/catalog/presentation/catalog.controller';
 
 const server = new Server();
 
@@ -14,6 +17,7 @@ server
   .bootstrap([
     new RestaurantsController(new RestaurantMongooseRepository(), restaurantOperatorMiddleware),
     new RestaurantOperatorsController(restaurantOperatorRepository, restaurantOperatorMiddleware),
+    new CatalogController(new MenuCategoryMongooseRepository(), new ProductMongooseRepository()),
   ])
   .catch((error) => {
     // eslint-disable-next-line no-console
