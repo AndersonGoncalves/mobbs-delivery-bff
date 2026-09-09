@@ -9,19 +9,23 @@ import { ProductMongooseRepository } from './modules/catalog/infra/repositories/
 import { CatalogController } from './modules/catalog/presentation/catalog.controller';
 import { OrderMongooseRepository } from './modules/orders/infra/repositories/order.mongoose.repository';
 import { OrdersController } from './modules/orders/presentation/orders.controller';
+import { RawMaterialMongooseRepository } from './modules/raw-materials/infra/repositories/raw-material.mongoose.repository';
+import { RawMaterialsController } from './modules/raw-materials/presentation/raw-materials.controller';
 
 const server = new Server();
 
 const restaurantOperatorRepository = new RestaurantOperatorMongooseRepository();
 const restaurantOperatorMiddleware = buildRestaurantOperatorMiddleware(restaurantOperatorRepository);
 const restaurantRepository = new RestaurantMongooseRepository();
+const productRepository = new ProductMongooseRepository();
 
 server
   .bootstrap([
     new RestaurantsController(restaurantRepository, restaurantOperatorMiddleware),
     new RestaurantOperatorsController(restaurantOperatorRepository, restaurantOperatorMiddleware),
-    new CatalogController(new MenuCategoryMongooseRepository(), new ProductMongooseRepository()),
+    new CatalogController(new MenuCategoryMongooseRepository(), productRepository, restaurantOperatorMiddleware),
     new OrdersController(new OrderMongooseRepository(), restaurantRepository),
+    new RawMaterialsController(new RawMaterialMongooseRepository(), productRepository, restaurantOperatorMiddleware),
   ])
   .catch((error) => {
     // eslint-disable-next-line no-console
