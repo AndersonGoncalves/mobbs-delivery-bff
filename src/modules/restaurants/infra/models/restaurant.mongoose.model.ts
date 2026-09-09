@@ -40,6 +40,7 @@ const restaurantSchema = new Schema(
     address: { type: addressSchema },
     phone: { type: String },
     minimumOrderValue: { type: Number, required: true, default: 0 },
+    deliveryFeeCents: { type: Number, required: true, default: 0 },
     welcomeMessage: { type: String },
     orderConfirmationGreeting: { type: String },
     pixKey: { type: String },
