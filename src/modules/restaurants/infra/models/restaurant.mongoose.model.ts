@@ -15,6 +15,19 @@ const businessHoursSchema = new Schema(
   { _id: false },
 );
 
+const addressSchema = new Schema(
+  {
+    street: { type: String, required: true },
+    number: { type: String, required: true },
+    complement: { type: String },
+    neighborhood: { type: String, required: true },
+    city: { type: String, required: true },
+    state: { type: String, required: true },
+    zipCode: { type: String, required: true },
+  },
+  { _id: false },
+);
+
 const restaurantSchema = new Schema(
   {
     _id: { type: String, default: () => randomUUID() },
@@ -24,6 +37,14 @@ const restaurantSchema = new Schema(
     logoUrl: { type: String },
     primaryColor: { type: String },
     businessHours: { type: [businessHoursSchema], default: [] },
+    address: { type: addressSchema },
+    phone: { type: String },
+    minimumOrderValue: { type: Number, required: true, default: 0 },
+    welcomeMessage: { type: String },
+    orderConfirmationGreeting: { type: String },
+    pixKey: { type: String },
+    pixKeyType: { type: String, enum: ['telefone', 'cpf', 'cnpj', 'email', 'aleatoria'] },
+    pixBeneficiaryName: { type: String },
   },
   { _id: false, timestamps: true },
 );

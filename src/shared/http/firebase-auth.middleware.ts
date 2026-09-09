@@ -1,6 +1,8 @@
-import type { Request, Response, Next } from 'restify';
+import type { Request } from 'restify';
 import { UnauthorizedError } from 'restify-errors';
 import * as admin from 'firebase-admin';
+
+import { ensureFirebaseAdminInitialized } from '../config/firebase-admin';
 
 export interface AuthenticatedUser {
   uid: string;
@@ -17,17 +19,26 @@ declare module 'restify' {
  * REQ-6/REQ-7 (specs/0002-autenticacao): valida o ID token do Firebase enviado em
  * `Authorization: Bearer <idToken>` antes de qualquer handler de negócio (docs/architecture/patterns.md
  * §17.1). Sem token ou token inválido -> 401. Token válido -> `req.user` disponível na rota.
+ *
+ * Assinatura `async (req)`, sem `res`/`next` (nenhum dos dois é usado) — mesma regra de arity do
+ * Restify já documentada em `RestaurantsController` (T008 de specs/0009): um handler assíncrono
+ * no chain só pode ter no máximo 2 parâmetros, sinalizando sucesso/erro por retorno/`throw`, nunca
+ * chamando `next()` manualmente. Isso vale pra **todo** handler da chain, não só o último —
+ * `firebaseAuthMiddleware`
+ * tinha `next` na assinatura original (funcionava nos testes unitários, que chamam a função
+ * direto, mas nunca tinha sido de fato registrado numa rota Restify real; ia lançar
+ * `AssertionError` na inicialização do servidor assim que fosse).
  */
-export async function firebaseAuthMiddleware(req: Request, _res: Response, next: Next) {
+export async function firebaseAuthMiddleware(req: Request): Promise<void> {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
-    return next(new UnauthorizedError('Token ausente'));
+    throw new UnauthorizedError('Token ausente');
   }
   try {
+    ensureFirebaseAdminInitialized();
     const decodedToken = await admin.auth().verifyIdToken(authHeader.slice(7));
     req.user = { uid: decodedToken.uid, email: decodedToken.email };
-    return next();
   } catch {
-    return next(new UnauthorizedError('Token inválido ou expirado'));
+    throw new UnauthorizedError('Token inválido ou expirado');
   }
 }

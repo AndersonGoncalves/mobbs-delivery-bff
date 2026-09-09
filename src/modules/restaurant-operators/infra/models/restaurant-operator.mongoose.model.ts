@@ -1,0 +1,22 @@
+import { randomUUID } from 'crypto';
+import { Schema, model } from 'mongoose';
+
+const restaurantOperatorSchema = new Schema(
+  {
+    _id: { type: String, default: () => randomUUID() },
+    restaurantId: { type: String, required: true },
+    email: { type: String, required: true },
+    isActive: { type: Boolean, required: true, default: true },
+  },
+  { _id: false, timestamps: { createdAt: true, updatedAt: false } },
+);
+
+restaurantOperatorSchema.index({ restaurantId: 1, email: 1 }, { unique: true });
+
+// Nome de coleção explícito (singular, docs/architecture/patterns.md §16.6.1) — mesma convenção
+// de RestaurantModel, evita a pluralização automática do Mongoose.
+export const RestaurantOperatorModel = model(
+  'RestaurantOperator',
+  restaurantOperatorSchema,
+  'restaurantOperator',
+);

@@ -16,7 +16,8 @@
     "firebase-admin": "^13.10.0",
     "mongoose": "^8.6.0",
     "restify": "^11.1.0",
-    "restify-errors": "^8.0.2"
+    "restify-errors": "^8.0.2",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@types/jest": "^29.5.12",
