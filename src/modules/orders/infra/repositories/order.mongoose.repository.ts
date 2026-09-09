@@ -1,6 +1,6 @@
 import { randomBytes } from 'crypto';
 
-import { IOrder, IOrderItem, OrderStatus, OrderType, PaymentMethod } from '../../domain/entities/order.entity';
+import { IOrder, IOrderItem, ISalesSummary, OrderStatus, OrderType, PaymentMethod } from '../../domain/entities/order.entity';
 import { IOrderRepository, NewOrderInput } from '../../domain/repositories/order.repository.interface';
 import { OrderCounterModel } from '../models/order-counter.mongoose.model';
 import { OrderModel } from '../models/order.mongoose.model';
@@ -17,7 +17,7 @@ interface OrderLeanDocument {
   deliveryAddress?: string;
   notes?: string;
   status: IOrder['status'];
-  statusHistory: { status: IOrder['status']; changedAt: Date; changedBy?: string }[];
+  statusHistory: { status: IOrder['status']; changedAt: Date; changedBy?: string; reason?: string }[];
   subtotal: number;
   deliveryFee: number;
   discount: number;
@@ -43,6 +43,7 @@ function toEntity(doc: OrderLeanDocument): IOrder {
       status: entry.status,
       changedAt: entry.changedAt.toISOString(),
       changedBy: entry.changedBy,
+      reason: entry.reason,
     })),
     subtotal: doc.subtotal,
     deliveryFee: doc.deliveryFee,
@@ -117,12 +118,51 @@ export class OrderMongooseRepository implements IOrderRepository {
     return doc ? toEntity(doc) : null;
   }
 
-  async updateStatus(id: string, status: OrderStatus, changedBy?: string): Promise<IOrder> {
+  async updateStatus(id: string, status: OrderStatus, changedBy?: string, reason?: string): Promise<IOrder> {
     const doc = await OrderModel.findByIdAndUpdate(
       id,
-      { $set: { status }, $push: { statusHistory: { status, changedAt: new Date(), changedBy } } },
+      { $set: { status }, $push: { statusHistory: { status, changedAt: new Date(), changedBy, reason } } },
       { new: true },
     ).lean<OrderLeanDocument>();
     return toEntity(doc as OrderLeanDocument);
+  }
+
+  /**
+   * specs/0008-acompanhamento-vendas REQ-1 — mais antigo primeiro (fila de atendimento).
+   * `$nin` exclui `entregue`/`cancelado`, que já saíram do fluxo de acompanhamento ativo.
+   */
+  async findActiveByRestaurant(restaurantId: string): Promise<IOrder[]> {
+    const docs = await OrderModel.find({ restaurantId, status: { $nin: ['entregue', 'cancelado'] } })
+      .sort({ createdAt: 1 })
+      .lean<OrderLeanDocument[]>();
+    return docs.map(toEntity);
+  }
+
+  /** REQ-4 — `totalRevenue` conta só pedidos `entregue` (receita realizada). */
+  async getSalesSummary(restaurantId: string, periodStart: Date, periodEnd: Date): Promise<ISalesSummary> {
+    const [result] = await OrderModel.aggregate<{
+      totalOrders: number;
+      totalRevenue: number;
+      cancelledOrders: number;
+    }>([
+      { $match: { restaurantId, createdAt: { $gte: periodStart, $lte: periodEnd } } },
+      {
+        $group: {
+          _id: null,
+          totalOrders: { $sum: 1 },
+          totalRevenue: { $sum: { $cond: [{ $eq: ['$status', 'entregue'] }, '$total', 0] } },
+          cancelledOrders: { $sum: { $cond: [{ $eq: ['$status', 'cancelado'] }, 1, 0] } },
+        },
+      },
+    ]);
+
+    return {
+      restaurantId,
+      periodStart: periodStart.toISOString(),
+      periodEnd: periodEnd.toISOString(),
+      totalOrders: result?.totalOrders ?? 0,
+      totalRevenue: result?.totalRevenue ?? 0,
+      cancelledOrders: result?.cancelledOrders ?? 0,
+    };
   }
 }

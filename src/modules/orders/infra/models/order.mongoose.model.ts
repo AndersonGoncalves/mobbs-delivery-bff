@@ -35,6 +35,7 @@ const orderStatusHistorySchema = new Schema(
     status: { type: String, required: true },
     changedAt: { type: Date, required: true },
     changedBy: { type: String },
+    reason: { type: String },
   },
   { _id: false },
 );

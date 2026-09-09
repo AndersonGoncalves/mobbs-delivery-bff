@@ -24,7 +24,7 @@ server
     new RestaurantsController(restaurantRepository, restaurantOperatorMiddleware),
     new RestaurantOperatorsController(restaurantOperatorRepository, restaurantOperatorMiddleware),
     new CatalogController(new MenuCategoryMongooseRepository(), productRepository, restaurantOperatorMiddleware),
-    new OrdersController(new OrderMongooseRepository(), restaurantRepository),
+    new OrdersController(new OrderMongooseRepository(), restaurantRepository, restaurantOperatorMiddleware),
     new RawMaterialsController(new RawMaterialMongooseRepository(), productRepository, restaurantOperatorMiddleware),
   ])
   .catch((error) => {

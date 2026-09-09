@@ -4,7 +4,10 @@ import { IRestaurantRepository } from '../../restaurants/domain/repositories/res
 import { IOrderRepository } from '../domain/repositories/order.repository.interface';
 import { OrdersController } from './orders.controller';
 
-type FakeRequest = Partial<Pick<Request, 'params' | 'body'>> & { user?: { uid: string; email?: string } };
+type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & {
+  user?: { uid: string; email?: string };
+  restaurantId?: string;
+};
 type FakeResponse = Pick<Response, 'json'>;
 type RouteHandler = (req: FakeRequest, res: FakeResponse) => Promise<void>;
 
@@ -36,6 +39,15 @@ async function runAuthenticatedChain(handlers: RouteHandler[], req: FakeRequest,
 // handlers, sem pular o primeiro.
 async function runPublicChain(handlers: RouteHandler[], req: FakeRequest, res: FakeResponse): Promise<void> {
   for (const handler of handlers) {
+    await handler(req, res);
+  }
+}
+
+// Rotas /restaurants/me/... (specs/0008-acompanhamento-vendas) passam por
+// firebaseAuthMiddleware + restaurantOperatorMiddleware — pula os dois (cada um tem spec
+// própria) e injeta `req.restaurantId` manualmente, como o middleware real faria.
+async function runOperatorChain(handlers: RouteHandler[], req: FakeRequest, res: FakeResponse): Promise<void> {
+  for (const handler of handlers.slice(2)) {
     await handler(req, res);
   }
 }
@@ -113,21 +125,36 @@ describe('OrdersController', () => {
       findManyByCustomer: jest.fn().mockResolvedValue([buildOrder()]),
       findById: jest.fn().mockResolvedValue(buildOrder()),
       findByTrackingToken: jest.fn().mockResolvedValue(buildOrder()),
-      updateStatus: jest.fn().mockImplementation(async (id, status, changedBy) => ({
+      findActiveByRestaurant: jest.fn().mockResolvedValue([buildOrder()]),
+      updateStatus: jest.fn().mockImplementation(async (id, status, changedBy, reason) => ({
         ...buildOrder(),
         status,
-        statusHistory: [...buildOrder().statusHistory, { status, changedAt: new Date().toISOString(), changedBy }],
+        statusHistory: [
+          ...buildOrder().statusHistory,
+          { status, changedAt: new Date().toISOString(), changedBy, reason },
+        ],
       })),
+      getSalesSummary: jest.fn().mockResolvedValue({
+        restaurantId: 'r-1',
+        periodStart: '2026-09-01T00:00:00.000Z',
+        periodEnd: '2026-09-30T23:59:59.999Z',
+        totalOrders: 10,
+        totalRevenue: 300,
+        cancelledOrders: 1,
+      }),
       ...overrides.orderRepository,
     };
     const restaurantRepository: Partial<IRestaurantRepository> = {
       findById: jest.fn().mockResolvedValue(buildRestaurant()),
       ...overrides.restaurantRepository,
     };
+    const restaurantOperatorMiddleware = jest.fn();
     const { application, routes } = buildFakeApplication();
-    new OrdersController(orderRepository as IOrderRepository, restaurantRepository as IRestaurantRepository).initializeRoutes(
-      application,
-    );
+    new OrdersController(
+      orderRepository as IOrderRepository,
+      restaurantRepository as IRestaurantRepository,
+      restaurantOperatorMiddleware,
+    ).initializeRoutes(application);
     return { orderRepository, restaurantRepository, routes };
   }
 
@@ -301,5 +328,123 @@ describe('OrdersController', () => {
     await expect(
       runPublicChain(routes['GET /orders/track/:token'], { params: { token: 'inexistente' } }, { json: jest.fn() }),
     ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('AC-1: GET /restaurants/me/orders lista os pedidos em andamento do restaurante do operador (token, não da rota)', async () => {
+    const { orderRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runOperatorChain(routes['GET /restaurants/me/orders'], { restaurantId: 'r-1' }, { json });
+
+    expect(orderRepository.findActiveByRestaurant).toHaveBeenCalledWith('r-1');
+    expect(json).toHaveBeenCalledWith(200, [expect.objectContaining({ id: 'o-1' })]);
+  });
+
+  it('AC-2: PATCH /restaurants/me/orders/:id/status avança um passo (aguardandoConfirmacao -> confirmado)', async () => {
+    const { orderRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/status'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'confirmado' } },
+      { json },
+    );
+
+    expect(orderRepository.updateStatus).toHaveBeenCalledWith('o-1', 'confirmado', 'r-1');
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ status: 'confirmado' }));
+  });
+
+  it('AC-5: PATCH /restaurants/me/orders/:id/status bloqueia pular de aguardandoConfirmacao direto pra entregue', async () => {
+    const { orderRepository, routes } = setup();
+
+    await expect(
+      runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/status'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'entregue' } },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(orderRepository.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it('PATCH /restaurants/me/orders/:id/status lança 404 quando o pedido é de outro restaurante', async () => {
+    const { routes } = setup({
+      orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ restaurantId: 'r-OUTRO' })) },
+    });
+
+    await expect(
+      runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/status'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'confirmado' } },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('AC-3: PATCH /restaurants/me/orders/:id/cancel exige motivo e registra na linha do tempo', async () => {
+    const { orderRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/cancel'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { reason: 'Cliente desistiu' } },
+      { json },
+    );
+
+    expect(orderRepository.updateStatus).toHaveBeenCalledWith('o-1', 'cancelado', 'r-1', 'Cliente desistiu');
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ status: 'cancelado' }));
+  });
+
+  it('PATCH /restaurants/me/orders/:id/cancel rejeita corpo sem motivo', async () => {
+    const { routes } = setup();
+
+    await expect(
+      runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/cancel'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: {} },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('PATCH /restaurants/me/orders/:id/cancel rejeita quando o pedido já saiu para entrega', async () => {
+    const { orderRepository, routes } = setup({
+      orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ status: 'saiuParaEntrega' })) },
+    });
+
+    await expect(
+      runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/cancel'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { reason: 'Cliente desistiu' } },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(orderRepository.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it('AC-4: GET /restaurants/me/sales-summary devolve o agregado do período, escopado ao restaurante do operador', async () => {
+    const { orderRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['GET /restaurants/me/sales-summary'],
+      { restaurantId: 'r-1', query: { from: '2026-09-01', to: '2026-09-30' } },
+      { json },
+    );
+
+    expect(orderRepository.getSalesSummary).toHaveBeenCalledWith('r-1', new Date('2026-09-01'), new Date('2026-09-30'));
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ totalOrders: 10, totalRevenue: 300, cancelledOrders: 1 }));
+  });
+
+  it('GET /restaurants/me/sales-summary rejeita datas inválidas', async () => {
+    const { routes } = setup();
+
+    await expect(
+      runOperatorChain(
+        routes['GET /restaurants/me/sales-summary'],
+        { restaurantId: 'r-1', query: { from: 'não-é-uma-data', to: '2026-09-30' } },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
   });
 });
