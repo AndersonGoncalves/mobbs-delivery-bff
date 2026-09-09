@@ -7,6 +7,10 @@ import { ensureFirebaseAdminInitialized } from '../config/firebase-admin';
 export interface AuthenticatedUser {
   uid: string;
   email?: string;
+  /** specs/0011-perfil-cliente — usados só pra sintetizar o perfil na 1ª vez (antes de existir
+   * um `Customer` persistido); nunca sobrescrevem o que já foi salvo em `/customers/me`. */
+  name?: string;
+  picture?: string;
 }
 
 declare module 'restify' {
@@ -37,7 +41,12 @@ export async function firebaseAuthMiddleware(req: Request): Promise<void> {
   try {
     ensureFirebaseAdminInitialized();
     const decodedToken = await admin.auth().verifyIdToken(authHeader.slice(7));
-    req.user = { uid: decodedToken.uid, email: decodedToken.email };
+    req.user = {
+      uid: decodedToken.uid,
+      email: decodedToken.email,
+      name: decodedToken.name,
+      picture: decodedToken.picture,
+    };
   } catch {
     throw new UnauthorizedError('Token inválido ou expirado');
   }
