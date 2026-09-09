@@ -17,3 +17,17 @@ Ver `docs/architecture/patterns.md` §16 (BFF) e `docs/architecture/overview.md`
 `mobbs-delivery-app` — este repositório ainda não tem `docs/`/`specs/` próprios (ver
 `specs/README.md` daquele repo para o processo de SDD compartilhado entre os repositórios do
 ecossistema).
+
+## Pendências
+
+- **Documentação da API (Swagger/OpenAPI)** — decidido em `docs/architecture/patterns.md` §16.7
+  ("OpenAPI escrito à mão em `swagger.spec.ts`, servido em `/docs` via Swagger UI", mesmo esquema
+  de `rotas-sz-bff`), **ainda não implementado**. Cobrir, quando for feito, todos os endpoints já
+  ativos em `main.ts` (`restaurants`, `restaurant-operators`, `catalog`, `orders`,
+  `raw-materials`) — necessário pra testar a API manualmente sem depender de um cliente HTTP
+  escrito à mão (Postman/Insomnia/curl).
+- **Sem rota pública de criação do primeiro `Restaurant`/`RestaurantOperator`** — todo endpoint de
+  escrita de restaurante/operador já exige um operador autenticado (`restaurantOperatorMiddleware`),
+  então o primeiro restaurante + primeiro operador de um ambiente novo precisam ser inseridos
+  direto no MongoDB (sem endpoint HTTP para isso) antes de qualquer teste ponta a ponta contra
+  rotas `/restaurants/me/...`.
