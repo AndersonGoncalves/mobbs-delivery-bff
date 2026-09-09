@@ -21,6 +21,7 @@ interface RestaurantLeanDocument {
   address?: IRestaurantAddress;
   phone?: string;
   minimumOrderValue?: number;
+  deliveryFeeCents?: number;
   welcomeMessage?: string;
   orderConfirmationGreeting?: string;
   pixKey?: string;
@@ -40,6 +41,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     address: doc.address,
     phone: doc.phone,
     minimumOrderValue: doc.minimumOrderValue ?? 0,
+    deliveryFeeCents: doc.deliveryFeeCents ?? 0,
     welcomeMessage: doc.welcomeMessage,
     orderConfirmationGreeting: doc.orderConfirmationGreeting,
     pixKey: doc.pixKey,

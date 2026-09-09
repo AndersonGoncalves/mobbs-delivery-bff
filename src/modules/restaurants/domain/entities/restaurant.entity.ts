@@ -40,6 +40,13 @@ export interface IRestaurant {
   address?: IRestaurantAddress;
   phone?: string;
   minimumOrderValue: number;
+  /**
+   * specs/0004-carrinho — taxa de entrega fixa nesta v1 (docs/architecture/data-model.md,
+   * `deliveryFeeCents`; sem cálculo por distância). Default 0 — ainda não editável pela
+   * retaguarda (specs/0010 não incluiu esse campo no formulário de perfil); fica read-only até
+   * uma spec futura expor a edição.
+   */
+  deliveryFeeCents: number;
   welcomeMessage?: string;
   orderConfirmationGreeting?: string;
   pixKey?: string;
