@@ -21,6 +21,19 @@ export interface ICustomer {
 }
 
 /**
+ * docs/architecture/data-model.md §Favorite (`specs/0012-favoritos`) — diferente de
+ * `Customer`/`Address`, é escopado por restaurante (REQ-3: a lista de favoritos mostrada é a do
+ * restaurante atual, não todos os favoritos do cliente em qualquer lugar).
+ */
+export interface IFavorite {
+  id: string;
+  customerId: string;
+  restaurantId: string;
+  productId: string;
+  createdAt: string;
+}
+
+/**
  * docs/architecture/data-model.md §Address — `Customer`/`Address` não são escopados por
  * restaurante (mesma pessoa/endereço independente de qual restaurante o app está resolvido).
  */

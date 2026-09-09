@@ -20,6 +20,17 @@ export const acceptTermsSchema = z.object({
   version: z.string().min(1),
 });
 
+/** REQ-1 (`specs/0012-favoritos`) — favoritar um produto no restaurante atual. */
+export const addFavoriteSchema = z.object({
+  restaurantId: z.string().min(1),
+  productId: z.string().min(1),
+});
+
+/** REQ-3 (`specs/0012-favoritos`) — `GET /customers/me/favorites?restaurantId=...`. */
+export const listFavoritesQuerySchema = z.object({
+  restaurantId: z.string().min(1),
+});
+
 /** REQ-3/REQ-4 (`specs/0011-perfil-cliente`) — criar/editar endereço. */
 export const saveAddressSchema = z.object({
   label: z.string().min(1),
