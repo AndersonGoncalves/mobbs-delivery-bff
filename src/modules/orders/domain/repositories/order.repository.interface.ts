@@ -50,4 +50,12 @@ export interface IOrderRepository {
 
   /** REQ-4 — agregado por período, calculado on demand, nunca persistido. */
   getSalesSummary(restaurantId: string, periodStart: Date, periodEnd: Date): Promise<ISalesSummary>;
+
+  /**
+   * specs/0016-clientes-retaguarda REQ-3 — histórico de pedidos de um cliente **só neste
+   * restaurante** (nunca cruza com pedidos do mesmo `Customer` em outro restaurante, já que
+   * `Customer` é global — `docs/architecture/data-model.md`); mais recente primeiro, mesmo
+   * critério de `findManyByCustomer`.
+   */
+  findManyByCustomerAndRestaurant(customerId: string, restaurantId: string): Promise<IOrder[]>;
 }

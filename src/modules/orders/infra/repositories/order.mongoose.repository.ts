@@ -108,6 +108,16 @@ export class OrderMongooseRepository implements IOrderRepository {
     return docs.map(toEntity);
   }
 
+  /**
+   * specs/0016-clientes-retaguarda REQ-3 — mesmo filtro de `findManyByCustomer`, com
+   * `restaurantId` adicional pra nunca vazar pedidos do mesmo cliente feitos em outro
+   * restaurante; mais recente primeiro.
+   */
+  async findManyByCustomerAndRestaurant(customerId: string, restaurantId: string): Promise<IOrder[]> {
+    const docs = await OrderModel.find({ customerId, restaurantId }).sort({ createdAt: -1 }).lean<OrderLeanDocument[]>();
+    return docs.map(toEntity);
+  }
+
   async findById(id: string): Promise<IOrder | null> {
     const doc = await OrderModel.findById(id).lean<OrderLeanDocument>();
     return doc ? toEntity(doc) : null;
