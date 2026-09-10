@@ -35,8 +35,17 @@ export class Server {
     this.application.on('restifyError', handleError);
   }
 
-  async bootstrap(routers: BaseRouter[]): Promise<void> {
+  /**
+   * `migrations` (specs/0021-papeis-operador REQ-7/T002) rodam sempre depois de conectar ao
+   * Mongo e sempre ANTES de qualquer rota ser registrada — nenhuma requisição chega a um
+   * documento ainda não migrado.
+   */
+  async bootstrap(routers: BaseRouter[], migrations: Array<() => Promise<void>> = []): Promise<void> {
     await MongooseConnection.getInstance().connect();
+
+    for (const migration of migrations) {
+      await migration();
+    }
 
     routers.forEach((router) => router.initializeRoutes(this.application));
 

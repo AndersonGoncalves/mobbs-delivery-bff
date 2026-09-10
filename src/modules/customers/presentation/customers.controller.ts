@@ -1,11 +1,14 @@
 import type { Request, Response, Server } from 'restify';
-import { NotFoundError } from 'restify-errors';
+import { BadRequestError, NotFoundError } from 'restify-errors';
 import * as admin from 'firebase-admin';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { ensureFirebaseAdminInitialized } from '../../../shared/config/firebase-admin';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
+import { IEmailService } from '../../../shared/email/i-email-service';
+import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
+import { buildCustomerDataExport } from '../domain/build-data-export';
 import { IAddress } from '../domain/entities/customer.entity';
 import { IAddressRepository } from '../domain/repositories/address.repository.interface';
 import { ICustomerRepository } from '../domain/repositories/customer.repository.interface';
@@ -30,6 +33,9 @@ export class CustomersController extends BaseRouter {
     private readonly customerRepository: ICustomerRepository,
     private readonly addressRepository: IAddressRepository,
     private readonly favoriteRepository: IFavoriteRepository,
+    /** specs/0023-portabilidade-dados REQ-2 — agregação da exportação de dados. */
+    private readonly orderRepository: IOrderRepository,
+    private readonly emailService: IEmailService,
   ) {
     super();
   }
@@ -152,6 +158,61 @@ export class CustomersController extends BaseRouter {
         const { version } = parseBody(acceptTermsSchema, req.body);
         const customer = await this.customerRepository.acceptTerms(req.user!.uid, version);
         res.json(200, customer);
+      },
+    );
+
+    // specs/0023-portabilidade-dados REQ-2/REQ-3/REQ-4/REQ-5 — exportação de dados (LGPD).
+    // Resolve o e-mail do mesmo jeito que `GET /customers/me` sintetiza o perfil (REQ-1) — sem
+    // isso, um cliente Google autenticado que nunca deu `PUT` (sem `Customer` persistido ainda)
+    // cairia no 400 de "sem e-mail" por engano, mesmo tendo e-mail de verdade no token.
+    application.post(
+      '/customers/me/data-export',
+      firebaseAuthMiddleware,
+      async (req: Request, res: Response) => {
+        const uid = req.user!.uid;
+        const existing = await this.customerRepository.findById(uid);
+        const customer = existing ?? {
+          id: uid,
+          name: req.user!.name ?? '',
+          email: req.user!.email ?? '',
+          photoUrl: req.user!.picture,
+        };
+
+        // REQ-3 — sessão de visitante (specs/0019-checkout-visitante) nunca tem e-mail; orienta
+        // a cadastrar um antes, em vez de tentar enviar pra um endereço vazio.
+        if (!customer.email) {
+          throw new BadRequestError('Cadastre um e-mail antes de solicitar a exportação dos seus dados.');
+        }
+
+        const [addresses, orders, favorites] = await Promise.all([
+          this.addressRepository.listByCustomer(uid),
+          this.orderRepository.findManyByCustomer(uid),
+          this.favoriteRepository.listByCustomer(uid),
+        ]);
+
+        const dataExport = buildCustomerDataExport({ customer, addresses, orders, favorites });
+
+        // REQ-4/REQ-5 — fire-and-forget, mesmo padrão `void promise.catch(...)` já estabelecido
+        // em `specs/0013` (`OrdersController`): a resposta HTTP 200 nunca espera o e-mail
+        // realmente sair; falha no envio só é logada, nunca propaga pro cliente.
+        void this.emailService
+          .send({
+            to: customer.email,
+            subject: 'Seus dados no mobbs delivery',
+            html: `<p>Olá${customer.name ? `, ${customer.name}` : ''}! Em anexo está um arquivo JSON com todos os dados que guardamos sobre você: perfil, endereços, pedidos e favoritos.</p>`,
+            attachments: [
+              {
+                filename: 'meus-dados.json',
+                content: JSON.stringify(dataExport, null, 2),
+                contentType: 'application/json',
+              },
+            ],
+          })
+          .catch((error) => {
+            console.error(`[email] falha ao enviar exportação de dados do cliente ${uid}:`, error);
+          });
+
+        res.json(200, { email: customer.email });
       },
     );
 

@@ -28,6 +28,13 @@ export class FavoriteMongooseRepository implements IFavoriteRepository {
     return docs.map(toEntity);
   }
 
+  /** specs/0023-portabilidade-dados REQ-2 — todos os favoritos do cliente, sem filtro de
+   * restaurante. */
+  async listByCustomer(customerId: string): Promise<IFavorite[]> {
+    const docs = await FavoriteModel.find({ customerId }).sort({ createdAt: 1 }).lean<FavoriteLeanDocument[]>();
+    return docs.map(toEntity);
+  }
+
   /** Upsert por `(customerId, productId)` — idempotente mesmo sob double-tap (índice único). */
   async add(customerId: string, restaurantId: string, productId: string): Promise<IFavorite> {
     const doc = await FavoriteModel.findOneAndUpdate(

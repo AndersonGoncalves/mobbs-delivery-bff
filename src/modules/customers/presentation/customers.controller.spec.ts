@@ -1,6 +1,8 @@
 import type { Request, Response, Server } from 'restify';
 import * as admin from 'firebase-admin';
 
+import { IEmailService } from '../../../shared/email/i-email-service';
+import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { IAddressRepository } from '../domain/repositories/address.repository.interface';
 import { ICustomerRepository } from '../domain/repositories/customer.repository.interface';
 import { IFavoriteRepository } from '../domain/repositories/favorite.repository.interface';
@@ -51,6 +53,27 @@ function buildFavorite(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function buildOrder(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'o-1',
+    orderNumber: 123,
+    trackingToken: 'abc123',
+    customerId: 'c-1',
+    restaurantId: 'r-1',
+    items: [],
+    orderType: 'delivery',
+    status: 'entregue',
+    statusHistory: [],
+    subtotal: 25,
+    deliveryFee: 5,
+    discount: 0,
+    total: 30,
+    paymentMethod: 'cash',
+    createdAt: '2026-09-09T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
 function buildAddress(overrides: Record<string, unknown> = {}) {
   return {
     id: 'a-1',
@@ -73,6 +96,8 @@ describe('CustomersController', () => {
       customerRepository?: Partial<ICustomerRepository>;
       addressRepository?: Partial<IAddressRepository>;
       favoriteRepository?: Partial<IFavoriteRepository>;
+      orderRepository?: Partial<IOrderRepository>;
+      emailService?: Partial<IEmailService>;
     } = {},
   ) {
     const customerRepository: Partial<ICustomerRepository> = {
@@ -98,17 +123,28 @@ describe('CustomersController', () => {
     };
     const favoriteRepository: Partial<IFavoriteRepository> = {
       listByRestaurant: jest.fn().mockResolvedValue([buildFavorite()]),
+      listByCustomer: jest.fn().mockResolvedValue([buildFavorite()]),
       add: jest.fn().mockResolvedValue(buildFavorite()),
       remove: jest.fn().mockResolvedValue(undefined),
       ...overrides.favoriteRepository,
+    };
+    const orderRepository: Partial<IOrderRepository> = {
+      findManyByCustomer: jest.fn().mockResolvedValue([buildOrder()]),
+      ...overrides.orderRepository,
+    };
+    const emailService: Partial<IEmailService> = {
+      send: jest.fn().mockResolvedValue(undefined),
+      ...overrides.emailService,
     };
     const { application, routes } = buildFakeApplication();
     new CustomersController(
       customerRepository as ICustomerRepository,
       addressRepository as IAddressRepository,
       favoriteRepository as IFavoriteRepository,
+      orderRepository as IOrderRepository,
+      emailService as IEmailService,
     ).initializeRoutes(application);
-    return { customerRepository, addressRepository, favoriteRepository, routes };
+    return { customerRepository, addressRepository, favoriteRepository, orderRepository, emailService, routes };
   }
 
   it('AC-1: GET /customers/me devolve o Customer persistido quando já existe', async () => {
@@ -366,6 +402,98 @@ describe('CustomersController', () => {
 
       expect(favoriteRepository.remove).toHaveBeenCalledWith('c-1', 'p-1');
       expect(send).toHaveBeenCalledWith(204);
+    });
+  });
+
+  describe('POST /customers/me/data-export (specs/0023-portabilidade-dados)', () => {
+    it('AC-1: agrega perfil/endereços/pedidos/favoritos e dispara o e-mail com o JSON anexado', async () => {
+      const { addressRepository, orderRepository, favoriteRepository, emailService, routes } = setup();
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['POST /customers/me/data-export'], { user: { uid: 'c-1' } }, { json });
+
+      expect(addressRepository.listByCustomer).toHaveBeenCalledWith('c-1');
+      expect(orderRepository.findManyByCustomer).toHaveBeenCalledWith('c-1');
+      expect(favoriteRepository.listByCustomer).toHaveBeenCalledWith('c-1');
+      expect(emailService.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'ana@example.com',
+          attachments: [
+            expect.objectContaining({
+              filename: 'meus-dados.json',
+              content: expect.stringContaining('"pedidos"'),
+            }),
+          ],
+        }),
+      );
+      expect(json).toHaveBeenCalledWith(200, { email: 'ana@example.com' });
+    });
+
+    it('AC-2: cliente sem e-mail (visitante) recebe 400 específico, sem chamar o envio', async () => {
+      const { emailService, routes } = setup({
+        customerRepository: { findById: jest.fn().mockResolvedValue(buildCustomer({ email: '' })) },
+      });
+
+      await expect(
+        runAuthenticatedChain(
+          routes['POST /customers/me/data-export'],
+          { user: { uid: 'c-1' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 400 });
+      expect(emailService.send).not.toHaveBeenCalled();
+    });
+
+    it('AC-2: cliente sem Customer persistido e sem e-mail no token também recebe 400', async () => {
+      const { emailService, routes } = setup({
+        customerRepository: { findById: jest.fn().mockResolvedValue(null) },
+      });
+
+      await expect(
+        runAuthenticatedChain(
+          routes['POST /customers/me/data-export'],
+          { user: { uid: 'c-1', name: 'Visitante' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 400 });
+      expect(emailService.send).not.toHaveBeenCalled();
+    });
+
+    it('AC-3: responde 200 imediatamente, sem esperar o envio do e-mail terminar', async () => {
+      let resolveSend: (() => void) | undefined;
+      const send = jest.fn().mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveSend = resolve;
+          }),
+      );
+      const { routes } = setup({ emailService: { send } });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['POST /customers/me/data-export'], { user: { uid: 'c-1' } }, { json });
+
+      // A resposta já foi dada mesmo com a promise de envio ainda pendente.
+      expect(json).toHaveBeenCalledWith(200, { email: 'ana@example.com' });
+      expect(resolveSend).toBeDefined();
+      resolveSend!();
+    });
+
+    it('AC-4: falha no envio não propaga pro cliente (resposta já dada) e fica logada', async () => {
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      const send = jest.fn().mockRejectedValue(new Error('SMTP indisponível'));
+      const { routes } = setup({ emailService: { send } });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['POST /customers/me/data-export'], { user: { uid: 'c-1' } }, { json });
+      // deixa o `.catch` fire-and-forget assentar antes de checar o log.
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(json).toHaveBeenCalledWith(200, { email: 'ana@example.com' });
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('c-1'),
+        expect.any(Error),
+      );
+      consoleErrorSpy.mockRestore();
     });
   });
 

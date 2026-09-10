@@ -4,6 +4,7 @@ import { NotFoundError } from 'restify-errors';
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
+import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { ISupplierRepository } from '../domain/repositories/supplier.repository.interface';
 import { saveSupplierSchema, setSupplierActiveSchema } from './supplier.schemas';
 
@@ -22,7 +23,12 @@ export class SuppliersController extends BaseRouter {
   }
 
   initializeRoutes(application: Server): void {
-    const authenticated: AsyncHandler[] = [firebaseAuthMiddleware, this.restaurantOperatorMiddleware];
+    // specs/0021-papeis-operador REQ-3/T005 — fornecedores (compras) é `dono`/`gerente`.
+    const authenticated: AsyncHandler[] = [
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('dono', 'gerente'),
+    ];
 
     // AC-1
     application.get('/restaurants/me/suppliers', ...authenticated, async (req: Request, res: Response) => {

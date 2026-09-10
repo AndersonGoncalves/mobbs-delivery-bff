@@ -4,6 +4,7 @@ import { BadRequestError, ConflictError, NotFoundError } from 'restify-errors';
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
+import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { ICashRegisterService } from '../../financeiro/domain/services/i-cash-register.service';
 import { IWhatsAppNotificationService } from '../../notifications/domain/services/i-whatsapp-notification.service';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
@@ -118,7 +119,14 @@ export class OrdersController extends BaseRouter {
       res.json(200, updated);
     });
 
-    const operatorAuthenticated: AsyncHandler[] = [firebaseAuthMiddleware, this.restaurantOperatorMiddleware];
+    // specs/0021-papeis-operador REQ-3/T005 — pedidos gerais é `dono`/`gerente` (sem
+    // `financeiro`, AC-7 — "mesmo sem acesso ao módulo de pedidos em geral"); a confirmação de
+    // Pix abaixo (T007) é a única rota deste controller com uma lista de papéis diferente.
+    const operatorAuthenticated: AsyncHandler[] = [
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('dono', 'gerente'),
+    ];
 
     // specs/0008-acompanhamento-vendas REQ-1 — pedidos em andamento do restaurante do operador
     // logado (mais antigo primeiro, `findActiveByRestaurant`); nunca por parâmetro de rota
@@ -198,13 +206,23 @@ export class OrdersController extends BaseRouter {
       },
     );
 
+    // specs/0021-papeis-operador REQ-3/REQ-4/T007 — confirmar Pix aceita os três papéis
+    // (`dono`/`gerente`/`financeiro`): é a única exceção dentro de "pedidos gerais" (que só
+    // `dono`/`gerente` acessam) — decisão de design (plan.md, ADR): ação com faces operacional
+    // (fechar o pedido) e financeira (confirmar recebimento) ao mesmo tempo.
+    const paymentConfirmAuthenticated: AsyncHandler[] = [
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('dono', 'gerente', 'financeiro'),
+    ];
+
     // specs/0020-pix-no-app REQ-4/REQ-5/T005 — confirmação manual do Pix pelo operador (sem
     // gateway/webhook): só válida quando `Payment.method == 'pix'` e `status == 'pendente'`
     // (senão 409, mesmo padrão de erro já usado em `specs/0014`/`specs/0015` pra transições
     // inválidas — ex. `ReceivePurchaseOrderService`).
     application.patch(
       '/restaurants/me/orders/:id/payment/confirm',
-      ...operatorAuthenticated,
+      ...paymentConfirmAuthenticated,
       async (req: Request, res: Response) => {
         const order = await this.findOwnedOrderForRestaurant(req.params.id, req.restaurantId!);
         const payment = await this.paymentRepository.findByOrderId(order.id);

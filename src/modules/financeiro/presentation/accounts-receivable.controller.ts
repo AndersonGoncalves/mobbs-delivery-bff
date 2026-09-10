@@ -4,6 +4,7 @@ import { NotFoundError } from 'restify-errors';
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
+import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { IAccountReceivableRepository } from '../domain/repositories/account-receivable.repository.interface';
 import { markAccountReceivablePaidSchema, saveAccountReceivableSchema } from './financeiro.schemas';
 
@@ -19,7 +20,12 @@ export class AccountsReceivableController extends BaseRouter {
   }
 
   initializeRoutes(application: Server): void {
-    const authenticated: AsyncHandler[] = [firebaseAuthMiddleware, this.restaurantOperatorMiddleware];
+    // specs/0021-papeis-operador REQ-4/T006 — financeiro é `dono`/`financeiro` (sem `gerente`).
+    const authenticated: AsyncHandler[] = [
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('dono', 'financeiro'),
+    ];
 
     // AC-3
     application.get('/restaurants/me/accounts-receivable', ...authenticated, async (req: Request, res: Response) => {

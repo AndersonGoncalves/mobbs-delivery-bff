@@ -1,4 +1,4 @@
-import { IRestaurantOperator } from '../entities/restaurant-operator.entity';
+import { IRestaurantOperator, OperatorRole } from '../entities/restaurant-operator.entity';
 
 export interface IRestaurantOperatorRepository {
   /**
@@ -11,7 +11,14 @@ export interface IRestaurantOperatorRepository {
   findActiveOperatorByEmail(email: string): Promise<IRestaurantOperator | null>;
   listByRestaurant(restaurantId: string): Promise<IRestaurantOperator[]>;
   countActiveByRestaurant(restaurantId: string): Promise<number>;
-  create(restaurantId: string, email: string): Promise<IRestaurantOperator>;
+  /**
+   * specs/0021-papeis-operador REQ-9 — usado pelo endpoint de troca de papel pra saber se `id`
+   * é o único `dono` ativo do restaurante antes de aceitar rebaixá-lo.
+   */
+  countActiveByRestaurantAndRole(restaurantId: string, role: OperatorRole): Promise<number>;
+  create(restaurantId: string, email: string, role: OperatorRole): Promise<IRestaurantOperator>;
   deactivate(id: string): Promise<void>;
   findById(id: string): Promise<IRestaurantOperator | null>;
+  /** specs/0021-papeis-operador REQ-8 — troca o papel de um operador já cadastrado. */
+  updateRole(id: string, role: OperatorRole): Promise<void>;
 }

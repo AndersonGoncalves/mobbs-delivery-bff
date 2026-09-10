@@ -3,6 +3,7 @@ import type { Request, Response, Server } from 'restify';
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
+import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { ICustomerSummaryRepository } from '../domain/repositories/customer-summary.repository.interface';
 import { customersSummaryQuerySchema } from './customers-summary.schemas';
@@ -29,7 +30,12 @@ export class CustomersSummaryController extends BaseRouter {
   }
 
   initializeRoutes(application: Server): void {
-    const authenticated: AsyncHandler[] = [firebaseAuthMiddleware, this.restaurantOperatorMiddleware];
+    // specs/0021-papeis-operador REQ-3/T005 — clientes é `dono`/`gerente`.
+    const authenticated: AsyncHandler[] = [
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('dono', 'gerente'),
+    ];
 
     // AC-1/AC-2/AC-4
     application.get('/restaurants/me/customers-summary', ...authenticated, async (req: Request, res: Response) => {
