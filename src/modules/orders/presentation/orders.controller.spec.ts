@@ -1,5 +1,6 @@
 import type { Request, Response, Server } from 'restify';
 
+import { ICouponRepository } from '../../coupons/domain/repositories/coupon.repository.interface';
 import { ICashRegisterService } from '../../financeiro/domain/services/i-cash-register.service';
 import { IWhatsAppNotificationService } from '../../notifications/domain/services/i-whatsapp-notification.service';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
@@ -133,12 +134,27 @@ function buildOrder(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function buildCoupon(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'c-1',
+    restaurantId: 'r-1',
+    code: 'PROMO10',
+    discountType: 'percentual' as const,
+    discountValue: 10,
+    validFrom: '2026-01-01T00:00:00.000Z',
+    usageCount: 0,
+    isActive: true,
+    ...overrides,
+  };
+}
+
 describe('OrdersController', () => {
   function setup(
     overrides: {
       orderRepository?: Partial<IOrderRepository>;
       restaurantRepository?: Partial<IRestaurantRepository>;
       paymentRepository?: Partial<IPaymentRepository>;
+      couponRepository?: Partial<ICouponRepository>;
     } = {},
   ) {
     const orderRepository: Partial<IOrderRepository> = {
@@ -171,6 +187,7 @@ describe('OrdersController', () => {
         totalRevenue: 300,
         cancelledOrders: 1,
       }),
+      countByCustomerAndCoupon: jest.fn().mockResolvedValue(0),
       ...overrides.orderRepository,
     };
     const restaurantRepository: Partial<IRestaurantRepository> = {
@@ -191,6 +208,11 @@ describe('OrdersController', () => {
       markAsApproved: jest.fn().mockImplementation(async (orderId) => ({ ...buildPayment({ orderId }), status: 'aprovado' })),
       ...overrides.paymentRepository,
     };
+    const couponRepository: Partial<ICouponRepository> = {
+      findByCode: jest.fn().mockResolvedValue(null),
+      incrementUsageIfWithinLimit: jest.fn().mockImplementation(async (id) => ({ ...buildCoupon({ id }), usageCount: 1 })),
+      ...overrides.couponRepository,
+    };
     const { application, routes } = buildFakeApplication();
     new OrdersController(
       orderRepository as IOrderRepository,
@@ -199,8 +221,17 @@ describe('OrdersController', () => {
       whatsAppNotificationService,
       cashRegisterService,
       paymentRepository as IPaymentRepository,
+      couponRepository as ICouponRepository,
     ).initializeRoutes(application);
-    return { orderRepository, restaurantRepository, whatsAppNotificationService, cashRegisterService, paymentRepository, routes };
+    return {
+      orderRepository,
+      restaurantRepository,
+      whatsAppNotificationService,
+      cashRegisterService,
+      paymentRepository,
+      couponRepository,
+      routes,
+    };
   }
 
   it('AC-2: POST /orders cria o pedido com subtotal/taxa/total calculados no BFF (não confia no cliente)', async () => {
@@ -750,6 +781,149 @@ describe('OrdersController', () => {
           { json: jest.fn() },
         ),
       ).rejects.toMatchObject({ statusCode: 404 });
+    });
+  });
+
+  describe('specs/0022-cupons-desconto', () => {
+    it('AC-2: POST /orders sem couponCode não mexe no cupom nem aplica desconto', async () => {
+      const { orderRepository, couponRepository, routes } = setup();
+
+      await runAuthenticatedChain(
+        routes['POST /orders'],
+        { body: buildValidBody(), user: { uid: 'customer-1' } },
+        { json: jest.fn() },
+      );
+
+      expect(couponRepository.findByCode).not.toHaveBeenCalled();
+      expect(orderRepository.create).toHaveBeenCalledWith(expect.objectContaining({ discount: 0, couponCode: undefined }));
+    });
+
+    it('AC-2: POST /orders com couponCode válido revalida no servidor, aplica o desconto no total e incrementa o uso', async () => {
+      const { orderRepository, couponRepository, routes } = setup({
+        couponRepository: {
+          findByCode: jest.fn().mockResolvedValue(buildCoupon({ discountType: 'percentual', discountValue: 10 })),
+          incrementUsageIfWithinLimit: jest.fn().mockResolvedValue(buildCoupon({ usageCount: 1 })),
+        },
+      });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(
+        routes['POST /orders'],
+        { body: buildValidBody({ couponCode: 'promo10' }), user: { uid: 'customer-1' } },
+        { json },
+      );
+
+      expect(couponRepository.findByCode).toHaveBeenCalledWith('r-1', 'PROMO10');
+      expect(couponRepository.incrementUsageIfWithinLimit).toHaveBeenCalledWith('c-1');
+      expect(orderRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ subtotal: 25, discount: 2.5, total: 27.5, couponCode: 'PROMO10' }),
+      );
+      expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ id: 'o-1' }));
+    });
+
+    it('AC-3: POST /orders rejeita (400) um couponCode inexistente, sem criar o pedido nem incrementar uso', async () => {
+      const { orderRepository, couponRepository, routes } = setup({
+        couponRepository: { findByCode: jest.fn().mockResolvedValue(null) },
+      });
+
+      await expect(
+        runAuthenticatedChain(
+          routes['POST /orders'],
+          { body: buildValidBody({ couponCode: 'INEXISTENTE' }), user: { uid: 'customer-1' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 400, message: 'Cupom não encontrado' });
+      expect(orderRepository.create).not.toHaveBeenCalled();
+      expect(couponRepository.incrementUsageIfWithinLimit).not.toHaveBeenCalled();
+    });
+
+    it('AC-3: POST /orders rejeita (400) um couponCode expirado', async () => {
+      const { orderRepository, routes } = setup({
+        couponRepository: {
+          findByCode: jest.fn().mockResolvedValue(buildCoupon({ validUntil: '2020-01-01T00:00:00.000Z' })),
+        },
+      });
+
+      await expect(
+        runAuthenticatedChain(
+          routes['POST /orders'],
+          { body: buildValidBody({ couponCode: 'promo10' }), user: { uid: 'customer-1' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 400, message: 'Cupom expirado' });
+      expect(orderRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('AC-4/T012: POST /orders rejeita (409) quando o compare-and-swap do limite de uso falha (concorrência: outro pedido levou o último uso disponível)', async () => {
+      const { orderRepository, routes } = setup({
+        couponRepository: {
+          findByCode: jest.fn().mockResolvedValue(buildCoupon({ usageLimit: 1, usageCount: 0 })),
+          // Simula a corrida: entre a leitura (usageCount: 0, passa na checagem não atômica) e o
+          // incremento de fato, outra requisição concorrente já consumiu o último uso disponível
+          // — `findOneAndUpdate` (CAS) devolve `null`, mesmo padrão de
+          // `ReceivePurchaseOrderService`/specs/0015.
+          incrementUsageIfWithinLimit: jest.fn().mockResolvedValue(null),
+        },
+      });
+
+      await expect(
+        runAuthenticatedChain(
+          routes['POST /orders'],
+          { body: buildValidBody({ couponCode: 'promo10' }), user: { uid: 'customer-1' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 409 });
+      expect(orderRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('AC-4: POST /orders rejeita (400) quando o limite total já está esgotado no próprio dado lido (sem precisar do CAS)', async () => {
+      const { orderRepository, couponRepository, routes } = setup({
+        couponRepository: { findByCode: jest.fn().mockResolvedValue(buildCoupon({ usageLimit: 1, usageCount: 1 })) },
+      });
+
+      await expect(
+        runAuthenticatedChain(
+          routes['POST /orders'],
+          { body: buildValidBody({ couponCode: 'promo10' }), user: { uid: 'customer-1' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 400, message: 'Cupom atingiu o limite de uso' });
+      expect(orderRepository.create).not.toHaveBeenCalled();
+      expect(couponRepository.incrementUsageIfWithinLimit).not.toHaveBeenCalled();
+    });
+
+    it('AC-6: POST /orders rejeita (400) quando o cliente já usou o cupom o máximo de vezes permitido por cliente, mesmo com limite total disponível', async () => {
+      const { orderRepository, routes } = setup({
+        couponRepository: {
+          findByCode: jest.fn().mockResolvedValue(buildCoupon({ usageLimit: 100, usageCount: 1, usageLimitPerCustomer: 1 })),
+        },
+        orderRepository: { countByCustomerAndCoupon: jest.fn().mockResolvedValue(1) },
+      });
+
+      await expect(
+        runAuthenticatedChain(
+          routes['POST /orders'],
+          { body: buildValidBody({ couponCode: 'promo10' }), user: { uid: 'customer-1' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 400, message: 'Você já usou esse cupom o número máximo de vezes permitido' });
+      expect(orderRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('desconto de valor fixo maior que o subtotal nunca deixa o total negativo', async () => {
+      const { orderRepository, routes } = setup({
+        couponRepository: {
+          findByCode: jest.fn().mockResolvedValue(buildCoupon({ discountType: 'fixo', discountValue: 999 })),
+        },
+      });
+
+      await runAuthenticatedChain(
+        routes['POST /orders'],
+        { body: buildValidBody({ couponCode: 'promo10', items: [buildItem({ unitPrice: 25, quantity: 1 })] }), user: { uid: 'customer-1' } },
+        { json: jest.fn() },
+      );
+
+      expect(orderRepository.create).toHaveBeenCalledWith(expect.objectContaining({ discount: 25, total: 5 }));
     });
   });
 });

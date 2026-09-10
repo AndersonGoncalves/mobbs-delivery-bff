@@ -5,6 +5,8 @@ import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
 import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
+import { ICouponRepository } from '../../coupons/domain/repositories/coupon.repository.interface';
+import { validateCoupon } from '../../coupons/domain/services/coupon-validator';
 import { ICashRegisterService } from '../../financeiro/domain/services/i-cash-register.service';
 import { IWhatsAppNotificationService } from '../../notifications/domain/services/i-whatsapp-notification.service';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
@@ -37,6 +39,7 @@ export class OrdersController extends BaseRouter {
     private readonly whatsAppNotificationService: IWhatsAppNotificationService,
     private readonly cashRegisterService: ICashRegisterService,
     private readonly paymentRepository: IPaymentRepository,
+    private readonly couponRepository: ICouponRepository,
   ) {
     super();
   }
@@ -57,7 +60,12 @@ export class OrdersController extends BaseRouter {
 
       const subtotal = payload.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
       const deliveryFee = payload.orderType === 'delivery' ? restaurant.deliveryFeeCents : 0;
-      const discount = 0;
+
+      // specs/0022-cupons-desconto REQ-2/REQ-4 — primeiro consumidor real de `Order.discount`
+      // (antes hardcoded em `0`). **Nunca confia no desconto calculado pelo app**: revalida tudo
+      // de novo aqui, mesmo que o cliente já tenha "aplicado" o cupom antes via
+      // `POST /restaurants/:id/coupons/validate` (feedback de UX, não fonte de verdade).
+      const { discount, couponCode } = await this.applyCoupon(payload.couponCode, payload.restaurantId, req.user!.uid, subtotal);
       const total = subtotal + deliveryFee - discount;
 
       const order = await this.orderRepository.create({
@@ -71,6 +79,7 @@ export class OrdersController extends BaseRouter {
         deliveryFee,
         discount,
         total,
+        couponCode,
         paymentMethod: payload.paymentMethod,
         cardBrand: payload.cardBrand,
       });
@@ -253,6 +262,55 @@ export class OrdersController extends BaseRouter {
       const found = this.render(order);
       res.json(200, this.toPublicView(found));
     });
+  }
+
+  /**
+   * specs/0022-cupons-desconto REQ-2/REQ-4/REQ-6 — sem `couponCode` no corpo, devolve
+   * `{ discount: 0 }` direto (maioria dos pedidos, sem overhead de I/O extra). Com `couponCode`:
+   * revalida (`validateCoupon`, mesma função pura usada por `CouponsController.validate`) e, só
+   * se válido, tenta o compare-and-swap do limite de uso (`incrementUsageIfWithinLimit`) **antes**
+   * de criar o `Order` — na ordem inversa (criar o pedido primeiro, incrementar depois) uma falha
+   * no incremento deixaria um `Order` já criado com desconto aplicado sobre um cupom que estourou
+   * o limite; nesta ordem, se o incremento falhar (`null`, limite atingido por uma requisição
+   * concorrente que chegou primeiro), nada foi persistido ainda e a resposta é 409 (REQ-4/AC-4,
+   * mesmo padrão de `ReceivePurchaseOrderService`, specs/0015). O único cenário não atômico que
+   * resta é entre o incremento (sucesso) e a criação do `Order` em si — sem transação
+   * multi-documento disponível (MongoDB standalone, mesma decisão de specs/0015): se a criação do
+   * pedido falhar depois do incremento, o contador fica um a mais sem um pedido correspondente —
+   * risco aceito, raro (sem I/O de rede no meio) e reconciliável manualmente, mesmo racional do
+   * ADR de `specs/0015-estoque-compras`.
+   */
+  private async applyCoupon(
+    couponCode: string | undefined,
+    restaurantId: string,
+    customerId: string,
+    orderSubtotal: number,
+  ): Promise<{ discount: number; couponCode?: string }> {
+    if (!couponCode) return { discount: 0 };
+
+    const normalizedCode = couponCode.trim().toUpperCase();
+    const coupon = await this.couponRepository.findByCode(restaurantId, normalizedCode);
+    const customerUsageCount = coupon
+      ? await this.orderRepository.countByCustomerAndCoupon(restaurantId, customerId, coupon.code)
+      : 0;
+
+    const result = validateCoupon({ coupon, orderSubtotal, now: new Date(), customerUsageCount });
+    // `result.valid === false` (não `!result.valid`) — com `tsconfig.json` `strict: false`
+    // (`strictNullChecks` desligado), a narrowing de union discriminada por literal booleano só
+    // funciona com a comparação explícita, não com negação (`!result.valid` não estreita o tipo
+    // e falha o build tentando acessar `.reason` em `ValidateCouponResult`).
+    if (result.valid === false) {
+      throw new BadRequestError(result.reason);
+    }
+
+    // REQ-4 — enforcement atômico do limite total (a checagem acima, contra o dado já lido, não
+    // basta sob concorrência).
+    const incremented = await this.couponRepository.incrementUsageIfWithinLimit(coupon!.id);
+    if (!incremented) {
+      throw new ConflictError('Cupom atingiu o limite de uso');
+    }
+
+    return { discount: result.discountAmount, couponCode: coupon!.code };
   }
 
   private async findOwnedOrder(id: string, customerId: string): Promise<IOrder> {

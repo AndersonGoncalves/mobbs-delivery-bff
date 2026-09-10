@@ -11,6 +11,8 @@ import { CatalogController } from './modules/catalog/presentation/catalog.contro
 import { OrderMongooseRepository } from './modules/orders/infra/repositories/order.mongoose.repository';
 import { PaymentMongooseRepository } from './modules/orders/infra/repositories/payment.mongoose.repository';
 import { OrdersController } from './modules/orders/presentation/orders.controller';
+import { CouponMongooseRepository } from './modules/coupons/infra/repositories/coupon.mongoose.repository';
+import { CouponsController } from './modules/coupons/presentation/coupons.controller';
 import { RawMaterialMongooseRepository } from './modules/raw-materials/infra/repositories/raw-material.mongoose.repository';
 import { StockMovementMongooseRepository } from './modules/raw-materials/infra/repositories/stock-movement.mongoose.repository';
 import { RawMaterialsController } from './modules/raw-materials/presentation/raw-materials.controller';
@@ -88,6 +90,11 @@ const paymentRepository = new PaymentMongooseRepository();
 // trava o cliente.
 const emailService = new NodemailerEmailService();
 
+// specs/0022-cupons-desconto — mesma instância compartilhada entre `CouponsController` (gestão
+// na retaguarda + validação de UX pelo cliente) e `OrdersController` (revalidação server-side +
+// `incrementUsageIfWithinLimit` na criação do pedido, REQ-4), sem duplicar instância.
+const couponRepository = new CouponMongooseRepository();
+
 server
   .bootstrap([
     new RestaurantsController(restaurantRepository, restaurantOperatorMiddleware),
@@ -100,6 +107,7 @@ server
       whatsAppNotificationService,
       cashRegisterService,
       paymentRepository,
+      couponRepository,
     ),
     new RawMaterialsController(rawMaterialRepository, productRepository, restaurantOperatorMiddleware, stockMovementRepository),
     new CustomersController(
@@ -116,6 +124,7 @@ server
     new CashRegisterController(cashRegisterRepository, restaurantOperatorMiddleware),
     new SuppliersController(new SupplierMongooseRepository(), restaurantOperatorMiddleware),
     new PurchaseOrdersController(purchaseOrderRepository, receivePurchaseOrderService, restaurantOperatorMiddleware),
+    new CouponsController(couponRepository, orderRepository, restaurantOperatorMiddleware),
   ], [migrateOperatorRolesToDono])
   .catch((error) => {
     // eslint-disable-next-line no-console

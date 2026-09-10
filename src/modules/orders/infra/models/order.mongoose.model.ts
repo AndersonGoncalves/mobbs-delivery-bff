@@ -62,6 +62,8 @@ const orderSchema = new Schema(
     deliveryFee: { type: Number, required: true },
     discount: { type: Number, required: true, default: 0 },
     total: { type: Number, required: true },
+    // specs/0022-cupons-desconto REQ-2/REQ-4 — código do cupom aplicado, se algum (ver `IOrder.couponCode`).
+    couponCode: { type: String },
     paymentMethod: { type: String, enum: ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'], required: true },
     estimatedDeliveryAt: { type: Date },
   },
@@ -70,5 +72,7 @@ const orderSchema = new Schema(
 
 orderSchema.index({ restaurantId: 1, orderNumber: 1 });
 orderSchema.index({ customerId: 1 });
+// specs/0022-cupons-desconto REQ-6 — suporta `countByCustomerAndCoupon` (limite de uso por cliente).
+orderSchema.index({ restaurantId: 1, customerId: 1, couponCode: 1 });
 
 export const OrderModel = model('Order', orderSchema, 'order');
