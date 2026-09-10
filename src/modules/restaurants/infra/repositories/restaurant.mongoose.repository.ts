@@ -27,6 +27,7 @@ interface RestaurantLeanDocument {
   pixKey?: string;
   pixKeyType?: PixKeyType;
   pixBeneficiaryName?: string;
+  whatsappConnected?: boolean;
 }
 
 function toEntity(doc: RestaurantLeanDocument): IRestaurant {
@@ -47,6 +48,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     pixKey: doc.pixKey,
     pixKeyType: doc.pixKeyType,
     pixBeneficiaryName: doc.pixBeneficiaryName,
+    whatsappConnected: doc.whatsappConnected ?? false,
   };
 }
 
@@ -82,6 +84,15 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
 
   async updateSlug(id: string, slug: string): Promise<IRestaurant> {
     const doc = await RestaurantModel.findByIdAndUpdate(id, { $set: { slug } }, { new: true }).lean<RestaurantLeanDocument>();
+    return toEntity(doc as RestaurantLeanDocument);
+  }
+
+  async setWhatsappConnected(id: string, connected: boolean): Promise<IRestaurant> {
+    const doc = await RestaurantModel.findByIdAndUpdate(
+      id,
+      { $set: { whatsappConnected: connected } },
+      { new: true },
+    ).lean<RestaurantLeanDocument>();
     return toEntity(doc as RestaurantLeanDocument);
   }
 }

@@ -24,4 +24,8 @@ export interface IRestaurantRepository {
   updateBusinessHours(id: string, businessHours: IBusinessHours[]): Promise<IRestaurant>;
   setActive(id: string, isActive: boolean): Promise<IRestaurant>;
   updateSlug(id: string, slug: string): Promise<IRestaurant>;
+
+  /** specs/0013-notificacoes-whatsapp REQ-11/REQ-12 — atualizado pelo `WhatsAppConnectionService`
+   * a cada mudança de estado da conexão (conectado/desconectado), não pelo operador direto. */
+  setWhatsappConnected(id: string, connected: boolean): Promise<IRestaurant>;
 }

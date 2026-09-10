@@ -52,4 +52,7 @@ export interface IRestaurant {
   pixKey?: string;
   pixKeyType?: PixKeyType;
   pixBeneficiaryName?: string;
+  /** specs/0013-notificacoes-whatsapp REQ-11/REQ-12 — reflete o estado da sessão do Baileys
+   * (a sessão em si, credenciais/chaves, não fica aqui — ver módulo `whatsapp-connection`). */
+  whatsappConnected: boolean;
 }

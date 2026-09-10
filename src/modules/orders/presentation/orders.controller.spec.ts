@@ -1,5 +1,6 @@
 import type { Request, Response, Server } from 'restify';
 
+import { IWhatsAppNotificationService } from '../../notifications/domain/services/i-whatsapp-notification.service';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IOrderRepository } from '../domain/repositories/order.repository.interface';
 import { OrdersController } from './orders.controller';
@@ -149,13 +150,18 @@ describe('OrdersController', () => {
       ...overrides.restaurantRepository,
     };
     const restaurantOperatorMiddleware = jest.fn();
+    const whatsAppNotificationService: IWhatsAppNotificationService = {
+      sendOrderReceipt: jest.fn().mockResolvedValue(undefined),
+      sendOrderStatusUpdate: jest.fn().mockResolvedValue(undefined),
+    };
     const { application, routes } = buildFakeApplication();
     new OrdersController(
       orderRepository as IOrderRepository,
       restaurantRepository as IRestaurantRepository,
       restaurantOperatorMiddleware,
+      whatsAppNotificationService,
     ).initializeRoutes(application);
-    return { orderRepository, restaurantRepository, routes };
+    return { orderRepository, restaurantRepository, whatsAppNotificationService, routes };
   }
 
   it('AC-2: POST /orders cria o pedido com subtotal/taxa/total calculados no BFF (não confia no cliente)', async () => {
@@ -172,6 +178,38 @@ describe('OrdersController', () => {
       expect.objectContaining({ customerId: 'customer-1', subtotal: 50, deliveryFee: 5, discount: 0, total: 55 }),
     );
     expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ id: 'o-1', orderNumber: 1 }));
+  });
+
+  it('specs/0013 REQ-1: POST /orders dispara o recibo por WhatsApp (fire-and-forget) após criar o pedido', async () => {
+    const { whatsAppNotificationService, routes } = setup();
+
+    await runAuthenticatedChain(
+      routes['POST /orders'],
+      { body: buildValidBody(), user: { uid: 'customer-1' } },
+      { json: jest.fn() },
+    );
+    // fire-and-forget: dá um tick pra Promise não aguardada resolver antes de checar a chamada.
+    await Promise.resolve();
+
+    expect(whatsAppNotificationService.sendOrderReceipt).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'o-1' }),
+      undefined,
+    );
+  });
+
+  it('specs/0013 REQ-4: falha no envio do recibo não impede a resposta 201 de POST /orders', async () => {
+    const { whatsAppNotificationService, routes } = setup();
+    (whatsAppNotificationService.sendOrderReceipt as jest.Mock).mockRejectedValue(new Error('sessão caiu'));
+    const json = jest.fn();
+
+    await runAuthenticatedChain(
+      routes['POST /orders'],
+      { body: buildValidBody(), user: { uid: 'customer-1' } },
+      { json },
+    );
+    await Promise.resolve();
+
+    expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ id: 'o-1' }));
   });
 
   it('Retirada (pickup): taxa de entrega é zero mesmo com Restaurant.deliveryFeeCents > 0', async () => {
@@ -352,6 +390,21 @@ describe('OrdersController', () => {
 
     expect(orderRepository.updateStatus).toHaveBeenCalledWith('o-1', 'confirmado', 'r-1');
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ status: 'confirmado' }));
+  });
+
+  it('specs/0013 REQ-2: PATCH .../status dispara o aviso de mudança de status por WhatsApp', async () => {
+    const { whatsAppNotificationService, routes } = setup();
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/status'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'confirmado' } },
+      { json: jest.fn() },
+    );
+    await Promise.resolve();
+
+    expect(whatsAppNotificationService.sendOrderStatusUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'confirmado' }),
+    );
   });
 
   it('AC-5: PATCH /restaurants/me/orders/:id/status bloqueia pular de aguardandoConfirmacao direto pra entregue', async () => {
