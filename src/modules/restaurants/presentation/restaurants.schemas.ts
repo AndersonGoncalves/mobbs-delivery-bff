@@ -52,4 +52,12 @@ export const updateSlugSchema = z.object({
     .regex(/^[a-z0-9-]+$/, 'Slug deve conter só letras minúsculas, números e hífen'),
 });
 
-export const addOperatorSchema = z.object({ email: z.string().email() });
+// specs/0021-papeis-operador REQ-1 — todo operador novo já nasce com um papel explícito (o
+// `dono` que cadastra escolhe; `gerente` por padrão no formulário da web, mas o BFF sempre exige
+// o campo, nunca assume).
+export const operatorRoleSchema = z.enum(['dono', 'gerente', 'financeiro']);
+
+export const addOperatorSchema = z.object({ email: z.string().email(), role: operatorRoleSchema });
+
+// specs/0021-papeis-operador REQ-8 — troca do papel de um operador já cadastrado.
+export const updateOperatorRoleSchema = z.object({ role: operatorRoleSchema });

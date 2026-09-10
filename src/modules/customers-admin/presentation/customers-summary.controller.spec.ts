@@ -19,7 +19,7 @@ function buildFakeApplication() {
 }
 
 async function runOperatorChain(handlers: RouteHandler[], req: FakeRequest, res: FakeResponse): Promise<void> {
-  for (const handler of handlers.slice(2)) {
+  for (const handler of handlers.slice(3)) {
     await handler(req, res);
   }
 }

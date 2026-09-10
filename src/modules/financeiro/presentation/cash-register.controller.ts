@@ -4,6 +4,7 @@ import { BadRequestError, ConflictError, NotFoundError } from 'restify-errors';
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
+import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { ICashRegisterRepository } from '../domain/repositories/cash-register.repository.interface';
 import { addCashMovementSchema, closeCashRegisterSchema, openCashRegisterSchema } from './financeiro.schemas';
 
@@ -26,7 +27,12 @@ export class CashRegisterController extends BaseRouter {
   }
 
   initializeRoutes(application: Server): void {
-    const authenticated: AsyncHandler[] = [firebaseAuthMiddleware, this.restaurantOperatorMiddleware];
+    // specs/0021-papeis-operador REQ-4/T006 — financeiro é `dono`/`financeiro` (sem `gerente`).
+    const authenticated: AsyncHandler[] = [
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('dono', 'financeiro'),
+    ];
 
     // REQ-4/REQ-6 — devolve a sessão aberta (ou `null`, estado válido de "sem caixa aberto"),
     // junto dos movimentos e do saldo calculado ao vivo, pra tela de caixa montar tudo numa

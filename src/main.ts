@@ -3,6 +3,7 @@ import { buildRestaurantOperatorMiddleware } from './shared/http/restaurant-oper
 import { RestaurantMongooseRepository } from './modules/restaurants/infra/repositories/restaurant.mongoose.repository';
 import { RestaurantsController } from './modules/restaurants/presentation/restaurants.controller';
 import { RestaurantOperatorMongooseRepository } from './modules/restaurant-operators/infra/repositories/restaurant-operator.mongoose.repository';
+import { migrateOperatorRolesToDono } from './modules/restaurant-operators/infra/migrations/migrate-operator-roles-to-dono';
 import { RestaurantOperatorsController } from './modules/restaurant-operators/presentation/restaurant-operators.controller';
 import { MenuCategoryMongooseRepository } from './modules/catalog/infra/repositories/menu-category.mongoose.repository';
 import { ProductMongooseRepository } from './modules/catalog/infra/repositories/product.mongoose.repository';
@@ -34,6 +35,7 @@ import { CustomersSummaryController } from './modules/customers-admin/presentati
 import { WhatsAppNotificationService } from './modules/notifications/infra/whatsapp-notification.service';
 import { WhatsAppConnectionService } from './modules/whatsapp-connection/infra/whatsapp-connection.service';
 import { WhatsAppConnectionController } from './modules/whatsapp-connection/presentation/whatsapp-connection.controller';
+import { NodemailerEmailService } from './shared/email/nodemailer-email.service';
 
 const server = new Server();
 
@@ -80,6 +82,12 @@ const orderRepository = new OrderMongooseRepository();
 // repository próprio até aqui); mesma instância usada pra ler status e confirmar recebimento.
 const paymentRepository = new PaymentMongooseRepository();
 
+// specs/0023-portabilidade-dados — primeira capacidade de envio de e-mail do BFF; sem
+// `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS`/`SMTP_FROM` configurados, `send()` falha em runtime, mas o
+// fluxo de exportação (`CustomersController`) trata isso como fire-and-forget (REQ-5), nunca
+// trava o cliente.
+const emailService = new NodemailerEmailService();
+
 server
   .bootstrap([
     new RestaurantsController(restaurantRepository, restaurantOperatorMiddleware),
@@ -94,7 +102,13 @@ server
       paymentRepository,
     ),
     new RawMaterialsController(rawMaterialRepository, productRepository, restaurantOperatorMiddleware, stockMovementRepository),
-    new CustomersController(customerRepository, new AddressMongooseRepository(), new FavoriteMongooseRepository()),
+    new CustomersController(
+      customerRepository,
+      new AddressMongooseRepository(),
+      new FavoriteMongooseRepository(),
+      orderRepository,
+      emailService,
+    ),
     new CustomersSummaryController(new CustomerSummaryMongooseRepository(), orderRepository, restaurantOperatorMiddleware),
     new WhatsAppConnectionController(whatsAppConnectionService, restaurantOperatorMiddleware),
     new AccountsPayableController(new AccountPayableMongooseRepository(), restaurantOperatorMiddleware),
@@ -102,7 +116,7 @@ server
     new CashRegisterController(cashRegisterRepository, restaurantOperatorMiddleware),
     new SuppliersController(new SupplierMongooseRepository(), restaurantOperatorMiddleware),
     new PurchaseOrdersController(purchaseOrderRepository, receivePurchaseOrderService, restaurantOperatorMiddleware),
-  ])
+  ], [migrateOperatorRolesToDono])
   .catch((error) => {
     // eslint-disable-next-line no-console
     console.error('Falha ao iniciar o servidor:', error);

@@ -4,6 +4,7 @@ import { NotFoundError } from 'restify-errors';
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
+import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { IProductRepository } from '../../catalog/domain/repositories/product.repository.interface';
 import { IRawMaterialRepository } from '../domain/repositories/raw-material.repository.interface';
 import { IStockMovementRepository } from '../domain/repositories/stock-movement.repository.interface';
@@ -32,7 +33,12 @@ export class RawMaterialsController extends BaseRouter {
   }
 
   initializeRoutes(application: Server): void {
-    const authenticated: AsyncHandler[] = [firebaseAuthMiddleware, this.restaurantOperatorMiddleware];
+    // specs/0021-papeis-operador REQ-3/T005 — estoque/matéria-prima é `dono`/`gerente`.
+    const authenticated: AsyncHandler[] = [
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('dono', 'gerente'),
+    ];
 
     application.get('/restaurants/me/raw-materials', ...authenticated, async (req: Request, res: Response) => {
       const materials = await this.rawMaterialRepository.listByRestaurant(req.restaurantId!);

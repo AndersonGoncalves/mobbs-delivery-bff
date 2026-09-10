@@ -3,6 +3,7 @@ import type { Request, Response, Server } from 'restify';
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
+import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { IPurchaseOrderRepository } from '../domain/repositories/purchase-order.repository.interface';
 import { IReceivePurchaseOrderService } from '../domain/services/i-receive-purchase-order.service';
 import { savePurchaseOrderSchema } from './purchase-order.schemas';
@@ -24,7 +25,12 @@ export class PurchaseOrdersController extends BaseRouter {
   }
 
   initializeRoutes(application: Server): void {
-    const authenticated: AsyncHandler[] = [firebaseAuthMiddleware, this.restaurantOperatorMiddleware];
+    // specs/0021-papeis-operador REQ-3/T005 — pedidos de compra é `dono`/`gerente`.
+    const authenticated: AsyncHandler[] = [
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('dono', 'gerente'),
+    ];
 
     application.get('/restaurants/me/purchase-orders', ...authenticated, async (req: Request, res: Response) => {
       const orders = await this.purchaseOrderRepository.listByRestaurant(req.restaurantId!);

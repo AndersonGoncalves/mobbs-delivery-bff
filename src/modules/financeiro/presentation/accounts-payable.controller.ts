@@ -4,6 +4,7 @@ import { NotFoundError } from 'restify-errors';
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
+import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { IAccountPayableRepository } from '../domain/repositories/account-payable.repository.interface';
 import { markAccountPayablePaidSchema, saveAccountPayableSchema } from './financeiro.schemas';
 
@@ -23,7 +24,12 @@ export class AccountsPayableController extends BaseRouter {
   }
 
   initializeRoutes(application: Server): void {
-    const authenticated: AsyncHandler[] = [firebaseAuthMiddleware, this.restaurantOperatorMiddleware];
+    // specs/0021-papeis-operador REQ-4/T006 — financeiro é `dono`/`financeiro` (sem `gerente`).
+    const authenticated: AsyncHandler[] = [
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('dono', 'financeiro'),
+    ];
 
     // AC-1
     application.get('/restaurants/me/accounts-payable', ...authenticated, async (req: Request, res: Response) => {
