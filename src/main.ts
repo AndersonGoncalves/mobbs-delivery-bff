@@ -8,6 +8,7 @@ import { MenuCategoryMongooseRepository } from './modules/catalog/infra/reposito
 import { ProductMongooseRepository } from './modules/catalog/infra/repositories/product.mongoose.repository';
 import { CatalogController } from './modules/catalog/presentation/catalog.controller';
 import { OrderMongooseRepository } from './modules/orders/infra/repositories/order.mongoose.repository';
+import { PaymentMongooseRepository } from './modules/orders/infra/repositories/payment.mongoose.repository';
 import { OrdersController } from './modules/orders/presentation/orders.controller';
 import { RawMaterialMongooseRepository } from './modules/raw-materials/infra/repositories/raw-material.mongoose.repository';
 import { StockMovementMongooseRepository } from './modules/raw-materials/infra/repositories/stock-movement.mongoose.repository';
@@ -75,6 +76,10 @@ const receivePurchaseOrderService = new ReceivePurchaseOrderService(
 // cliente escopado ao restaurante), sem duplicar instância.
 const orderRepository = new OrderMongooseRepository();
 
+// specs/0020-pix-no-app — primeiro consumidor real de `Payment` (coleção já existia, sem
+// repository próprio até aqui); mesma instância usada pra ler status e confirmar recebimento.
+const paymentRepository = new PaymentMongooseRepository();
+
 server
   .bootstrap([
     new RestaurantsController(restaurantRepository, restaurantOperatorMiddleware),
@@ -86,6 +91,7 @@ server
       restaurantOperatorMiddleware,
       whatsAppNotificationService,
       cashRegisterService,
+      paymentRepository,
     ),
     new RawMaterialsController(rawMaterialRepository, productRepository, restaurantOperatorMiddleware, stockMovementRepository),
     new CustomersController(customerRepository, new AddressMongooseRepository(), new FavoriteMongooseRepository()),
