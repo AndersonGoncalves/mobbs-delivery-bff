@@ -4,6 +4,7 @@ import { ICashRegisterService } from '../../financeiro/domain/services/i-cash-re
 import { IWhatsAppNotificationService } from '../../notifications/domain/services/i-whatsapp-notification.service';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IOrderRepository } from '../domain/repositories/order.repository.interface';
+import { IPaymentRepository } from '../domain/repositories/payment.repository.interface';
 import { OrdersController } from './orders.controller';
 
 type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & {
@@ -54,7 +55,16 @@ async function runOperatorChain(handlers: RouteHandler[], req: FakeRequest, res:
   }
 }
 
-function buildRestaurant(overrides: Partial<{ isActive: boolean; deliveryFeeCents: number }> = {}) {
+function buildRestaurant(
+  overrides: Partial<{
+    isActive: boolean;
+    deliveryFeeCents: number;
+    pixKey: string;
+    pixKeyType: string;
+    pixBeneficiaryName: string;
+    address: { city: string };
+  }> = {},
+) {
   return {
     id: 'r-1',
     name: 'Prime Pizza',
@@ -63,6 +73,17 @@ function buildRestaurant(overrides: Partial<{ isActive: boolean; deliveryFeeCent
     businessHours: [],
     minimumOrderValue: 0,
     deliveryFeeCents: 5,
+    ...overrides,
+  };
+}
+
+function buildPayment(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'pay-1',
+    orderId: 'o-1',
+    method: 'pix',
+    status: 'pendente',
+    amount: 30,
     ...overrides,
   };
 }
@@ -113,7 +134,13 @@ function buildOrder(overrides: Record<string, unknown> = {}) {
 }
 
 describe('OrdersController', () => {
-  function setup(overrides: { orderRepository?: Partial<IOrderRepository>; restaurantRepository?: Partial<IRestaurantRepository> } = {}) {
+  function setup(
+    overrides: {
+      orderRepository?: Partial<IOrderRepository>;
+      restaurantRepository?: Partial<IRestaurantRepository>;
+      paymentRepository?: Partial<IPaymentRepository>;
+    } = {},
+  ) {
     const orderRepository: Partial<IOrderRepository> = {
       create: jest.fn().mockImplementation(async (input) => ({
         id: 'o-1',
@@ -158,6 +185,12 @@ describe('OrdersController', () => {
     const cashRegisterService: ICashRegisterService = {
       addAutomaticEntry: jest.fn().mockResolvedValue(undefined),
     };
+    const paymentRepository: Partial<IPaymentRepository> = {
+      findByOrderId: jest.fn().mockResolvedValue(null),
+      findManyByOrderIds: jest.fn().mockResolvedValue([]),
+      markAsApproved: jest.fn().mockImplementation(async (orderId) => ({ ...buildPayment({ orderId }), status: 'aprovado' })),
+      ...overrides.paymentRepository,
+    };
     const { application, routes } = buildFakeApplication();
     new OrdersController(
       orderRepository as IOrderRepository,
@@ -165,8 +198,9 @@ describe('OrdersController', () => {
       restaurantOperatorMiddleware,
       whatsAppNotificationService,
       cashRegisterService,
+      paymentRepository as IPaymentRepository,
     ).initializeRoutes(application);
-    return { orderRepository, restaurantRepository, whatsAppNotificationService, cashRegisterService, routes };
+    return { orderRepository, restaurantRepository, whatsAppNotificationService, cashRegisterService, paymentRepository, routes };
   }
 
   it('AC-2: POST /orders cria o pedido com subtotal/taxa/total calculados no BFF (não confia no cliente)', async () => {
@@ -557,5 +591,165 @@ describe('OrdersController', () => {
         { json: jest.fn() },
       ),
     ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  describe('specs/0020-pix-no-app', () => {
+    it('AC-2/T003: POST /orders rejeita (400) Pix quando o restaurante não tem chave Pix cadastrada', async () => {
+      const { routes } = setup({ restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant()) } });
+
+      await expect(
+        runAuthenticatedChain(
+          routes['POST /orders'],
+          { body: buildValidBody({ paymentMethod: 'pix' }), user: { uid: 'customer-1' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it('T003: POST /orders aceita Pix quando o restaurante tem chave Pix cadastrada', async () => {
+      const { orderRepository, routes } = setup({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ pixKey: '11999999999' })) },
+      });
+
+      await runAuthenticatedChain(
+        routes['POST /orders'],
+        { body: buildValidBody({ paymentMethod: 'pix' }), user: { uid: 'customer-1' } },
+        { json: jest.fn() },
+      );
+
+      expect(orderRepository.create).toHaveBeenCalledWith(expect.objectContaining({ paymentMethod: 'pix' }));
+    });
+
+    it('AC-1/T002: GET /orders/:id inclui o pixCode (copia-e-cola) quando paymentMethod é pix e o pagamento está pendente', async () => {
+      const { routes } = setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ paymentMethod: 'pix', total: 30 })) },
+        restaurantRepository: {
+          findById: jest.fn().mockResolvedValue(
+            buildRestaurant({ pixKey: '11999999999', pixBeneficiaryName: 'Prime Pizza LTDA', address: { city: 'São Paulo' } }),
+          ),
+        },
+        paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ status: 'pendente' })) },
+      });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['GET /orders/:id'], { params: { id: 'o-1' }, user: { uid: 'customer-1' } }, { json });
+
+      const [, payload] = json.mock.calls[0] as [number, Record<string, unknown>];
+      expect(payload.pixCode).toEqual(expect.any(String));
+      expect(payload.pixCode).toContain('br.gov.bcb.pix');
+      expect(payload).toMatchObject({ payment: { method: 'pix', status: 'pendente' } });
+    });
+
+    it('AC-3/REQ-5: GET /orders/:id não inclui pixCode quando o pagamento já foi confirmado (some da resposta, não só da tela)', async () => {
+      const { routes } = setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ paymentMethod: 'pix' })) },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ pixKey: '11999999999' })) },
+        paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ status: 'aprovado' })) },
+      });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['GET /orders/:id'], { params: { id: 'o-1' }, user: { uid: 'customer-1' } }, { json });
+
+      const [, payload] = json.mock.calls[0] as [number, Record<string, unknown>];
+      expect(payload.pixCode).toBeUndefined();
+      expect(payload).toMatchObject({ payment: { method: 'pix', status: 'aprovado' } });
+    });
+
+    it('GET /orders/:id não inclui pixCode pra outros métodos de pagamento', async () => {
+      const { routes } = setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ paymentMethod: 'cash' })) },
+        paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ method: 'cash', status: 'pendente' })) },
+      });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['GET /orders/:id'], { params: { id: 'o-1' }, user: { uid: 'customer-1' } }, { json });
+
+      const [, payload] = json.mock.calls[0] as [number, Record<string, unknown>];
+      expect(payload.pixCode).toBeUndefined();
+    });
+
+    it('T006: GET /restaurants/me/orders inclui payment.status em cada pedido', async () => {
+      const { routes } = setup({
+        orderRepository: {
+          findActiveByRestaurant: jest.fn().mockResolvedValue([buildOrder({ id: 'o-1', paymentMethod: 'pix' }), buildOrder({ id: 'o-2', paymentMethod: 'cash' })]),
+        },
+        paymentRepository: {
+          findManyByOrderIds: jest.fn().mockResolvedValue([
+            buildPayment({ id: 'pay-1', orderId: 'o-1', method: 'pix', status: 'pendente' }),
+            buildPayment({ id: 'pay-2', orderId: 'o-2', method: 'cash', status: 'aprovado' }),
+          ]),
+        },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(routes['GET /restaurants/me/orders'], { restaurantId: 'r-1' }, { json });
+
+      const [, payload] = json.mock.calls[0] as [number, Record<string, unknown>[]];
+      expect(payload).toEqual([
+        expect.objectContaining({ id: 'o-1', payment: { method: 'pix', status: 'pendente' } }),
+        expect.objectContaining({ id: 'o-2', payment: { method: 'cash', status: 'aprovado' } }),
+      ]);
+    });
+
+    it('AC-3/T005: PATCH .../payment/confirm marca o Payment como aprovado', async () => {
+      const { paymentRepository, routes } = setup({
+        paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ method: 'pix', status: 'pendente' })) },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/payment/confirm'],
+        { restaurantId: 'r-1', params: { id: 'o-1' } },
+        { json },
+      );
+
+      expect(paymentRepository.markAsApproved).toHaveBeenCalledWith('o-1');
+      const [, payload] = json.mock.calls[0] as [number, Record<string, unknown>];
+      expect(payload).toMatchObject({ payment: { status: 'aprovado' } });
+    });
+
+    it('T005: PATCH .../payment/confirm rejeita (409) quando o pagamento já foi confirmado', async () => {
+      const { paymentRepository, routes } = setup({
+        paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ method: 'pix', status: 'aprovado' })) },
+      });
+
+      await expect(
+        runOperatorChain(
+          routes['PATCH /restaurants/me/orders/:id/payment/confirm'],
+          { restaurantId: 'r-1', params: { id: 'o-1' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 409 });
+      expect(paymentRepository.markAsApproved).not.toHaveBeenCalled();
+    });
+
+    it('T005: PATCH .../payment/confirm rejeita (409) quando o método de pagamento não é pix', async () => {
+      const { paymentRepository, routes } = setup({
+        paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ method: 'cash', status: 'pendente' })) },
+      });
+
+      await expect(
+        runOperatorChain(
+          routes['PATCH /restaurants/me/orders/:id/payment/confirm'],
+          { restaurantId: 'r-1', params: { id: 'o-1' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 409 });
+      expect(paymentRepository.markAsApproved).not.toHaveBeenCalled();
+    });
+
+    it('PATCH .../payment/confirm lança 404 quando o pedido é de outro restaurante', async () => {
+      const { routes } = setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ restaurantId: 'r-OUTRO' })) },
+      });
+
+      await expect(
+        runOperatorChain(
+          routes['PATCH /restaurants/me/orders/:id/payment/confirm'],
+          { restaurantId: 'r-1', params: { id: 'o-1' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 404 });
+    });
   });
 });

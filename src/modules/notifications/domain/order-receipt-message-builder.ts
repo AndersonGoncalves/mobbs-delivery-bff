@@ -62,8 +62,11 @@ function renderItem(item: IOrderItem): string {
   return lines.join('\n');
 }
 
-/** REQ-10 — bloco de pagamento varia por método; sempre reforça que o pagamento acontece na
- * entrega/retirada, não pelo app (`docs/architecture/data-model.md`, nota em `Payment`). */
+/** REQ-10 — bloco de pagamento varia por método; reforça que o pagamento acontece na
+ * entrega/retirada, não pelo app (`docs/architecture/data-model.md`, nota em `Payment`) — **exceto**
+ * pra Pix (specs/0020-pix-no-app REQ-7): desde que o Pix passou a ser processado dentro do app
+ * (QR/copia-e-cola na tela de acompanhamento, confirmação manual do operador), essa frase deixou
+ * de ser verdade só pra esse método; as outras formas continuam mostrando normalmente. */
 function buildPaymentBlock(input: OrderReceiptInput): string {
   const { order, restaurant, cardBrand } = input;
   const lines = ['*Pagamento*'];
@@ -92,7 +95,9 @@ function buildPaymentBlock(input: OrderReceiptInput): string {
       break;
   }
 
-  lines.push(`O pagamento é feito na ${order.orderType === 'delivery' ? 'entrega' : 'retirada'}, não pelo app.`);
+  if (order.paymentMethod !== 'pix') {
+    lines.push(`O pagamento é feito na ${order.orderType === 'delivery' ? 'entrega' : 'retirada'}, não pelo app.`);
+  }
   return lines.join('\n');
 }
 

@@ -1,5 +1,5 @@
 import type { Request, Response, Server } from 'restify';
-import { BadRequestError, NotFoundError } from 'restify-errors';
+import { BadRequestError, ConflictError, NotFoundError } from 'restify-errors';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
@@ -7,9 +7,11 @@ import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middl
 import { ICashRegisterService } from '../../financeiro/domain/services/i-cash-register.service';
 import { IWhatsAppNotificationService } from '../../notifications/domain/services/i-whatsapp-notification.service';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
-import { IOrder } from '../domain/entities/order.entity';
+import { IOrder, IPayment } from '../domain/entities/order.entity';
 import { isOrderCancellable, isValidOrderStatusTransition } from '../domain/order-status-transitions';
+import { buildPixBrCode } from '../domain/pix-br-code-builder';
 import { IOrderRepository } from '../domain/repositories/order.repository.interface';
+import { IPaymentRepository } from '../domain/repositories/payment.repository.interface';
 import { cancelOrderWithReasonSchema, createOrderSchema, salesSummaryQuerySchema, updateOrderStatusSchema } from './orders.schemas';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
@@ -33,6 +35,7 @@ export class OrdersController extends BaseRouter {
     private readonly restaurantOperatorMiddleware: AsyncHandler,
     private readonly whatsAppNotificationService: IWhatsAppNotificationService,
     private readonly cashRegisterService: ICashRegisterService,
+    private readonly paymentRepository: IPaymentRepository,
   ) {
     super();
   }
@@ -43,6 +46,13 @@ export class OrdersController extends BaseRouter {
 
       const restaurant = await this.restaurantRepository.findById(payload.restaurantId);
       if (!restaurant) throw new NotFoundError('Restaurante não encontrado');
+
+      // specs/0020-pix-no-app REQ-3 — Pix só é uma opção válida quando o restaurante tem chave
+      // cadastrada; o app já esconde a opção nesse caso (defesa em profundidade, nunca confiar só
+      // no client — mesmo raciocínio de `cardBrand` obrigatório pra cartão, no schema acima).
+      if (payload.paymentMethod === 'pix' && !restaurant.pixKey) {
+        throw new BadRequestError('Restaurante não tem chave Pix cadastrada');
+      }
 
       const subtotal = payload.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
       const deliveryFee = payload.orderType === 'delivery' ? restaurant.deliveryFeeCents : 0;
@@ -83,9 +93,12 @@ export class OrdersController extends BaseRouter {
     });
 
     // REQ-2 — só o dono do pedido pode ver o detalhe (nunca por id de outro cliente).
+    // specs/0020-pix-no-app REQ-2/REQ-5/T002/T006 — inclui `payment.status` sempre, e o
+    // `pixCode` (copia-e-cola) só enquanto `paymentMethod == pix` e o pagamento ainda está
+    // `pendente` (some depois de confirmado, evita pagamento duplicado por engano).
     application.get('/orders/:id', firebaseAuthMiddleware, async (req: Request, res: Response) => {
       const order = await this.findOwnedOrder(req.params.id, req.user!.uid);
-      res.json(200, order);
+      res.json(200, await this.attachPaymentDetails(order));
     });
 
     // REQ-6: só cancela em `aguardandoConfirmacao` — a partir de `confirmado` o cliente precisa
@@ -110,9 +123,11 @@ export class OrdersController extends BaseRouter {
     // specs/0008-acompanhamento-vendas REQ-1 — pedidos em andamento do restaurante do operador
     // logado (mais antigo primeiro, `findActiveByRestaurant`); nunca por parâmetro de rota
     // (isolamento multi-tenant, mesmo padrão de `specs/0007`/`0010`).
+    // specs/0020-pix-no-app T006 — inclui `payment.status` em cada pedido, pra retaguarda saber
+    // quais estão com Pix pendente de confirmação (`ActiveOrdersPage`, mobbs-delivery-web).
     application.get('/restaurants/me/orders', ...operatorAuthenticated, async (req: Request, res: Response) => {
       const orders = await this.orderRepository.findActiveByRestaurant(req.restaurantId!);
-      res.json(200, orders);
+      res.json(200, await this.attachPaymentSummaries(orders));
     });
 
     // REQ-2/REQ-5: só avança um passo por vez (`isValidOrderStatusTransition`) — fonte de
@@ -183,6 +198,27 @@ export class OrdersController extends BaseRouter {
       },
     );
 
+    // specs/0020-pix-no-app REQ-4/REQ-5/T005 — confirmação manual do Pix pelo operador (sem
+    // gateway/webhook): só válida quando `Payment.method == 'pix'` e `status == 'pendente'`
+    // (senão 409, mesmo padrão de erro já usado em `specs/0014`/`specs/0015` pra transições
+    // inválidas — ex. `ReceivePurchaseOrderService`).
+    application.patch(
+      '/restaurants/me/orders/:id/payment/confirm',
+      ...operatorAuthenticated,
+      async (req: Request, res: Response) => {
+        const order = await this.findOwnedOrderForRestaurant(req.params.id, req.restaurantId!);
+        const payment = await this.paymentRepository.findByOrderId(order.id);
+
+        if (!payment || payment.method !== 'pix' || payment.status !== 'pendente') {
+          throw new ConflictError('Pagamento não pode ser confirmado');
+        }
+
+        const updatedPayment = await this.paymentRepository.markAsApproved(order.id);
+
+        res.json(200, { ...order, payment: this.toPaymentSummary(updatedPayment) });
+      },
+    );
+
     // REQ-4 — agregado calculado on demand, sempre escopado ao restaurante do operador logado
     // (nunca por parâmetro de rota).
     application.get('/restaurants/me/sales-summary', ...operatorAuthenticated, async (req: Request, res: Response) => {
@@ -211,6 +247,49 @@ export class OrdersController extends BaseRouter {
     const order = await this.orderRepository.findById(id);
     if (!order || order.restaurantId !== restaurantId) throw new NotFoundError('Pedido não encontrado');
     return order;
+  }
+
+  private toPaymentSummary(payment: IPayment): Pick<IPayment, 'method' | 'status'> {
+    return { method: payment.method, status: payment.status };
+  }
+
+  /**
+   * specs/0020-pix-no-app T002/T006 — usado só em `GET /orders/:id` (detalhe): inclui
+   * `payment.status` sempre que existir `Payment` associado, e `pixCode` (copia-e-cola EMV/BR
+   * Code) só quando `paymentMethod == 'pix'` e o pagamento ainda está `pendente` — depois de
+   * confirmado (REQ-5), o código some da resposta (não só da tela) pra evitar pagamento
+   * duplicado por engano.
+   */
+  private async attachPaymentDetails(order: IOrder): Promise<IOrder & { payment?: Pick<IPayment, 'method' | 'status'>; pixCode?: string }> {
+    const payment = await this.paymentRepository.findByOrderId(order.id);
+    if (!payment) return order;
+
+    let pixCode: string | undefined;
+    if (order.paymentMethod === 'pix' && payment.status === 'pendente') {
+      const restaurant = await this.restaurantRepository.findById(order.restaurantId);
+      if (restaurant?.pixKey) {
+        pixCode = buildPixBrCode({
+          pixKey: restaurant.pixKey,
+          merchantName: restaurant.pixBeneficiaryName || restaurant.name,
+          merchantCity: restaurant.address?.city ?? 'BRASIL',
+          amount: order.total,
+          txId: order.id,
+        });
+      }
+    }
+
+    return { ...order, payment: this.toPaymentSummary(payment), pixCode };
+  }
+
+  /** specs/0020-pix-no-app T006 — usado nas listagens (`GET /restaurants/me/orders`): só `payment.status`, sem `pixCode` (fica só no detalhe, REQ-2). */
+  private async attachPaymentSummaries(orders: IOrder[]): Promise<(IOrder & { payment?: Pick<IPayment, 'method' | 'status'> })[]> {
+    const payments = await this.paymentRepository.findManyByOrderIds(orders.map((order) => order.id));
+    const paymentByOrderId = new Map(payments.map((payment) => [payment.orderId, payment]));
+
+    return orders.map((order) => {
+      const payment = paymentByOrderId.get(order.id);
+      return payment ? { ...order, payment: this.toPaymentSummary(payment) } : order;
+    });
   }
 
   private toPublicView(order: IOrder) {

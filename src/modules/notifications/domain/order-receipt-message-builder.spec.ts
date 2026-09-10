@@ -103,7 +103,38 @@ describe('buildOrderReceiptMessage', () => {
     );
     expect(message).toContain('Chave Pix (telefone): 11999999999');
     expect(message).toContain('Beneficiário: Prime Pizza LTDA');
-    expect(message).toContain('não pelo app');
+  });
+
+  it('specs/0020-pix-no-app AC-5/REQ-7: Pix não mostra mais "pagamento é feito na entrega/retirada, não pelo app" (deixou de ser verdade — processado dentro do app)', () => {
+    const deliveryMessage = buildOrderReceiptMessage(
+      buildInput({
+        restaurant: { name: 'Prime Pizza', slug: 'primepizza', pixKey: '11999999999', pixKeyType: 'telefone' },
+        order: buildOrder({ paymentMethod: 'pix', orderType: 'delivery' }),
+      }),
+    );
+    const pickupMessage = buildOrderReceiptMessage(
+      buildInput({
+        restaurant: { name: 'Prime Pizza', slug: 'primepizza', pixKey: '11999999999', pixKeyType: 'telefone' },
+        order: buildOrder({ paymentMethod: 'pix', orderType: 'pickup' }),
+      }),
+    );
+
+    expect(deliveryMessage).not.toContain('não pelo app');
+    expect(deliveryMessage).not.toContain('pagamento é feito na entrega');
+    expect(pickupMessage).not.toContain('não pelo app');
+    expect(pickupMessage).not.toContain('pagamento é feito na retirada');
+  });
+
+  it('specs/0020-pix-no-app AC-5/REQ-7: outros métodos de pagamento continuam mostrando a frase normalmente', () => {
+    const cashMessage = buildOrderReceiptMessage(buildInput({ order: buildOrder({ paymentMethod: 'cash', orderType: 'delivery' }) }));
+    const cardMessage = buildOrderReceiptMessage(
+      buildInput({ order: buildOrder({ paymentMethod: 'creditCard', orderType: 'pickup' }), cardBrand: 'Visa' }),
+    );
+    const bankTransferMessage = buildOrderReceiptMessage(buildInput({ order: buildOrder({ paymentMethod: 'bankTransfer' }) }));
+
+    expect(cashMessage).toContain('O pagamento é feito na entrega, não pelo app.');
+    expect(cardMessage).toContain('O pagamento é feito na retirada, não pelo app.');
+    expect(bankTransferMessage).toContain('não pelo app');
   });
 
   it('AC-7: bloco de pagamento com cartão mostra a operadora informada', () => {
