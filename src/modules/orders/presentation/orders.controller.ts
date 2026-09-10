@@ -4,6 +4,7 @@ import { BadRequestError, NotFoundError } from 'restify-errors';
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
+import { IWhatsAppNotificationService } from '../../notifications/domain/services/i-whatsapp-notification.service';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IOrder } from '../domain/entities/order.entity';
 import { isOrderCancellable, isValidOrderStatusTransition } from '../domain/order-status-transitions';
@@ -29,6 +30,7 @@ export class OrdersController extends BaseRouter {
     private readonly orderRepository: IOrderRepository,
     private readonly restaurantRepository: IRestaurantRepository,
     private readonly restaurantOperatorMiddleware: AsyncHandler,
+    private readonly whatsAppNotificationService: IWhatsAppNotificationService,
   ) {
     super();
   }
@@ -60,6 +62,13 @@ export class OrdersController extends BaseRouter {
         cardBrand: payload.cardBrand,
       });
 
+      // specs/0013-notificacoes-whatsapp REQ-1/REQ-4 — fire-and-forget: nunca bloqueia a
+      // resposta HTTP nem reverte a criação do pedido se o envio falhar (o serviço já engole
+      // qualquer exceção internamente, `.catch` aqui é só uma segunda rede de segurança).
+      void this.whatsAppNotificationService.sendOrderReceipt(order, payload.cardBrand).catch((error) => {
+        console.error(`[whatsapp] erro inesperado enviando recibo do pedido ${order.id}:`, error);
+      });
+
       res.json(201, order);
     });
 
@@ -86,6 +95,11 @@ export class OrdersController extends BaseRouter {
         throw new BadRequestError('Pedido não pode mais ser cancelado');
       }
       const updated = await this.orderRepository.updateStatus(order.id, 'cancelado', req.user!.uid);
+
+      void this.whatsAppNotificationService.sendOrderStatusUpdate(updated).catch((error) => {
+        console.error(`[whatsapp] erro inesperado enviando atualização de status do pedido ${updated.id}:`, error);
+      });
+
       res.json(200, updated);
     });
 
@@ -113,6 +127,12 @@ export class OrdersController extends BaseRouter {
         }
 
         const updated = await this.orderRepository.updateStatus(order.id, status, req.restaurantId);
+
+        // specs/0013-notificacoes-whatsapp REQ-2/REQ-4 — mesma lógica fire-and-forget do REQ-1.
+        void this.whatsAppNotificationService.sendOrderStatusUpdate(updated).catch((error) => {
+          console.error(`[whatsapp] erro inesperado enviando atualização de status do pedido ${updated.id}:`, error);
+        });
+
         res.json(200, updated);
       },
     );
@@ -132,6 +152,11 @@ export class OrdersController extends BaseRouter {
         }
 
         const updated = await this.orderRepository.updateStatus(order.id, 'cancelado', req.restaurantId, reason);
+
+        void this.whatsAppNotificationService.sendOrderStatusUpdate(updated, reason).catch((error) => {
+          console.error(`[whatsapp] erro inesperado enviando atualização de status do pedido ${updated.id}:`, error);
+        });
+
         res.json(200, updated);
       },
     );

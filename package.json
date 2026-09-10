@@ -12,9 +12,11 @@
     "test": "jest --passWithNoTests"
   },
   "dependencies": {
+    "@whiskeysockets/baileys": "^7.0.0-rc14",
     "dotenv": "^16.4.5",
     "firebase-admin": "^13.10.0",
     "mongoose": "^8.6.0",
+    "pino": "^10.3.1",
     "restify": "^11.1.0",
     "restify-errors": "^8.0.2",
     "zod": "^4.5.4"
