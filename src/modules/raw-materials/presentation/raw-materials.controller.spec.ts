@@ -2,9 +2,10 @@ import type { Request, Response, Server } from 'restify';
 
 import { IProductRepository } from '../../catalog/domain/repositories/product.repository.interface';
 import { IRawMaterialRepository } from '../domain/repositories/raw-material.repository.interface';
+import { IStockMovementRepository } from '../domain/repositories/stock-movement.repository.interface';
 import { RawMaterialsController } from './raw-materials.controller';
 
-type FakeRequest = Partial<Pick<Request, 'params' | 'body'>> & { restaurantId?: string };
+type FakeRequest = Partial<Pick<Request, 'params' | 'body'>> & { restaurantId?: string; user?: { uid: string } };
 type FakeResponse = Pick<Response, 'json'>;
 type RouteHandler = (req: FakeRequest, res: FakeResponse) => Promise<void>;
 
@@ -34,22 +35,57 @@ async function runOperatorChain(handlers: RouteHandler[], req: FakeRequest, res:
 }
 
 function buildMaterial(overrides: Record<string, unknown> = {}) {
-  return { id: 'rm-1', restaurantId: 'r-1', name: 'Bacon', priceDelta: 5, isActive: true, ...overrides };
+  return {
+    id: 'rm-1',
+    restaurantId: 'r-1',
+    name: 'Bacon',
+    priceDelta: 5,
+    isActive: true,
+    unit: 'kg',
+    currentStock: 10,
+    minimumStockAlert: 2,
+    ...overrides,
+  };
+}
+
+function buildMovement(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'mv-1',
+    restaurantId: 'r-1',
+    rawMaterialId: 'rm-1',
+    type: 'entrada',
+    quantity: 5,
+    reason: 'Ajuste de inventário',
+    createdAt: '2026-09-09T10:00:00.000Z',
+    ...overrides,
+  };
 }
 
 describe('RawMaterialsController', () => {
-  function setup(overrides: { rawMaterialRepository?: Partial<IRawMaterialRepository>; productRepository?: Partial<IProductRepository> } = {}) {
+  function setup(
+    overrides: {
+      rawMaterialRepository?: Partial<IRawMaterialRepository>;
+      productRepository?: Partial<IProductRepository>;
+      stockMovementRepository?: Partial<IStockMovementRepository>;
+    } = {},
+  ) {
     const rawMaterialRepository: Partial<IRawMaterialRepository> = {
       listByRestaurant: jest.fn().mockResolvedValue([buildMaterial()]),
       create: jest.fn().mockResolvedValue(buildMaterial({ id: 'rm-2', name: 'Catupiry' })),
       update: jest.fn().mockResolvedValue(buildMaterial({ name: 'Bacon fatiado' })),
       setActive: jest.fn().mockResolvedValue(buildMaterial({ isActive: false })),
       findById: jest.fn().mockResolvedValue(buildMaterial()),
+      incrementStock: jest.fn().mockResolvedValue(buildMaterial({ currentStock: 15 })),
       ...overrides.rawMaterialRepository,
     };
     const productRepository: Partial<IProductRepository> = {
       findActiveByRawMaterialId: jest.fn().mockResolvedValue([]),
       ...overrides.productRepository,
+    };
+    const stockMovementRepository: Partial<IStockMovementRepository> = {
+      create: jest.fn().mockResolvedValue(buildMovement()),
+      listByRawMaterial: jest.fn().mockResolvedValue([buildMovement()]),
+      ...overrides.stockMovementRepository,
     };
     const restaurantOperatorMiddleware = jest.fn(async () => {});
     const { application, routes } = buildFakeApplication();
@@ -57,8 +93,9 @@ describe('RawMaterialsController', () => {
       rawMaterialRepository as IRawMaterialRepository,
       productRepository as IProductRepository,
       restaurantOperatorMiddleware,
+      stockMovementRepository as IStockMovementRepository,
     ).initializeRoutes(application);
-    return { rawMaterialRepository, productRepository, routes };
+    return { rawMaterialRepository, productRepository, stockMovementRepository, routes };
   }
 
   it('AC-5: GET /restaurants/me/raw-materials lista o catálogo do restaurante do operador', async () => {
@@ -76,12 +113,24 @@ describe('RawMaterialsController', () => {
 
     await runOperatorChain(
       routes['POST /restaurants/me/raw-materials'],
-      { restaurantId: 'r-1', body: { name: 'Catupiry', priceDelta: 4 } },
+      { restaurantId: 'r-1', body: { name: 'Catupiry', priceDelta: 4, unit: 'kg' } },
       { json },
     );
 
-    expect(rawMaterialRepository.create).toHaveBeenCalledWith('r-1', 'Catupiry', 4);
+    expect(rawMaterialRepository.create).toHaveBeenCalledWith('r-1', 'Catupiry', 4, 'kg', undefined);
     expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ name: 'Catupiry' }));
+  });
+
+  it('rejeita criação sem unidade de medida', async () => {
+    const { routes } = setup();
+
+    await expect(
+      runOperatorChain(
+        routes['POST /restaurants/me/raw-materials'],
+        { restaurantId: 'r-1', body: { name: 'Catupiry', priceDelta: 4 } },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
   });
 
   it('AC-7: PATCH .../active pra desativar sem produtos afetados aplica direto', async () => {
@@ -161,7 +210,90 @@ describe('RawMaterialsController', () => {
     await expect(
       runOperatorChain(
         routes['PUT /restaurants/me/raw-materials/:id'],
-        { restaurantId: 'r-1', params: { id: 'rm-1' }, body: { name: 'X', priceDelta: 1 } },
+        { restaurantId: 'r-1', params: { id: 'rm-1' }, body: { name: 'X', priceDelta: 1, unit: 'kg' } },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  // specs/0015-estoque-compras
+  it('AC-5: POST .../stock-adjustment de saída reduz o estoque e registra o motivo', async () => {
+    const { rawMaterialRepository, stockMovementRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/raw-materials/:id/stock-adjustment'],
+      {
+        restaurantId: 'r-1',
+        params: { id: 'rm-1' },
+        body: { type: 'saida', quantity: 3, reason: 'Perda por validade' },
+        user: { uid: 'op-1' },
+      },
+      { json },
+    );
+
+    expect(rawMaterialRepository.incrementStock).toHaveBeenCalledWith('rm-1', -3);
+    expect(stockMovementRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        restaurantId: 'r-1',
+        rawMaterialId: 'rm-1',
+        type: 'saida',
+        quantity: 3,
+        reason: 'Perda por validade',
+        createdBy: 'op-1',
+      }),
+    );
+    expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ rawMaterial: expect.anything(), movement: expect.anything() }));
+  });
+
+  it('AC-5: POST .../stock-adjustment de entrada soma ao estoque', async () => {
+    const { rawMaterialRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/raw-materials/:id/stock-adjustment'],
+      { restaurantId: 'r-1', params: { id: 'rm-1' }, body: { type: 'entrada', quantity: 8, reason: 'Inventário' } },
+      { json },
+    );
+
+    expect(rawMaterialRepository.incrementStock).toHaveBeenCalledWith('rm-1', 8);
+  });
+
+  it('rejeita ajuste manual sem motivo', async () => {
+    const { routes } = setup();
+
+    await expect(
+      runOperatorChain(
+        routes['POST /restaurants/me/raw-materials/:id/stock-adjustment'],
+        { restaurantId: 'r-1', params: { id: 'rm-1' }, body: { type: 'saida', quantity: 3 } },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('AC-6: GET .../movements lista o histórico em ordem cronológica', async () => {
+    const { stockMovementRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['GET /restaurants/me/raw-materials/:id/movements'],
+      { restaurantId: 'r-1', params: { id: 'rm-1' } },
+      { json },
+    );
+
+    expect(stockMovementRepository.listByRawMaterial).toHaveBeenCalledWith('rm-1');
+    expect(json).toHaveBeenCalledWith(200, [expect.objectContaining({ id: 'mv-1' })]);
+  });
+
+  it('lança 404 ao consultar movimentações de matéria-prima de outro restaurante', async () => {
+    const { routes } = setup({
+      rawMaterialRepository: { findById: jest.fn().mockResolvedValue(buildMaterial({ restaurantId: 'r-OUTRO' })) },
+    });
+
+    await expect(
+      runOperatorChain(
+        routes['GET /restaurants/me/raw-materials/:id/movements'],
+        { restaurantId: 'r-1', params: { id: 'rm-1' } },
         { json: jest.fn() },
       ),
     ).rejects.toMatchObject({ statusCode: 404 });

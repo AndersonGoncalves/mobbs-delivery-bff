@@ -10,7 +10,13 @@ import { CatalogController } from './modules/catalog/presentation/catalog.contro
 import { OrderMongooseRepository } from './modules/orders/infra/repositories/order.mongoose.repository';
 import { OrdersController } from './modules/orders/presentation/orders.controller';
 import { RawMaterialMongooseRepository } from './modules/raw-materials/infra/repositories/raw-material.mongoose.repository';
+import { StockMovementMongooseRepository } from './modules/raw-materials/infra/repositories/stock-movement.mongoose.repository';
 import { RawMaterialsController } from './modules/raw-materials/presentation/raw-materials.controller';
+import { SupplierMongooseRepository } from './modules/suppliers/infra/repositories/supplier.mongoose.repository';
+import { SuppliersController } from './modules/suppliers/presentation/suppliers.controller';
+import { PurchaseOrderMongooseRepository } from './modules/purchase-orders/infra/repositories/purchase-order.mongoose.repository';
+import { ReceivePurchaseOrderService } from './modules/purchase-orders/infra/services/receive-purchase-order.service';
+import { PurchaseOrdersController } from './modules/purchase-orders/presentation/purchase-orders.controller';
 import { AccountPayableMongooseRepository } from './modules/financeiro/infra/repositories/account-payable.mongoose.repository';
 import { AccountReceivableMongooseRepository } from './modules/financeiro/infra/repositories/account-receivable.mongoose.repository';
 import { CashRegisterMongooseRepository } from './modules/financeiro/infra/repositories/cash-register.mongoose.repository';
@@ -50,6 +56,18 @@ const whatsAppNotificationService = new WhatsAppNotificationService(
 const cashRegisterRepository = new CashRegisterMongooseRepository();
 const cashRegisterService = new CashRegisterService(cashRegisterRepository);
 
+// specs/0015-estoque-compras — `RawMaterialMongooseRepository`/`StockMovementMongooseRepository`
+// compartilhados entre `RawMaterialsController` (ajuste manual/histórico, REQ-5/REQ-6) e
+// `ReceivePurchaseOrderService` (recebimento de compra, REQ-3), sem duplicar instância.
+const rawMaterialRepository = new RawMaterialMongooseRepository();
+const stockMovementRepository = new StockMovementMongooseRepository();
+const purchaseOrderRepository = new PurchaseOrderMongooseRepository();
+const receivePurchaseOrderService = new ReceivePurchaseOrderService(
+  purchaseOrderRepository,
+  rawMaterialRepository,
+  stockMovementRepository,
+);
+
 server
   .bootstrap([
     new RestaurantsController(restaurantRepository, restaurantOperatorMiddleware),
@@ -62,12 +80,14 @@ server
       whatsAppNotificationService,
       cashRegisterService,
     ),
-    new RawMaterialsController(new RawMaterialMongooseRepository(), productRepository, restaurantOperatorMiddleware),
+    new RawMaterialsController(rawMaterialRepository, productRepository, restaurantOperatorMiddleware, stockMovementRepository),
     new CustomersController(customerRepository, new AddressMongooseRepository(), new FavoriteMongooseRepository()),
     new WhatsAppConnectionController(whatsAppConnectionService, restaurantOperatorMiddleware),
     new AccountsPayableController(new AccountPayableMongooseRepository(), restaurantOperatorMiddleware),
     new AccountsReceivableController(new AccountReceivableMongooseRepository(), restaurantOperatorMiddleware),
     new CashRegisterController(cashRegisterRepository, restaurantOperatorMiddleware),
+    new SuppliersController(new SupplierMongooseRepository(), restaurantOperatorMiddleware),
+    new PurchaseOrdersController(purchaseOrderRepository, receivePurchaseOrderService, restaurantOperatorMiddleware),
   ])
   .catch((error) => {
     // eslint-disable-next-line no-console
