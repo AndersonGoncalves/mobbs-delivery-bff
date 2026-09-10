@@ -277,7 +277,11 @@ export class OrdersController extends BaseRouter {
       : 0;
 
     const result = validateCoupon({ coupon, orderSubtotal, now: new Date(), customerUsageCount });
-    if (!result.valid) {
+    // `result.valid === false` (não `!result.valid`) — com `tsconfig.json` `strict: false`
+    // (`strictNullChecks` desligado), a narrowing de union discriminada por literal booleano só
+    // funciona com a comparação explícita, não com negação (`!result.valid` não estreita o tipo
+    // e falha o build tentando acessar `.reason` em `ValidateCouponResult`).
+    if (result.valid === false) {
       throw new BadRequestError(result.reason);
     }
 

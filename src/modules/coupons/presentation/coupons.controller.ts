@@ -7,8 +7,8 @@ import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middl
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { validateCoupon } from '../domain/services/coupon-validator';
 import { ICoupon } from '../domain/entities/coupon.entity';
-import { ICouponRepository } from '../domain/repositories/coupon.repository.interface';
-import { saveCouponSchema, validateCouponSchema } from './coupons.schemas';
+import { CouponInput, ICouponRepository } from '../domain/repositories/coupon.repository.interface';
+import { SaveCouponPayload, saveCouponSchema, validateCouponSchema } from './coupons.schemas';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
@@ -45,14 +45,14 @@ export class CouponsController extends BaseRouter {
 
     // AC-1
     application.post('/restaurants/me/coupons', ...authenticated, async (req: Request, res: Response) => {
-      const payload = parseBody(saveCouponSchema, req.body);
+      const payload = this.normalizeInput(parseBody(saveCouponSchema, req.body));
       const coupon = await this.couponRepository.create(req.restaurantId!, payload);
       res.json(201, coupon);
     });
 
     // REQ-1 (editar/desativar — `isActive` faz parte do mesmo corpo, ver `coupons.schemas.ts`).
     application.put('/restaurants/me/coupons/:id', ...authenticated, async (req: Request, res: Response) => {
-      const payload = parseBody(saveCouponSchema, req.body);
+      const payload = this.normalizeInput(parseBody(saveCouponSchema, req.body));
       await this.findOwnedCoupon(req.params.id, req.restaurantId!);
       const coupon = await this.couponRepository.update(req.params.id, payload);
       res.json(200, coupon);
@@ -86,6 +86,11 @@ export class CouponsController extends BaseRouter {
       : 0;
 
     return validateCoupon({ coupon, orderSubtotal, now: new Date(), customerUsageCount });
+  }
+
+  /** `code` normalizado aqui (trim + uppercase) — ver comentário em `coupons.schemas.ts`. */
+  private normalizeInput(payload: SaveCouponPayload): CouponInput {
+    return { ...payload, code: payload.code.trim().toUpperCase() };
   }
 
   private async findOwnedCoupon(id: string, restaurantId: string): Promise<ICoupon> {

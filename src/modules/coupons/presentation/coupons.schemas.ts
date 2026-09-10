@@ -10,10 +10,10 @@ const isoDateString = z.string().refine((value) => !Number.isNaN(Date.parse(valu
  */
 export const saveCouponSchema = z
   .object({
-    code: z
-      .string()
-      .min(1, 'Código é obrigatório')
-      .transform((value) => value.trim().toUpperCase()),
+    // Normalizado (trim + uppercase) pelo controller, não aqui — `.transform()` neste projeto
+    // (`tsconfig.json`, `strict: false`) faz o zod v4 inferir o campo como opcional em
+    // `z.infer`, mesmo sendo obrigatório em runtime (`min(1)`); ver `CouponsController`.
+    code: z.string().min(1, 'Código é obrigatório'),
     discountType: z.enum(['percentual', 'fixo']),
     discountValue: z.number().positive('Valor do desconto deve ser maior que zero'),
     minOrderValue: z.number().nonnegative('Valor mínimo não pode ser negativo').optional(),
