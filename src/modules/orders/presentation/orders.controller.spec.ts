@@ -1,5 +1,6 @@
 import type { Request, Response, Server } from 'restify';
 
+import { ICashRegisterService } from '../../financeiro/domain/services/i-cash-register.service';
 import { IWhatsAppNotificationService } from '../../notifications/domain/services/i-whatsapp-notification.service';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IOrderRepository } from '../domain/repositories/order.repository.interface';
@@ -154,14 +155,18 @@ describe('OrdersController', () => {
       sendOrderReceipt: jest.fn().mockResolvedValue(undefined),
       sendOrderStatusUpdate: jest.fn().mockResolvedValue(undefined),
     };
+    const cashRegisterService: ICashRegisterService = {
+      addAutomaticEntry: jest.fn().mockResolvedValue(undefined),
+    };
     const { application, routes } = buildFakeApplication();
     new OrdersController(
       orderRepository as IOrderRepository,
       restaurantRepository as IRestaurantRepository,
       restaurantOperatorMiddleware,
       whatsAppNotificationService,
+      cashRegisterService,
     ).initializeRoutes(application);
-    return { orderRepository, restaurantRepository, whatsAppNotificationService, routes };
+    return { orderRepository, restaurantRepository, whatsAppNotificationService, cashRegisterService, routes };
   }
 
   it('AC-2: POST /orders cria o pedido com subtotal/taxa/total calculados no BFF (não confia no cliente)', async () => {
@@ -405,6 +410,59 @@ describe('OrdersController', () => {
     expect(whatsAppNotificationService.sendOrderStatusUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ status: 'confirmado' }),
     );
+  });
+
+  it('specs/0014-financeiro REQ-5: PATCH .../status pra "entregue" chama CashRegisterService com os dados do pedido', async () => {
+    const { cashRegisterService, routes } = setup({
+      orderRepository: {
+        findById: jest.fn().mockResolvedValue(buildOrder({ status: 'saiuParaEntrega', paymentMethod: 'pix' })),
+        updateStatus: jest.fn().mockResolvedValue(buildOrder({ status: 'entregue', paymentMethod: 'pix' })),
+      },
+    });
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/status'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'entregue' } },
+      { json: jest.fn() },
+    );
+
+    expect(cashRegisterService.addAutomaticEntry).toHaveBeenCalledWith({
+      restaurantId: 'r-1',
+      orderId: 'o-1',
+      orderNumber: 1,
+      amount: 30,
+      paymentMethod: 'pix',
+    });
+  });
+
+  it('specs/0014-financeiro REQ-5: PATCH .../status pra um status que não é "entregue" nunca chama CashRegisterService', async () => {
+    const { cashRegisterService, routes } = setup();
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/status'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'confirmado' } },
+      { json: jest.fn() },
+    );
+
+    expect(cashRegisterService.addAutomaticEntry).not.toHaveBeenCalled();
+  });
+
+  it('specs/0014-financeiro REQ-5: falha no lançamento automático de caixa não impede a resposta 200 da mudança de status', async () => {
+    const { cashRegisterService, routes } = setup({
+      orderRepository: {
+        findById: jest.fn().mockResolvedValue(buildOrder({ status: 'saiuParaEntrega' })),
+      },
+    });
+    (cashRegisterService.addAutomaticEntry as jest.Mock).mockRejectedValue(new Error('sessão de caixa indisponível'));
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/status'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'entregue' } },
+      { json },
+    );
+
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ status: 'entregue' }));
   });
 
   it('AC-5: PATCH /restaurants/me/orders/:id/status bloqueia pular de aguardandoConfirmacao direto pra entregue', async () => {
