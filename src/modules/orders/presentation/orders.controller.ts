@@ -4,6 +4,7 @@ import { BadRequestError, NotFoundError } from 'restify-errors';
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
+import { ICashRegisterService } from '../../financeiro/domain/services/i-cash-register.service';
 import { IWhatsAppNotificationService } from '../../notifications/domain/services/i-whatsapp-notification.service';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IOrder } from '../domain/entities/order.entity';
@@ -31,6 +32,7 @@ export class OrdersController extends BaseRouter {
     private readonly restaurantRepository: IRestaurantRepository,
     private readonly restaurantOperatorMiddleware: AsyncHandler,
     private readonly whatsAppNotificationService: IWhatsAppNotificationService,
+    private readonly cashRegisterService: ICashRegisterService,
   ) {
     super();
   }
@@ -132,6 +134,26 @@ export class OrdersController extends BaseRouter {
         void this.whatsAppNotificationService.sendOrderStatusUpdate(updated).catch((error) => {
           console.error(`[whatsapp] erro inesperado enviando atualização de status do pedido ${updated.id}:`, error);
         });
+
+        // specs/0014-financeiro REQ-5 — só ao chegar em "entregue" (cobre tanto delivery quanto
+        // retirada, `docs/architecture/data-model.md` não tem status separado pros dois); a
+        // regra de "só Pix" e "só com sessão de caixa aberta" fica inteira dentro do serviço
+        // (`CashRegisterService`), não aqui. `await`ado (não fire-and-forget como o WhatsApp
+        // acima) mas protegido por try/catch: uma falha na contabilização automática nunca
+        // reverte nem falha a resposta da mudança de status, que já foi persistida.
+        if (status === 'entregue') {
+          try {
+            await this.cashRegisterService.addAutomaticEntry({
+              restaurantId: updated.restaurantId,
+              orderId: updated.id,
+              orderNumber: updated.orderNumber,
+              amount: updated.total,
+              paymentMethod: updated.paymentMethod,
+            });
+          } catch (error) {
+            console.error(`[financeiro] erro inesperado lançando movimento automático de caixa do pedido ${updated.id}:`, error);
+          }
+        }
 
         res.json(200, updated);
       },

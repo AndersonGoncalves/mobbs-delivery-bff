@@ -11,6 +11,13 @@ import { OrderMongooseRepository } from './modules/orders/infra/repositories/ord
 import { OrdersController } from './modules/orders/presentation/orders.controller';
 import { RawMaterialMongooseRepository } from './modules/raw-materials/infra/repositories/raw-material.mongoose.repository';
 import { RawMaterialsController } from './modules/raw-materials/presentation/raw-materials.controller';
+import { AccountPayableMongooseRepository } from './modules/financeiro/infra/repositories/account-payable.mongoose.repository';
+import { AccountReceivableMongooseRepository } from './modules/financeiro/infra/repositories/account-receivable.mongoose.repository';
+import { CashRegisterMongooseRepository } from './modules/financeiro/infra/repositories/cash-register.mongoose.repository';
+import { CashRegisterService } from './modules/financeiro/infra/services/cash-register.service';
+import { AccountsPayableController } from './modules/financeiro/presentation/accounts-payable.controller';
+import { AccountsReceivableController } from './modules/financeiro/presentation/accounts-receivable.controller';
+import { CashRegisterController } from './modules/financeiro/presentation/cash-register.controller';
 import { AddressMongooseRepository } from './modules/customers/infra/repositories/address.mongoose.repository';
 import { CustomerMongooseRepository } from './modules/customers/infra/repositories/customer.mongoose.repository';
 import { FavoriteMongooseRepository } from './modules/customers/infra/repositories/favorite.mongoose.repository';
@@ -37,6 +44,12 @@ const whatsAppNotificationService = new WhatsAppNotificationService(
   restaurantRepository,
 );
 
+// specs/0014-financeiro — uma única instância de repositório de caixa compartilhada entre
+// `CashRegisterController` (rotas de caixa da retaguarda) e `CashRegisterService` (lançamento
+// automático chamado por `OrdersController` ao marcar um pedido Pix como entregue).
+const cashRegisterRepository = new CashRegisterMongooseRepository();
+const cashRegisterService = new CashRegisterService(cashRegisterRepository);
+
 server
   .bootstrap([
     new RestaurantsController(restaurantRepository, restaurantOperatorMiddleware),
@@ -47,10 +60,14 @@ server
       restaurantRepository,
       restaurantOperatorMiddleware,
       whatsAppNotificationService,
+      cashRegisterService,
     ),
     new RawMaterialsController(new RawMaterialMongooseRepository(), productRepository, restaurantOperatorMiddleware),
     new CustomersController(customerRepository, new AddressMongooseRepository(), new FavoriteMongooseRepository()),
     new WhatsAppConnectionController(whatsAppConnectionService, restaurantOperatorMiddleware),
+    new AccountsPayableController(new AccountPayableMongooseRepository(), restaurantOperatorMiddleware),
+    new AccountsReceivableController(new AccountReceivableMongooseRepository(), restaurantOperatorMiddleware),
+    new CashRegisterController(cashRegisterRepository, restaurantOperatorMiddleware),
   ])
   .catch((error) => {
     // eslint-disable-next-line no-console
