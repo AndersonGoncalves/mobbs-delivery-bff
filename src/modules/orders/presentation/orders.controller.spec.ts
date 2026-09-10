@@ -1,5 +1,6 @@
 import type { Request, Response, Server } from 'restify';
 
+import { ICouponRepository } from '../../coupons/domain/repositories/coupon.repository.interface';
 import { ICashRegisterService } from '../../financeiro/domain/services/i-cash-register.service';
 import { IWhatsAppNotificationService } from '../../notifications/domain/services/i-whatsapp-notification.service';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
@@ -133,12 +134,27 @@ function buildOrder(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function buildCoupon(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'c-1',
+    restaurantId: 'r-1',
+    code: 'PROMO10',
+    discountType: 'percentual' as const,
+    discountValue: 10,
+    validFrom: '2026-01-01T00:00:00.000Z',
+    usageCount: 0,
+    isActive: true,
+    ...overrides,
+  };
+}
+
 describe('OrdersController', () => {
   function setup(
     overrides: {
       orderRepository?: Partial<IOrderRepository>;
       restaurantRepository?: Partial<IRestaurantRepository>;
       paymentRepository?: Partial<IPaymentRepository>;
+      couponRepository?: Partial<ICouponRepository>;
     } = {},
   ) {
     const orderRepository: Partial<IOrderRepository> = {
@@ -171,6 +187,7 @@ describe('OrdersController', () => {
         totalRevenue: 300,
         cancelledOrders: 1,
       }),
+      countByCustomerAndCoupon: jest.fn().mockResolvedValue(0),
       ...overrides.orderRepository,
     };
     const restaurantRepository: Partial<IRestaurantRepository> = {
@@ -191,6 +208,11 @@ describe('OrdersController', () => {
       markAsApproved: jest.fn().mockImplementation(async (orderId) => ({ ...buildPayment({ orderId }), status: 'aprovado' })),
       ...overrides.paymentRepository,
     };
+    const couponRepository: Partial<ICouponRepository> = {
+      findByCode: jest.fn().mockResolvedValue(null),
+      incrementUsageIfWithinLimit: jest.fn().mockImplementation(async (id) => ({ ...buildCoupon({ id }), usageCount: 1 })),
+      ...overrides.couponRepository,
+    };
     const { application, routes } = buildFakeApplication();
     new OrdersController(
       orderRepository as IOrderRepository,
@@ -199,8 +221,17 @@ describe('OrdersController', () => {
       whatsAppNotificationService,
       cashRegisterService,
       paymentRepository as IPaymentRepository,
+      couponRepository as ICouponRepository,
     ).initializeRoutes(application);
-    return { orderRepository, restaurantRepository, whatsAppNotificationService, cashRegisterService, paymentRepository, routes };
+    return {
+      orderRepository,
+      restaurantRepository,
+      whatsAppNotificationService,
+      cashRegisterService,
+      paymentRepository,
+      couponRepository,
+      routes,
+    };
   }
 
   it('AC-2: POST /orders cria o pedido com subtotal/taxa/total calculados no BFF (não confia no cliente)', async () => {

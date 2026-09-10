@@ -20,6 +20,8 @@ export interface NewOrderInput {
   total: number;
   paymentMethod: PaymentMethod;
   cardBrand?: string;
+  /** specs/0022-cupons-desconto REQ-2/REQ-4 — ver `IOrder.couponCode`. */
+  couponCode?: string;
 }
 
 export interface IOrderRepository {
@@ -58,4 +60,12 @@ export interface IOrderRepository {
    * critério de `findManyByCustomer`.
    */
   findManyByCustomerAndRestaurant(customerId: string, restaurantId: string): Promise<IOrder[]>;
+
+  /**
+   * specs/0022-cupons-desconto REQ-6 — quantos pedidos deste cliente, neste restaurante, já
+   * usaram este código de cupom (`Order.couponCode`) — usado por `CouponsController.validate` e
+   * por `POST /orders` pra aplicar o limite de uso por cliente. Conta todos os pedidos
+   * independente de status (a spec não distingue pedido cancelado como "não usou o cupom").
+   */
+  countByCustomerAndCoupon(restaurantId: string, customerId: string, couponCode: string): Promise<number>;
 }

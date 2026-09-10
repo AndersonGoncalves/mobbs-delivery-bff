@@ -22,6 +22,7 @@ interface OrderLeanDocument {
   deliveryFee: number;
   discount: number;
   total: number;
+  couponCode?: string;
   paymentMethod: PaymentMethod;
   createdAt: Date;
   estimatedDeliveryAt?: Date;
@@ -49,6 +50,7 @@ function toEntity(doc: OrderLeanDocument): IOrder {
     deliveryFee: doc.deliveryFee,
     discount: doc.discount,
     total: doc.total,
+    couponCode: doc.couponCode,
     paymentMethod: doc.paymentMethod,
     createdAt: doc.createdAt.toISOString(),
     estimatedDeliveryAt: doc.estimatedDeliveryAt?.toISOString(),
@@ -76,6 +78,7 @@ export class OrderMongooseRepository implements IOrderRepository {
       deliveryFee: input.deliveryFee,
       discount: input.discount,
       total: input.total,
+      couponCode: input.couponCode,
       paymentMethod: input.paymentMethod,
     });
 
@@ -174,5 +177,10 @@ export class OrderMongooseRepository implements IOrderRepository {
       totalRevenue: result?.totalRevenue ?? 0,
       cancelledOrders: result?.cancelledOrders ?? 0,
     };
+  }
+
+  /** specs/0022-cupons-desconto REQ-6. */
+  async countByCustomerAndCoupon(restaurantId: string, customerId: string, couponCode: string): Promise<number> {
+    return OrderModel.countDocuments({ restaurantId, customerId, couponCode });
   }
 }

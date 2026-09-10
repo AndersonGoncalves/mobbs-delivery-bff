@@ -38,6 +38,10 @@ export const createOrderSchema = z
     notes: z.string().optional(),
     paymentMethod: z.enum(['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer']),
     cardBrand: z.string().min(1).optional(),
+    // specs/0022-cupons-desconto REQ-2 — opcional; o app só manda quando o cliente digitou e
+    // "aplicou" um código no checkout. Revalidado sempre no controller (nunca confia no desconto
+    // calculado pelo app) — este schema só garante o formato, não a validade do cupom em si.
+    couponCode: z.string().min(1).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.orderType === 'delivery' && !data.deliveryAddress) {

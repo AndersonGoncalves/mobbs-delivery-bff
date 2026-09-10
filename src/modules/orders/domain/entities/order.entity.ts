@@ -64,6 +64,14 @@ export interface IOrder {
   deliveryFee: number;
   discount: number;
   total: number;
+  /**
+   * specs/0022-cupons-desconto REQ-2/REQ-4 — código do cupom aplicado (já normalizado,
+   * maiúsculo), quando algum; `Order.discount` acima é o valor calculado a partir dele. Guardado
+   * pra rastreabilidade (REQ-6: contagem de uso por cliente, `countByCustomerAndCoupon`) — não
+   * referencia `Coupon.id` porque o cupom pode ser editado/desativado depois sem perder o
+   * histórico de qual código o pedido usou.
+   */
+  couponCode?: string;
   paymentMethod: PaymentMethod;
   createdAt: string;
   estimatedDeliveryAt?: string;
