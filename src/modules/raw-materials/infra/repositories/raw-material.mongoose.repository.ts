@@ -8,6 +8,9 @@ interface RawMaterialLeanDocument {
   name: string;
   priceDelta: number;
   isActive: boolean;
+  unit: string;
+  currentStock: number;
+  minimumStockAlert?: number;
 }
 
 function toEntity(doc: RawMaterialLeanDocument): IRawMaterial {
@@ -17,6 +20,9 @@ function toEntity(doc: RawMaterialLeanDocument): IRawMaterial {
     name: doc.name,
     priceDelta: doc.priceDelta,
     isActive: doc.isActive,
+    unit: doc.unit,
+    currentStock: doc.currentStock,
+    minimumStockAlert: doc.minimumStockAlert,
   };
 }
 
@@ -26,15 +32,35 @@ export class RawMaterialMongooseRepository implements IRawMaterialRepository {
     return docs.map(toEntity);
   }
 
-  async create(restaurantId: string, name: string, priceDelta: number): Promise<IRawMaterial> {
-    const doc = await RawMaterialModel.create({ restaurantId, name, priceDelta, isActive: true });
+  async create(
+    restaurantId: string,
+    name: string,
+    priceDelta: number,
+    unit: string,
+    minimumStockAlert?: number,
+  ): Promise<IRawMaterial> {
+    const doc = await RawMaterialModel.create({
+      restaurantId,
+      name,
+      priceDelta,
+      unit,
+      minimumStockAlert,
+      isActive: true,
+      currentStock: 0,
+    });
     return toEntity(doc.toObject() as RawMaterialLeanDocument);
   }
 
-  async update(id: string, name: string, priceDelta: number): Promise<IRawMaterial> {
+  async update(
+    id: string,
+    name: string,
+    priceDelta: number,
+    unit: string,
+    minimumStockAlert?: number,
+  ): Promise<IRawMaterial> {
     const doc = await RawMaterialModel.findByIdAndUpdate(
       id,
-      { $set: { name, priceDelta } },
+      { $set: { name, priceDelta, unit, minimumStockAlert } },
       { new: true },
     ).lean<RawMaterialLeanDocument>();
     return toEntity(doc as RawMaterialLeanDocument);
@@ -52,5 +78,14 @@ export class RawMaterialMongooseRepository implements IRawMaterialRepository {
   async findById(id: string): Promise<IRawMaterial | null> {
     const doc = await RawMaterialModel.findById(id).lean<RawMaterialLeanDocument>();
     return doc ? toEntity(doc) : null;
+  }
+
+  async incrementStock(id: string, delta: number): Promise<IRawMaterial> {
+    const doc = await RawMaterialModel.findByIdAndUpdate(
+      id,
+      { $inc: { currentStock: delta } },
+      { new: true },
+    ).lean<RawMaterialLeanDocument>();
+    return toEntity(doc as RawMaterialLeanDocument);
   }
 }
