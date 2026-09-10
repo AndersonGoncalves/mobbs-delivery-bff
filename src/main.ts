@@ -28,6 +28,8 @@ import { AddressMongooseRepository } from './modules/customers/infra/repositorie
 import { CustomerMongooseRepository } from './modules/customers/infra/repositories/customer.mongoose.repository';
 import { FavoriteMongooseRepository } from './modules/customers/infra/repositories/favorite.mongoose.repository';
 import { CustomersController } from './modules/customers/presentation/customers.controller';
+import { CustomerSummaryMongooseRepository } from './modules/customers-admin/infra/repositories/customer-summary.mongoose.repository';
+import { CustomersSummaryController } from './modules/customers-admin/presentation/customers-summary.controller';
 import { WhatsAppNotificationService } from './modules/notifications/infra/whatsapp-notification.service';
 import { WhatsAppConnectionService } from './modules/whatsapp-connection/infra/whatsapp-connection.service';
 import { WhatsAppConnectionController } from './modules/whatsapp-connection/presentation/whatsapp-connection.controller';
@@ -68,13 +70,18 @@ const receivePurchaseOrderService = new ReceivePurchaseOrderService(
   stockMovementRepository,
 );
 
+// specs/0016-clientes-retaguarda — mesma instância de `OrderMongooseRepository` compartilhada
+// entre `OrdersController` e `CustomersSummaryController` (REQ-3, histórico de pedidos do
+// cliente escopado ao restaurante), sem duplicar instância.
+const orderRepository = new OrderMongooseRepository();
+
 server
   .bootstrap([
     new RestaurantsController(restaurantRepository, restaurantOperatorMiddleware),
     new RestaurantOperatorsController(restaurantOperatorRepository, restaurantOperatorMiddleware),
     new CatalogController(new MenuCategoryMongooseRepository(), productRepository, restaurantOperatorMiddleware),
     new OrdersController(
-      new OrderMongooseRepository(),
+      orderRepository,
       restaurantRepository,
       restaurantOperatorMiddleware,
       whatsAppNotificationService,
@@ -82,6 +89,7 @@ server
     ),
     new RawMaterialsController(rawMaterialRepository, productRepository, restaurantOperatorMiddleware, stockMovementRepository),
     new CustomersController(customerRepository, new AddressMongooseRepository(), new FavoriteMongooseRepository()),
+    new CustomersSummaryController(new CustomerSummaryMongooseRepository(), orderRepository, restaurantOperatorMiddleware),
     new WhatsAppConnectionController(whatsAppConnectionService, restaurantOperatorMiddleware),
     new AccountsPayableController(new AccountPayableMongooseRepository(), restaurantOperatorMiddleware),
     new AccountsReceivableController(new AccountReceivableMongooseRepository(), restaurantOperatorMiddleware),
