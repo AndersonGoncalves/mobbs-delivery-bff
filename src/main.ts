@@ -35,6 +35,8 @@ import { CustomersController } from './modules/customers/presentation/customers.
 import { CustomerSummaryMongooseRepository } from './modules/customers-admin/infra/repositories/customer-summary.mongoose.repository';
 import { CustomersSummaryController } from './modules/customers-admin/presentation/customers-summary.controller';
 import { WhatsAppNotificationService } from './modules/notifications/infra/whatsapp-notification.service';
+import { AdditionalGroupTemplateMongooseRepository } from './modules/additional-group-templates/infra/repositories/additional-group-template.mongoose.repository';
+import { AdditionalGroupTemplatesController } from './modules/additional-group-templates/presentation/additional-group-templates.controller';
 import { WhatsAppConnectionService } from './modules/whatsapp-connection/infra/whatsapp-connection.service';
 import { WhatsAppConnectionController } from './modules/whatsapp-connection/presentation/whatsapp-connection.controller';
 import { NodemailerEmailService } from './shared/email/nodemailer-email.service';
@@ -99,7 +101,12 @@ server
   .bootstrap([
     new RestaurantsController(restaurantRepository, restaurantOperatorMiddleware),
     new RestaurantOperatorsController(restaurantOperatorRepository, restaurantOperatorMiddleware),
-    new CatalogController(new MenuCategoryMongooseRepository(), productRepository, restaurantOperatorMiddleware),
+    new CatalogController(
+      new MenuCategoryMongooseRepository(),
+      productRepository,
+      restaurantOperatorMiddleware,
+      orderRepository,
+    ),
     new OrdersController(
       orderRepository,
       restaurantRepository,
@@ -110,6 +117,11 @@ server
       couponRepository,
     ),
     new RawMaterialsController(rawMaterialRepository, productRepository, restaurantOperatorMiddleware, stockMovementRepository),
+    new AdditionalGroupTemplatesController(
+      new AdditionalGroupTemplateMongooseRepository(),
+      productRepository,
+      restaurantOperatorMiddleware,
+    ),
     new CustomersController(
       customerRepository,
       new AddressMongooseRepository(),

@@ -1,5 +1,6 @@
 import { IRawMaterial } from '../../domain/entities/raw-material.entity';
-import { IRawMaterialRepository } from '../../domain/repositories/raw-material.repository.interface';
+import { IRawMaterialListFilters, IRawMaterialRepository } from '../../domain/repositories/raw-material.repository.interface';
+import { escapeRegex } from '../../../../shared/utils/escape-regex';
 import { RawMaterialModel } from '../models/raw-material.mongoose.model';
 
 interface RawMaterialLeanDocument {
@@ -27,8 +28,11 @@ function toEntity(doc: RawMaterialLeanDocument): IRawMaterial {
 }
 
 export class RawMaterialMongooseRepository implements IRawMaterialRepository {
-  async listByRestaurant(restaurantId: string): Promise<IRawMaterial[]> {
-    const docs = await RawMaterialModel.find({ restaurantId }).lean<RawMaterialLeanDocument[]>();
+  async listByRestaurant(restaurantId: string, filters?: IRawMaterialListFilters): Promise<IRawMaterial[]> {
+    const query: Record<string, unknown> = { restaurantId };
+    if (filters?.name) query.name = { $regex: escapeRegex(filters.name), $options: 'i' };
+    if (filters?.isActive !== undefined) query.isActive = filters.isActive;
+    const docs = await RawMaterialModel.find(query).lean<RawMaterialLeanDocument[]>();
     return docs.map(toEntity);
   }
 
@@ -78,6 +82,10 @@ export class RawMaterialMongooseRepository implements IRawMaterialRepository {
   async findById(id: string): Promise<IRawMaterial | null> {
     const doc = await RawMaterialModel.findById(id).lean<RawMaterialLeanDocument>();
     return doc ? toEntity(doc) : null;
+  }
+
+  async remove(id: string): Promise<void> {
+    await RawMaterialModel.findByIdAndDelete(id);
   }
 
   async incrementStock(id: string, delta: number): Promise<IRawMaterial> {

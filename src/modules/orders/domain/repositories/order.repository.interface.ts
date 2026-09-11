@@ -68,4 +68,11 @@ export interface IOrderRepository {
    * independente de status (a spec não distingue pedido cancelado como "não usou o cupom").
    */
   countByCustomerAndCoupon(restaurantId: string, customerId: string, couponCode: string): Promise<number>;
+
+  /**
+   * specs/0026-selecao-clonar-excluir-busca-web REQ-5 — quantos pedidos (qualquer status,
+   * inclusive entregue/cancelado) já tiveram esse produto em algum item — usado pra bloquear a
+   * exclusão real de um produto já usado alguma vez.
+   */
+  countByProduct(restaurantId: string, productId: string): Promise<number>;
 }

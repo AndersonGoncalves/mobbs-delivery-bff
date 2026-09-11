@@ -1,15 +1,17 @@
 import type { Request, Response, Server } from 'restify';
-import { NotFoundError } from 'restify-errors';
+import { ConflictError, NotFoundError } from 'restify-errors';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
 import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
+import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { IMenuCategory } from '../domain/entities/menu-category.entity';
 import { IProduct } from '../domain/entities/product.entity';
 import { IMenuCategoryRepository } from '../domain/repositories/menu-category.repository.interface';
 import { IProductRepository } from '../domain/repositories/product.repository.interface';
 import {
+  listProductsQuerySchema,
   menuCategoryNameSchema,
   reorderMenuCategoriesSchema,
   saveProductSchema,
@@ -38,6 +40,9 @@ export class CatalogController extends BaseRouter {
     private readonly menuCategoryRepository: IMenuCategoryRepository,
     private readonly productRepository: IProductRepository,
     private readonly restaurantOperatorMiddleware: AsyncHandler,
+    // specs/0026-selecao-clonar-excluir-busca-web REQ-5 — checa se o produto já apareceu em
+    // algum pedido (qualquer status) antes de permitir a exclusão real.
+    private readonly orderRepository: IOrderRepository,
   ) {
     super();
   }
@@ -98,8 +103,13 @@ export class CatalogController extends BaseRouter {
     );
 
     // REQ-2 (retaguarda): produtos completos (com `additionalGroups`) do restaurante do operador.
+    // specs/0026-selecao-clonar-excluir-busca-web REQ-7 — `name`/`isAvailable` filtram no servidor.
     application.get('/restaurants/me/products', ...authenticated, async (req: Request, res: Response) => {
-      const products = await this.productRepository.listByRestaurant(req.restaurantId!);
+      const query = parseBody(listProductsQuerySchema, req.query ?? {});
+      const products = await this.productRepository.listByRestaurant(req.restaurantId!, {
+        name: query.name,
+        isAvailable: query.isAvailable === undefined ? undefined : query.isAvailable === 'true',
+      });
       res.json(200, products);
     });
 
@@ -126,6 +136,24 @@ export class CatalogController extends BaseRouter {
         res.json(200, product);
       },
     );
+
+    // specs/0026-selecao-clonar-excluir-busca-web REQ-4/REQ-5/REQ-6 — exclusão REAL (diferente
+    // de `available`), só pra "dono", bloqueada sem confirmação possível se já foi usado alguma
+    // vez em algum pedido (qualquer status).
+    const ownerOnly: AsyncHandler[] = [
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('dono'),
+    ];
+    application.del('/restaurants/me/products/:id', ...ownerOnly, async (req: Request, res: Response) => {
+      const product = await this.findOwnedProduct(req.params.id, req.restaurantId!);
+      const usageCount = await this.orderRepository.countByProduct(req.restaurantId!, product.id);
+      if (usageCount > 0) {
+        throw new ConflictError('Produto já foi usado em algum pedido e não pode ser excluído');
+      }
+      await this.productRepository.remove(product.id);
+      res.send(204);
+    });
   }
 
   private async findOwnedMenuCategory(id: string, restaurantId: string): Promise<IMenuCategory> {

@@ -1,11 +1,12 @@
 import type { Request, Response, Server } from 'restify';
 
+import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { IMenuCategoryRepository } from '../domain/repositories/menu-category.repository.interface';
 import { IProductRepository } from '../domain/repositories/product.repository.interface';
 import { CatalogController } from './catalog.controller';
 
-type FakeRequest = Partial<Pick<Request, 'params' | 'body'>> & { restaurantId?: string };
-type FakeResponse = Pick<Response, 'json'>;
+type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & { restaurantId?: string };
+type FakeResponse = Pick<Response, 'json'> & Partial<Pick<Response, 'send'>>;
 type RouteHandler = (req: FakeRequest, res: FakeResponse) => Promise<void>;
 
 function buildFakeApplication() {
@@ -22,6 +23,9 @@ function buildFakeApplication() {
     },
     patch: (path: string, ...handlers: RouteHandler[]) => {
       routes[`PATCH ${path}`] = handlers;
+    },
+    del: (path: string, ...handlers: RouteHandler[]) => {
+      routes[`DELETE ${path}`] = handlers;
     },
   };
   return { application: application as unknown as Server, routes };
@@ -62,7 +66,13 @@ function buildProduct(overrides: Record<string, unknown> = {}) {
 }
 
 describe('CatalogController', () => {
-  function setup(overrides: { menuCategoryRepository?: Partial<IMenuCategoryRepository>; productRepository?: Partial<IProductRepository> } = {}) {
+  function setup(
+    overrides: {
+      menuCategoryRepository?: Partial<IMenuCategoryRepository>;
+      productRepository?: Partial<IProductRepository>;
+      orderRepository?: Partial<IOrderRepository>;
+    } = {},
+  ) {
     const menuCategoryRepository: Partial<IMenuCategoryRepository> = {
       listByRestaurant: jest.fn().mockResolvedValue([buildCategory()]),
       create: jest.fn().mockResolvedValue({ id: 'c-2', restaurantId: 'r-1', name: 'Bebidas', sortOrder: 1 }),
@@ -77,7 +87,12 @@ describe('CatalogController', () => {
       create: jest.fn().mockResolvedValue(buildProduct({ id: 'p-2' })),
       update: jest.fn().mockResolvedValue(buildProduct({ name: 'Pizza atualizada' })),
       setAvailable: jest.fn().mockResolvedValue(buildProduct({ isAvailable: false })),
+      remove: jest.fn().mockResolvedValue(undefined),
       ...overrides.productRepository,
+    };
+    const orderRepository: Partial<IOrderRepository> = {
+      countByProduct: jest.fn().mockResolvedValue(0),
+      ...overrides.orderRepository,
     };
     const restaurantOperatorMiddleware = jest.fn(async () => {});
     const { application, routes } = buildFakeApplication();
@@ -85,8 +100,9 @@ describe('CatalogController', () => {
       menuCategoryRepository as IMenuCategoryRepository,
       productRepository as IProductRepository,
       restaurantOperatorMiddleware,
+      orderRepository as IOrderRepository,
     ).initializeRoutes(application);
-    return { menuCategoryRepository, productRepository, routes };
+    return { menuCategoryRepository, productRepository, orderRepository, routes };
   }
 
   it('AC-1: GET /restaurants/:id/menu-categories retorna as categorias do restaurante', async () => {
@@ -233,5 +249,169 @@ describe('CatalogController', () => {
 
     expect(productRepository.setAvailable).toHaveBeenCalledWith('p-1', false);
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ isAvailable: false }));
+  });
+
+  // specs/0025-adicionais-reutilizaveis-remocao
+  it('AC-2: POST /restaurants/me/products aceita um grupo vinculado a um template (referência mínima)', async () => {
+    const { productRepository, routes } = setup();
+    const json = jest.fn();
+    const body = {
+      menuCategoryId: 'c-1',
+      name: 'Pizza',
+      price: 50,
+      isAvailable: true,
+      additionalGroups: [{ id: 'g-1', productId: 'p-2', templateId: 'tpl-1' }],
+    };
+
+    await runOperatorChain(routes['POST /restaurants/me/products'], { restaurantId: 'r-1', body }, { json });
+
+    expect(productRepository.create).toHaveBeenCalledWith(
+      'r-1',
+      expect.objectContaining({ additionalGroups: [{ id: 'g-1', productId: 'p-2', templateId: 'tpl-1' }] }),
+    );
+  });
+
+  // Bug real reportado rodando a retaguarda de verdade: `AdditionalGroupBuilder.tsx` manda
+  // `templateId` JUNTO com os campos resolvidos (nome/opções/etc — pro preview antes de salvar),
+  // não só a referência mínima. Isso derrubava o vínculo no primeiro "Salvar" — o zod caía no
+  // schema inline (que não conhece `templateId`) e descartava esse campo.
+  it('PUT /restaurants/me/products/:id preserva templateId mesmo quando o payload também traz os campos resolvidos', async () => {
+    const { productRepository, routes } = setup();
+    const json = jest.fn();
+    const body = {
+      additionalGroups: [
+        {
+          id: 'g-1',
+          productId: 'p-1',
+          templateId: 'tpl-1',
+          name: 'Bordas',
+          type: 'adicionar',
+          required: true,
+          minSelections: 1,
+          maxSelections: 1,
+          options: [{ id: 'o-1', groupId: 'g-1', name: 'Borda Catupiry', priceDelta: 8 }],
+        },
+      ],
+    };
+
+    await runOperatorChain(routes['PUT /restaurants/me/products/:id'], { restaurantId: 'r-1', params: { id: 'p-1' }, body }, { json });
+
+    expect(productRepository.update).toHaveBeenCalledWith(
+      'p-1',
+      expect.objectContaining({
+        additionalGroups: [expect.objectContaining({ id: 'g-1', productId: 'p-1', templateId: 'tpl-1' })],
+      }),
+    );
+  });
+
+  it('AC-9: POST /restaurants/me/products rejeita grupo inline "remover" com priceDelta diferente de 0', async () => {
+    const { routes } = setup();
+    const body = {
+      menuCategoryId: 'c-1',
+      name: 'McFish Duplo',
+      price: 49,
+      isAvailable: true,
+      additionalGroups: [
+        {
+          id: 'g-1',
+          productId: 'p-2',
+          name: 'Deseja remover algum ingrediente?',
+          type: 'remover',
+          required: false,
+          minSelections: 0,
+          maxSelections: 4,
+          options: [{ id: 'o-1', groupId: 'g-1', name: 'Molho tártaro', priceDelta: 4 }],
+        },
+      ],
+    };
+
+    await expect(
+      runOperatorChain(routes['POST /restaurants/me/products'], { restaurantId: 'r-1', body }, { json: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('grupo inline sem "type" assume "adicionar" por padrão (retrocompatibilidade)', async () => {
+    const { productRepository, routes } = setup();
+    const body = {
+      menuCategoryId: 'c-1',
+      name: 'Pizza',
+      price: 50,
+      isAvailable: true,
+      additionalGroups: [
+        {
+          id: 'g-1',
+          productId: 'p-2',
+          name: 'Sabor',
+          required: true,
+          minSelections: 1,
+          maxSelections: 1,
+          options: [{ id: 'o-1', groupId: 'g-1', name: 'Calabresa', priceDelta: 0 }],
+        },
+      ],
+    };
+
+    await runOperatorChain(routes['POST /restaurants/me/products'], { restaurantId: 'r-1', body }, { json: jest.fn() });
+
+    expect(productRepository.create).toHaveBeenCalledWith(
+      'r-1',
+      expect.objectContaining({ additionalGroups: [expect.objectContaining({ type: 'adicionar' })] }),
+    );
+  });
+
+  // specs/0026-selecao-clonar-excluir-busca-web
+  it('REQ-7: GET /restaurants/me/products repassa name/isAvailable da query pro repositório', async () => {
+    const { productRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['GET /restaurants/me/products'],
+      { restaurantId: 'r-1', query: { name: 'piz', isAvailable: 'true' } },
+      { json },
+    );
+
+    expect(productRepository.listByRestaurant).toHaveBeenCalledWith('r-1', { name: 'piz', isAvailable: true });
+  });
+
+  it('AC-3: DELETE /restaurants/me/products/:id sem uso em pedidos exclui de verdade (204)', async () => {
+    const { productRepository, routes } = setup();
+    const send = jest.fn();
+
+    await runOperatorChain(
+      routes['DELETE /restaurants/me/products/:id'],
+      { restaurantId: 'r-1', params: { id: 'p-1' } },
+      { json: jest.fn(), send },
+    );
+
+    expect(productRepository.remove).toHaveBeenCalledWith('p-1');
+    expect(send).toHaveBeenCalledWith(204);
+  });
+
+  it('AC-4: DELETE /restaurants/me/products/:id bloqueia (409) se já apareceu em algum pedido', async () => {
+    const { productRepository, routes } = setup({ orderRepository: { countByProduct: jest.fn().mockResolvedValue(1) } });
+    const send = jest.fn();
+
+    await expect(
+      runOperatorChain(
+        routes['DELETE /restaurants/me/products/:id'],
+        { restaurantId: 'r-1', params: { id: 'p-1' } },
+        { json: jest.fn(), send },
+      ),
+    ).rejects.toMatchObject({ statusCode: 409 });
+
+    expect(productRepository.remove).not.toHaveBeenCalled();
+  });
+
+  it('lança 404 ao tentar excluir produto de outro restaurante', async () => {
+    const { routes } = setup({
+      productRepository: { findById: jest.fn().mockResolvedValue(buildProduct({ restaurantId: 'r-OUTRO' })) },
+    });
+
+    await expect(
+      runOperatorChain(
+        routes['DELETE /restaurants/me/products/:id'],
+        { restaurantId: 'r-1', params: { id: 'p-1' } },
+        { json: jest.fn(), send: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 404 });
   });
 });

@@ -20,10 +20,17 @@ const productAdditionalGroupSchema = new Schema(
   {
     id: { type: String, required: true },
     productId: { type: String, required: true },
-    name: { type: String, required: true },
-    required: { type: Boolean, required: true },
-    minSelections: { type: Number, required: true },
-    maxSelections: { type: Number, required: true },
+    // specs/0025-adicionais-reutilizaveis-remocao REQ-2/REQ-3 — presente = grupo vinculado a um
+    // AdditionalGroupTemplate, resolvido na leitura (ProductMongooseRepository). Quando vinculado,
+    // o cliente manda só {id, productId, templateId} (`productAdditionalGroupReferenceSchema`) —
+    // por isso os 4 campos abaixo NÃO são `required` aqui (diferente do zod, que exige tudo no
+    // grupo inline): salvos como snapshot/rede-de-segurança, sempre sobrescritos na leitura.
+    templateId: { type: String },
+    name: { type: String, default: '' },
+    type: { type: String, enum: ['adicionar', 'remover'], required: true, default: 'adicionar' },
+    required: { type: Boolean, default: false },
+    minSelections: { type: Number, default: 0 },
+    maxSelections: { type: Number, default: 0 },
     options: { type: [productAdditionalOptionSchema], default: [] },
   },
   { _id: false },

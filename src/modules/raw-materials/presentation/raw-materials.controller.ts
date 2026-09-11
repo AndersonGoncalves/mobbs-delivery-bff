@@ -1,5 +1,5 @@
 import type { Request, Response, Server } from 'restify';
-import { NotFoundError } from 'restify-errors';
+import { ConflictError, NotFoundError } from 'restify-errors';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
@@ -8,7 +8,12 @@ import { requireOperatorRole } from '../../../shared/http/require-operator-role.
 import { IProductRepository } from '../../catalog/domain/repositories/product.repository.interface';
 import { IRawMaterialRepository } from '../domain/repositories/raw-material.repository.interface';
 import { IStockMovementRepository } from '../domain/repositories/stock-movement.repository.interface';
-import { saveRawMaterialSchema, setRawMaterialActiveSchema, stockAdjustmentSchema } from './raw-material.schemas';
+import {
+  listRawMaterialsQuerySchema,
+  saveRawMaterialSchema,
+  setRawMaterialActiveSchema,
+  stockAdjustmentSchema,
+} from './raw-material.schemas';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
@@ -40,8 +45,13 @@ export class RawMaterialsController extends BaseRouter {
       requireOperatorRole('dono', 'gerente'),
     ];
 
+    // specs/0026-selecao-clonar-excluir-busca-web REQ-7 — `name`/`isActive` filtram no servidor.
     application.get('/restaurants/me/raw-materials', ...authenticated, async (req: Request, res: Response) => {
-      const materials = await this.rawMaterialRepository.listByRestaurant(req.restaurantId!);
+      const query = parseBody(listRawMaterialsQuerySchema, req.query ?? {});
+      const materials = await this.rawMaterialRepository.listByRestaurant(req.restaurantId!, {
+        name: query.name,
+        isActive: query.isActive === undefined ? undefined : query.isActive === 'true',
+      });
       res.json(200, materials);
     });
 
@@ -120,6 +130,23 @@ export class RawMaterialsController extends BaseRouter {
         res.json(200, movements);
       },
     );
+
+    // specs/0026-selecao-clonar-excluir-busca-web REQ-4/REQ-5/REQ-6 — exclusão REAL, só "dono",
+    // bloqueada sem confirmação possível se já foi referenciada por algum produto (ativo ou não).
+    const ownerOnly: AsyncHandler[] = [
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('dono'),
+    ];
+    application.del('/restaurants/me/raw-materials/:id', ...ownerOnly, async (req: Request, res: Response) => {
+      const material = await this.findOwnedRawMaterial(req.params.id, req.restaurantId!);
+      const usageCount = await this.productRepository.countAnyByRawMaterialId(req.restaurantId!, material.id);
+      if (usageCount > 0) {
+        throw new ConflictError('Matéria-prima já foi usada em algum produto e não pode ser excluída');
+      }
+      await this.rawMaterialRepository.remove(material.id);
+      res.send(204);
+    });
   }
 
   private async findOwnedRawMaterial(id: string, restaurantId: string) {

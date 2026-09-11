@@ -183,4 +183,8 @@ export class OrderMongooseRepository implements IOrderRepository {
   async countByCustomerAndCoupon(restaurantId: string, customerId: string, couponCode: string): Promise<number> {
     return OrderModel.countDocuments({ restaurantId, customerId, couponCode });
   }
+
+  async countByProduct(restaurantId: string, productId: string): Promise<number> {
+    return OrderModel.countDocuments({ restaurantId, 'items.productId': productId });
+  }
 }

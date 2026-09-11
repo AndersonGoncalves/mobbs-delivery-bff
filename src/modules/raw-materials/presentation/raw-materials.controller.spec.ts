@@ -5,8 +5,8 @@ import { IRawMaterialRepository } from '../domain/repositories/raw-material.repo
 import { IStockMovementRepository } from '../domain/repositories/stock-movement.repository.interface';
 import { RawMaterialsController } from './raw-materials.controller';
 
-type FakeRequest = Partial<Pick<Request, 'params' | 'body'>> & { restaurantId?: string; user?: { uid: string } };
-type FakeResponse = Pick<Response, 'json'>;
+type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & { restaurantId?: string; user?: { uid: string } };
+type FakeResponse = Pick<Response, 'json'> & Partial<Pick<Response, 'send'>>;
 type RouteHandler = (req: FakeRequest, res: FakeResponse) => Promise<void>;
 
 function buildFakeApplication() {
@@ -23,6 +23,9 @@ function buildFakeApplication() {
     },
     patch: (path: string, ...handlers: RouteHandler[]) => {
       routes[`PATCH ${path}`] = handlers;
+    },
+    del: (path: string, ...handlers: RouteHandler[]) => {
+      routes[`DELETE ${path}`] = handlers;
     },
   };
   return { application: application as unknown as Server, routes };
@@ -76,10 +79,12 @@ describe('RawMaterialsController', () => {
       setActive: jest.fn().mockResolvedValue(buildMaterial({ isActive: false })),
       findById: jest.fn().mockResolvedValue(buildMaterial()),
       incrementStock: jest.fn().mockResolvedValue(buildMaterial({ currentStock: 15 })),
+      remove: jest.fn().mockResolvedValue(undefined),
       ...overrides.rawMaterialRepository,
     };
     const productRepository: Partial<IProductRepository> = {
       findActiveByRawMaterialId: jest.fn().mockResolvedValue([]),
+      countAnyByRawMaterialId: jest.fn().mockResolvedValue(0),
       ...overrides.productRepository,
     };
     const stockMovementRepository: Partial<IStockMovementRepository> = {
@@ -104,7 +109,7 @@ describe('RawMaterialsController', () => {
 
     await runOperatorChain(routes['GET /restaurants/me/raw-materials'], { restaurantId: 'r-1' }, { json });
 
-    expect(rawMaterialRepository.listByRestaurant).toHaveBeenCalledWith('r-1');
+    expect(rawMaterialRepository.listByRestaurant).toHaveBeenCalledWith('r-1', { name: undefined, isActive: undefined });
   });
 
   it('AC-5: POST /restaurants/me/raw-materials cria um novo item disponível pra vincular', async () => {
@@ -297,5 +302,50 @@ describe('RawMaterialsController', () => {
         { json: jest.fn() },
       ),
     ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  // specs/0026-selecao-clonar-excluir-busca-web
+  it('REQ-7: GET /restaurants/me/raw-materials repassa name/isActive da query pro repositório', async () => {
+    const { rawMaterialRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['GET /restaurants/me/raw-materials'],
+      { restaurantId: 'r-1', query: { name: 'bac', isActive: 'false' } },
+      { json },
+    );
+
+    expect(rawMaterialRepository.listByRestaurant).toHaveBeenCalledWith('r-1', { name: 'bac', isActive: false });
+  });
+
+  it('AC-3: DELETE /restaurants/me/raw-materials/:id sem uso em produto exclui de verdade (204)', async () => {
+    const { rawMaterialRepository, routes } = setup();
+    const send = jest.fn();
+
+    await runOperatorChain(
+      routes['DELETE /restaurants/me/raw-materials/:id'],
+      { restaurantId: 'r-1', params: { id: 'rm-1' } },
+      { json: jest.fn(), send },
+    );
+
+    expect(rawMaterialRepository.remove).toHaveBeenCalledWith('rm-1');
+    expect(send).toHaveBeenCalledWith(204);
+  });
+
+  it('AC-5: DELETE /restaurants/me/raw-materials/:id bloqueia (409) mesmo se o produto que usa está indisponível', async () => {
+    const { rawMaterialRepository, routes } = setup({
+      productRepository: { countAnyByRawMaterialId: jest.fn().mockResolvedValue(1) },
+    });
+    const send = jest.fn();
+
+    await expect(
+      runOperatorChain(
+        routes['DELETE /restaurants/me/raw-materials/:id'],
+        { restaurantId: 'r-1', params: { id: 'rm-1' } },
+        { json: jest.fn(), send },
+      ),
+    ).rejects.toMatchObject({ statusCode: 409 });
+
+    expect(rawMaterialRepository.remove).not.toHaveBeenCalled();
   });
 });

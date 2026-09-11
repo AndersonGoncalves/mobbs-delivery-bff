@@ -17,6 +17,12 @@ export const setRawMaterialActiveSchema = z.object({
   confirmed: z.boolean().optional(),
 });
 
+// specs/0026-selecao-clonar-excluir-busca-web REQ-7 — query params chegam sempre como string.
+export const listRawMaterialsQuerySchema = z.object({
+  name: z.string().min(1).optional(),
+  isActive: z.enum(['true', 'false']).optional(),
+});
+
 /** specs/0015-estoque-compras REQ-5 — ajuste manual de estoque, sempre com motivo. */
 export const stockAdjustmentSchema = z.object({
   type: z.enum(['entrada', 'saida']),
