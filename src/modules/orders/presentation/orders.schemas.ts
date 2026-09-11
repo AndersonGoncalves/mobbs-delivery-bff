@@ -2,6 +2,20 @@ import { z } from 'zod';
 
 import { IOrderItemSelection } from '../domain/entities/order.entity';
 
+/**
+ * Bug real reportado rodando o app de verdade contra o BFF: `.optional()` sozinho só aceita a
+ * chave *ausente* do JSON — um cliente que serializa `"campo": null` explicitamente pra "sem
+ * valor" (em vez de omitir a chave) derrubava a validação com "expected string, received null".
+ * `.nullable()` + `.transform()` aceita os dois formatos (ausente ou `null`) e normaliza pra
+ * `undefined`, mantendo o tipo inferido (`string | undefined`) igual ao que o resto do código já
+ * espera — sem precisar mudar nenhuma assinatura de função que já consome esses campos.
+ */
+const optionalString = (schema: z.ZodString) =>
+  schema
+    .optional()
+    .nullable()
+    .transform((value) => value ?? undefined);
+
 // specs/0005-checkout — árvore recursiva (produto composto, mesmo motivo de
 // `nestedAdditionalGroups` em catalog/presentation) precisa de `z.lazy()`.
 const orderItemSelectionSchema: z.ZodType<IOrderItemSelection> = z.lazy(() =>
@@ -20,7 +34,7 @@ const orderItemSchema = z.object({
   quantity: z.number().int().min(1),
   unitPrice: z.number().nonnegative(),
   selections: z.array(orderItemSelectionSchema).default([]),
-  notes: z.string().optional(),
+  notes: optionalString(z.string()),
 });
 
 /**
@@ -34,14 +48,14 @@ export const createOrderSchema = z
     restaurantId: z.string().min(1),
     items: z.array(orderItemSchema).min(1),
     orderType: z.enum(['delivery', 'pickup']),
-    deliveryAddress: z.string().min(1).optional(),
-    notes: z.string().optional(),
+    deliveryAddress: optionalString(z.string().min(1)),
+    notes: optionalString(z.string()),
     paymentMethod: z.enum(['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer']),
-    cardBrand: z.string().min(1).optional(),
+    cardBrand: optionalString(z.string().min(1)),
     // specs/0022-cupons-desconto REQ-2 — opcional; o app só manda quando o cliente digitou e
     // "aplicou" um código no checkout. Revalidado sempre no controller (nunca confia no desconto
     // calculado pelo app) — este schema só garante o formato, não a validade do cupom em si.
-    couponCode: z.string().min(1).optional(),
+    couponCode: optionalString(z.string().min(1)),
   })
   .superRefine((data, ctx) => {
     if (data.orderType === 'delivery' && !data.deliveryAddress) {

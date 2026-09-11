@@ -9,7 +9,9 @@
     "start": "node dist/main.js",
     "dev": "ts-node-dev --respawn --transpile-only src/main.ts",
     "lint": "eslint \"src/**/*.ts\"",
-    "test": "jest --passWithNoTests"
+    "test": "jest --passWithNoTests",
+    "seed:restaurant": "ts-node --transpile-only scripts/seed-restaurant.ts",
+    "seed:catalog": "ts-node --transpile-only scripts/seed-catalog.ts"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^7.0.0-rc14",

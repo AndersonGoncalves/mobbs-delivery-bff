@@ -29,6 +29,17 @@ export class Server {
     this.application.pre((_req, res, next) => {
       res.header('Access-Control-Allow-Origin', '*');
       res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+      return next();
+    });
+
+    // mobbs-delivery-web (browser) faz preflight OPTIONS antes de qualquer request autenticado
+    // (ex.: Authorization header) — sem uma rota OPTIONS real, o Restify responde 404 sem os
+    // headers de CORS e o navegador bloqueia a request real com "preflight doesn't pass access
+    // control check", mesmo com os headers acima no `pre()`. O app Flutter nunca disparou esse
+    // bug porque requisição nativa não faz preflight de navegador.
+    this.application.opts('/*', (_req, res, next) => {
+      res.send(204);
       return next();
     });
 
