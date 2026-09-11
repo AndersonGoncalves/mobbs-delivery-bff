@@ -147,6 +147,32 @@ describe('AdditionalGroupTemplatesController', () => {
     expect(templateRepository.create).toHaveBeenCalledWith('r-1', expect.objectContaining({ type: 'remover' }));
   });
 
+  it('rejeita template obrigatório com Mín. seleções 0 (required/minSelections inconsistentes)', async () => {
+    const { routes } = setup();
+    const payload = { name: 'BORDAS', type: 'adicionar', required: true, minSelections: 0, maxSelections: 1, options: [] };
+
+    await expect(
+      runOperatorChain(
+        routes['POST /restaurants/me/additional-group-templates'],
+        { restaurantId: 'r-1', body: payload },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('rejeita template não-obrigatório com Mín. seleções >= 1 (required/minSelections inconsistentes)', async () => {
+    const { routes } = setup();
+    const payload = { name: 'ACRESCIMOS', type: 'adicionar', required: false, minSelections: 1, maxSelections: 3, options: [] };
+
+    await expect(
+      runOperatorChain(
+        routes['POST /restaurants/me/additional-group-templates'],
+        { restaurantId: 'r-1', body: payload },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
   it('AC-4: PATCH .../active pra desativar sem produtos afetados aplica direto', async () => {
     const { templateRepository, routes } = setup();
     const json = jest.fn();

@@ -19,16 +19,36 @@ export const saveAdditionalGroupTemplateSchema = z
     options: z.array(additionalGroupTemplateOptionSchema).default([]),
   })
   .superRefine((data, ctx) => {
-    if (data.type !== 'remover') return;
-    data.options.forEach((option, index) => {
-      if (option.priceDelta !== 0) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['options', index, 'priceDelta'],
-          message: 'Opção de grupo "remover" não pode ter preço adicional diferente de 0',
-        });
-      }
-    });
+    if (data.type === 'remover') {
+      data.options.forEach((option, index) => {
+        if (option.priceDelta !== 0) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['options', index, 'priceDelta'],
+            message: 'Opção de grupo "remover" não pode ter preço adicional diferente de 0',
+          });
+        }
+      });
+    }
+
+    // `required` é decorativo pra quem consome (app/web só leem `minSelections` pra saber se o
+    // grupo pode ficar vazio) — sem essa checagem, um grupo `required: true, minSelections: 0`
+    // (bug real já visto em dado legado) mostra "Obrigatório" na UI mas nunca bloqueia salvar sem
+    // seleção nenhuma.
+    if (data.required && data.minSelections < 1) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['minSelections'],
+        message: 'Grupo obrigatório precisa de Min. seleções >= 1',
+      });
+    }
+    if (!data.required && data.minSelections >= 1) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['required'],
+        message: 'Min. seleções >= 1 exige que o grupo esteja marcado como obrigatório',
+      });
+    }
   });
 
 export const setAdditionalGroupTemplateActiveSchema = z.object({

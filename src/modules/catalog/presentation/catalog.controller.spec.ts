@@ -330,6 +330,77 @@ describe('CatalogController', () => {
     ).rejects.toMatchObject({ statusCode: 400 });
   });
 
+  it('POST /restaurants/me/products rejeita grupo inline obrigatório com Mín. seleções 0', async () => {
+    const { routes } = setup();
+    const body = {
+      menuCategoryId: 'c-1',
+      name: 'Pizza',
+      price: 49,
+      isAvailable: true,
+      additionalGroups: [
+        {
+          id: 'g-1',
+          productId: 'p-2',
+          name: 'Escolha o sabor',
+          type: 'adicionar',
+          required: true,
+          minSelections: 0,
+          maxSelections: 1,
+          options: [{ id: 'o-1', groupId: 'g-1', name: 'Calabresa', priceDelta: 0 }],
+        },
+      ],
+    };
+
+    await expect(
+      runOperatorChain(routes['POST /restaurants/me/products'], { restaurantId: 'r-1', body }, { json: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('POST /restaurants/me/products rejeita grupo aninhado (nestedAdditionalGroups) obrigatório com Mín. seleções 0', async () => {
+    const { routes } = setup();
+    const body = {
+      menuCategoryId: 'c-1',
+      name: 'Pizza',
+      price: 49,
+      isAvailable: true,
+      additionalGroups: [
+        {
+          id: 'g-1',
+          productId: 'p-2',
+          name: 'Escolha o sabor',
+          type: 'adicionar',
+          required: true,
+          minSelections: 1,
+          maxSelections: 1,
+          options: [
+            {
+              id: 'o-1',
+              groupId: 'g-1',
+              name: 'Calabresa',
+              priceDelta: 0,
+              nestedAdditionalGroups: [
+                {
+                  id: 'g-nested',
+                  productId: 'p-2',
+                  name: 'Ingredientes extra',
+                  type: 'adicionar',
+                  required: true,
+                  minSelections: 0,
+                  maxSelections: 3,
+                  options: [{ id: 'o-nested', groupId: 'g-nested', name: 'Bacon', priceDelta: 5 }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    await expect(
+      runOperatorChain(routes['POST /restaurants/me/products'], { restaurantId: 'r-1', body }, { json: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
   it('grupo inline sem "type" assume "adicionar" por padrão (retrocompatibilidade)', async () => {
     const { productRepository, routes } = setup();
     const body = {

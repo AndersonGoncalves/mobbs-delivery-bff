@@ -38,16 +38,35 @@ const productAdditionalGroupInlineSchema: z.ZodType<IProductAdditionalGroup> = z
       options: z.array(productAdditionalOptionSchema).default([]),
     })
     .superRefine((data, ctx) => {
-      if (data.type !== 'remover') return;
-      data.options.forEach((option, index) => {
-        if (option.priceDelta !== 0) {
-          ctx.addIssue({
-            code: 'custom',
-            path: ['options', index, 'priceDelta'],
-            message: 'Opção de grupo "remover" não pode ter preço adicional diferente de 0',
-          });
-        }
-      });
+      if (data.type === 'remover') {
+        data.options.forEach((option, index) => {
+          if (option.priceDelta !== 0) {
+            ctx.addIssue({
+              code: 'custom',
+              path: ['options', index, 'priceDelta'],
+              message: 'Opção de grupo "remover" não pode ter preço adicional diferente de 0',
+            });
+          }
+        });
+      }
+
+      // Mesma regra de `additional-group-template.schemas.ts` — `required` é decorativo pra quem
+      // consome (só `minSelections` decide se o grupo pode ficar vazio), aplicada em todo nível
+      // (`z.lazy()` recursivo cobre `nestedAdditionalGroups` automaticamente).
+      if (data.required && data.minSelections < 1) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['minSelections'],
+          message: 'Grupo obrigatório precisa de Min. seleções >= 1',
+        });
+      }
+      if (!data.required && data.minSelections >= 1) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['required'],
+          message: 'Min. seleções >= 1 exige que o grupo esteja marcado como obrigatório',
+        });
+      }
     }),
 );
 
