@@ -5,11 +5,13 @@
  * manualmente no mongosh.
  *
  * Uso:
- *   npm run seed:restaurant -- --slug=meu-restaurante --name="Meu Restaurante" --email=voce@gmail.com
+ *   npm run seed:restaurant -- --slug=meu-restaurante --name="Meu Restaurante" --email=voce@gmail.com --logoUrl=/home/anderson/Downloads/mcdonald1.jpg
  *
  * Todos os argumentos são opcionais (defaults abaixo). O e-mail do operador precisa bater com o
  * e-mail da conta Google que vai logar na retaguarda depois que um projeto Firebase real
- * existir — sem isso, o login na retaguarda não reconhece esse operador.
+ * existir — sem isso, o login na retaguarda não reconhece esse operador. `--logoUrl` é regravado
+ * a cada execução (via `$set`, não `$setOnInsert`) — útil pra trocar a imagem de um restaurante
+ * já existente sem recriar o documento.
  */
 import * as dotenv from 'dotenv';
 import mongoose from 'mongoose';
@@ -33,6 +35,7 @@ async function main(): Promise<void> {
   const slug = args.slug ?? 'restaurante-teste';
   const name = args.name ?? 'Restaurante Teste';
   const operatorEmail = args.email ?? 'operador@exemplo.com';
+  const logoUrl = args.logoUrl;
 
   const dbUrl = process.env.DB_URL ?? 'mongodb://localhost:27017/mobbs-delivery';
   await mongoose.connect(dbUrl);
@@ -50,6 +53,7 @@ async function main(): Promise<void> {
         deliveryFeeCents: 0,
         whatsappConnected: false,
       },
+      ...(logoUrl ? { $set: { logoUrl } } : {}),
     },
     { upsert: true, new: true },
   );
@@ -71,6 +75,7 @@ async function main(): Promise<void> {
   console.log(`  id: ${restaurant._id}`);
   console.log(`  slug: ${restaurant.slug}`);
   console.log(`  name: ${restaurant.name}`);
+  console.log(`  logoUrl: ${restaurant.logoUrl ?? '(não definido)'}`);
   console.log('\nOperador (papel "dono"):');
   console.log(`  email: ${operator.email}`);
   console.log('\nTeste com:');
