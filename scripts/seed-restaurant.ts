@@ -49,6 +49,9 @@ async function main(): Promise<void> {
         slug,
         isActive: true,
         businessHours: [],
+        // Mesmo azul de AppColors.primary (mobbs_ui_kit) — restaurante de teste já nasce com a
+        // cor primária configurada, em vez de depender do fallback do app.
+        primaryColor: '#274FEC',
         minimumOrderValue: 0,
         deliveryFeeCents: 0,
         whatsappConnected: false,
@@ -76,6 +79,7 @@ async function main(): Promise<void> {
   console.log(`  slug: ${restaurant.slug}`);
   console.log(`  name: ${restaurant.name}`);
   console.log(`  logoUrl: ${restaurant.logoUrl ?? '(não definido)'}`);
+  console.log(`  primaryColor: ${restaurant.primaryColor ?? '(não definido)'}`);
   console.log('\nOperador (papel "dono"):');
   console.log(`  email: ${operator.email}`);
   console.log('\nTeste com:');
