@@ -518,6 +518,24 @@ describe('CatalogController', () => {
     expect(json).toHaveBeenCalledWith(200, [productP2, productP1]);
   });
 
+  // specs/0031-imagem-padrao-disponibilidade-checkout-ajustes REQ-5.
+  it('AC-7: GET /restaurants/:id/best-sellers não inclui produto indisponível', async () => {
+    const availableProduct = buildProduct({ id: 'p-1', isAvailable: true });
+    const unavailableProduct = buildProduct({ id: 'p-2', isAvailable: false });
+    const { routes } = setup({
+      restaurantRepository: { findById: jest.fn().mockResolvedValue({ id: 'r-1', bestSellersCount: 6 }) },
+      orderRepository: { getBestSellingProductIds: jest.fn().mockResolvedValue(['p-2', 'p-1']) },
+      productRepository: {
+        findById: jest.fn(async (id: string) => (id === 'p-2' ? unavailableProduct : availableProduct)),
+      },
+    });
+    const json = jest.fn();
+
+    await runAuthenticatedChain(routes['GET /restaurants/:id/best-sellers'], { params: { id: 'r-1' } }, { json });
+
+    expect(json).toHaveBeenCalledWith(200, [availableProduct]);
+  });
+
   // specs/0028-destaques-vendidos-banners REQ-2/AC-2.
   it('AC-2: GET /restaurants/:id/best-sellers sem nenhum pedido entregue devolve lista vazia', async () => {
     const { routes } = setup({

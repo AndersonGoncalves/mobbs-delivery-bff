@@ -34,6 +34,13 @@ export const restaurantProfileSchema = z
     logoUrl: z.string().url(),
     primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Cor deve estar em formato #RRGGBB'),
     onPrimaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Cor deve estar em formato #RRGGBB'),
+    // specs/0031-imagem-padrao-disponibilidade-checkout-ajustes REQ-1.
+    // specs/0031-imagem-padrao-disponibilidade-checkout-ajustes REQ-1 — `.optional()` de
+    // propósito (diferente de `logoUrl`/`primaryColor` acima): a maioria dos restaurantes nunca
+    // configura isso, então o form da retaguarda manda `undefined` (chave omitida) quando vazio,
+    // não uma string vazia — não pode falhar `.url()` no primeiro "Salvar" de quem nunca mexeu
+    // nesse campo.
+    defaultProductImageUrl: z.string().url().optional(),
     address: z.object({
       street: z.string().min(1),
       number: z.string().min(1),

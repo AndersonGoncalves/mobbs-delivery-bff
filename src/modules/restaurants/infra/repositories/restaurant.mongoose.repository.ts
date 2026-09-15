@@ -19,6 +19,7 @@ interface RestaurantLeanDocument {
   logoUrl?: string;
   primaryColor?: string;
   onPrimaryColor?: string;
+  defaultProductImageUrl?: string;
   businessHours?: IBusinessHours[];
   address?: IRestaurantAddress;
   phone?: string;
@@ -49,6 +50,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     logoUrl: doc.logoUrl,
     primaryColor: doc.primaryColor,
     onPrimaryColor: doc.onPrimaryColor,
+    defaultProductImageUrl: doc.defaultProductImageUrl,
     businessHours: doc.businessHours ?? [],
     address: doc.address,
     phone: doc.phone,

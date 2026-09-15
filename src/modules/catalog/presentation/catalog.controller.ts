@@ -77,7 +77,9 @@ export class CatalogController extends BaseRouter {
         const limit = restaurant?.bestSellersCount ?? 0;
         const bestSellingIds = limit > 0 ? await this.orderRepository.getBestSellingProductIds(req.params.id, limit) : [];
         const products = await Promise.all(bestSellingIds.map((id) => this.productRepository.findById(id)));
-        res.json(200, products.filter((product): product is IProduct => product !== null));
+        // specs/0031-imagem-padrao-disponibilidade-checkout-ajustes REQ-5 — produto indisponível
+        // não aparece em "Mais vendidos", mesmo tendo vendas passadas.
+        res.json(200, products.filter((product): product is IProduct => product !== null && product.isAvailable));
       },
     );
 
