@@ -75,4 +75,13 @@ export interface IOrderRepository {
    * exclusão real de um produto já usado alguma vez.
    */
   countByProduct(restaurantId: string, productId: string): Promise<number>;
+
+  /**
+   * specs/0028-destaques-vendidos-banners REQ-2 — ranking de produtos por quantidade total
+   * vendida, só considerando pedidos com status **entregue** (mesma regra de "venda realizada"
+   * já usada em `getSalesSummary`/`totalRevenue`). Devolve só os ids, do mais pro menos vendido,
+   * limitado a `limit` — calculado on demand a cada chamada, nunca persistido (mesmo raciocínio
+   * de `getSalesSummary`: cache ficaria desatualizado a cada venda nova).
+   */
+  getBestSellingProductIds(restaurantId: string, limit: number): Promise<string[]>;
 }

@@ -6,6 +6,7 @@ import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
 import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
+import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IMenuCategory } from '../domain/entities/menu-category.entity';
 import { IProduct } from '../domain/entities/product.entity';
 import { IMenuCategoryRepository } from '../domain/repositories/menu-category.repository.interface';
@@ -13,6 +14,7 @@ import { IProductRepository } from '../domain/repositories/product.repository.in
 import {
   listProductsQuerySchema,
   menuCategoryNameSchema,
+  reorderFeaturedProductsSchema,
   reorderMenuCategoriesSchema,
   saveProductSchema,
   setProductAvailableSchema,
@@ -43,6 +45,8 @@ export class CatalogController extends BaseRouter {
     // specs/0026-selecao-clonar-excluir-busca-web REQ-5 — checa se o produto já apareceu em
     // algum pedido (qualquer status) antes de permitir a exclusão real.
     private readonly orderRepository: IOrderRepository,
+    // specs/0028-destaques-vendidos-banners REQ-2 — lê `bestSellersCount` do restaurante.
+    private readonly restaurantRepository: IRestaurantRepository,
   ) {
     super();
   }
@@ -61,6 +65,21 @@ export class CatalogController extends BaseRouter {
       const product = await this.productRepository.findById(req.params.id);
       res.json(200, this.render(product));
     });
+
+    // specs/0028-destaques-vendidos-banners REQ-2 — pública (mesmo padrão de
+    // `/restaurants/:id/menu-categories`): qualquer `Customer` logado pode ver o ranking de
+    // "mais vendidos" de qualquer restaurante.
+    application.get(
+      '/restaurants/:id/best-sellers',
+      firebaseAuthMiddleware,
+      async (req: Request, res: Response) => {
+        const restaurant = await this.restaurantRepository.findById(req.params.id);
+        const limit = restaurant?.bestSellersCount ?? 0;
+        const bestSellingIds = limit > 0 ? await this.orderRepository.getBestSellingProductIds(req.params.id, limit) : [];
+        const products = await Promise.all(bestSellingIds.map((id) => this.productRepository.findById(id)));
+        res.json(200, products.filter((product): product is IProduct => product !== null));
+      },
+    );
 
     // specs/0021-papeis-operador REQ-3/T005 — cardápio é `dono`/`gerente` (sem `financeiro`).
     const authenticated: AsyncHandler[] = [
@@ -125,6 +144,18 @@ export class CatalogController extends BaseRouter {
       const product = await this.productRepository.update(req.params.id, payload);
       res.json(200, product);
     });
+
+    // specs/0028-destaques-vendidos-banners REQ-3 — mesmo padrão de
+    // `/restaurants/me/menu-categories/reorder`.
+    application.put(
+      '/restaurants/me/products/featured/reorder',
+      ...authenticated,
+      async (req: Request, res: Response) => {
+        const { orderedIds } = parseBody(reorderFeaturedProductsSchema, req.body);
+        const products = await this.productRepository.reorderFeatured(req.restaurantId!, orderedIds);
+        res.json(200, products);
+      },
+    );
 
     application.patch(
       '/restaurants/me/products/:id/available',

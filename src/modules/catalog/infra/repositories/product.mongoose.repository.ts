@@ -36,6 +36,8 @@ function toEntity(doc: ProductLeanDocument): IProduct {
     price: doc.price,
     isAvailable: doc.isAvailable,
     additionalGroups: doc.additionalGroups ?? [],
+    isFeatured: doc.isFeatured ?? false,
+    featuredOrder: doc.featuredOrder ?? 0,
   };
 }
 
@@ -180,5 +182,27 @@ export class ProductMongooseRepository implements IProductRepository {
   async countAnyByTemplateId(restaurantId: string, templateId: string): Promise<number> {
     const docs = await ProductModel.find({ restaurantId }).lean<ProductLeanDocument[]>();
     return docs.filter((doc) => referencesTemplate(doc.additionalGroups ?? [], templateId)).length;
+  }
+
+  /**
+   * specs/0028-destaques-vendidos-banners REQ-3 — mesmo padrão de
+   * `MenuCategoryMongooseRepository.reorder`: só reatribui `featuredOrder` de produtos que
+   * realmente pertencem a este restaurante, ignora ids de fora (isolamento multi-tenant).
+   */
+  async reorderFeatured(restaurantId: string, orderedIds: string[]): Promise<IProduct[]> {
+    const owned = await ProductModel.find({ restaurantId }).select('_id').lean<{ _id: string }[]>();
+    const ownedIds = new Set(owned.map((doc) => doc._id));
+
+    await Promise.all(
+      orderedIds
+        .filter((id) => ownedIds.has(id))
+        .map((id, index) => ProductModel.updateOne({ _id: id }, { $set: { featuredOrder: index } })),
+    );
+
+    const docs = await ProductModel.find({ restaurantId, isFeatured: true })
+      .sort({ featuredOrder: 1 })
+      .lean<ProductLeanDocument[]>();
+    await resolveTemplates(docs);
+    return docs.map(toEntity);
   }
 }

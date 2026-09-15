@@ -1,6 +1,7 @@
 import type { Request, Response, Server } from 'restify';
 
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
+import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IMenuCategoryRepository } from '../domain/repositories/menu-category.repository.interface';
 import { IProductRepository } from '../domain/repositories/product.repository.interface';
 import { CatalogController } from './catalog.controller';
@@ -71,6 +72,7 @@ describe('CatalogController', () => {
       menuCategoryRepository?: Partial<IMenuCategoryRepository>;
       productRepository?: Partial<IProductRepository>;
       orderRepository?: Partial<IOrderRepository>;
+      restaurantRepository?: Partial<IRestaurantRepository>;
     } = {},
   ) {
     const menuCategoryRepository: Partial<IMenuCategoryRepository> = {
@@ -92,7 +94,12 @@ describe('CatalogController', () => {
     };
     const orderRepository: Partial<IOrderRepository> = {
       countByProduct: jest.fn().mockResolvedValue(0),
+      getBestSellingProductIds: jest.fn().mockResolvedValue([]),
       ...overrides.orderRepository,
+    };
+    const restaurantRepository: Partial<IRestaurantRepository> = {
+      findById: jest.fn().mockResolvedValue({ id: 'r-1', bestSellersCount: 6 }),
+      ...overrides.restaurantRepository,
     };
     const restaurantOperatorMiddleware = jest.fn(async () => {});
     const { application, routes } = buildFakeApplication();
@@ -101,8 +108,9 @@ describe('CatalogController', () => {
       productRepository as IProductRepository,
       restaurantOperatorMiddleware,
       orderRepository as IOrderRepository,
+      restaurantRepository as IRestaurantRepository,
     ).initializeRoutes(application);
-    return { menuCategoryRepository, productRepository, orderRepository, routes };
+    return { menuCategoryRepository, productRepository, orderRepository, restaurantRepository, routes };
   }
 
   it('AC-1: GET /restaurants/:id/menu-categories retorna as categorias do restaurante', async () => {

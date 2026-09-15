@@ -187,4 +187,20 @@ export class OrderMongooseRepository implements IOrderRepository {
   async countByProduct(restaurantId: string, productId: string): Promise<number> {
     return OrderModel.countDocuments({ restaurantId, 'items.productId': productId });
   }
+
+  /**
+   * specs/0028-destaques-vendidos-banners REQ-2 — soma `quantity` por `productId` só em pedidos
+   * `entregue` (mesma regra de `totalRevenue` acima), do mais pro menos vendido.
+   */
+  async getBestSellingProductIds(restaurantId: string, limit: number): Promise<string[]> {
+    const results = await OrderModel.aggregate<{ _id: string; totalQuantity: number }>([
+      { $match: { restaurantId, status: 'entregue' } },
+      { $unwind: '$items' },
+      { $group: { _id: '$items.productId', totalQuantity: { $sum: '$items.quantity' } } },
+      { $sort: { totalQuantity: -1 } },
+      { $limit: limit },
+    ]);
+
+    return results.map((result) => result._id);
+  }
 }

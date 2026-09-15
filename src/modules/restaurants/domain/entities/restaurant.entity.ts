@@ -78,4 +78,38 @@ export interface IRestaurant {
    * restaurante, não por produto/categoria.
    */
   productImageOnRight: boolean;
+  /** specs/0028-destaques-vendidos-banners REQ-1 — liga/desliga a seção "Mais vendidos" no
+   * cardápio do cliente. */
+  showBestSellers: boolean;
+  /** specs/0028-destaques-vendidos-banners REQ-1 — quantos produtos aparecem em "Mais
+   * vendidos" quando habilitado. */
+  bestSellersCount: number;
+  /** specs/0028-destaques-vendidos-banners REQ-4 — liga/desliga a seção "Destaques" no
+   * cardápio do cliente (independente de quais produtos estão marcados como destaque). */
+  showHighlights: boolean;
+  /** specs/0028-destaques-vendidos-banners REQ-10 — liga/desliga o carrossel de banners no
+   * cardápio do cliente, independente de haver banners cadastrados (REQ-8 trata da lista
+   * vazia, que já esconde o carrossel por conta própria). */
+  showBanners: boolean;
+  /** specs/0028-destaques-vendidos-banners REQ-5 — banners do carrossel, na ordem de
+   * exibição. */
+  banners: IRestaurantBanner[];
+}
+
+/** specs/0028-destaques-vendidos-banners REQ-6 — destino de um banner ao ser tocado no app;
+ * `none` = sem destino configurado, toque não faz nada. */
+export type RestaurantBannerLinkType = 'product' | 'category' | 'externalUrl' | 'none';
+
+export interface IRestaurantBanner {
+  /** Gerado no client (`crypto.randomUUID()`) — só serve de `key` pra reordenar/editar/remover
+   * na retaguarda, não é um id de negócio. */
+  id: string;
+  imageUrl: string;
+  linkType: RestaurantBannerLinkType;
+  /** Presente só quando `linkType === 'product'`. */
+  productId?: string;
+  /** Presente só quando `linkType === 'category'`. */
+  menuCategoryId?: string;
+  /** Presente só quando `linkType === 'externalUrl'`. */
+  externalUrl?: string;
 }

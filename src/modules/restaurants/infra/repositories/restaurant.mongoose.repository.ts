@@ -2,6 +2,7 @@ import {
   IBusinessHours,
   IRestaurant,
   IRestaurantAddress,
+  IRestaurantBanner,
   PixKeyType,
 } from '../../domain/entities/restaurant.entity';
 import {
@@ -32,6 +33,11 @@ interface RestaurantLeanDocument {
   pixBeneficiaryName?: string;
   whatsappConnected?: boolean;
   productImageOnRight?: boolean;
+  showBestSellers?: boolean;
+  bestSellersCount?: number;
+  showHighlights?: boolean;
+  showBanners?: boolean;
+  banners?: IRestaurantBanner[];
 }
 
 function toEntity(doc: RestaurantLeanDocument): IRestaurant {
@@ -57,6 +63,11 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     pixBeneficiaryName: doc.pixBeneficiaryName,
     whatsappConnected: doc.whatsappConnected ?? false,
     productImageOnRight: doc.productImageOnRight ?? true,
+    showBestSellers: doc.showBestSellers ?? false,
+    bestSellersCount: doc.bestSellersCount ?? 6,
+    showHighlights: doc.showHighlights ?? true,
+    showBanners: doc.showBanners ?? true,
+    banners: doc.banners ?? [],
   };
 }
 
