@@ -13,4 +13,12 @@ export interface IMenuCategoryRepository {
   reorder(restaurantId: string, orderedIds: string[]): Promise<IMenuCategory[]>;
 
   findById(id: string): Promise<IMenuCategory | null>;
+
+  /**
+   * specs/0032-ajustes-diversos-rating-taxa-entrega REQ-5 — exclusão real, só "dono"
+   * (`CatalogController`). Bloqueada pelo controller se a categoria tiver produtos (mesmo
+   * raciocínio de `IProductRepository.remove`, que também não decide sozinho a regra de
+   * bloqueio).
+   */
+  remove(id: string): Promise<void>;
 }

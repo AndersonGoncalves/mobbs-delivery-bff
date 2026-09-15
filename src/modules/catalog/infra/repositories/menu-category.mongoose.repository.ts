@@ -86,6 +86,10 @@ export class MenuCategoryMongooseRepository implements IMenuCategoryRepository {
     const doc = await MenuCategoryModel.findById(id).lean<MenuCategoryLeanDocument>();
     return doc ? toMenuCategoryEntity(doc) : null;
   }
+
+  async remove(id: string): Promise<void> {
+    await MenuCategoryModel.findByIdAndDelete(id);
+  }
 }
 
 function toMenuCategoryEntity(doc: MenuCategoryLeanDocument): IMenuCategory {

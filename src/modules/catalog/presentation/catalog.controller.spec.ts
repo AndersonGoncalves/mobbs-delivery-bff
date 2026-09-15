@@ -83,6 +83,7 @@ describe('CatalogController', () => {
       update: jest.fn().mockResolvedValue({ id: 'c-1', restaurantId: 'r-1', name: 'Lanches renomeado', sortOrder: 0 }),
       reorder: jest.fn().mockResolvedValue([buildCategory()]),
       findById: jest.fn().mockResolvedValue({ id: 'c-1', restaurantId: 'r-1', name: 'Lanches', sortOrder: 0 }),
+      remove: jest.fn().mockResolvedValue(undefined),
       ...overrides.menuCategoryRepository,
     };
     const productRepository: Partial<IProductRepository> = {
@@ -192,6 +193,54 @@ describe('CatalogController', () => {
     );
 
     expect(menuCategoryRepository.reorder).toHaveBeenCalledWith('r-1', ['c-2', 'c-1']);
+  });
+
+  // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-5.
+  it('AC-7: DELETE /restaurants/me/menu-categories/:id sem produtos exclui de verdade (204)', async () => {
+    const { menuCategoryRepository, routes } = setup({
+      productRepository: { countByMenuCategory: jest.fn().mockResolvedValue(0) },
+    });
+    const send = jest.fn();
+
+    await runOperatorChain(
+      routes['DELETE /restaurants/me/menu-categories/:id'],
+      { restaurantId: 'r-1', params: { id: 'c-1' } },
+      { json: jest.fn(), send },
+    );
+
+    expect(menuCategoryRepository.remove).toHaveBeenCalledWith('c-1');
+    expect(send).toHaveBeenCalledWith(204);
+  });
+
+  it('AC-7: DELETE /restaurants/me/menu-categories/:id bloqueia (409) se tiver produtos', async () => {
+    const { menuCategoryRepository, routes } = setup({
+      productRepository: { countByMenuCategory: jest.fn().mockResolvedValue(3) },
+    });
+    const send = jest.fn();
+
+    await expect(
+      runOperatorChain(
+        routes['DELETE /restaurants/me/menu-categories/:id'],
+        { restaurantId: 'r-1', params: { id: 'c-1' } },
+        { json: jest.fn(), send },
+      ),
+    ).rejects.toMatchObject({ statusCode: 409 });
+
+    expect(menuCategoryRepository.remove).not.toHaveBeenCalled();
+  });
+
+  it('lança 404 ao tentar excluir categoria de outro restaurante', async () => {
+    const { routes } = setup({
+      menuCategoryRepository: { findById: jest.fn().mockResolvedValue({ id: 'c-1', restaurantId: 'r-OUTRO', name: 'Lanches', sortOrder: 0 }) },
+    });
+
+    await expect(
+      runOperatorChain(
+        routes['DELETE /restaurants/me/menu-categories/:id'],
+        { restaurantId: 'r-1', params: { id: 'c-1' } },
+        { json: jest.fn(), send: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 404 });
   });
 
   it('AC-2: POST /restaurants/me/products cria produto com additionalGroups no restaurante do operador', async () => {

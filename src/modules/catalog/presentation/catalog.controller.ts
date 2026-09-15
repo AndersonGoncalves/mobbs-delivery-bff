@@ -187,6 +187,18 @@ export class CatalogController extends BaseRouter {
       await this.productRepository.remove(product.id);
       res.send(204);
     });
+
+    // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-5 — mesmo padrão de exclusão de
+    // produto acima: só "dono", bloqueada se a categoria ainda tiver produtos.
+    application.del('/restaurants/me/menu-categories/:id', ...ownerOnly, async (req: Request, res: Response) => {
+      const category = await this.findOwnedMenuCategory(req.params.id, req.restaurantId!);
+      const productCount = await this.productRepository.countByMenuCategory(req.restaurantId!, category.id);
+      if (productCount > 0) {
+        throw new ConflictError('Categoria tem produtos cadastrados e não pode ser excluída');
+      }
+      await this.menuCategoryRepository.remove(category.id);
+      res.send(204);
+    });
   }
 
   private async findOwnedMenuCategory(id: string, restaurantId: string): Promise<IMenuCategory> {

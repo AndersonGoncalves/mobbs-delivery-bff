@@ -70,4 +70,11 @@ export interface IProductRepository {
    * `MenuCategoryRepository.reorder`). Só reordena — não altera `isFeatured`.
    */
   reorderFeatured(restaurantId: string, orderedIds: string[]): Promise<IProduct[]>;
+
+  /**
+   * specs/0032-ajustes-diversos-rating-taxa-entrega REQ-5 — quantos produtos (ativos ou não)
+   * pertencem a essa categoria — usado pra bloquear a exclusão real de uma categoria já usada
+   * por algum produto.
+   */
+  countByMenuCategory(restaurantId: string, menuCategoryId: string): Promise<number>;
 }
