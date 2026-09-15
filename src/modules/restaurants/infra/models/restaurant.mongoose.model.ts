@@ -50,6 +50,7 @@ const restaurantSchema = new Schema(
     logoUrl: { type: String },
     primaryColor: { type: String },
     onPrimaryColor: { type: String },
+    defaultProductImageUrl: { type: String },
     businessHours: { type: [businessHoursSchema], default: [] },
     address: { type: addressSchema },
     phone: { type: String },

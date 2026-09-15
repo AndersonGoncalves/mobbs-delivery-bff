@@ -206,6 +206,26 @@ describe('RestaurantsController', () => {
       ).rejects.toMatchObject({ statusCode: 400 });
     });
 
+    // specs/0031-imagem-padrao-disponibilidade-checkout-ajustes REQ-1.
+    it('PUT /restaurants/me aceita e persiste defaultProductImageUrl', async () => {
+      const defaultProductImageUrl = 'https://storage.example.com/restaurants/1/default-product-image.png';
+      const { repository, routes } = setup({ updateProfile: jest.fn().mockResolvedValue(buildRestaurant({ defaultProductImageUrl })) });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['PUT /restaurants/me'], { body: { defaultProductImageUrl } }, { json });
+
+      expect(repository.updateProfile).toHaveBeenCalledWith('1', { defaultProductImageUrl });
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ defaultProductImageUrl }));
+    });
+
+    it('rejeita PUT /restaurants/me com defaultProductImageUrl que não é uma URL', async () => {
+      const { routes } = setup();
+
+      await expect(
+        runAuthenticatedChain(routes['PUT /restaurants/me'], { body: { defaultProductImageUrl: 'não-é-url' } }, { json: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
     // specs/0028-destaques-vendidos-banners REQ-1, REQ-4, REQ-10.
     it('PUT /restaurants/me aceita e persiste showBestSellers/bestSellersCount/showHighlights/showBanners', async () => {
       const patch = { showBestSellers: true, bestSellersCount: 8, showHighlights: false, showBanners: false };

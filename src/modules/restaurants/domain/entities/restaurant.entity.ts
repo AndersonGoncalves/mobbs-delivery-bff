@@ -44,6 +44,10 @@ export interface IRestaurant {
    * Material Design: toda cor de fundo tem uma cor "on" companheira pra garantir contraste).
    */
   onPrimaryColor?: string;
+  /** specs/0031-imagem-padrao-disponibilidade-checkout-ajustes REQ-1 — usada como fallback
+   * quando um produto não tem `imageUrl` próprio (antes do asset genérico embutido no app,
+   * `specs/0029` REQ-5). */
+  defaultProductImageUrl?: string;
   address?: IRestaurantAddress;
   phone?: string;
   /** specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-4 — CNPJ, mostrado no perfil

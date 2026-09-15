@@ -34,6 +34,8 @@ export const restaurantProfileSchema = z
     logoUrl: z.string().url(),
     primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Cor deve estar em formato #RRGGBB'),
     onPrimaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Cor deve estar em formato #RRGGBB'),
+    // specs/0031-imagem-padrao-disponibilidade-checkout-ajustes REQ-1.
+    defaultProductImageUrl: z.string().url(),
     address: z.object({
       street: z.string().min(1),
       number: z.string().min(1),
