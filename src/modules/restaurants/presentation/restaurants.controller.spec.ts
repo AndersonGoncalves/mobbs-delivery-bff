@@ -174,6 +174,19 @@ describe('RestaurantsController', () => {
       expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ document }));
     });
 
+    // specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-8.
+    it('PUT /restaurants/me aceita e persiste productImageOnRight', async () => {
+      const { repository, routes } = setup({
+        updateProfile: jest.fn().mockResolvedValue(buildRestaurant({ productImageOnRight: false })),
+      });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['PUT /restaurants/me'], { body: { productImageOnRight: false } }, { json });
+
+      expect(repository.updateProfile).toHaveBeenCalledWith('1', { productImageOnRight: false });
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ productImageOnRight: false }));
+    });
+
     it('AC-6: rejeita horário com fechamento antes da abertura no mesmo dia', async () => {
       const { routes } = setup();
       const body = [{ dayOfWeek: 'monday', isClosed: false, openTime: '18:00', closeTime: '08:00' }];

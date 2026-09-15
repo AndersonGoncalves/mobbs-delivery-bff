@@ -29,6 +29,8 @@ export const restaurantProfileSchema = z
     pixKey: z.string(),
     pixKeyType: z.enum(['telefone', 'cpf', 'cnpj', 'email', 'aleatoria']),
     pixBeneficiaryName: z.string(),
+    // specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-8.
+    productImageOnRight: z.boolean(),
   })
   .partial();
 

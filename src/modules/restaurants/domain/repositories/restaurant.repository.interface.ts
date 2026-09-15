@@ -16,6 +16,7 @@ export type RestaurantProfileUpdate = Partial<
     | 'pixKey'
     | 'pixKeyType'
     | 'pixBeneficiaryName'
+    | 'productImageOnRight'
   >
 >;
 

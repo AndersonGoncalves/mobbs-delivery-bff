@@ -30,6 +30,7 @@ interface RestaurantLeanDocument {
   pixKeyType?: PixKeyType;
   pixBeneficiaryName?: string;
   whatsappConnected?: boolean;
+  productImageOnRight?: boolean;
 }
 
 function toEntity(doc: RestaurantLeanDocument): IRestaurant {
@@ -53,6 +54,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     pixKeyType: doc.pixKeyType,
     pixBeneficiaryName: doc.pixBeneficiaryName,
     whatsappConnected: doc.whatsappConnected ?? false,
+    productImageOnRight: doc.productImageOnRight ?? true,
   };
 }
 

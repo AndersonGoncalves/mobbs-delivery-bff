@@ -64,4 +64,11 @@ export interface IRestaurant {
   /** specs/0013-notificacoes-whatsapp REQ-11/REQ-12 — reflete o estado da sessão do Baileys
    * (a sessão em si, credenciais/chaves, não fica aqui — ver módulo `whatsapp-connection`). */
   whatsappConnected: boolean;
+  /**
+   * specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-8 — posição da foto do produto
+   * nos itens da lista de cardápio (`ProductListItem`, app cliente): `true` = imagem à direita
+   * (comportamento atual, default), `false` = à esquerda. Vale pra toda a listagem do
+   * restaurante, não por produto/categoria.
+   */
+  productImageOnRight: boolean;
 }

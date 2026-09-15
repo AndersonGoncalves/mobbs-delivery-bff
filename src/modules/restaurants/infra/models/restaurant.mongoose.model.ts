@@ -49,6 +49,7 @@ const restaurantSchema = new Schema(
     pixKeyType: { type: String, enum: ['telefone', 'cpf', 'cnpj', 'email', 'aleatoria'] },
     pixBeneficiaryName: { type: String },
     whatsappConnected: { type: Boolean, required: true, default: false },
+    productImageOnRight: { type: Boolean, required: true, default: true },
   },
   { _id: false, timestamps: true },
 );
