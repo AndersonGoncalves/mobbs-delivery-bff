@@ -6,6 +6,7 @@ export type RestaurantProfileUpdate = Partial<
     | 'name'
     | 'logoUrl'
     | 'primaryColor'
+    | 'onPrimaryColor'
     | 'address'
     | 'phone'
     | 'document'

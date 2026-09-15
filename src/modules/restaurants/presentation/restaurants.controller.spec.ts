@@ -187,6 +187,25 @@ describe('RestaurantsController', () => {
       expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ productImageOnRight: false }));
     });
 
+    it('PUT /restaurants/me aceita e persiste onPrimaryColor', async () => {
+      const onPrimaryColor = '#000000';
+      const { repository, routes } = setup({ updateProfile: jest.fn().mockResolvedValue(buildRestaurant({ onPrimaryColor })) });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['PUT /restaurants/me'], { body: { onPrimaryColor } }, { json });
+
+      expect(repository.updateProfile).toHaveBeenCalledWith('1', { onPrimaryColor });
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ onPrimaryColor }));
+    });
+
+    it('rejeita PUT /restaurants/me com onPrimaryColor fora do formato #RRGGBB', async () => {
+      const { routes } = setup();
+
+      await expect(
+        runAuthenticatedChain(routes['PUT /restaurants/me'], { body: { onPrimaryColor: 'branco' } }, { json: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
     it('AC-6: rejeita horário com fechamento antes da abertura no mesmo dia', async () => {
       const { routes } = setup();
       const body = [{ dayOfWeek: 'monday', isClosed: false, openTime: '18:00', closeTime: '08:00' }];

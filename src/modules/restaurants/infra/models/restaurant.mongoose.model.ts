@@ -36,6 +36,7 @@ const restaurantSchema = new Schema(
     isActive: { type: Boolean, required: true, default: true },
     logoUrl: { type: String },
     primaryColor: { type: String },
+    onPrimaryColor: { type: String },
     businessHours: { type: [businessHoursSchema], default: [] },
     address: { type: addressSchema },
     phone: { type: String },

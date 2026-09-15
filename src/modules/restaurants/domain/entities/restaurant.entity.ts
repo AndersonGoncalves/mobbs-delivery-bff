@@ -37,6 +37,13 @@ export interface IRestaurant {
   businessHours: IBusinessHours[];
   logoUrl?: string;
   primaryColor?: string;
+  /**
+   * specs/0029-ajustes-carrinho-perfil-restaurante-diversos — cor do texto/ícone mostrado em
+   * cima de `primaryColor` (ex.: o texto do botão "Adicionar"). Junto com `primaryColor`, forma
+   * o par `primary`/`onPrimary` do tema do app (`docs/architecture/patterns.md`, convenção do
+   * Material Design: toda cor de fundo tem uma cor "on" companheira pra garantir contraste).
+   */
+  onPrimaryColor?: string;
   address?: IRestaurantAddress;
   phone?: string;
   /** specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-4 — CNPJ, mostrado no perfil

@@ -9,6 +9,7 @@ export const restaurantProfileSchema = z
     name: z.string().min(1),
     logoUrl: z.string().url(),
     primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Cor deve estar em formato #RRGGBB'),
+    onPrimaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Cor deve estar em formato #RRGGBB'),
     address: z.object({
       street: z.string().min(1),
       number: z.string().min(1),
