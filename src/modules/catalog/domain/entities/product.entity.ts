@@ -34,6 +34,13 @@ export interface IProductAdditionalGroup {
   minSelections: number;
   maxSelections: number;
   options: IProductAdditionalOption[];
+  /**
+   * specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-3 — foto opcional do grupo,
+   * mostrada no detalhe do produto entre a descrição e os controles de seleção do grupo. Num
+   * grupo vinculado a template, é resolvida do template junto com o resto dos campos (mesmo
+   * mecanismo de `name`/`options`/etc.).
+   */
+  imageUrl?: string;
 }
 
 /**

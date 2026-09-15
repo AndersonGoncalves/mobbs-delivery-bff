@@ -36,6 +36,9 @@ const productAdditionalGroupInlineSchema: z.ZodType<IProductAdditionalGroup> = z
       minSelections: z.number().int().nonnegative(),
       maxSelections: z.number().int().positive(),
       options: z.array(productAdditionalOptionSchema).default([]),
+      // specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-3 — vale em todo nível
+      // (raiz e `nestedAdditionalGroups`), já que é o mesmo schema recursivo.
+      imageUrl: z.string().url().optional(),
     })
     .superRefine((data, ctx) => {
       if (data.type === 'remover') {

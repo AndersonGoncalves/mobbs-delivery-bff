@@ -22,6 +22,7 @@ export interface AdditionalGroupTemplateLeanDocument {
   minSelections: number;
   maxSelections: number;
   options: { id: string; name: string; priceDelta: number; rawMaterialId?: string }[];
+  imageUrl?: string;
 }
 
 function toEntity(doc: ProductLeanDocument): IProduct {
@@ -90,6 +91,7 @@ export function resolveGroup(
     minSelections: template.minSelections,
     maxSelections: template.maxSelections,
     options: templateToOptions(template, group.id),
+    imageUrl: template.imageUrl,
   };
 }
 

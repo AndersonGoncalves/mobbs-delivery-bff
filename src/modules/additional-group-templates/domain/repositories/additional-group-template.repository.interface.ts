@@ -9,6 +9,7 @@ export type NewAdditionalGroupTemplateInput = {
   minSelections: number;
   maxSelections: number;
   options: NewAdditionalGroupTemplateOptionInput[];
+  imageUrl?: string;
 };
 
 /** specs/0026-selecao-clonar-excluir-busca-web REQ-7 — busca por nome (parcial) + ativo. */

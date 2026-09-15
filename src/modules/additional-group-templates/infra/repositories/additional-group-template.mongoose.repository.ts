@@ -24,6 +24,7 @@ function toEntity(doc: AdditionalGroupTemplateLeanDocument): IAdditionalGroupTem
     maxSelections: doc.maxSelections,
     options: doc.options ?? [],
     isActive: doc.isActive,
+    imageUrl: doc.imageUrl,
   };
 }
 
@@ -64,6 +65,7 @@ export class AdditionalGroupTemplateMongooseRepository implements IAdditionalGro
       maxSelections: input.maxSelections,
       options: buildOptions(id, input.options),
       isActive: true,
+      imageUrl: input.imageUrl,
     });
     return toEntity(doc.toObject() as AdditionalGroupTemplateLeanDocument);
   }
@@ -79,6 +81,7 @@ export class AdditionalGroupTemplateMongooseRepository implements IAdditionalGro
           minSelections: input.minSelections,
           maxSelections: input.maxSelections,
           options: buildOptions(id, input.options),
+          imageUrl: input.imageUrl,
         },
       },
       { new: true },

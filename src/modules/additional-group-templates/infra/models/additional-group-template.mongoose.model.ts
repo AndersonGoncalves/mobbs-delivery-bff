@@ -23,6 +23,7 @@ const additionalGroupTemplateSchema = new Schema(
     maxSelections: { type: Number, required: true },
     options: { type: [additionalGroupTemplateOptionSchema], default: [] },
     isActive: { type: Boolean, required: true, default: true },
+    imageUrl: { type: String },
   },
   { _id: false, timestamps: true },
 );

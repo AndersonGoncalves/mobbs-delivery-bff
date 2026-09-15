@@ -17,6 +17,8 @@ export const saveAdditionalGroupTemplateSchema = z
     minSelections: z.number().int().nonnegative(),
     maxSelections: z.number().int().positive(),
     options: z.array(additionalGroupTemplateOptionSchema).default([]),
+    // specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-3.
+    imageUrl: z.string().url().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.type === 'remover') {

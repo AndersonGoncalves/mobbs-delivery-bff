@@ -28,4 +28,10 @@ export interface IAdditionalGroupTemplate {
   maxSelections: number;
   options: IAdditionalGroupTemplateOption[];
   isActive: boolean;
+  /**
+   * specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-3 — foto opcional do grupo,
+   * mostrada no detalhe do produto entre a descrição e os controles de seleção (checkbox/radio/
+   * stepper) de cada opção.
+   */
+  imageUrl?: string;
 }

@@ -32,6 +32,9 @@ const productAdditionalGroupSchema = new Schema(
     minSelections: { type: Number, default: 0 },
     maxSelections: { type: Number, default: 0 },
     options: { type: [productAdditionalOptionSchema], default: [] },
+    // specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-3 — mesmo raciocínio dos
+    // campos acima: grupo vinculado sobrescreve na leitura, então nunca `required` aqui.
+    imageUrl: { type: String },
   },
   { _id: false },
 );
