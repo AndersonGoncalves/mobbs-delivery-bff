@@ -24,6 +24,7 @@ interface RestaurantLeanDocument {
   deliveryFeeCents?: number;
   welcomeMessage?: string;
   orderConfirmationGreeting?: string;
+  shareMessage?: string;
   pixKey?: string;
   pixKeyType?: PixKeyType;
   pixBeneficiaryName?: string;
@@ -45,6 +46,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     deliveryFeeCents: doc.deliveryFeeCents ?? 0,
     welcomeMessage: doc.welcomeMessage,
     orderConfirmationGreeting: doc.orderConfirmationGreeting,
+    shareMessage: doc.shareMessage,
     pixKey: doc.pixKey,
     pixKeyType: doc.pixKeyType,
     pixBeneficiaryName: doc.pixBeneficiaryName,

@@ -43,6 +43,7 @@ const restaurantSchema = new Schema(
     deliveryFeeCents: { type: Number, required: true, default: 0 },
     welcomeMessage: { type: String },
     orderConfirmationGreeting: { type: String },
+    shareMessage: { type: String },
     pixKey: { type: String },
     pixKeyType: { type: String, enum: ['telefone', 'cpf', 'cnpj', 'email', 'aleatoria'] },
     pixBeneficiaryName: { type: String },

@@ -134,6 +134,18 @@ describe('RestaurantsController', () => {
       expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ name: 'Novo nome' }));
     });
 
+    // specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-2.
+    it('PUT /restaurants/me aceita e persiste shareMessage', async () => {
+      const shareMessage = 'Olá! Queria te indicar o InstaDelivery...';
+      const { repository, routes } = setup({ updateProfile: jest.fn().mockResolvedValue(buildRestaurant({ shareMessage })) });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['PUT /restaurants/me'], { body: { shareMessage } }, { json });
+
+      expect(repository.updateProfile).toHaveBeenCalledWith('1', { shareMessage });
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ shareMessage }));
+    });
+
     it('rejeita PUT /restaurants/me com cor fora do formato #RRGGBB', async () => {
       const { routes } = setup();
 

@@ -20,6 +20,8 @@ export const restaurantProfileSchema = z
     minimumOrderValue: z.number().nonnegative(),
     welcomeMessage: z.string(),
     orderConfirmationGreeting: z.string(),
+    // specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-2.
+    shareMessage: z.string(),
     pixKey: z.string(),
     pixKeyType: z.enum(['telefone', 'cpf', 'cnpj', 'email', 'aleatoria']),
     pixBeneficiaryName: z.string(),

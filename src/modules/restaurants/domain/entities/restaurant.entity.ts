@@ -49,6 +49,12 @@ export interface IRestaurant {
   deliveryFeeCents: number;
   welcomeMessage?: string;
   orderConfirmationGreeting?: string;
+  /**
+   * specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-2 — texto configurável mostrado
+   * junto do link público do restaurante (`https://bsdelivery.com.br/r/<slug>`, mesmo formato de
+   * `GET /restaurants/me/onboarding`) quando o cliente usa o ícone de compartilhar do app.
+   */
+  shareMessage?: string;
   pixKey?: string;
   pixKeyType?: PixKeyType;
   pixBeneficiaryName?: string;
