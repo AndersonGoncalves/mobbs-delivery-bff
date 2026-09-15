@@ -23,6 +23,10 @@ function toProductLight(doc: ProductLightLeanDocument): Omit<IProduct, 'addition
     imageUrl: doc.imageUrl,
     price: doc.price,
     isAvailable: doc.isAvailable,
+    // specs/0028-destaques-vendidos-banners REQ-3 — o app cliente filtra Destaques a partir
+    // desta mesma listagem leve do cardápio, não busca produto por produto.
+    isFeatured: doc.isFeatured ?? false,
+    featuredOrder: doc.featuredOrder ?? 0,
   };
 }
 

@@ -2,6 +2,30 @@ import { z } from 'zod';
 
 import { isValidCnpj } from '../domain/cnpj-validator';
 
+// specs/0028-destaques-vendidos-banners REQ-5, REQ-6 — mesmo padrão de
+// `productAdditionalGroupSchema`/`type`: o campo de destino exigido depende de `linkType`,
+// validado de verdade no BFF (não só no formulário da web).
+const bannerSchema = z
+  .object({
+    id: z.string().min(1),
+    imageUrl: z.string().url(),
+    linkType: z.enum(['product', 'category', 'externalUrl', 'none']),
+    productId: z.string().min(1).optional(),
+    menuCategoryId: z.string().min(1).optional(),
+    externalUrl: z.string().url().optional(),
+  })
+  .superRefine((banner, ctx) => {
+    if (banner.linkType === 'product' && !banner.productId) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['productId'], message: 'productId é obrigatório quando linkType é "product"' });
+    }
+    if (banner.linkType === 'category' && !banner.menuCategoryId) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['menuCategoryId'], message: 'menuCategoryId é obrigatório quando linkType é "category"' });
+    }
+    if (banner.linkType === 'externalUrl' && !banner.externalUrl) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['externalUrl'], message: 'externalUrl é obrigatório quando linkType é "externalUrl"' });
+    }
+  });
+
 // specs/0010-configuracao-restaurante REQ-1, REQ-8, REQ-9, REQ-10 — cada página da retaguarda
 // manda só os campos que edita (PUT /restaurants/me genérico, `plan.md`).
 export const restaurantProfileSchema = z
@@ -32,6 +56,12 @@ export const restaurantProfileSchema = z
     pixBeneficiaryName: z.string(),
     // specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-8.
     productImageOnRight: z.boolean(),
+    // specs/0028-destaques-vendidos-banners REQ-1, REQ-4, REQ-10.
+    showBestSellers: z.boolean(),
+    bestSellersCount: z.number().int().positive(),
+    showHighlights: z.boolean(),
+    showBanners: z.boolean(),
+    banners: z.array(bannerSchema),
   })
   .partial();
 

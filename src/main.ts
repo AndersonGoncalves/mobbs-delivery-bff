@@ -106,6 +106,7 @@ server
       productRepository,
       restaurantOperatorMiddleware,
       orderRepository,
+      restaurantRepository,
     ),
     new OrdersController(
       orderRepository,

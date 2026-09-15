@@ -1,6 +1,7 @@
 import type { Request, Response, Server } from 'restify';
 
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
+import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IMenuCategoryRepository } from '../domain/repositories/menu-category.repository.interface';
 import { IProductRepository } from '../domain/repositories/product.repository.interface';
 import { CatalogController } from './catalog.controller';
@@ -61,6 +62,8 @@ function buildProduct(overrides: Record<string, unknown> = {}) {
     price: 50,
     isAvailable: true,
     additionalGroups: [],
+    isFeatured: false,
+    featuredOrder: 0,
     ...overrides,
   };
 }
@@ -71,6 +74,7 @@ describe('CatalogController', () => {
       menuCategoryRepository?: Partial<IMenuCategoryRepository>;
       productRepository?: Partial<IProductRepository>;
       orderRepository?: Partial<IOrderRepository>;
+      restaurantRepository?: Partial<IRestaurantRepository>;
     } = {},
   ) {
     const menuCategoryRepository: Partial<IMenuCategoryRepository> = {
@@ -92,7 +96,12 @@ describe('CatalogController', () => {
     };
     const orderRepository: Partial<IOrderRepository> = {
       countByProduct: jest.fn().mockResolvedValue(0),
+      getBestSellingProductIds: jest.fn().mockResolvedValue([]),
       ...overrides.orderRepository,
+    };
+    const restaurantRepository: Partial<IRestaurantRepository> = {
+      findById: jest.fn().mockResolvedValue({ id: 'r-1', bestSellersCount: 6 }),
+      ...overrides.restaurantRepository,
     };
     const restaurantOperatorMiddleware = jest.fn(async () => {});
     const { application, routes } = buildFakeApplication();
@@ -101,8 +110,9 @@ describe('CatalogController', () => {
       productRepository as IProductRepository,
       restaurantOperatorMiddleware,
       orderRepository as IOrderRepository,
+      restaurantRepository as IRestaurantRepository,
     ).initializeRoutes(application);
-    return { menuCategoryRepository, productRepository, orderRepository, routes };
+    return { menuCategoryRepository, productRepository, orderRepository, restaurantRepository, routes };
   }
 
   it('AC-1: GET /restaurants/:id/menu-categories retorna as categorias do restaurante', async () => {
@@ -484,5 +494,56 @@ describe('CatalogController', () => {
         { json: jest.fn(), send: jest.fn() },
       ),
     ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  // specs/0028-destaques-vendidos-banners REQ-2.
+  it('AC-1: GET /restaurants/:id/best-sellers devolve os produtos mais vendidos na ordem certa', async () => {
+    const productP1 = buildProduct({ id: 'p-1' });
+    const productP2 = buildProduct({ id: 'p-2' });
+    const { orderRepository, restaurantRepository, productRepository, routes } = setup({
+      restaurantRepository: { findById: jest.fn().mockResolvedValue({ id: 'r-1', bestSellersCount: 6 }) },
+      orderRepository: { getBestSellingProductIds: jest.fn().mockResolvedValue(['p-2', 'p-1']) },
+      productRepository: {
+        findById: jest.fn(async (id: string) => (id === 'p-2' ? productP2 : productP1)),
+      },
+    });
+    const json = jest.fn();
+
+    await runAuthenticatedChain(routes['GET /restaurants/:id/best-sellers'], { params: { id: 'r-1' } }, { json });
+
+    expect(restaurantRepository.findById).toHaveBeenCalledWith('r-1');
+    expect(orderRepository.getBestSellingProductIds).toHaveBeenCalledWith('r-1', 6);
+    expect(productRepository.findById).toHaveBeenNthCalledWith(1, 'p-2');
+    expect(productRepository.findById).toHaveBeenNthCalledWith(2, 'p-1');
+    expect(json).toHaveBeenCalledWith(200, [productP2, productP1]);
+  });
+
+  // specs/0028-destaques-vendidos-banners REQ-2/AC-2.
+  it('AC-2: GET /restaurants/:id/best-sellers sem nenhum pedido entregue devolve lista vazia', async () => {
+    const { routes } = setup({
+      restaurantRepository: { findById: jest.fn().mockResolvedValue({ id: 'r-1', bestSellersCount: 6 }) },
+      orderRepository: { getBestSellingProductIds: jest.fn().mockResolvedValue([]) },
+    });
+    const json = jest.fn();
+
+    await runAuthenticatedChain(routes['GET /restaurants/:id/best-sellers'], { params: { id: 'r-1' } }, { json });
+
+    expect(json).toHaveBeenCalledWith(200, []);
+  });
+
+  // specs/0028-destaques-vendidos-banners REQ-3/AC-9.
+  it('AC-9: PUT /restaurants/me/products/featured/reorder chama reorderFeatured com a nova ordem', async () => {
+    const { productRepository, routes } = setup({
+      productRepository: { reorderFeatured: jest.fn().mockResolvedValue([buildProduct({ id: 'p-2' }), buildProduct({ id: 'p-1' })]) },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['PUT /restaurants/me/products/featured/reorder'],
+      { restaurantId: 'r-1', body: { orderedIds: ['p-2', 'p-1'] } },
+      { json },
+    );
+
+    expect(productRepository.reorderFeatured).toHaveBeenCalledWith('r-1', ['p-2', 'p-1']);
   });
 });

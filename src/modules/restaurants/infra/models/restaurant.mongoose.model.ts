@@ -28,6 +28,19 @@ const addressSchema = new Schema(
   { _id: false },
 );
 
+// specs/0028-destaques-vendidos-banners REQ-5.
+const bannerSchema = new Schema(
+  {
+    id: { type: String, required: true },
+    imageUrl: { type: String, required: true },
+    linkType: { type: String, enum: ['product', 'category', 'externalUrl', 'none'], required: true },
+    productId: { type: String },
+    menuCategoryId: { type: String },
+    externalUrl: { type: String },
+  },
+  { _id: false },
+);
+
 const restaurantSchema = new Schema(
   {
     _id: { type: String, default: () => randomUUID() },
@@ -51,6 +64,12 @@ const restaurantSchema = new Schema(
     pixBeneficiaryName: { type: String },
     whatsappConnected: { type: Boolean, required: true, default: false },
     productImageOnRight: { type: Boolean, required: true, default: true },
+    // specs/0028-destaques-vendidos-banners REQ-1, REQ-4, REQ-5, REQ-10.
+    showBestSellers: { type: Boolean, required: true, default: false },
+    bestSellersCount: { type: Number, required: true, default: 6 },
+    showHighlights: { type: Boolean, required: true, default: true },
+    showBanners: { type: Boolean, required: true, default: true },
+    banners: { type: [bannerSchema], default: [] },
   },
   { _id: false, timestamps: true },
 );

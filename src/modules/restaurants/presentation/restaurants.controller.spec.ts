@@ -206,6 +206,56 @@ describe('RestaurantsController', () => {
       ).rejects.toMatchObject({ statusCode: 400 });
     });
 
+    // specs/0028-destaques-vendidos-banners REQ-1, REQ-4, REQ-10.
+    it('PUT /restaurants/me aceita e persiste showBestSellers/bestSellersCount/showHighlights/showBanners', async () => {
+      const patch = { showBestSellers: true, bestSellersCount: 8, showHighlights: false, showBanners: false };
+      const { repository, routes } = setup({ updateProfile: jest.fn().mockResolvedValue(buildRestaurant(patch)) });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['PUT /restaurants/me'], { body: patch }, { json });
+
+      expect(repository.updateProfile).toHaveBeenCalledWith('1', patch);
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining(patch));
+    });
+
+    it('rejeita PUT /restaurants/me com bestSellersCount não positivo', async () => {
+      const { routes } = setup();
+
+      await expect(
+        runAuthenticatedChain(routes['PUT /restaurants/me'], { body: { bestSellersCount: 0 } }, { json: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    // specs/0028-destaques-vendidos-banners REQ-5/REQ-6 — bannerSchema.superRefine.
+    it('PUT /restaurants/me aceita e persiste banners com o campo de destino certo por linkType', async () => {
+      const banners = [
+        { id: 'b-1', imageUrl: 'https://exemplo.com/1.png', linkType: 'product', productId: 'p-1' },
+        { id: 'b-2', imageUrl: 'https://exemplo.com/2.png', linkType: 'category', menuCategoryId: 'c-1' },
+        { id: 'b-3', imageUrl: 'https://exemplo.com/3.png', linkType: 'externalUrl', externalUrl: 'https://exemplo.com' },
+        { id: 'b-4', imageUrl: 'https://exemplo.com/4.png', linkType: 'none' },
+      ];
+      const { repository, routes } = setup({ updateProfile: jest.fn().mockResolvedValue(buildRestaurant({ banners })) });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['PUT /restaurants/me'], { body: { banners } }, { json });
+
+      expect(repository.updateProfile).toHaveBeenCalledWith('1', { banners });
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ banners }));
+    });
+
+    it.each([
+      ['product', {}],
+      ['category', {}],
+      ['externalUrl', {}],
+    ])('rejeita banner com linkType "%s" sem o campo de destino correspondente', async (linkType, extra) => {
+      const { routes } = setup();
+      const banners = [{ id: 'b-1', imageUrl: 'https://exemplo.com/1.png', linkType, ...extra }];
+
+      await expect(
+        runAuthenticatedChain(routes['PUT /restaurants/me'], { body: { banners } }, { json: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
     it('AC-6: rejeita horário com fechamento antes da abertura no mesmo dia', async () => {
       const { routes } = setup();
       const body = [{ dayOfWeek: 'monday', isClosed: false, openTime: '18:00', closeTime: '08:00' }];

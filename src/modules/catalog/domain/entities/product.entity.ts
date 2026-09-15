@@ -67,4 +67,11 @@ export interface IProduct {
   price: number;
   isAvailable: boolean;
   additionalGroups: IProductAdditionalGroup[];
+  /** specs/0028-destaques-vendidos-banners REQ-3 — marca manual de "aparece na seção
+   * Destaques do cardápio do cliente". Independente de `isAvailable`. */
+  isFeatured: boolean;
+  /** specs/0028-destaques-vendidos-banners REQ-3 — ordem de exibição dentro de "Destaques",
+   * só relevante quando `isFeatured === true` (mesmo padrão de `MenuCategory.sortOrder`: campo
+   * persistido, não posição implícita no array — permite reordenar em lote). */
+  featuredOrder: number;
 }

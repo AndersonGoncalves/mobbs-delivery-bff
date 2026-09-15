@@ -100,11 +100,16 @@ export const saveProductSchema = z.object({
   price: z.number().positive(),
   isAvailable: z.boolean().default(true),
   additionalGroups: z.array(productAdditionalGroupSchema).default([]),
+  // specs/0028-destaques-vendidos-banners REQ-3.
+  isFeatured: z.boolean().default(false),
 });
 
 export const updateProductSchema = saveProductSchema.partial();
 
 export const setProductAvailableSchema = z.object({ isAvailable: z.boolean() });
+
+// specs/0028-destaques-vendidos-banners REQ-3 — mesmo padrão de `reorderMenuCategoriesSchema`.
+export const reorderFeaturedProductsSchema = z.object({ orderedIds: z.array(z.string().min(1)).min(1) });
 
 // specs/0026-selecao-clonar-excluir-busca-web REQ-7 — query params chegam sempre como string.
 export const listProductsQuerySchema = z.object({

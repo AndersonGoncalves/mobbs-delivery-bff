@@ -54,6 +54,9 @@ const productSchema = new Schema(
     price: { type: Number, required: true },
     isAvailable: { type: Boolean, required: true, default: true },
     additionalGroups: { type: [productAdditionalGroupSchema], default: [] },
+    // specs/0028-destaques-vendidos-banners REQ-3.
+    isFeatured: { type: Boolean, required: true, default: false },
+    featuredOrder: { type: Number, required: true, default: 0 },
   },
   { _id: false, timestamps: true },
 );

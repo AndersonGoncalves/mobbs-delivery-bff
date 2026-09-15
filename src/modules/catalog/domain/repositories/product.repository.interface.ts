@@ -63,4 +63,11 @@ export interface IProductRepository {
 
   /** REQ-5 — idem, pra `AdditionalGroupTemplate` (qualquer produto, ativo ou não). */
   countAnyByTemplateId(restaurantId: string, templateId: string): Promise<number>;
+
+  /**
+   * specs/0028-destaques-vendidos-banners REQ-3 — reatribui `featuredOrder` sequencial (0, 1, 2,
+   * ...) aos produtos do restaurante na ordem recebida em `orderedIds` (mesmo padrão de
+   * `MenuCategoryRepository.reorder`). Só reordena — não altera `isFeatured`.
+   */
+  reorderFeatured(restaurantId: string, orderedIds: string[]): Promise<IProduct[]>;
 }
