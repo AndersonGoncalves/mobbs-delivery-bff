@@ -20,6 +20,7 @@ interface RestaurantLeanDocument {
   businessHours?: IBusinessHours[];
   address?: IRestaurantAddress;
   phone?: string;
+  document?: string;
   minimumOrderValue?: number;
   deliveryFeeCents?: number;
   welcomeMessage?: string;
@@ -42,6 +43,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     businessHours: doc.businessHours ?? [],
     address: doc.address,
     phone: doc.phone,
+    document: doc.document,
     minimumOrderValue: doc.minimumOrderValue ?? 0,
     deliveryFeeCents: doc.deliveryFeeCents ?? 0,
     welcomeMessage: doc.welcomeMessage,

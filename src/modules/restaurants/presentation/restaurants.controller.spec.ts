@@ -154,6 +154,26 @@ describe('RestaurantsController', () => {
       ).rejects.toMatchObject({ statusCode: 400 });
     });
 
+    // specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-4.
+    it('rejeita PUT /restaurants/me com CNPJ inválido', async () => {
+      const { routes } = setup();
+
+      await expect(
+        runAuthenticatedChain(routes['PUT /restaurants/me'], { body: { document: '11222333000100' } }, { json: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it('PUT /restaurants/me aceita e persiste um CNPJ válido', async () => {
+      const document = '11222333000181';
+      const { repository, routes } = setup({ updateProfile: jest.fn().mockResolvedValue(buildRestaurant({ document })) });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['PUT /restaurants/me'], { body: { document } }, { json });
+
+      expect(repository.updateProfile).toHaveBeenCalledWith('1', { document });
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ document }));
+    });
+
     it('AC-6: rejeita horário com fechamento antes da abertura no mesmo dia', async () => {
       const { routes } = setup();
       const body = [{ dayOfWeek: 'monday', isClosed: false, openTime: '18:00', closeTime: '08:00' }];

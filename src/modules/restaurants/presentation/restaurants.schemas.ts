@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { isValidCnpj } from '../domain/cnpj-validator';
+
 // specs/0010-configuracao-restaurante REQ-1, REQ-8, REQ-9, REQ-10 — cada página da retaguarda
 // manda só os campos que edita (PUT /restaurants/me genérico, `plan.md`).
 export const restaurantProfileSchema = z
@@ -17,6 +19,8 @@ export const restaurantProfileSchema = z
       zipCode: z.string().min(1),
     }),
     phone: z.string().min(1),
+    // specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-4.
+    document: z.string().refine(isValidCnpj, 'CNPJ inválido'),
     minimumOrderValue: z.number().nonnegative(),
     welcomeMessage: z.string(),
     orderConfirmationGreeting: z.string(),

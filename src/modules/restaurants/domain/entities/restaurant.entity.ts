@@ -39,6 +39,9 @@ export interface IRestaurant {
   primaryColor?: string;
   address?: IRestaurantAddress;
   phone?: string;
+  /** specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-4 — CNPJ, mostrado no perfil
+   * público do restaurante (app cliente). */
+  document?: string;
   minimumOrderValue: number;
   /**
    * specs/0004-carrinho — taxa de entrega fixa nesta v1 (docs/architecture/data-model.md,

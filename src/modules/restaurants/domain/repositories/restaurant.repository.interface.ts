@@ -8,6 +8,7 @@ export type RestaurantProfileUpdate = Partial<
     | 'primaryColor'
     | 'address'
     | 'phone'
+    | 'document'
     | 'minimumOrderValue'
     | 'welcomeMessage'
     | 'orderConfirmationGreeting'

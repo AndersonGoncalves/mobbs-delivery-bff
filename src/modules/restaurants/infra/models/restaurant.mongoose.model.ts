@@ -39,6 +39,7 @@ const restaurantSchema = new Schema(
     businessHours: { type: [businessHoursSchema], default: [] },
     address: { type: addressSchema },
     phone: { type: String },
+    document: { type: String },
     minimumOrderValue: { type: Number, required: true, default: 0 },
     deliveryFeeCents: { type: Number, required: true, default: 0 },
     welcomeMessage: { type: String },
