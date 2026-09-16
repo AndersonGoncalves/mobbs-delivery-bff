@@ -191,6 +191,20 @@ describe('CustomersController', () => {
     });
   });
 
+  // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-6 — sessão anônima
+  // (convidado) nunca tem e-mail no token Firebase; "Entrar com e-mail" manda o campo no corpo.
+  it('REQ-6: PUT /customers/me grava o email do corpo quando o token não tem (sessão anônima)', async () => {
+    const { customerRepository, routes } = setup({ customerRepository: { findById: jest.fn().mockResolvedValue(null) } });
+
+    await runAuthenticatedChain(
+      routes['PUT /customers/me'],
+      { user: { uid: 'c-1' }, body: { name: 'Ana', email: 'ana@example.com' } },
+      { json: jest.fn() },
+    );
+
+    expect(customerRepository.upsertProfile).toHaveBeenCalledWith('c-1', expect.objectContaining({ email: 'ana@example.com' }));
+  });
+
   it('PUT /customers/me preserva campos existentes quando o corpo não os envia', async () => {
     const { customerRepository, routes } = setup({
       customerRepository: {

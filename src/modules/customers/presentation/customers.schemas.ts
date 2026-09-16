@@ -9,6 +9,9 @@ export const updateCustomerProfileSchema = z
     name: z.string().min(1).optional(),
     phone: z.string().min(1).optional(),
     document: z.string().min(1).optional(),
+    // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-6 — sessão anônima
+    // (convidado) sem e-mail vindo do token Firebase; "Entrar com e-mail" manda esse campo.
+    email: z.string().email().optional(),
   })
   .refine((data) => !data.document || isValidCpf(data.document), {
     message: 'CPF inválido',

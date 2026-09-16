@@ -66,7 +66,10 @@ export class CustomersController extends BaseRouter {
 
       const customer = await this.customerRepository.upsertProfile(req.user!.uid, {
         name: patch.name ?? existing?.name ?? req.user!.name ?? '',
-        email: existing?.email ?? req.user!.email ?? '',
+        // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-6 — sessão anônima
+        // nunca tem e-mail no token Firebase; `patch.email` é o único jeito de gravar um pra
+        // esse caso ("Entrar com e-mail").
+        email: patch.email ?? existing?.email ?? req.user!.email ?? '',
         photoUrl: existing?.photoUrl ?? req.user!.picture,
         phone: patch.phone ?? existing?.phone,
         document: patch.document ?? existing?.document,
