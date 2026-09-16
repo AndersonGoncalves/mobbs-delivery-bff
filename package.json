@@ -12,7 +12,8 @@
     "test": "jest --passWithNoTests",
     "seed:restaurant": "ts-node --transpile-only scripts/seed-restaurant.ts",
     "seed:catalog": "ts-node --transpile-only scripts/seed-catalog.ts",
-    "seed:additional-group-templates": "ts-node --transpile-only scripts/seed-additional-group-templates.ts"
+    "seed:additional-group-templates": "ts-node --transpile-only scripts/seed-additional-group-templates.ts",
+    "seed:highlights": "ts-node --transpile-only scripts/seed-highlights.ts"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^7.0.0-rc14",
