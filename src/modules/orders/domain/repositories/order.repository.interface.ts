@@ -92,4 +92,11 @@ export interface IOrderRepository {
    * só pra saber se existe algum).
    */
   hasDeliveredOrder(customerId: string, restaurantId: string): Promise<boolean>;
+
+  /**
+   * specs/0032-ajustes-diversos-rating-taxa-entrega REQ-1 — ids distintos de produto já
+   * comprados (pedido `entregue`) por este cliente, neste restaurante — decide o badge "Peça
+   * novamente" no `HighlightsSection` do app.
+   */
+  getPurchasedProductIds(customerId: string, restaurantId: string): Promise<string[]>;
 }

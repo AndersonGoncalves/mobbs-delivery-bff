@@ -47,6 +47,7 @@ interface RestaurantLeanDocument {
   instagramUrl?: string;
   rating?: number;
   ratingCount?: number;
+  showHighlightsInMultipleRows?: boolean;
 }
 
 function toEntity(doc: RestaurantLeanDocument): IRestaurant {
@@ -84,6 +85,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     instagramUrl: doc.instagramUrl,
     rating: doc.rating ?? 0,
     ratingCount: doc.ratingCount ?? 0,
+    showHighlightsInMultipleRows: doc.showHighlightsInMultipleRows ?? false,
   };
 }
 

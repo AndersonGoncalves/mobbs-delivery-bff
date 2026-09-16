@@ -208,4 +208,13 @@ export class OrderMongooseRepository implements IOrderRepository {
     const count = await OrderModel.countDocuments({ customerId, restaurantId, status: 'entregue' }).limit(1);
     return count > 0;
   }
+
+  async getPurchasedProductIds(customerId: string, restaurantId: string): Promise<string[]> {
+    const results = await OrderModel.aggregate<{ _id: string }>([
+      { $match: { customerId, restaurantId, status: 'entregue' } },
+      { $unwind: '$items' },
+      { $group: { _id: '$items.productId' } },
+    ]);
+    return results.map((result) => result._id);
+  }
 }

@@ -11,7 +11,13 @@ interface MenuCategoryLeanDocument {
   sortOrder: number;
 }
 
-type ProductLightLeanDocument = Omit<IProduct, 'id' | 'additionalGroups'> & { _id: string };
+type ProductLightLeanDocument = Omit<IProduct, 'id' | 'additionalGroups'> & {
+  _id: string;
+  // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-1 — só o `id` de cada grupo (não
+  // `name`/`options`/`nestedAdditionalGroups`/etc.), o suficiente pra computar
+  // `hasAdditionalGroups` sem carregar a árvore inteira no cardápio.
+  additionalGroups?: { id: string }[];
+};
 
 function toProductLight(doc: ProductLightLeanDocument): Omit<IProduct, 'additionalGroups'> {
   return {
@@ -27,6 +33,7 @@ function toProductLight(doc: ProductLightLeanDocument): Omit<IProduct, 'addition
     // desta mesma listagem leve do cardápio, não busca produto por produto.
     isFeatured: doc.isFeatured ?? false,
     featuredOrder: doc.featuredOrder ?? 0,
+    hasAdditionalGroups: (doc.additionalGroups?.length ?? 0) > 0,
   };
 }
 
@@ -36,10 +43,12 @@ export class MenuCategoryMongooseRepository implements IMenuCategoryRepository {
       MenuCategoryModel.find({ restaurantId })
         .sort({ sortOrder: 1 })
         .lean<MenuCategoryLeanDocument[]>(),
-      // REQ-1: versão leve da listagem — sem `additionalGroups`, só carregados no detalhe
-      // (GET /products/:id, REQ-3) pra manter o payload do cardápio pequeno.
+      // REQ-1: versão leve da listagem — sem a árvore completa de `additionalGroups` (só
+      // carregada no detalhe, GET /products/:id, REQ-3) pra manter o payload do cardápio
+      // pequeno; `additionalGroups.id` é a exceção (specs/0032 REQ-1: só o suficiente pra
+      // computar `hasAdditionalGroups` sem o resto da árvore).
       ProductModel.find({ restaurantId })
-        .select('-additionalGroups')
+        .select('restaurantId menuCategoryId name description imageUrl price isAvailable isFeatured featuredOrder additionalGroups.id')
         .lean<ProductLightLeanDocument[]>(),
     ]);
 

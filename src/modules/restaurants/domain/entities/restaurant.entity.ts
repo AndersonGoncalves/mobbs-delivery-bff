@@ -119,6 +119,10 @@ export interface IRestaurant {
    * editados diretamente pelo operador — por isso **fora** de `RestaurantProfileUpdate`. */
   rating: number;
   ratingCount: number;
+  /** specs/0032-ajustes-diversos-rating-taxa-entrega REQ-1 — `false` (default, comportamento
+   * atual) = "Destaques" numa linha só (scroll horizontal); `true` = grade em várias linhas. Só
+   * afeta "Destaques" — "Mais vendidos" sempre uma linha, independente disso. */
+  showHighlightsInMultipleRows: boolean;
 }
 
 export type DeliveryFeeMode = 'fixed' | 'byNeighborhood';

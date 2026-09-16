@@ -67,6 +67,12 @@ export interface IProduct {
   price: number;
   isAvailable: boolean;
   additionalGroups: IProductAdditionalGroup[];
+  /** specs/0032-ajustes-diversos-rating-taxa-entrega REQ-1 — `additionalGroups.length > 0`,
+   * calculado sem carregar a árvore inteira nas listagens leves (`menu-category.mongoose.
+   * repository.ts`, `GET /restaurants/:id/best-sellers`); decide "A partir de R$ X" vs. "R$ X" no
+   * card do app cliente. Opcional porque nem toda leitura de `IProduct` precisa dele (a leitura
+   * completa já tem `additionalGroups` de verdade, de onde dá pra derivar isso direto). */
+  hasAdditionalGroups?: boolean;
   /** specs/0028-destaques-vendidos-banners REQ-3 — marca manual de "aparece na seção
    * Destaques do cardápio do cliente". Independente de `isAvailable`. */
   isFeatured: boolean;

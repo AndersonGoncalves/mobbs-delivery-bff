@@ -91,6 +91,8 @@ const restaurantSchema = new Schema(
     // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-6.
     rating: { type: Number, required: true, default: 0 },
     ratingCount: { type: Number, required: true, default: 0 },
+    // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-1.
+    showHighlightsInMultipleRows: { type: Boolean, required: true, default: false },
   },
   { _id: false, timestamps: true },
 );

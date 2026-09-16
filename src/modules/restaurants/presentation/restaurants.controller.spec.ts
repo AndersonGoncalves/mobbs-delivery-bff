@@ -321,6 +321,18 @@ describe('RestaurantsController', () => {
       expect(json).toHaveBeenCalledWith(200, expect.objectContaining(patch));
     });
 
+    // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-1.
+    it('PUT /restaurants/me aceita e persiste showHighlightsInMultipleRows', async () => {
+      const patch = { showHighlightsInMultipleRows: true };
+      const { repository, routes } = setup({ updateProfile: jest.fn().mockResolvedValue(buildRestaurant(patch)) });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['PUT /restaurants/me'], { body: patch }, { json });
+
+      expect(repository.updateProfile).toHaveBeenCalledWith('1', patch);
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining(patch));
+    });
+
     it('rejeita PUT /restaurants/me com deliveryFeeZones com feeCents negativo', async () => {
       const { routes } = setup();
 

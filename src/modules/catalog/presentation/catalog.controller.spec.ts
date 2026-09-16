@@ -6,7 +6,7 @@ import { IMenuCategoryRepository } from '../domain/repositories/menu-category.re
 import { IProductRepository } from '../domain/repositories/product.repository.interface';
 import { CatalogController } from './catalog.controller';
 
-type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & { restaurantId?: string };
+type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & { restaurantId?: string; user?: { uid: string } };
 type FakeResponse = Pick<Response, 'json'> & Partial<Pick<Response, 'send'>>;
 type RouteHandler = (req: FakeRequest, res: FakeResponse) => Promise<void>;
 
@@ -564,7 +564,10 @@ describe('CatalogController', () => {
     expect(orderRepository.getBestSellingProductIds).toHaveBeenCalledWith('r-1', 6);
     expect(productRepository.findById).toHaveBeenNthCalledWith(1, 'p-2');
     expect(productRepository.findById).toHaveBeenNthCalledWith(2, 'p-1');
-    expect(json).toHaveBeenCalledWith(200, [productP2, productP1]);
+    expect(json).toHaveBeenCalledWith(200, [
+      { ...productP2, hasAdditionalGroups: false },
+      { ...productP1, hasAdditionalGroups: false },
+    ]);
   });
 
   // specs/0031-imagem-padrao-disponibilidade-checkout-ajustes REQ-5.
@@ -582,7 +585,39 @@ describe('CatalogController', () => {
 
     await runAuthenticatedChain(routes['GET /restaurants/:id/best-sellers'], { params: { id: 'r-1' } }, { json });
 
-    expect(json).toHaveBeenCalledWith(200, [availableProduct]);
+    expect(json).toHaveBeenCalledWith(200, [{ ...availableProduct, hasAdditionalGroups: false }]);
+  });
+
+  // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-1.
+  it('AC-1: GET /restaurants/:id/best-sellers marca hasAdditionalGroups quando o produto tem grupos', async () => {
+    const productWithGroups = buildProduct({ id: 'p-1', additionalGroups: [{ id: 'g-1' }] });
+    const { routes } = setup({
+      restaurantRepository: { findById: jest.fn().mockResolvedValue({ id: 'r-1', bestSellersCount: 6 }) },
+      orderRepository: { getBestSellingProductIds: jest.fn().mockResolvedValue(['p-1']) },
+      productRepository: { findById: jest.fn().mockResolvedValue(productWithGroups) },
+    });
+    const json = jest.fn();
+
+    await runAuthenticatedChain(routes['GET /restaurants/:id/best-sellers'], { params: { id: 'r-1' } }, { json });
+
+    expect(json).toHaveBeenCalledWith(200, [{ ...productWithGroups, hasAdditionalGroups: true }]);
+  });
+
+  // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-1/AC-1.
+  it('GET /restaurants/:id/purchased-product-ids devolve os ids do cliente logado', async () => {
+    const { orderRepository, routes } = setup({
+      orderRepository: { getPurchasedProductIds: jest.fn().mockResolvedValue(['p-1', 'p-2']) },
+    });
+    const json = jest.fn();
+
+    await runAuthenticatedChain(
+      routes['GET /restaurants/:id/purchased-product-ids'],
+      { params: { id: 'r-1' }, user: { uid: 'cu-1' } },
+      { json },
+    );
+
+    expect(orderRepository.getPurchasedProductIds).toHaveBeenCalledWith('cu-1', 'r-1');
+    expect(json).toHaveBeenCalledWith(200, ['p-1', 'p-2']);
   });
 
   // specs/0028-destaques-vendidos-banners REQ-2/AC-2.
