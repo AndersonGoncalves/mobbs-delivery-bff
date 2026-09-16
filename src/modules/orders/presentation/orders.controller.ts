@@ -59,7 +59,12 @@ export class OrdersController extends BaseRouter {
       }
 
       const subtotal = payload.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
-      const deliveryFee = payload.orderType === 'delivery' ? restaurant.deliveryFeeCents : 0;
+      // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-1 — 'free' nunca cobra,
+      // independente do que estiver em `deliveryFeeCents` (o restaurante pode ter mudado de modo
+      // sem zerar o valor antigo). Nota: `byNeighborhood` também cai em `deliveryFeeCents` aqui —
+      // gap pré-existente (a esta rota não chega o bairro do endereço, só uma string livre — ver
+      // `createOrderSchema`), fora do escopo desta mudança.
+      const deliveryFee = payload.orderType === 'delivery' && restaurant.deliveryFeeMode !== 'free' ? restaurant.deliveryFeeCents : 0;
 
       // specs/0022-cupons-desconto REQ-2/REQ-4 — primeiro consumidor real de `Order.discount`
       // (antes hardcoded em `0`). **Nunca confia no desconto calculado pelo app**: revalida tudo

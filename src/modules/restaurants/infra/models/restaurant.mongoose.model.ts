@@ -83,8 +83,9 @@ const restaurantSchema = new Schema(
     banners: { type: [bannerSchema], default: [] },
     // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-2.
     allowCustomerCancelOrder: { type: Boolean, required: true, default: true },
-    // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-10.
-    deliveryFeeMode: { type: String, enum: ['fixed', 'byNeighborhood'], required: true, default: 'fixed' },
+    // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-10; 'free' adicionado em
+    // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-1.
+    deliveryFeeMode: { type: String, enum: ['fixed', 'byNeighborhood', 'free'], required: true, default: 'fixed' },
     deliveryFeeZones: { type: [deliveryFeeZoneSchema], default: [] },
     // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-9.
     instagramUrl: { type: String },

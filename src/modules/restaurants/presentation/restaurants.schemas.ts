@@ -61,6 +61,10 @@ export const restaurantProfileSchema = z
     // specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-4.
     document: z.string().refine(isValidCnpj, 'CNPJ inválido'),
     minimumOrderValue: z.number().nonnegative(),
+    // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-1 — só usado de verdade
+    // quando deliveryFeeMode === 'fixed', mas sempre aceito/gravado (mesmo raciocínio de
+    // deliveryFeeZones, que também persiste mesmo fora do modo byNeighborhood).
+    deliveryFeeCents: z.number().nonnegative(),
     welcomeMessage: z.string(),
     orderConfirmationGreeting: z.string(),
     // specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-2.
@@ -78,8 +82,9 @@ export const restaurantProfileSchema = z
     banners: z.array(bannerSchema),
     // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-2.
     allowCustomerCancelOrder: z.boolean(),
-    // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-10.
-    deliveryFeeMode: z.enum(['fixed', 'byNeighborhood']),
+    // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-10; 'free' adicionado em
+    // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-1.
+    deliveryFeeMode: z.enum(['fixed', 'byNeighborhood', 'free']),
     deliveryFeeZones: z.array(deliveryFeeZoneSchema),
     // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-9 — mesmo padrão `.optional()` de
     // `defaultProductImageUrl` (a maioria não configura, form manda `undefined`, não string vazia).

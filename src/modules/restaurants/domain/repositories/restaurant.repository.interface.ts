@@ -8,6 +8,7 @@ export type RestaurantProfileUpdate = Partial<
     | 'primaryColor'
     | 'onPrimaryColor'
     | 'defaultProductImageUrl'
+    | 'deliveryFeeCents'
     | 'address'
     | 'phone'
     | 'document'

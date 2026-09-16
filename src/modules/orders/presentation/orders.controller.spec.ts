@@ -60,6 +60,7 @@ function buildRestaurant(
   overrides: Partial<{
     isActive: boolean;
     deliveryFeeCents: number;
+    deliveryFeeMode: string;
     pixKey: string;
     pixKeyType: string;
     pixBeneficiaryName: string;
@@ -74,6 +75,7 @@ function buildRestaurant(
     businessHours: [],
     minimumOrderValue: 0,
     deliveryFeeCents: 5,
+    deliveryFeeMode: 'fixed',
     ...overrides,
   };
 }
@@ -293,6 +295,17 @@ describe('OrdersController', () => {
       },
       { json: jest.fn() },
     );
+
+    expect(orderRepository.create).toHaveBeenCalledWith(expect.objectContaining({ deliveryFee: 0, total: 25 }));
+  });
+
+  // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-1.
+  it('deliveryFeeMode "free": taxa de entrega é zero mesmo com Restaurant.deliveryFeeCents > 0', async () => {
+    const { orderRepository, routes } = setup({
+      restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ deliveryFeeMode: 'free', deliveryFeeCents: 500 })) },
+    });
+
+    await runAuthenticatedChain(routes['POST /orders'], { body: buildValidBody(), user: { uid: 'customer-1' } }, { json: jest.fn() });
 
     expect(orderRepository.create).toHaveBeenCalledWith(expect.objectContaining({ deliveryFee: 0, total: 25 }));
   });

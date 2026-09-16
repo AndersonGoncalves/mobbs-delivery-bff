@@ -56,9 +56,11 @@ export interface IRestaurant {
   minimumOrderValue: number;
   /**
    * specs/0004-carrinho — taxa de entrega fixa nesta v1 (docs/architecture/data-model.md,
-   * `deliveryFeeCents`; sem cálculo por distância). Default 0 — ainda não editável pela
-   * retaguarda (specs/0010 não incluiu esse campo no formulário de perfil); fica read-only até
-   * uma spec futura expor a edição.
+   * `deliveryFeeCents`; sem cálculo por distância). Default 0. Editável pela retaguarda (campo
+   * "Valor da taxa de entrega", só quando `deliveryFeeMode === 'fixed'`) desde
+   * `specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login` REQ-1 — usado direto só
+   * nesse modo; em `free` a taxa cobrada é sempre `0` independente deste valor (ver
+   * `OrdersController`), e em `byNeighborhood` quem decide é `deliveryFeeZones`.
    */
   deliveryFeeCents: number;
   welcomeMessage?: string;
@@ -104,7 +106,9 @@ export interface IRestaurant {
   allowCustomerCancelOrder: boolean;
   /** specs/0032-ajustes-diversos-rating-taxa-entrega REQ-10 — `'fixed'` (default, preserva
    * comportamento atual, `deliveryFeeCents` usado direto) ou `'byNeighborhood'` (o app calcula
-   * via `GET /restaurants/:id/delivery-fee?neighborhood=X`, casando contra `deliveryFeeZones`). */
+   * via `GET /restaurants/:id/delivery-fee?neighborhood=X`, casando contra `deliveryFeeZones`).
+   * `'free'` (specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-1) — sem taxa
+   * nenhuma, sempre `0` (`OrdersController`), independente do que estiver em `deliveryFeeCents`. */
   deliveryFeeMode: DeliveryFeeMode;
   /** specs/0032-ajustes-diversos-rating-taxa-entrega REQ-10 — tabela de taxa por bairro, usada só
    * quando `deliveryFeeMode === 'byNeighborhood'`. Casa por texto do bairro (mesmo campo que
@@ -133,7 +137,7 @@ export interface IRestaurant {
   cartSuggestionsCount?: number;
 }
 
-export type DeliveryFeeMode = 'fixed' | 'byNeighborhood';
+export type DeliveryFeeMode = 'fixed' | 'byNeighborhood' | 'free';
 
 export interface IDeliveryFeeZone {
   /** Gerado no client (`crypto.randomUUID()`) — só serve de `key` pra reordenar/editar/remover
