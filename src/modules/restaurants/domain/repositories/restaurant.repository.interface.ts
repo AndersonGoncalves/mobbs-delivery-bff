@@ -24,6 +24,7 @@ export type RestaurantProfileUpdate = Partial<
     | 'showHighlights'
     | 'showBanners'
     | 'banners'
+    | 'allowCustomerCancelOrder'
   >
 >;
 

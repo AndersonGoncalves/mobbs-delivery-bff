@@ -98,6 +98,10 @@ export interface IRestaurant {
   /** specs/0028-destaques-vendidos-banners REQ-5 — banners do carrossel, na ordem de
    * exibição. */
   banners: IRestaurantBanner[];
+  /** specs/0032-ajustes-diversos-rating-taxa-entrega REQ-2 — liga/desliga o botão "Cancelar
+   * pedido" no app cliente (`OrderDetailPage`). Default `true` (mesmo comportamento de antes de
+   * existir essa configuração). */
+  allowCustomerCancelOrder: boolean;
 }
 
 /** specs/0028-destaques-vendidos-banners REQ-6 — destino de um banner ao ser tocado no app;

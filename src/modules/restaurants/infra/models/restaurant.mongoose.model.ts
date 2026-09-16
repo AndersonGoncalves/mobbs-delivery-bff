@@ -71,6 +71,8 @@ const restaurantSchema = new Schema(
     showHighlights: { type: Boolean, required: true, default: true },
     showBanners: { type: Boolean, required: true, default: true },
     banners: { type: [bannerSchema], default: [] },
+    // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-2.
+    allowCustomerCancelOrder: { type: Boolean, required: true, default: true },
   },
   { _id: false, timestamps: true },
 );

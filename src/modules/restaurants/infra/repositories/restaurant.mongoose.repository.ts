@@ -39,6 +39,7 @@ interface RestaurantLeanDocument {
   showHighlights?: boolean;
   showBanners?: boolean;
   banners?: IRestaurantBanner[];
+  allowCustomerCancelOrder?: boolean;
 }
 
 function toEntity(doc: RestaurantLeanDocument): IRestaurant {
@@ -70,6 +71,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     showHighlights: doc.showHighlights ?? true,
     showBanners: doc.showBanners ?? true,
     banners: doc.banners ?? [],
+    allowCustomerCancelOrder: doc.allowCustomerCancelOrder ?? true,
   };
 }
 
