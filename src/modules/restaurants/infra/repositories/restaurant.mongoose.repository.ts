@@ -1,5 +1,7 @@
 import {
+  DeliveryFeeMode,
   IBusinessHours,
+  IDeliveryFeeZone,
   IRestaurant,
   IRestaurantAddress,
   IRestaurantBanner,
@@ -39,6 +41,13 @@ interface RestaurantLeanDocument {
   showHighlights?: boolean;
   showBanners?: boolean;
   banners?: IRestaurantBanner[];
+  allowCustomerCancelOrder?: boolean;
+  deliveryFeeMode?: DeliveryFeeMode;
+  deliveryFeeZones?: IDeliveryFeeZone[];
+  instagramUrl?: string;
+  rating?: number;
+  ratingCount?: number;
+  showHighlightsInMultipleRows?: boolean;
 }
 
 function toEntity(doc: RestaurantLeanDocument): IRestaurant {
@@ -70,6 +79,13 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     showHighlights: doc.showHighlights ?? true,
     showBanners: doc.showBanners ?? true,
     banners: doc.banners ?? [],
+    allowCustomerCancelOrder: doc.allowCustomerCancelOrder ?? true,
+    deliveryFeeMode: doc.deliveryFeeMode ?? 'fixed',
+    deliveryFeeZones: doc.deliveryFeeZones ?? [],
+    instagramUrl: doc.instagramUrl,
+    rating: doc.rating ?? 0,
+    ratingCount: doc.ratingCount ?? 0,
+    showHighlightsInMultipleRows: doc.showHighlightsInMultipleRows ?? false,
   };
 }
 
@@ -114,6 +130,11 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
       { $set: { whatsappConnected: connected } },
       { new: true },
     ).lean<RestaurantLeanDocument>();
+    return toEntity(doc as RestaurantLeanDocument);
+  }
+
+  async updateRatingStats(id: string, rating: number, ratingCount: number): Promise<IRestaurant> {
+    const doc = await RestaurantModel.findByIdAndUpdate(id, { $set: { rating, ratingCount } }, { new: true }).lean<RestaurantLeanDocument>();
     return toEntity(doc as RestaurantLeanDocument);
   }
 }

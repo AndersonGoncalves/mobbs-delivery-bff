@@ -98,6 +98,41 @@ export interface IRestaurant {
   /** specs/0028-destaques-vendidos-banners REQ-5 — banners do carrossel, na ordem de
    * exibição. */
   banners: IRestaurantBanner[];
+  /** specs/0032-ajustes-diversos-rating-taxa-entrega REQ-2 — liga/desliga o botão "Cancelar
+   * pedido" no app cliente (`OrderDetailPage`). Default `true` (mesmo comportamento de antes de
+   * existir essa configuração). */
+  allowCustomerCancelOrder: boolean;
+  /** specs/0032-ajustes-diversos-rating-taxa-entrega REQ-10 — `'fixed'` (default, preserva
+   * comportamento atual, `deliveryFeeCents` usado direto) ou `'byNeighborhood'` (o app calcula
+   * via `GET /restaurants/:id/delivery-fee?neighborhood=X`, casando contra `deliveryFeeZones`). */
+  deliveryFeeMode: DeliveryFeeMode;
+  /** specs/0032-ajustes-diversos-rating-taxa-entrega REQ-10 — tabela de taxa por bairro, usada só
+   * quando `deliveryFeeMode === 'byNeighborhood'`. Casa por texto do bairro (mesmo campo que
+   * `ZipCodeResult.neighborhood` já devolve da ViaCEP no app), não por CEP exato/faixa numérica. */
+  deliveryFeeZones: IDeliveryFeeZone[];
+  /** specs/0032-ajustes-diversos-rating-taxa-entrega REQ-9 — link do Instagram da loja, mostrado
+   * no perfil do restaurante e usado como destino de exemplo de banner `externalUrl` no seed.
+   * Mesmo padrão opcional de `defaultProductImageUrl`. */
+  instagramUrl?: string;
+  /** specs/0032-ajustes-diversos-rating-taxa-entrega REQ-6 — média (1 casa decimal) e contagem
+   * de `IRating`s deste restaurante; recalculados a cada novo rating (`RatingsController`), nunca
+   * editados diretamente pelo operador — por isso **fora** de `RestaurantProfileUpdate`. */
+  rating: number;
+  ratingCount: number;
+  /** specs/0032-ajustes-diversos-rating-taxa-entrega REQ-1 — `false` (default, comportamento
+   * atual) = "Destaques" numa linha só (scroll horizontal); `true` = grade em várias linhas. Só
+   * afeta "Destaques" — "Mais vendidos" sempre uma linha, independente disso. */
+  showHighlightsInMultipleRows: boolean;
+}
+
+export type DeliveryFeeMode = 'fixed' | 'byNeighborhood';
+
+export interface IDeliveryFeeZone {
+  /** Gerado no client (`crypto.randomUUID()`) — só serve de `key` pra reordenar/editar/remover
+   * na retaguarda, mesmo padrão de `IRestaurantBanner.id`. */
+  id: string;
+  neighborhood: string;
+  feeCents: number;
 }
 
 /** specs/0028-destaques-vendidos-banners REQ-6 — destino de um banner ao ser tocado no app;

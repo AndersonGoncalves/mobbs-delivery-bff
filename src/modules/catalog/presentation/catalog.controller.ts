@@ -79,7 +79,23 @@ export class CatalogController extends BaseRouter {
         const products = await Promise.all(bestSellingIds.map((id) => this.productRepository.findById(id)));
         // specs/0031-imagem-padrao-disponibilidade-checkout-ajustes REQ-5 — produto indisponível
         // não aparece em "Mais vendidos", mesmo tendo vendas passadas.
-        res.json(200, products.filter((product): product is IProduct => product !== null && product.isAvailable));
+        const available = products.filter((product): product is IProduct => product !== null && product.isAvailable);
+        // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-1 — aqui a leitura já é completa
+        // (`findById`), então `hasAdditionalGroups` é só derivado do array já carregado, sem
+        // nenhuma query extra.
+        res.json(200, available.map((product) => ({ ...product, hasAdditionalGroups: product.additionalGroups.length > 0 })));
+      },
+    );
+
+    // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-1 — customer-scoped (não é retaguarda):
+    // decide o badge "Peça novamente" no `HighlightsSection` do app, comparado contra os
+    // produtos exibidos em Destaques/Mais Vendidos.
+    application.get(
+      '/restaurants/:id/purchased-product-ids',
+      firebaseAuthMiddleware,
+      async (req: Request, res: Response) => {
+        const productIds = await this.orderRepository.getPurchasedProductIds(req.user!.uid, req.params.id);
+        res.json(200, productIds);
       },
     );
 
@@ -185,6 +201,18 @@ export class CatalogController extends BaseRouter {
         throw new ConflictError('Produto já foi usado em algum pedido e não pode ser excluído');
       }
       await this.productRepository.remove(product.id);
+      res.send(204);
+    });
+
+    // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-5 — mesmo padrão de exclusão de
+    // produto acima: só "dono", bloqueada se a categoria ainda tiver produtos.
+    application.del('/restaurants/me/menu-categories/:id', ...ownerOnly, async (req: Request, res: Response) => {
+      const category = await this.findOwnedMenuCategory(req.params.id, req.restaurantId!);
+      const productCount = await this.productRepository.countByMenuCategory(req.restaurantId!, category.id);
+      if (productCount > 0) {
+        throw new ConflictError('Categoria tem produtos cadastrados e não pode ser excluída');
+      }
+      await this.menuCategoryRepository.remove(category.id);
       res.send(204);
     });
   }

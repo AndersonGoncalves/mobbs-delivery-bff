@@ -205,4 +205,8 @@ export class ProductMongooseRepository implements IProductRepository {
     await resolveTemplates(docs);
     return docs.map(toEntity);
   }
+
+  async countByMenuCategory(restaurantId: string, menuCategoryId: string): Promise<number> {
+    return ProductModel.countDocuments({ restaurantId, menuCategoryId });
+  }
 }

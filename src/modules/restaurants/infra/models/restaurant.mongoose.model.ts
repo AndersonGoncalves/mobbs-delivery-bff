@@ -41,6 +41,16 @@ const bannerSchema = new Schema(
   { _id: false },
 );
 
+// specs/0032-ajustes-diversos-rating-taxa-entrega REQ-10.
+const deliveryFeeZoneSchema = new Schema(
+  {
+    id: { type: String, required: true },
+    neighborhood: { type: String, required: true },
+    feeCents: { type: Number, required: true },
+  },
+  { _id: false },
+);
+
 const restaurantSchema = new Schema(
   {
     _id: { type: String, default: () => randomUUID() },
@@ -71,6 +81,18 @@ const restaurantSchema = new Schema(
     showHighlights: { type: Boolean, required: true, default: true },
     showBanners: { type: Boolean, required: true, default: true },
     banners: { type: [bannerSchema], default: [] },
+    // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-2.
+    allowCustomerCancelOrder: { type: Boolean, required: true, default: true },
+    // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-10.
+    deliveryFeeMode: { type: String, enum: ['fixed', 'byNeighborhood'], required: true, default: 'fixed' },
+    deliveryFeeZones: { type: [deliveryFeeZoneSchema], default: [] },
+    // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-9.
+    instagramUrl: { type: String },
+    // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-6.
+    rating: { type: Number, required: true, default: 0 },
+    ratingCount: { type: Number, required: true, default: 0 },
+    // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-1.
+    showHighlightsInMultipleRows: { type: Boolean, required: true, default: false },
   },
   { _id: false, timestamps: true },
 );

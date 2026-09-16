@@ -24,6 +24,11 @@ export type RestaurantProfileUpdate = Partial<
     | 'showHighlights'
     | 'showBanners'
     | 'banners'
+    | 'allowCustomerCancelOrder'
+    | 'deliveryFeeMode'
+    | 'deliveryFeeZones'
+    | 'instagramUrl'
+    | 'showHighlightsInMultipleRows'
   >
 >;
 
@@ -38,4 +43,9 @@ export interface IRestaurantRepository {
   /** specs/0013-notificacoes-whatsapp REQ-11/REQ-12 — atualizado pelo `WhatsAppConnectionService`
    * a cada mudança de estado da conexão (conectado/desconectado), não pelo operador direto. */
   setWhatsappConnected(id: string, connected: boolean): Promise<IRestaurant>;
+
+  /** specs/0032-ajustes-diversos-rating-taxa-entrega REQ-6 — atualizado pelo `RatingsController`
+   * a cada `POST /restaurants/:id/ratings`, nunca pelo operador direto (por isso fora de
+   * `RestaurantProfileUpdate`, mesmo raciocínio de `setWhatsappConnected`). */
+  updateRatingStats(id: string, rating: number, ratingCount: number): Promise<IRestaurant>;
 }
