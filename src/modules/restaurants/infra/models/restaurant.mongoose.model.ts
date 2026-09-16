@@ -93,6 +93,9 @@ const restaurantSchema = new Schema(
     ratingCount: { type: Number, required: true, default: 0 },
     // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-1.
     showHighlightsInMultipleRows: { type: Boolean, required: true, default: false },
+    // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-1 — sem default de
+    // propósito: ausente = seção "Peça também" não aparece no app (ver comentário na entity).
+    cartSuggestionsCount: { type: Number, required: false },
   },
   { _id: false, timestamps: true },
 );

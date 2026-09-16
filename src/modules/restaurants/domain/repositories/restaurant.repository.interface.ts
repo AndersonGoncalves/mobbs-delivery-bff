@@ -29,6 +29,7 @@ export type RestaurantProfileUpdate = Partial<
     | 'deliveryFeeZones'
     | 'instagramUrl'
     | 'showHighlightsInMultipleRows'
+    | 'cartSuggestionsCount'
   >
 >;
 

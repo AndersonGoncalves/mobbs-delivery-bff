@@ -86,6 +86,10 @@ export const restaurantProfileSchema = z
     instagramUrl: z.string().url().optional(),
     // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-1.
     showHighlightsInMultipleRows: z.boolean(),
+    // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-1 — mesmo padrão
+    // `.optional()` de `defaultProductImageUrl`/`instagramUrl`: ausente = seção desligada, não
+    // "zero produtos".
+    cartSuggestionsCount: z.number().int().positive().optional(),
   })
   .partial();
 

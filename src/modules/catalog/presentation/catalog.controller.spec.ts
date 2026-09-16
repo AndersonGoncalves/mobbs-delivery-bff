@@ -603,6 +603,37 @@ describe('CatalogController', () => {
     expect(json).toHaveBeenCalledWith(200, [{ ...productWithGroups, hasAdditionalGroups: true }]);
   });
 
+  // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login — endpoint leve dedicado a
+  // "Destaques", reaproveitado pela seção "Peça também" do Carrinho.
+  it('GET /restaurants/:id/featured-products devolve os produtos em destaque já na ordem do repositório', async () => {
+    const productP2 = buildProduct({ id: 'p-2', featuredOrder: 0 });
+    const productP1 = buildProduct({ id: 'p-1', featuredOrder: 1 });
+    const { productRepository, routes } = setup({
+      productRepository: { getFeatured: jest.fn().mockResolvedValue([productP2, productP1]) },
+    });
+    const json = jest.fn();
+
+    await runAuthenticatedChain(routes['GET /restaurants/:id/featured-products'], { params: { id: 'r-1' } }, { json });
+
+    expect(productRepository.getFeatured).toHaveBeenCalledWith('r-1');
+    expect(json).toHaveBeenCalledWith(200, [
+      { ...productP2, hasAdditionalGroups: false },
+      { ...productP1, hasAdditionalGroups: false },
+    ]);
+  });
+
+  it('GET /restaurants/:id/featured-products marca hasAdditionalGroups quando o produto tem grupos', async () => {
+    const productWithGroups = buildProduct({ id: 'p-1', additionalGroups: [{ id: 'g-1' }] });
+    const { routes } = setup({
+      productRepository: { getFeatured: jest.fn().mockResolvedValue([productWithGroups]) },
+    });
+    const json = jest.fn();
+
+    await runAuthenticatedChain(routes['GET /restaurants/:id/featured-products'], { params: { id: 'r-1' } }, { json });
+
+    expect(json).toHaveBeenCalledWith(200, [{ ...productWithGroups, hasAdditionalGroups: true }]);
+  });
+
   // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-1/AC-1.
   it('GET /restaurants/:id/purchased-product-ids devolve os ids do cliente logado', async () => {
     const { orderRepository, routes } = setup({

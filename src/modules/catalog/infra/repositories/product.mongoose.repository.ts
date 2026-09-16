@@ -205,6 +205,19 @@ export class ProductMongooseRepository implements IProductRepository {
     return docs.map(toEntity);
   }
 
+  /**
+   * specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login — mesma query de
+   * `reorderFeatured` (sem a parte de reatribuir `featuredOrder`), mas só produtos
+   * **disponíveis** (`reorderFeatured` é retaguarda, mostra tudo pro operador reordenar).
+   */
+  async getFeatured(restaurantId: string): Promise<IProduct[]> {
+    const docs = await ProductModel.find({ restaurantId, isFeatured: true, isAvailable: true })
+      .sort({ featuredOrder: 1 })
+      .lean<ProductLeanDocument[]>();
+    await resolveTemplates(docs);
+    return docs.map(toEntity);
+  }
+
   async countByMenuCategory(restaurantId: string, menuCategoryId: string): Promise<number> {
     return ProductModel.countDocuments({ restaurantId, menuCategoryId });
   }

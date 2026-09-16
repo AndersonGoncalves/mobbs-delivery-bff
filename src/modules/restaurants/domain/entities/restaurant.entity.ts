@@ -123,6 +123,14 @@ export interface IRestaurant {
    * atual) = "Destaques" numa linha só (scroll horizontal); `true` = grade em várias linhas. Só
    * afeta "Destaques" — "Mais vendidos" sempre uma linha, independente disso. */
   showHighlightsInMultipleRows: boolean;
+  /** specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-1 — quantos produtos
+   * aparecem em "Peça também" no carrinho do app cliente. Diferente de `bestSellersCount`
+   * (booleano `showBestSellers` companheiro + default 6), este campo não tem toggle: a seção só
+   * aparece quando o operador informa um valor aqui — não informado (`undefined`) desliga a
+   * seção inteira (gate no `CartPage` do app, não no BFF: o `CartController` é global e busca as
+   * sugestões antes de o restaurante estar resolvido, então a chamada HTTP ainda ocorre — só a
+   * renderização/quantidade depende deste campo). */
+  cartSuggestionsCount?: number;
 }
 
 export type DeliveryFeeMode = 'fixed' | 'byNeighborhood';

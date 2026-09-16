@@ -72,6 +72,15 @@ export interface IProductRepository {
   reorderFeatured(restaurantId: string, orderedIds: string[]): Promise<IProduct[]>;
 
   /**
+   * specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login — produtos **disponíveis** do
+   * restaurante marcados como destaque (`isFeatured: true`), ordenados por `featuredOrder`.
+   * Usado tanto pelo cardápio (cliente) quanto pela seção "Peça também" do Carrinho — endpoint
+   * leve dedicado, mesmo espírito de `GET /restaurants/:id/best-sellers` (evita baixar o
+   * cardápio inteiro só pra filtrar destaques no cliente).
+   */
+  getFeatured(restaurantId: string): Promise<IProduct[]>;
+
+  /**
    * specs/0032-ajustes-diversos-rating-taxa-entrega REQ-5 — quantos produtos (ativos ou não)
    * pertencem a essa categoria — usado pra bloquear a exclusão real de uma categoria já usada
    * por algum produto.

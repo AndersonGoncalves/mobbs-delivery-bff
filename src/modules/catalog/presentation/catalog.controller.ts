@@ -87,6 +87,18 @@ export class CatalogController extends BaseRouter {
       },
     );
 
+    // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login — pública (mesmo padrão de
+    // `/restaurants/:id/best-sellers`): endpoint leve dedicado a "Destaques", reaproveitado
+    // tanto pelo cardápio quanto pela seção "Peça também" do Carrinho.
+    application.get(
+      '/restaurants/:id/featured-products',
+      firebaseAuthMiddleware,
+      async (req: Request, res: Response) => {
+        const products = await this.productRepository.getFeatured(req.params.id);
+        res.json(200, products.map((product) => ({ ...product, hasAdditionalGroups: product.additionalGroups.length > 0 })));
+      },
+    );
+
     // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-1 — customer-scoped (não é retaguarda):
     // decide o badge "Peça novamente" no `HighlightsSection` do app, comparado contra os
     // produtos exibidos em Destaques/Mais Vendidos.

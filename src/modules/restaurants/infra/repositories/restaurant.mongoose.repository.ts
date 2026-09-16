@@ -48,6 +48,7 @@ interface RestaurantLeanDocument {
   rating?: number;
   ratingCount?: number;
   showHighlightsInMultipleRows?: boolean;
+  cartSuggestionsCount?: number;
 }
 
 function toEntity(doc: RestaurantLeanDocument): IRestaurant {
@@ -86,6 +87,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     rating: doc.rating ?? 0,
     ratingCount: doc.ratingCount ?? 0,
     showHighlightsInMultipleRows: doc.showHighlightsInMultipleRows ?? false,
+    cartSuggestionsCount: doc.cartSuggestionsCount,
   };
 }
 
