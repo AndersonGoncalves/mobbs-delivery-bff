@@ -14,6 +14,11 @@ export interface IAdditionalGroupTemplateOption {
   name: string;
   priceDelta: number;
   rawMaterialId?: string;
+  /**
+   * specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-3 — corrige
+   * `specs/0029` REQ-3: a foto é de cada opção, não do template/grupo inteiro.
+   */
+  imageUrl?: string;
 }
 
 export type AdditionalGroupType = 'adicionar' | 'remover';
@@ -28,10 +33,4 @@ export interface IAdditionalGroupTemplate {
   maxSelections: number;
   options: IAdditionalGroupTemplateOption[];
   isActive: boolean;
-  /**
-   * specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-3 — foto opcional do grupo,
-   * mostrada no detalhe do produto entre a descrição e os controles de seleção (checkbox/radio/
-   * stepper) de cada opção.
-   */
-  imageUrl?: string;
 }

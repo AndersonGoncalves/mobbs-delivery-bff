@@ -8,6 +8,8 @@ const additionalGroupTemplateOptionSchema = new Schema(
     name: { type: String, required: true },
     priceDelta: { type: Number, required: true },
     rawMaterialId: { type: String },
+    // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-3.
+    imageUrl: { type: String },
   },
   { _id: false },
 );
@@ -23,7 +25,6 @@ const additionalGroupTemplateSchema = new Schema(
     maxSelections: { type: Number, required: true },
     options: { type: [additionalGroupTemplateOptionSchema], default: [] },
     isActive: { type: Boolean, required: true, default: true },
-    imageUrl: { type: String },
   },
   { _id: false, timestamps: true },
 );

@@ -4,6 +4,9 @@ const additionalGroupTemplateOptionSchema = z.object({
   name: z.string().min(1),
   priceDelta: z.number(),
   rawMaterialId: z.string().min(1).optional(),
+  // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-3 — corrige
+  // `specs/0029` REQ-3: a foto é da opção, não do template/grupo inteiro.
+  imageUrl: z.string().url().optional(),
 });
 
 // specs/0025-adicionais-reutilizaveis-remocao REQ-1/REQ-8/REQ-10 — grupo reutilizável, sem
@@ -17,8 +20,6 @@ export const saveAdditionalGroupTemplateSchema = z
     minSelections: z.number().int().nonnegative(),
     maxSelections: z.number().int().positive(),
     options: z.array(additionalGroupTemplateOptionSchema).default([]),
-    // specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-3.
-    imageUrl: z.string().url().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.type === 'remover') {

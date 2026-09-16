@@ -19,6 +19,10 @@ const productAdditionalOptionSchema: z.ZodType<IProductAdditionalOption> = z.laz
     priceDelta: z.number(),
     rawMaterialId: z.string().min(1).optional(),
     nestedAdditionalGroups: z.array(productAdditionalGroupInlineSchema).default([]),
+    // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-3 — corrige
+    // `specs/0029` REQ-3: a foto é da opção, não do grupo (`productAdditionalGroupInlineSchema`
+    // abaixo perdeu o campo).
+    imageUrl: z.string().url().optional(),
   }),
 );
 
@@ -36,9 +40,6 @@ const productAdditionalGroupInlineSchema: z.ZodType<IProductAdditionalGroup> = z
       minSelections: z.number().int().nonnegative(),
       maxSelections: z.number().int().positive(),
       options: z.array(productAdditionalOptionSchema).default([]),
-      // specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-3 — vale em todo nível
-      // (raiz e `nestedAdditionalGroups`), já que é o mesmo schema recursivo.
-      imageUrl: z.string().url().optional(),
     })
     .superRefine((data, ctx) => {
       if (data.type === 'remover') {

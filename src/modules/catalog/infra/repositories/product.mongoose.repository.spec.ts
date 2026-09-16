@@ -73,14 +73,15 @@ describe('resolveGroup (specs/0025-adicionais-reutilizaveis-remocao REQ-3)', () 
     expect(resolveGroup(group, new Map())).toBe(group);
   });
 
-  // specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-3.
-  it('imageUrl também é resolvida do template atual, não do snapshot salvo', () => {
+  // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-3 — corrige
+  // `specs/0029` REQ-3: a foto é de cada opção (resolvida do template atual), não do grupo.
+  it('imageUrl de cada opção também é resolvida do template atual, não do snapshot salvo', () => {
     const group = buildGroup({ templateId: 'tpl-1' });
-    const template = buildTemplate({ imageUrl: 'https://cdn.example.com/bordas.png' });
+    const template = buildTemplate({ options: [{ id: 'o-1', name: 'Catupiry', priceDelta: 8, imageUrl: 'https://cdn.example.com/catupiry.png' }] });
 
     const resolved = resolveGroup(group, new Map([['tpl-1', template]]));
 
-    expect(resolved.imageUrl).toBe('https://cdn.example.com/bordas.png');
+    expect(resolved.options[0].imageUrl).toBe('https://cdn.example.com/catupiry.png');
   });
 
   it('grupo type "remover" resolvido também vem do template (não do snapshot)', () => {

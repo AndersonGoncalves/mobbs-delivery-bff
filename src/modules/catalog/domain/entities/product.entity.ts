@@ -10,6 +10,14 @@ export interface IProductAdditionalOption {
   priceDelta: number;
   rawMaterialId?: string;
   nestedAdditionalGroups?: IProductAdditionalGroup[];
+  /**
+   * specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-3 — corrige
+   * `specs/0029` REQ-3: a foto pertence a cada **opção** do grupo (mostrada na linha da opção,
+   * entre o texto e o controle de seleção), não ao grupo inteiro. Numa opção vinda de grupo
+   * vinculado a template, é resolvida do template junto com o resto dos campos (mesmo mecanismo
+   * de `name`/`priceDelta`/etc.).
+   */
+  imageUrl?: string;
 }
 
 /**
@@ -34,13 +42,6 @@ export interface IProductAdditionalGroup {
   minSelections: number;
   maxSelections: number;
   options: IProductAdditionalOption[];
-  /**
-   * specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-3 — foto opcional do grupo,
-   * mostrada no detalhe do produto entre a descrição e os controles de seleção do grupo. Num
-   * grupo vinculado a template, é resolvida do template junto com o resto dos campos (mesmo
-   * mecanismo de `name`/`options`/etc.).
-   */
-  imageUrl?: string;
 }
 
 /**
