@@ -114,6 +114,11 @@ export interface IRestaurant {
    * no perfil do restaurante e usado como destino de exemplo de banner `externalUrl` no seed.
    * Mesmo padrão opcional de `defaultProductImageUrl`. */
   instagramUrl?: string;
+  /** specs/0032-ajustes-diversos-rating-taxa-entrega REQ-6 — média (1 casa decimal) e contagem
+   * de `IRating`s deste restaurante; recalculados a cada novo rating (`RatingsController`), nunca
+   * editados diretamente pelo operador — por isso **fora** de `RestaurantProfileUpdate`. */
+  rating: number;
+  ratingCount: number;
 }
 
 export type DeliveryFeeMode = 'fixed' | 'byNeighborhood';

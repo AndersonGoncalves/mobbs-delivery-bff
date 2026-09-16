@@ -203,4 +203,9 @@ export class OrderMongooseRepository implements IOrderRepository {
 
     return results.map((result) => result._id);
   }
+
+  async hasDeliveredOrder(customerId: string, restaurantId: string): Promise<boolean> {
+    const count = await OrderModel.countDocuments({ customerId, restaurantId, status: 'entregue' }).limit(1);
+    return count > 0;
+  }
 }

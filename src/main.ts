@@ -40,6 +40,8 @@ import { AdditionalGroupTemplatesController } from './modules/additional-group-t
 import { WhatsAppConnectionService } from './modules/whatsapp-connection/infra/whatsapp-connection.service';
 import { WhatsAppConnectionController } from './modules/whatsapp-connection/presentation/whatsapp-connection.controller';
 import { NodemailerEmailService } from './shared/email/nodemailer-email.service';
+import { RatingMongooseRepository } from './modules/ratings/infra/repositories/rating.mongoose.repository';
+import { RatingsController } from './modules/ratings/presentation/ratings.controller';
 
 const server = new Server();
 
@@ -138,6 +140,7 @@ server
     new SuppliersController(new SupplierMongooseRepository(), restaurantOperatorMiddleware),
     new PurchaseOrdersController(purchaseOrderRepository, receivePurchaseOrderService, restaurantOperatorMiddleware),
     new CouponsController(couponRepository, orderRepository, restaurantOperatorMiddleware),
+    new RatingsController(new RatingMongooseRepository(), orderRepository, restaurantRepository),
   ], [migrateOperatorRolesToDono])
   .catch((error) => {
     // eslint-disable-next-line no-console

@@ -88,6 +88,9 @@ const restaurantSchema = new Schema(
     deliveryFeeZones: { type: [deliveryFeeZoneSchema], default: [] },
     // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-9.
     instagramUrl: { type: String },
+    // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-6.
+    rating: { type: Number, required: true, default: 0 },
+    ratingCount: { type: Number, required: true, default: 0 },
   },
   { _id: false, timestamps: true },
 );

@@ -84,4 +84,12 @@ export interface IOrderRepository {
    * de `getSalesSummary`: cache ficaria desatualizado a cada venda nova).
    */
   getBestSellingProductIds(restaurantId: string, limit: number): Promise<string[]>;
+
+  /**
+   * specs/0032-ajustes-diversos-rating-taxa-entrega REQ-6 — regra de negócio pra poder avaliar um
+   * restaurante: o cliente precisa ter pelo menos um pedido `entregue` nele (mesma checagem que
+   * "Peça novamente" usa, mas como um `exists` direto — não precisa da lista inteira de pedidos
+   * só pra saber se existe algum).
+   */
+  hasDeliveredOrder(customerId: string, restaurantId: string): Promise<boolean>;
 }
