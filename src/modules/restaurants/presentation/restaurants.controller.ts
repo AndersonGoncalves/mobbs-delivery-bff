@@ -42,6 +42,18 @@ export class RestaurantsController extends BaseRouter {
       res.json(200, resolved);
     });
 
+    // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-10 — pública (igual a `/resolve/:slug`):
+    // o app precisa calcular a taxa antes/durante o checkout, sem sessão de operador nenhuma.
+    // 404 só quando o restaurante não existe; bairro sem zona cadastrada (ou modo `fixed`) volta
+    // 200 com `feeCents: null` — casos diferentes, o app trata cada um com uma mensagem própria.
+    application.get('/restaurants/:id/delivery-fee', async (req: Request, res: Response) => {
+      const restaurant = await this.restaurantRepository.findById(req.params.id);
+      this.render(restaurant);
+      const neighborhood = String(req.query.neighborhood ?? '');
+      const zone = restaurant!.deliveryFeeZones.find((z) => z.neighborhood.toLowerCase() === neighborhood.toLowerCase());
+      res.json(200, { feeCents: zone?.feeCents ?? null });
+    });
+
     const authenticated: AsyncHandler[] = [firebaseAuthMiddleware, this.restaurantOperatorMiddleware];
 
     application.get('/restaurants/me', ...authenticated, async (req: Request, res: Response) => {

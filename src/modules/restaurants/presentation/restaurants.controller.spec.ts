@@ -3,7 +3,7 @@ import type { Request, Response, Server } from 'restify';
 import { IRestaurantRepository } from '../domain/repositories/restaurant.repository.interface';
 import { RestaurantsController } from './restaurants.controller';
 
-type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'restaurantId'>>;
+type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'restaurantId' | 'query'>>;
 type FakeResponse = Pick<Response, 'json'>;
 type RouteHandler = (req: FakeRequest, res: FakeResponse) => Promise<void>;
 
@@ -93,6 +93,61 @@ describe('RestaurantsController', () => {
 
       await expect(
         routes['GET /restaurants/resolve/:slug'][0]({ params: { slug: 'fechado' } }, { json: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 404 });
+    });
+  });
+
+  // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-10/AC-12.
+  describe('GET /restaurants/:id/delivery-fee (público)', () => {
+    it('resolve o feeCents da zona correspondente ao bairro', async () => {
+      const repository: Partial<IRestaurantRepository> = {
+        findById: jest.fn().mockResolvedValue(
+          buildRestaurant({
+            deliveryFeeMode: 'byNeighborhood',
+            deliveryFeeZones: [
+              { id: 'z-1', neighborhood: 'Centro', feeCents: 500 },
+              { id: 'z-2', neighborhood: 'Jardins', feeCents: 800 },
+            ],
+          }),
+        ),
+      };
+      const { application, routes } = buildFakeApplication();
+      new RestaurantsController(repository as IRestaurantRepository, passthroughOperatorMiddleware).initializeRoutes(
+        application,
+      );
+
+      const json = jest.fn();
+      await routes['GET /restaurants/:id/delivery-fee'][0]({ params: { id: '1' }, query: { neighborhood: 'Jardins' } }, { json });
+
+      expect(json).toHaveBeenCalledWith(200, { feeCents: 800 });
+    });
+
+    it('bairro não cadastrado volta feeCents null, sem lançar erro', async () => {
+      const repository: Partial<IRestaurantRepository> = {
+        findById: jest.fn().mockResolvedValue(
+          buildRestaurant({ deliveryFeeMode: 'byNeighborhood', deliveryFeeZones: [{ id: 'z-1', neighborhood: 'Centro', feeCents: 500 }] }),
+        ),
+      };
+      const { application, routes } = buildFakeApplication();
+      new RestaurantsController(repository as IRestaurantRepository, passthroughOperatorMiddleware).initializeRoutes(
+        application,
+      );
+
+      const json = jest.fn();
+      await routes['GET /restaurants/:id/delivery-fee'][0]({ params: { id: '1' }, query: { neighborhood: 'Inexistente' } }, { json });
+
+      expect(json).toHaveBeenCalledWith(200, { feeCents: null });
+    });
+
+    it('lança 404 quando o restaurante não existe', async () => {
+      const repository: Partial<IRestaurantRepository> = { findById: jest.fn().mockResolvedValue(null) };
+      const { application, routes } = buildFakeApplication();
+      new RestaurantsController(repository as IRestaurantRepository, passthroughOperatorMiddleware).initializeRoutes(
+        application,
+      );
+
+      await expect(
+        routes['GET /restaurants/:id/delivery-fee'][0]({ params: { id: 'inexistente' }, query: {} }, { json: jest.fn() }),
       ).rejects.toMatchObject({ statusCode: 404 });
     });
   });
@@ -248,6 +303,42 @@ describe('RestaurantsController', () => {
 
       expect(repository.updateProfile).toHaveBeenCalledWith('1', patch);
       expect(json).toHaveBeenCalledWith(200, expect.objectContaining(patch));
+    });
+
+    // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-10/REQ-9.
+    it('PUT /restaurants/me aceita e persiste deliveryFeeMode/deliveryFeeZones/instagramUrl', async () => {
+      const patch = {
+        deliveryFeeMode: 'byNeighborhood' as const,
+        deliveryFeeZones: [{ id: 'z-1', neighborhood: 'Centro', feeCents: 500 }],
+        instagramUrl: 'https://instagram.com/primepizza',
+      };
+      const { repository, routes } = setup({ updateProfile: jest.fn().mockResolvedValue(buildRestaurant(patch)) });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['PUT /restaurants/me'], { body: patch }, { json });
+
+      expect(repository.updateProfile).toHaveBeenCalledWith('1', patch);
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining(patch));
+    });
+
+    it('rejeita PUT /restaurants/me com deliveryFeeZones com feeCents negativo', async () => {
+      const { routes } = setup();
+
+      await expect(
+        runAuthenticatedChain(
+          routes['PUT /restaurants/me'],
+          { body: { deliveryFeeZones: [{ id: 'z-1', neighborhood: 'Centro', feeCents: -1 }] } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it('rejeita PUT /restaurants/me com instagramUrl que não é uma URL', async () => {
+      const { routes } = setup();
+
+      await expect(
+        runAuthenticatedChain(routes['PUT /restaurants/me'], { body: { instagramUrl: 'não-é-url' } }, { json: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 400 });
     });
 
     it('rejeita PUT /restaurants/me com bestSellersCount não positivo', async () => {

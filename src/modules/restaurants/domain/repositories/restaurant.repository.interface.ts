@@ -25,6 +25,9 @@ export type RestaurantProfileUpdate = Partial<
     | 'showBanners'
     | 'banners'
     | 'allowCustomerCancelOrder'
+    | 'deliveryFeeMode'
+    | 'deliveryFeeZones'
+    | 'instagramUrl'
   >
 >;
 

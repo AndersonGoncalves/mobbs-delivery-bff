@@ -26,6 +26,13 @@ const bannerSchema = z
     }
   });
 
+// specs/0032-ajustes-diversos-rating-taxa-entrega REQ-10.
+const deliveryFeeZoneSchema = z.object({
+  id: z.string().min(1),
+  neighborhood: z.string().min(1),
+  feeCents: z.number().nonnegative(),
+});
+
 // specs/0010-configuracao-restaurante REQ-1, REQ-8, REQ-9, REQ-10 — cada página da retaguarda
 // manda só os campos que edita (PUT /restaurants/me genérico, `plan.md`).
 export const restaurantProfileSchema = z
@@ -71,6 +78,12 @@ export const restaurantProfileSchema = z
     banners: z.array(bannerSchema),
     // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-2.
     allowCustomerCancelOrder: z.boolean(),
+    // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-10.
+    deliveryFeeMode: z.enum(['fixed', 'byNeighborhood']),
+    deliveryFeeZones: z.array(deliveryFeeZoneSchema),
+    // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-9 — mesmo padrão `.optional()` de
+    // `defaultProductImageUrl` (a maioria não configura, form manda `undefined`, não string vazia).
+    instagramUrl: z.string().url().optional(),
   })
   .partial();
 

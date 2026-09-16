@@ -1,5 +1,7 @@
 import {
+  DeliveryFeeMode,
   IBusinessHours,
+  IDeliveryFeeZone,
   IRestaurant,
   IRestaurantAddress,
   IRestaurantBanner,
@@ -40,6 +42,9 @@ interface RestaurantLeanDocument {
   showBanners?: boolean;
   banners?: IRestaurantBanner[];
   allowCustomerCancelOrder?: boolean;
+  deliveryFeeMode?: DeliveryFeeMode;
+  deliveryFeeZones?: IDeliveryFeeZone[];
+  instagramUrl?: string;
 }
 
 function toEntity(doc: RestaurantLeanDocument): IRestaurant {
@@ -72,6 +77,9 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     showBanners: doc.showBanners ?? true,
     banners: doc.banners ?? [],
     allowCustomerCancelOrder: doc.allowCustomerCancelOrder ?? true,
+    deliveryFeeMode: doc.deliveryFeeMode ?? 'fixed',
+    deliveryFeeZones: doc.deliveryFeeZones ?? [],
+    instagramUrl: doc.instagramUrl,
   };
 }
 
