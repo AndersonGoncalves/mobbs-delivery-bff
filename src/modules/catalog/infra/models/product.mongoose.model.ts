@@ -12,6 +12,10 @@ const productAdditionalOptionSchema = new Schema(
     name: { type: String, required: true },
     priceDelta: { type: Number, required: true },
     rawMaterialId: { type: String },
+    // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-3 — corrige a foto que
+    // estava no grupo (spec 0029): opção vinda de grupo vinculado sobrescreve na leitura, então
+    // nunca `required` aqui (mesmo raciocínio já usado pros campos do grupo abaixo).
+    imageUrl: { type: String },
   },
   { _id: false },
 );
@@ -32,9 +36,6 @@ const productAdditionalGroupSchema = new Schema(
     minSelections: { type: Number, default: 0 },
     maxSelections: { type: Number, default: 0 },
     options: { type: [productAdditionalOptionSchema], default: [] },
-    // specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-3 — mesmo raciocínio dos
-    // campos acima: grupo vinculado sobrescreve na leitura, então nunca `required` aqui.
-    imageUrl: { type: String },
   },
   { _id: false },
 );

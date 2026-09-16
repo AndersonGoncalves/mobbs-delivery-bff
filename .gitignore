@@ -7,3 +7,4 @@ coverage/
 
 # Chave de service account do Firebase Admin SDK (GOOGLE_APPLICATION_CREDENTIALS) — nunca comitar.
 firebase-service-account.json
+tsconfig.tsbuildinfo

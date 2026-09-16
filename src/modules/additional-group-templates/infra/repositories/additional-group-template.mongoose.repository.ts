@@ -24,7 +24,6 @@ function toEntity(doc: AdditionalGroupTemplateLeanDocument): IAdditionalGroupTem
     maxSelections: doc.maxSelections,
     options: doc.options ?? [],
     isActive: doc.isActive,
-    imageUrl: doc.imageUrl,
   };
 }
 

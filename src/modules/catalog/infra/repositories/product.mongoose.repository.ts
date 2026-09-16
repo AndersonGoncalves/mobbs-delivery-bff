@@ -21,8 +21,7 @@ export interface AdditionalGroupTemplateLeanDocument {
   required: boolean;
   minSelections: number;
   maxSelections: number;
-  options: { id: string; name: string; priceDelta: number; rawMaterialId?: string }[];
-  imageUrl?: string;
+  options: { id: string; name: string; priceDelta: number; rawMaterialId?: string; imageUrl?: string }[];
 }
 
 function toEntity(doc: ProductLeanDocument): IProduct {
@@ -68,6 +67,7 @@ function templateToOptions(template: AdditionalGroupTemplateLeanDocument, groupI
     name: option.name,
     priceDelta: option.priceDelta,
     rawMaterialId: option.rawMaterialId,
+    imageUrl: option.imageUrl,
   }));
 }
 
@@ -93,7 +93,6 @@ export function resolveGroup(
     minSelections: template.minSelections,
     maxSelections: template.maxSelections,
     options: templateToOptions(template, group.id),
-    imageUrl: template.imageUrl,
   };
 }
 
