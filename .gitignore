@@ -8,3 +8,7 @@ coverage/
 # Chave de service account do Firebase Admin SDK (GOOGLE_APPLICATION_CREDENTIALS) — nunca comitar.
 firebase-service-account.json
 tsconfig.tsbuildinfo
+
+# Notas pessoais com comandos prontos que incluem credenciais reais (ex. senha do Mongo de
+# produção) — nunca comitar, mesmo raciocínio do .env.
+NOTES-*.md
