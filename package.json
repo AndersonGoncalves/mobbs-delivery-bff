@@ -14,7 +14,8 @@
     "seed:catalog": "ts-node --transpile-only scripts/seed-catalog.ts",
     "seed:additional-group-templates": "ts-node --transpile-only scripts/seed-additional-group-templates.ts",
     "seed:additional-group-option-images": "ts-node --transpile-only scripts/seed-additional-group-option-images.ts",
-    "seed:highlights": "ts-node --transpile-only scripts/seed-highlights.ts"
+    "seed:highlights": "ts-node --transpile-only scripts/seed-highlights.ts",
+    "reset:test-restaurant": "ts-node --transpile-only scripts/reset-test-restaurant.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1134.0",
