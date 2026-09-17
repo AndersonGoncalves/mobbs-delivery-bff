@@ -117,6 +117,13 @@ export const businessHoursSchema = z.array(businessHourSchema);
 
 export const setActiveSchema = z.object({ isActive: z.boolean() });
 
+// specs/0038-autocadastro-restaurante REQ-2 — e-mail/senha não vêm no corpo (já autenticados via
+// Firebase antes desta rota chegar no handler, ver `req.user!.email` em `RestaurantSignupController`).
+export const signupSchema = z.object({
+  name: z.string().min(1),
+  whatsapp: z.string().min(1),
+});
+
 export const updateSlugSchema = z.object({
   slug: z
     .string()

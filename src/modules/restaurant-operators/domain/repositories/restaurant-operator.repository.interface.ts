@@ -9,6 +9,10 @@ export interface IRestaurantOperatorRepository {
    * Cenário multi-restaurante por operador fica pra quando houver demanda real.
    */
   findActiveOperatorByEmail(email: string): Promise<IRestaurantOperator | null>;
+  /** specs/0038-autocadastro-restaurante REQ-4 — checagem de unicidade do e-mail no cadastro,
+   * diferente de `findActiveOperatorByEmail`: olha **todo** vínculo (ativo ou não), pra não
+   * permitir reabrir cadastro reativando um e-mail já usado num restaurante diferente. */
+  findByEmail(email: string): Promise<IRestaurantOperator | null>;
   listByRestaurant(restaurantId: string): Promise<IRestaurantOperator[]>;
   countActiveByRestaurant(restaurantId: string): Promise<number>;
   /**

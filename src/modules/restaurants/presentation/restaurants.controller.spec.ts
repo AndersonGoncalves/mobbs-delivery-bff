@@ -429,7 +429,7 @@ describe('RestaurantsController', () => {
 
       expect(json).toHaveBeenCalledWith(200, {
         slug: 'primepizza',
-        webUrl: 'https://primepizza.bsdelivery.com.br',
+        webUrl: 'https://bsdelivery.com.br/primepizza',
         nativeLink: 'https://bsdelivery.com.br/r/primepizza',
       });
     });

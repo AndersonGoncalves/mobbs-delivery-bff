@@ -88,7 +88,8 @@ export class RestaurantsController extends BaseRouter {
       const found = this.render(restaurant);
       res.json(200, {
         slug: found.slug,
-        webUrl: `https://${found.slug}.bsdelivery.com.br`,
+        // specs/0037-roteamento-por-caminho — canal web resolve por caminho, não mais subdomínio.
+        webUrl: `https://bsdelivery.com.br/${found.slug}`,
         nativeLink: `https://bsdelivery.com.br/r/${found.slug}`,
       });
     });

@@ -32,6 +32,11 @@ export class RestaurantOperatorMongooseRepository implements IRestaurantOperator
     return doc ? toEntity(doc) : null;
   }
 
+  async findByEmail(email: string): Promise<IRestaurantOperator | null> {
+    const doc = await RestaurantOperatorModel.findOne({ email }).lean<RestaurantOperatorLeanDocument>();
+    return doc ? toEntity(doc) : null;
+  }
+
   async listByRestaurant(restaurantId: string): Promise<IRestaurantOperator[]> {
     const docs = await RestaurantOperatorModel.find({ restaurantId }).lean<RestaurantOperatorLeanDocument[]>();
     return docs.map(toEntity);
