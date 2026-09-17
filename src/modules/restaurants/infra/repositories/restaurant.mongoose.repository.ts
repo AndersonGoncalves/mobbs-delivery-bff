@@ -92,6 +92,11 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
 }
 
 export class RestaurantMongooseRepository implements IRestaurantRepository {
+  async create(input: { name: string; slug: string; phone?: string }): Promise<IRestaurant> {
+    const doc = await RestaurantModel.create(input);
+    return toEntity(doc.toObject());
+  }
+
   async findBySlug(slug: string): Promise<IRestaurant | null> {
     const doc = await RestaurantModel.findOne({ slug }).lean<RestaurantLeanDocument>();
     return doc ? toEntity(doc) : null;
