@@ -3,6 +3,7 @@ import { buildRestaurantOperatorMiddleware } from './shared/http/restaurant-oper
 import { RestaurantMongooseRepository } from './modules/restaurants/infra/repositories/restaurant.mongoose.repository';
 import { RestaurantsController } from './modules/restaurants/presentation/restaurants.controller';
 import { RestaurantSignupController } from './modules/restaurants/presentation/restaurant-signup.controller';
+import { OnboardingChecklistController } from './modules/restaurants/presentation/onboarding-checklist.controller';
 import { RestaurantOperatorMongooseRepository } from './modules/restaurant-operators/infra/repositories/restaurant-operator.mongoose.repository';
 import { migrateOperatorRolesToDono } from './modules/restaurant-operators/infra/migrations/migrate-operator-roles-to-dono';
 import { RestaurantOperatorsController } from './modules/restaurant-operators/presentation/restaurant-operators.controller';
@@ -104,7 +105,19 @@ const couponRepository = new CouponMongooseRepository();
 server
   .bootstrap([
     new RestaurantsController(restaurantRepository, restaurantOperatorMiddleware),
-    new RestaurantSignupController(restaurantRepository, restaurantOperatorRepository),
+    new RestaurantSignupController(
+      restaurantRepository,
+      restaurantOperatorRepository,
+      new MenuCategoryMongooseRepository(),
+      productRepository,
+      new AdditionalGroupTemplateMongooseRepository(),
+    ),
+    new OnboardingChecklistController(
+      restaurantRepository,
+      new MenuCategoryMongooseRepository(),
+      productRepository,
+      restaurantOperatorMiddleware,
+    ),
     new RestaurantOperatorsController(restaurantOperatorRepository, restaurantOperatorMiddleware),
     new CatalogController(
       new MenuCategoryMongooseRepository(),

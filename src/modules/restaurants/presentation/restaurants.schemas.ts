@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { isValidCnpj } from '../domain/cnpj-validator';
+import { BUSINESS_TYPES } from '../domain/business-type';
 
 // specs/0028-destaques-vendidos-banners REQ-5, REQ-6 — mesmo padrão de
 // `productAdditionalGroupSchema`/`type`: o campo de destino exigido depende de `linkType`,
@@ -119,9 +120,12 @@ export const setActiveSchema = z.object({ isActive: z.boolean() });
 
 // specs/0038-autocadastro-restaurante REQ-2 — e-mail/senha não vêm no corpo (já autenticados via
 // Firebase antes desta rota chegar no handler, ver `req.user!.email` em `RestaurantSignupController`).
+// specs/0039-onboarding-primeiro-acesso REQ-8 — businessType obrigatório (não `.optional()`):
+// decide o catálogo inicial (REQ-9), sempre pedido no formulário de cadastro.
 export const signupSchema = z.object({
   name: z.string().min(1),
   whatsapp: z.string().min(1),
+  businessType: z.enum(BUSINESS_TYPES),
 });
 
 export const updateSlugSchema = z.object({

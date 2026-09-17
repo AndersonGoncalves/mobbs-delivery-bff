@@ -97,6 +97,14 @@ const restaurantSchema = new Schema(
     // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-1 — sem default de
     // propósito: ausente = seção "Peça também" não aparece no app (ver comentário na entity).
     cartSuggestionsCount: { type: Number, required: false },
+    // specs/0039-onboarding-primeiro-acesso REQ-8/REQ-9 — tipo de negócio escolhido no
+    // autocadastro (ex. "pizzaria"), usado só pra decidir o catálogo inicial na hora da criação;
+    // não editável depois pela retaguarda.
+    category: { type: String },
+    // specs/0039-onboarding-primeiro-acesso REQ-4 — marca a última vez que o operador salvou de
+    // verdade a tela de horário de funcionamento (não só o default automático do autocadastro).
+    // `null`/ausente = nunca revisado desde a criação.
+    businessHoursReviewedAt: { type: Date },
   },
   { _id: false, timestamps: true },
 );

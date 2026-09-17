@@ -49,6 +49,8 @@ interface RestaurantLeanDocument {
   ratingCount?: number;
   showHighlightsInMultipleRows?: boolean;
   cartSuggestionsCount?: number;
+  category?: string;
+  businessHoursReviewedAt?: Date;
 }
 
 function toEntity(doc: RestaurantLeanDocument): IRestaurant {
@@ -88,11 +90,23 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     ratingCount: doc.ratingCount ?? 0,
     showHighlightsInMultipleRows: doc.showHighlightsInMultipleRows ?? false,
     cartSuggestionsCount: doc.cartSuggestionsCount,
+    category: doc.category,
+    businessHoursReviewedAt: doc.businessHoursReviewedAt,
   };
 }
 
 export class RestaurantMongooseRepository implements IRestaurantRepository {
-  async create(input: { name: string; slug: string; phone?: string }): Promise<IRestaurant> {
+  async create(input: {
+    name: string;
+    slug: string;
+    phone?: string;
+    businessHours?: IBusinessHours[];
+    showHighlights?: boolean;
+    showBanners?: boolean;
+    allowCustomerCancelOrder?: boolean;
+    productImageOnRight?: boolean;
+    category?: string;
+  }): Promise<IRestaurant> {
     const doc = await RestaurantModel.create(input);
     return toEntity(doc.toObject());
   }
@@ -113,9 +127,12 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
   }
 
   async updateBusinessHours(id: string, businessHours: IBusinessHours[]): Promise<IRestaurant> {
+    // specs/0039-onboarding-primeiro-acesso REQ-4 — qualquer save de verdade nesta tela marca o
+    // horário como revisado (diferencia de nunca ter revisado desde o default automático do
+    // autocadastro, REQ-1), independente de mudar algum valor ou só confirmar o que já estava.
     const doc = await RestaurantModel.findByIdAndUpdate(
       id,
-      { $set: { businessHours } },
+      { $set: { businessHours, businessHoursReviewedAt: new Date() } },
       { new: true },
     ).lean<RestaurantLeanDocument>();
     return toEntity(doc as RestaurantLeanDocument);
