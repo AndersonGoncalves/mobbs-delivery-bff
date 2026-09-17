@@ -15,4 +15,11 @@ export const environment = {
     smtpPass: process.env.SMTP_PASS,
     smtpFrom: process.env.SMTP_FROM,
   },
+  /** specs/0036-migracao-imagens-s3 — sem `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` aqui de
+   * propósito: credenciais resolvidas pela cadeia padrão do SDK (IAM Role da instância EC2 em
+   * produção; `aws configure`/variáveis de ambiente do desenvolvedor em dev local). */
+  s3: {
+    bucket: process.env.S3_BUCKET_NAME || 'mobbs-delivery-images',
+    region: process.env.AWS_REGION || 'us-east-1',
+  },
 };
