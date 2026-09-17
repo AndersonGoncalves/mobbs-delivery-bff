@@ -135,6 +135,14 @@ export interface IRestaurant {
    * sugestões antes de o restaurante estar resolvido, então a chamada HTTP ainda ocorre — só a
    * renderização/quantidade depende deste campo). */
   cartSuggestionsCount?: number;
+  /** specs/0039-onboarding-primeiro-acesso REQ-8/REQ-9 — tipo de negócio escolhido no
+   * autocadastro (ex. "pizzaria"), só decide o catálogo inicial na hora da criação; não editável
+   * depois pela retaguarda. */
+  category?: string;
+  /** specs/0039-onboarding-primeiro-acesso REQ-4 — última vez que o operador salvou de verdade a
+   * tela de horário de funcionamento (não só o default automático do autocadastro), usado pelo
+   * checklist de onboarding pra diferenciar "nunca revisou" de "revisou e manteve o padrão". */
+  businessHoursReviewedAt?: Date;
 }
 
 export type DeliveryFeeMode = 'fixed' | 'byNeighborhood' | 'free';

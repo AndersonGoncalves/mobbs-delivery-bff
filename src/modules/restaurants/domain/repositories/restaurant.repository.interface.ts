@@ -36,8 +36,21 @@ export type RestaurantProfileUpdate = Partial<
 
 export interface IRestaurantRepository {
   /** specs/0038-autocadastro-restaurante REQ-2 — os demais campos nascem com o default já
-   * declarado no schema do Mongoose (mesmo raciocínio de todo `Restaurant` hoje). */
-  create(input: { name: string; slug: string; phone?: string }): Promise<IRestaurant>;
+   * declarado no schema do Mongoose (mesmo raciocínio de todo `Restaurant` hoje), exceto os
+   * opcionais abaixo (specs/0039-onboarding-primeiro-acesso REQ-1/REQ-2/REQ-8) — usados só pelo
+   * autocadastro, pra não mudar o default do schema em si (outros caminhos de criação, como os
+   * scripts de seed, continuam pegando o default antigo se não passarem esses campos). */
+  create(input: {
+    name: string;
+    slug: string;
+    phone?: string;
+    businessHours?: IBusinessHours[];
+    showHighlights?: boolean;
+    showBanners?: boolean;
+    allowCustomerCancelOrder?: boolean;
+    productImageOnRight?: boolean;
+    category?: string;
+  }): Promise<IRestaurant>;
   findBySlug(slug: string): Promise<IRestaurant | null>;
   findById(id: string): Promise<IRestaurant | null>;
   updateProfile(id: string, patch: RestaurantProfileUpdate): Promise<IRestaurant>;
