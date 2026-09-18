@@ -144,4 +144,44 @@ describe('RatingsController', () => {
       ).rejects.toMatchObject({ statusCode: 404 });
     });
   });
+
+  describe('GET /restaurants/:id/ratings/eligibility', () => {
+    it('AC-8: devolve canRate=true quando o cliente tem pedido entregue', async () => {
+      const { routes } = setup({ orderRepository: { hasDeliveredOrder: jest.fn().mockResolvedValue(true) } });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(
+        routes['GET /restaurants/:id/ratings/eligibility'],
+        { params: { id: 'r-1' }, user: { uid: 'cu-1' } },
+        { json },
+      );
+
+      expect(json).toHaveBeenCalledWith(200, { canRate: true });
+    });
+
+    it('AC-8: devolve canRate=false sem pedido entregue', async () => {
+      const { routes } = setup({ orderRepository: { hasDeliveredOrder: jest.fn().mockResolvedValue(false) } });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(
+        routes['GET /restaurants/:id/ratings/eligibility'],
+        { params: { id: 'r-1' }, user: { uid: 'cu-1' } },
+        { json },
+      );
+
+      expect(json).toHaveBeenCalledWith(200, { canRate: false });
+    });
+
+    it('lança 404 quando o restaurante não existe', async () => {
+      const { routes } = setup({ restaurantRepository: { findById: jest.fn().mockResolvedValue(null) } });
+
+      await expect(
+        runAuthenticatedChain(
+          routes['GET /restaurants/:id/ratings/eligibility'],
+          { params: { id: 'inexistente' }, user: { uid: 'cu-1' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 404 });
+    });
+  });
 });

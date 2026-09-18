@@ -59,5 +59,16 @@ export class RatingsController extends BaseRouter {
       const result = await this.ratingRepository.findManyByRestaurant(req.params.id, page, pageSize);
       res.json(200, result);
     });
+
+    // specs/0032 AC-8 (parte antes só verificada no POST, via 409) — o app usa isto pra decidir
+    // se mostra o botão "Avaliar" de antemão, sem precisar tentar salvar pra descobrir.
+    application.get('/restaurants/:id/ratings/eligibility', firebaseAuthMiddleware, async (req: Request, res: Response) => {
+      const restaurant = await this.restaurantRepository.findById(req.params.id);
+      this.render(restaurant);
+
+      const customerId = req.user!.uid;
+      const canRate = await this.orderRepository.hasDeliveredOrder(customerId, req.params.id);
+      res.json(200, { canRate });
+    });
   }
 }
