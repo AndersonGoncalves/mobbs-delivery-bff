@@ -18,26 +18,73 @@ interface DefaultCatalogAdditionalGroupTemplate {
 export interface DefaultCatalog {
   categoryName: string;
   products: DefaultCatalogProduct[];
-  /** specs/0039-onboarding-primeiro-acesso REQ-9 — templates ficam disponíveis pra retaguarda
-   * (spec 0025, "grupos de adicionais reutilizáveis"), mas **não** pré-vinculados a nenhum
-   * produto nesta v1 — vincular um produto a um template já existente é um fluxo de 2 cliques na
-   * tela de edição do produto; evita o problema de referência circular de gerar o id do produto
-   * antes dele existir só pra montar esse vínculo de antemão. */
   additionalGroupTemplates: DefaultCatalogAdditionalGroupTemplate[];
 }
 
-/** specs/0039-onboarding-primeiro-acesso REQ-9 — conteúdo de referência de mercado, sem imagem
- * (`imageUrl` ausente — REQ-9/spec.md "Fora de escopo"), preços em reais (ajustáveis pelo dono
- * depois). Uma categoria por tipo nesta v1, pra manter o catálogo inicial simples de revisar. */
+// Template reaproveitável de Sabores de Pizza (Obrigatório escolher exatamente 2)
+const SABORES_PIZZA_TEMPLATE: DefaultCatalogAdditionalGroupTemplate = {
+  name: 'Sabores da Pizza',
+  type: 'adicionar',
+  required: true,
+  minSelections: 2,
+  maxSelections: 2,
+  options: [
+    { name: 'Mussarela', priceDelta: 0 },
+    { name: 'Mista', priceDelta: 0 },
+    { name: 'Calabresa', priceDelta: 0 },
+    { name: 'Frango', priceDelta: 0 },
+    { name: 'Carne do Sol', priceDelta: 10 },
+  ],
+};
+
+// Template reaproveitável de Refrigerantes 1 Litro
+const REFRIGERANTES_TEMPLATE: DefaultCatalogAdditionalGroupTemplate = {
+  name: 'Refri?',
+  type: 'adicionar',
+  required: false,
+  minSelections: 0,
+  maxSelections: 1,
+  options: [
+    { name: 'Coca-Cola 1 litro', priceDelta: 10 },
+    { name: 'Guaraná Antarctica 1 litro', priceDelta: 9 },
+    { name: 'Fanta Laranja 1 litro', priceDelta: 9 },
+    { name: 'Fanta Uva 1 litro', priceDelta: 9 },
+    { name: 'Sprite 1 litro', priceDelta: 9 },
+  ],
+};
+// Template reaproveitável de Bebidas
+const BEBIDAS_TEMPLATE: DefaultCatalogAdditionalGroupTemplate = {
+  name: 'Bebidas?',
+  type: 'adicionar',
+  required: false,
+  minSelections: 0,
+  maxSelections: 1,
+  options: [
+    { name: 'Coca-Cola lata 350ml', priceDelta: 6 },
+    { name: 'Guaraná Antarctica lata 350ml', priceDelta: 5.5 },
+    { name: 'Fanta Laranja lata 350ml', priceDelta: 5.5 },
+    { name: 'Fanta Uva lata 350ml', priceDelta: 5.5 },
+    { name: 'Sprite lata 350ml', priceDelta: 5.5 },
+    { name: 'Água com gás 500ml', priceDelta: 4 },
+    { name: 'Água sem gás 500ml', priceDelta: 3.5 },
+  ],
+};
+
 export const DEFAULT_CATALOGS_BY_BUSINESS_TYPE: Record<BusinessType, DefaultCatalog> = {
   pizzaria: {
     categoryName: 'Pizzas',
-    products: [
+    products: [      
       { name: 'Pizza Margherita', description: 'Molho de tomate, mussarela e manjericão.', price: 42 },
       { name: 'Pizza Calabresa', description: 'Molho de tomate, mussarela, calabresa e cebola.', price: 44 },
       { name: 'Pizza Portuguesa', description: 'Presunto, ovos, cebola, azeitona e ervilha.', price: 46 },
       { name: 'Pizza Quatro Queijos', description: 'Mussarela, provolone, parmesão e gorgonzola.', price: 48 },
       { name: 'Pizza Frango com Catupiry', description: 'Frango desfiado e catupiry.', price: 45 },
+      { name: 'Pizza Carne do Sol', description: 'Carne do sol desfiada.', price: 55 },
+      {
+        name: 'Pizza grande 2 sabores + Refri 1l',
+        description: 'Escolha 2 sabores de sua preferência. Acompanha refrigerante de 1 litro.',
+        price: 65,
+      },
     ],
     additionalGroupTemplates: [
       {
@@ -53,17 +100,25 @@ export const DEFAULT_CATALOGS_BY_BUSINESS_TYPE: Record<BusinessType, DefaultCata
         ],
       },
       {
-        name: 'Borda recheada',
+        name: 'Bordas',
         type: 'adicionar',
-        required: false,
-        minSelections: 0,
+        required: true,
+        minSelections: 1,
         maxSelections: 1,
         options: [
-          { name: 'Catupiry', priceDelta: 8 },
-          { name: 'Cheddar', priceDelta: 8 },
-          { name: 'Chocolate', priceDelta: 10 },
+          { name: 'Borda Tradicional', priceDelta: 0 },
+          { name: 'Borda Catupiry', priceDelta: 8 },
+          { name: 'Borda Cheddar', priceDelta: 8 },
+          { name: 'Borda Chocolate', priceDelta: 10 },
+          { name: 'Borda Mussarela', priceDelta: 5 },
+          { name: 'Borda Cream Cheese', priceDelta: 7 },
+          { name: 'Borda Requeijão', priceDelta: 5 },
+
         ],
       },
+      SABORES_PIZZA_TEMPLATE,
+      REFRIGERANTES_TEMPLATE,
+      BEBIDAS_TEMPLATE,
     ],
   },
   hamburgueria: {
@@ -101,6 +156,8 @@ export const DEFAULT_CATALOGS_BY_BUSINESS_TYPE: Record<BusinessType, DefaultCata
           { name: 'Cebola caramelizada', priceDelta: 3 },
         ],
       },
+      REFRIGERANTES_TEMPLATE,
+      BEBIDAS_TEMPLATE,
     ],
   },
   pastelaria: {
@@ -124,6 +181,8 @@ export const DEFAULT_CATALOGS_BY_BUSINESS_TYPE: Record<BusinessType, DefaultCata
           { name: 'Molho especial', priceDelta: 2 },
         ],
       },
+      REFRIGERANTES_TEMPLATE,
+      BEBIDAS_TEMPLATE,
     ],
   },
   comida_japonesa: {
@@ -147,6 +206,8 @@ export const DEFAULT_CATALOGS_BY_BUSINESS_TYPE: Record<BusinessType, DefaultCata
           { name: 'Gergelim', priceDelta: 3 },
         ],
       },
+      REFRIGERANTES_TEMPLATE,
+      BEBIDAS_TEMPLATE,
     ],
   },
   acai_sorveteria: {
@@ -173,6 +234,8 @@ export const DEFAULT_CATALOGS_BY_BUSINESS_TYPE: Record<BusinessType, DefaultCata
           { name: 'Paçoca', priceDelta: 2 },
         ],
       },
+      REFRIGERANTES_TEMPLATE,
+      BEBIDAS_TEMPLATE,
     ],
   },
   lanches_gerais: {
@@ -196,6 +259,8 @@ export const DEFAULT_CATALOGS_BY_BUSINESS_TYPE: Record<BusinessType, DefaultCata
           { name: 'Presunto extra', priceDelta: 2 },
         ],
       },
+      REFRIGERANTES_TEMPLATE,
+      BEBIDAS_TEMPLATE,
     ],
   },
 };
