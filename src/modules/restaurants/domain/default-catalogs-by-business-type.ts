@@ -81,7 +81,7 @@ export const DEFAULT_CATALOGS_BY_BUSINESS_TYPE: Record<BusinessType, DefaultCata
       { name: 'Pizza Frango com Catupiry', description: 'Frango desfiado e catupiry.', price: 45 },
       { name: 'Pizza Carne do Sol', description: 'Carne do sol desfiada.', price: 55 },
       {
-        name: 'Pizza grande 2 sabores + Refri 1l',
+        name: 'Pizza 2 sabores + Refri 1l',
         description: 'Escolha 2 sabores de sua preferência. Acompanha refrigerante de 1 litro.',
         price: 65,
       },
