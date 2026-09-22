@@ -8,6 +8,8 @@ const additionalGroupTemplateOptionSchema = new Schema(
     name: { type: String, required: true },
     priceDelta: { type: Number, required: true },
     rawMaterialId: { type: String },
+    // specs/0041-item-adicional-vinculado-produto.
+    linkedProductId: { type: String },
     // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-3.
     imageUrl: { type: String },
   },

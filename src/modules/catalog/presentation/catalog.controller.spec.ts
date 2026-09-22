@@ -1,5 +1,6 @@
 import type { Request, Response, Server } from 'restify';
 
+import { IAdditionalGroupTemplateRepository } from '../../additional-group-templates/domain/repositories/additional-group-template.repository.interface';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IMenuCategoryRepository } from '../domain/repositories/menu-category.repository.interface';
@@ -64,6 +65,7 @@ function buildProduct(overrides: Record<string, unknown> = {}) {
     additionalGroups: [],
     isFeatured: false,
     featuredOrder: 0,
+    availableAsAdditional: false,
     ...overrides,
   };
 }
@@ -75,6 +77,7 @@ describe('CatalogController', () => {
       productRepository?: Partial<IProductRepository>;
       orderRepository?: Partial<IOrderRepository>;
       restaurantRepository?: Partial<IRestaurantRepository>;
+      additionalGroupTemplateRepository?: Partial<IAdditionalGroupTemplateRepository>;
     } = {},
   ) {
     const menuCategoryRepository: Partial<IMenuCategoryRepository> = {
@@ -93,6 +96,7 @@ describe('CatalogController', () => {
       update: jest.fn().mockResolvedValue(buildProduct({ name: 'Pizza atualizada' })),
       setAvailable: jest.fn().mockResolvedValue(buildProduct({ isAvailable: false })),
       remove: jest.fn().mockResolvedValue(undefined),
+      findAnyByLinkedProductId: jest.fn().mockResolvedValue([]),
       ...overrides.productRepository,
     };
     const orderRepository: Partial<IOrderRepository> = {
@@ -104,6 +108,10 @@ describe('CatalogController', () => {
       findById: jest.fn().mockResolvedValue({ id: 'r-1', bestSellersCount: 6 }),
       ...overrides.restaurantRepository,
     };
+    const additionalGroupTemplateRepository: Partial<IAdditionalGroupTemplateRepository> = {
+      findAnyByLinkedProductId: jest.fn().mockResolvedValue([]),
+      ...overrides.additionalGroupTemplateRepository,
+    };
     const restaurantOperatorMiddleware = jest.fn(async () => {});
     const { application, routes } = buildFakeApplication();
     new CatalogController(
@@ -112,8 +120,9 @@ describe('CatalogController', () => {
       restaurantOperatorMiddleware,
       orderRepository as IOrderRepository,
       restaurantRepository as IRestaurantRepository,
+      additionalGroupTemplateRepository as IAdditionalGroupTemplateRepository,
     ).initializeRoutes(application);
-    return { menuCategoryRepository, productRepository, orderRepository, restaurantRepository, routes };
+    return { menuCategoryRepository, productRepository, orderRepository, restaurantRepository, additionalGroupTemplateRepository, routes };
   }
 
   it('AC-1: GET /restaurants/:id/menu-categories retorna as categorias do restaurante', async () => {
@@ -279,6 +288,72 @@ describe('CatalogController', () => {
         { restaurantId: 'r-1', body: { menuCategoryId: 'c-1', name: 'Pizza' } },
         { json: jest.fn() },
       ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('AC-1: POST /restaurants/me/products persiste availableAsAdditional', async () => {
+    const { productRepository, routes } = setup();
+    const json = jest.fn();
+    const body = { menuCategoryId: 'c-1', name: 'Coca-Cola 1L', price: 8, availableAsAdditional: true };
+
+    await runOperatorChain(routes['POST /restaurants/me/products'], { restaurantId: 'r-1', body }, { json });
+
+    expect(productRepository.create).toHaveBeenCalledWith('r-1', expect.objectContaining({ availableAsAdditional: true }));
+  });
+
+  it('AC-2: POST /restaurants/me/products aceita opção de adicional com linkedProductId (sem rawMaterialId)', async () => {
+    const { productRepository, routes } = setup();
+    const json = jest.fn();
+    const body = {
+      menuCategoryId: 'c-1',
+      name: 'Combo Família',
+      price: 60,
+      additionalGroups: [
+        {
+          id: 'g-1',
+          productId: 'p-2',
+          name: 'Bebidas do combo',
+          required: true,
+          minSelections: 1,
+          maxSelections: 1,
+          options: [{ id: 'o-1', groupId: 'g-1', name: 'Coca-Cola 1L', priceDelta: -2, linkedProductId: 'prod-coca' }],
+        },
+      ],
+    };
+
+    await runOperatorChain(routes['POST /restaurants/me/products'], { restaurantId: 'r-1', body }, { json });
+
+    expect(productRepository.create).toHaveBeenCalledWith(
+      'r-1',
+      expect.objectContaining({
+        additionalGroups: [expect.objectContaining({ options: [expect.objectContaining({ linkedProductId: 'prod-coca' })] })],
+      }),
+    );
+  });
+
+  it('rejeita opção de adicional com rawMaterialId e linkedProductId ao mesmo tempo (400)', async () => {
+    const { routes } = setup();
+    const body = {
+      menuCategoryId: 'c-1',
+      name: 'Combo Família',
+      price: 60,
+      additionalGroups: [
+        {
+          id: 'g-1',
+          productId: 'p-2',
+          name: 'Bebidas do combo',
+          required: true,
+          minSelections: 1,
+          maxSelections: 1,
+          options: [
+            { id: 'o-1', groupId: 'g-1', name: 'Coca-Cola 1L', priceDelta: -2, rawMaterialId: 'rm-1', linkedProductId: 'prod-coca' },
+          ],
+        },
+      ],
+    };
+
+    await expect(
+      runOperatorChain(routes['POST /restaurants/me/products'], { restaurantId: 'r-1', body }, { json: jest.fn() }),
     ).rejects.toMatchObject({ statusCode: 400 });
   });
 
@@ -527,6 +602,40 @@ describe('CatalogController', () => {
         { json: jest.fn(), send },
       ),
     ).rejects.toMatchObject({ statusCode: 409 });
+
+    expect(productRepository.remove).not.toHaveBeenCalled();
+  });
+
+  it('AC-5: DELETE /restaurants/me/products/:id bloqueia (409) se vinculado como adicional em outro produto', async () => {
+    const { productRepository, routes } = setup({
+      productRepository: { findAnyByLinkedProductId: jest.fn().mockResolvedValue([{ id: 'p-combo', name: 'Combo Família' }]) },
+    });
+    const send = jest.fn();
+
+    await expect(
+      runOperatorChain(
+        routes['DELETE /restaurants/me/products/:id'],
+        { restaurantId: 'r-1', params: { id: 'p-1' } },
+        { json: jest.fn(), send },
+      ),
+    ).rejects.toMatchObject({ statusCode: 409, message: expect.stringContaining('Combo Família') });
+
+    expect(productRepository.remove).not.toHaveBeenCalled();
+  });
+
+  it('AC-5: DELETE /restaurants/me/products/:id bloqueia (409) se vinculado num template reutilizável', async () => {
+    const { productRepository, routes } = setup({
+      additionalGroupTemplateRepository: { findAnyByLinkedProductId: jest.fn().mockResolvedValue([{ id: 'tpl-1', name: 'Bebidas do combo' }]) },
+    });
+    const send = jest.fn();
+
+    await expect(
+      runOperatorChain(
+        routes['DELETE /restaurants/me/products/:id'],
+        { restaurantId: 'r-1', params: { id: 'p-1' } },
+        { json: jest.fn(), send },
+      ),
+    ).rejects.toMatchObject({ statusCode: 409, message: expect.stringContaining('Bebidas do combo') });
 
     expect(productRepository.remove).not.toHaveBeenCalled();
   });

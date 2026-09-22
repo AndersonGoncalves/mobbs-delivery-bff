@@ -26,4 +26,10 @@ export interface IAdditionalGroupTemplateRepository {
   setActive(id: string, isActive: boolean): Promise<IAdditionalGroupTemplate>;
   /** specs/0026-selecao-clonar-excluir-busca-web REQ-4 — exclusão real (diferente de setActive). */
   remove(id: string): Promise<void>;
+
+  /** specs/0041-item-adicional-vinculado-produto REQ-4 — templates (ativos ou não) com alguma
+   * opção referenciando `linkedProductId` — usado, junto de
+   * `IProductRepository.findAnyByLinkedProductId`, pra bloquear a exclusão real do produto
+   * vinculado, listando onde ele é usado. */
+  findAnyByLinkedProductId(restaurantId: string, linkedProductId: string): Promise<{ id: string; name: string }[]>;
 }

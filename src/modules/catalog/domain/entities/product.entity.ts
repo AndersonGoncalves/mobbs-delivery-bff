@@ -9,13 +9,24 @@ export interface IProductAdditionalOption {
   name: string;
   priceDelta: number;
   rawMaterialId?: string;
+  /**
+   * specs/0041-item-adicional-vinculado-produto REQ-2/REQ-3 — referência opcional a um
+   * `IProduct` já cadastrado (produto vendável, ex. "Coca-Cola 1L"), mutuamente exclusiva com
+   * `rawMaterialId` (nunca os dois preenchidos ao mesmo tempo, validado em `catalog.schemas.ts`).
+   * Diferente de `rawMaterialId` (só guarda o vínculo, `name`/`priceDelta` não são
+   * resincronizados): `name`/`imageUrl` de uma opção com `linkedProductId` são resolvidos "ao
+   * vivo" a partir do produto vinculado em toda leitura (mesmo mecanismo de resolução já usado
+   * pra `templateId` abaixo) — só `priceDelta` continua sendo digitado livremente por opção.
+   */
+  linkedProductId?: string;
   nestedAdditionalGroups?: IProductAdditionalGroup[];
   /**
    * specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-3 — corrige
    * `specs/0029` REQ-3: a foto pertence a cada **opção** do grupo (mostrada na linha da opção,
    * entre o texto e o controle de seleção), não ao grupo inteiro. Numa opção vinda de grupo
    * vinculado a template, é resolvida do template junto com o resto dos campos (mesmo mecanismo
-   * de `name`/`priceDelta`/etc.).
+   * de `name`/`priceDelta`/etc.). Numa opção com `linkedProductId`, é resolvida do produto
+   * vinculado (specs/0041).
    */
   imageUrl?: string;
 }
@@ -81,4 +92,8 @@ export interface IProduct {
    * só relevante quando `isFeatured === true` (mesmo padrão de `MenuCategory.sortOrder`: campo
    * persistido, não posição implícita no array — permite reordenar em lote). */
   featuredOrder: number;
+  /** specs/0041-item-adicional-vinculado-produto REQ-1 — marca este produto como candidato a
+   * ser escolhido (`linkedProductId`) como opção de um grupo de adicionais de OUTRO produto —
+   * default `false`, não afeta a listagem/venda normal deste produto. */
+  availableAsAdditional: boolean;
 }

@@ -34,6 +34,7 @@ function toProductLight(doc: ProductLightLeanDocument): Omit<IProduct, 'addition
     isFeatured: doc.isFeatured ?? false,
     featuredOrder: doc.featuredOrder ?? 0,
     hasAdditionalGroups: (doc.additionalGroups?.length ?? 0) > 0,
+    availableAsAdditional: doc.availableAsAdditional ?? false,
   };
 }
 

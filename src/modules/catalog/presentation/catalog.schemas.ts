@@ -12,18 +12,28 @@ export const reorderMenuCategoriesSchema = z.object({ orderedIds: z.array(z.stri
 // template) — specs/0025-adicionais-reutilizaveis-remocao, templates só valem pra grupos de 1º
 // nível (plan.md §Arquitetura da solução).
 const productAdditionalOptionSchema: z.ZodType<IProductAdditionalOption> = z.lazy(() =>
-  z.object({
-    id: z.string().min(1),
-    groupId: z.string().min(1),
-    name: z.string().min(1),
-    priceDelta: z.number(),
-    rawMaterialId: z.string().min(1).optional(),
-    nestedAdditionalGroups: z.array(productAdditionalGroupInlineSchema).default([]),
-    // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-3 — corrige
-    // `specs/0029` REQ-3: a foto é da opção, não do grupo (`productAdditionalGroupInlineSchema`
-    // abaixo perdeu o campo).
-    imageUrl: z.string().url().optional(),
-  }),
+  z
+    .object({
+      id: z.string().min(1),
+      groupId: z.string().min(1),
+      name: z.string().min(1),
+      priceDelta: z.number(),
+      rawMaterialId: z.string().min(1).optional(),
+      // specs/0041-item-adicional-vinculado-produto REQ-1/REQ-2 — referência opcional a um
+      // Product já cadastrado (`availableAsAdditional: true`), mutuamente exclusiva com
+      // `rawMaterialId` (validado abaixo, mesma regra também em `additional-group-template.
+      // schemas.ts` pro lado do template reutilizável).
+      linkedProductId: z.string().min(1).optional(),
+      nestedAdditionalGroups: z.array(productAdditionalGroupInlineSchema).default([]),
+      // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-3 — corrige
+      // `specs/0029` REQ-3: a foto é da opção, não do grupo (`productAdditionalGroupInlineSchema`
+      // abaixo perdeu o campo).
+      imageUrl: z.string().url().optional(),
+    })
+    .refine((data) => !(data.rawMaterialId && data.linkedProductId), {
+      message: 'Uma opção não pode ter rawMaterialId e linkedProductId ao mesmo tempo',
+      path: ['linkedProductId'],
+    }),
 );
 
 // specs/0025-adicionais-reutilizaveis-remocao REQ-8/REQ-10 — `type` distingue "adicionar"
@@ -103,6 +113,8 @@ export const saveProductSchema = z.object({
   additionalGroups: z.array(productAdditionalGroupSchema).default([]),
   // specs/0028-destaques-vendidos-banners REQ-3.
   isFeatured: z.boolean().default(false),
+  // specs/0041-item-adicional-vinculado-produto REQ-1.
+  availableAsAdditional: z.boolean().default(false),
 });
 
 export const updateProductSchema = saveProductSchema.partial();

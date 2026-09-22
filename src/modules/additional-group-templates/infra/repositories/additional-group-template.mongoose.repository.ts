@@ -7,10 +7,17 @@ import {
   NewAdditionalGroupTemplateInput,
 } from '../../domain/repositories/additional-group-template.repository.interface';
 import { escapeRegex } from '../../../../shared/utils/escape-regex';
+import { ProductModel } from '../../../catalog/infra/models/product.mongoose.model';
 import { AdditionalGroupTemplateModel } from '../models/additional-group-template.mongoose.model';
 
 interface AdditionalGroupTemplateLeanDocument extends Omit<IAdditionalGroupTemplate, 'id'> {
   _id: string;
+}
+
+interface LinkedProductLeanDocument {
+  _id: string;
+  name: string;
+  imageUrl?: string;
 }
 
 function toEntity(doc: AdditionalGroupTemplateLeanDocument): IAdditionalGroupTemplate {
@@ -25,6 +32,36 @@ function toEntity(doc: AdditionalGroupTemplateLeanDocument): IAdditionalGroupTem
     options: doc.options ?? [],
     isActive: doc.isActive,
   };
+}
+
+function referencesLinkedProduct(doc: AdditionalGroupTemplateLeanDocument, linkedProductId: string): boolean {
+  return (doc.options ?? []).some((option) => option.linkedProductId === linkedProductId);
+}
+
+// specs/0041-item-adicional-vinculado-produto REQ-3 — mesmo "vínculo vivo" de
+// `ProductMongooseRepository.resolveOptionLinkedProduct`: a retaguarda edita templates
+// diretamente, então também precisa ver o nome/imagem ATUAIS do produto vinculado, não um
+// snapshot congelado da opção.
+async function resolveLinkedProducts(docs: AdditionalGroupTemplateLeanDocument[]): Promise<void> {
+  const linkedProductIds = new Set<string>();
+  for (const doc of docs) {
+    for (const option of doc.options ?? []) {
+      if (option.linkedProductId) linkedProductIds.add(option.linkedProductId);
+    }
+  }
+  if (linkedProductIds.size === 0) return;
+
+  const linkedProducts = await ProductModel.find({ _id: { $in: [...linkedProductIds] } })
+    .select('_id name imageUrl')
+    .lean<LinkedProductLeanDocument[]>();
+  const productsById = new Map(linkedProducts.map((product) => [product._id, product]));
+
+  for (const doc of docs) {
+    doc.options = (doc.options ?? []).map((option) => {
+      const linked = option.linkedProductId ? productsById.get(option.linkedProductId) : undefined;
+      return linked ? { ...option, name: linked.name, imageUrl: linked.imageUrl } : option;
+    });
+  }
 }
 
 // Repositório (não o cliente) gera os ids de template/opção — diferente da convenção mais solta
@@ -44,12 +81,15 @@ export class AdditionalGroupTemplateMongooseRepository implements IAdditionalGro
     if (filters?.name) query.name = { $regex: escapeRegex(filters.name), $options: 'i' };
     if (filters?.isActive !== undefined) query.isActive = filters.isActive;
     const docs = await AdditionalGroupTemplateModel.find(query).lean<AdditionalGroupTemplateLeanDocument[]>();
+    await resolveLinkedProducts(docs);
     return docs.map(toEntity);
   }
 
   async findById(id: string): Promise<IAdditionalGroupTemplate | null> {
     const doc = await AdditionalGroupTemplateModel.findById(id).lean<AdditionalGroupTemplateLeanDocument>();
-    return doc ? toEntity(doc) : null;
+    if (!doc) return null;
+    await resolveLinkedProducts([doc]);
+    return toEntity(doc);
   }
 
   async create(restaurantId: string, input: NewAdditionalGroupTemplateInput): Promise<IAdditionalGroupTemplate> {
@@ -99,5 +139,10 @@ export class AdditionalGroupTemplateMongooseRepository implements IAdditionalGro
 
   async remove(id: string): Promise<void> {
     await AdditionalGroupTemplateModel.findByIdAndDelete(id);
+  }
+
+  async findAnyByLinkedProductId(restaurantId: string, linkedProductId: string): Promise<{ id: string; name: string }[]> {
+    const docs = await AdditionalGroupTemplateModel.find({ restaurantId }).lean<AdditionalGroupTemplateLeanDocument[]>();
+    return docs.filter((doc) => referencesLinkedProduct(doc, linkedProductId)).map((doc) => ({ id: doc._id, name: doc.name }));
   }
 }

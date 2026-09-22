@@ -5,6 +5,7 @@ import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
 import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
+import { IAdditionalGroupTemplateRepository } from '../../additional-group-templates/domain/repositories/additional-group-template.repository.interface';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IMenuCategory } from '../domain/entities/menu-category.entity';
@@ -47,6 +48,10 @@ export class CatalogController extends BaseRouter {
     private readonly orderRepository: IOrderRepository,
     // specs/0028-destaques-vendidos-banners REQ-2 — lê `bestSellersCount` do restaurante.
     private readonly restaurantRepository: IRestaurantRepository,
+    // specs/0041-item-adicional-vinculado-produto REQ-4 — checa, junto do próprio
+    // `productRepository`, se o produto está vinculado (`linkedProductId`) em algum template
+    // reutilizável antes de permitir a exclusão real.
+    private readonly additionalGroupTemplateRepository: IAdditionalGroupTemplateRepository,
   ) {
     super();
   }
@@ -211,6 +216,17 @@ export class CatalogController extends BaseRouter {
       const usageCount = await this.orderRepository.countByProduct(req.restaurantId!, product.id);
       if (usageCount > 0) {
         throw new ConflictError('Produto já foi usado em algum pedido e não pode ser excluído');
+      }
+      // specs/0041-item-adicional-vinculado-produto REQ-4 — varre os dois lugares onde um
+      // `linkedProductId` pode existir: grupos inline de outros produtos e templates
+      // reutilizáveis (`specs/0025`), listando os nomes na mensagem de bloqueio.
+      const [linkingProducts, linkingTemplates] = await Promise.all([
+        this.productRepository.findAnyByLinkedProductId(req.restaurantId!, product.id),
+        this.additionalGroupTemplateRepository.findAnyByLinkedProductId(req.restaurantId!, product.id),
+      ]);
+      if (linkingProducts.length > 0 || linkingTemplates.length > 0) {
+        const names = [...linkingProducts, ...linkingTemplates].map((item) => item.name).join(', ');
+        throw new ConflictError(`Produto usado como adicional em: ${names} — não pode ser excluído`);
       }
       await this.productRepository.remove(product.id);
       res.send(204);

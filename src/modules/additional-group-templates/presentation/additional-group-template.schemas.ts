@@ -1,13 +1,21 @@
 import { z } from 'zod';
 
-const additionalGroupTemplateOptionSchema = z.object({
-  name: z.string().min(1),
-  priceDelta: z.number(),
-  rawMaterialId: z.string().min(1).optional(),
-  // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-3 — corrige
-  // `specs/0029` REQ-3: a foto é da opção, não do template/grupo inteiro.
-  imageUrl: z.string().url().optional(),
-});
+const additionalGroupTemplateOptionSchema = z
+  .object({
+    name: z.string().min(1),
+    priceDelta: z.number(),
+    rawMaterialId: z.string().min(1).optional(),
+    // specs/0041-item-adicional-vinculado-produto REQ-1/REQ-2 — mesma regra de
+    // `catalog.schemas.ts` (mutuamente exclusivo com `rawMaterialId`).
+    linkedProductId: z.string().min(1).optional(),
+    // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-3 — corrige
+    // `specs/0029` REQ-3: a foto é da opção, não do template/grupo inteiro.
+    imageUrl: z.string().url().optional(),
+  })
+  .refine((data) => !(data.rawMaterialId && data.linkedProductId), {
+    message: 'Uma opção não pode ter rawMaterialId e linkedProductId ao mesmo tempo',
+    path: ['linkedProductId'],
+  });
 
 // specs/0025-adicionais-reutilizaveis-remocao REQ-1/REQ-8/REQ-10 — grupo reutilizável, sem
 // recursão (templates não se aplicam a `nestedAdditionalGroups`, ver plan.md §Arquitetura da

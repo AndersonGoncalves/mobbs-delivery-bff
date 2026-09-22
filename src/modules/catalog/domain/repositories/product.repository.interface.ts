@@ -8,6 +8,8 @@ export type NewProductInput = {
   price: number;
   isAvailable: boolean;
   additionalGroups: IProductAdditionalGroupInput[];
+  /** specs/0041-item-adicional-vinculado-produto REQ-1 — default `false` quando ausente. */
+  availableAsAdditional?: boolean;
 };
 
 export type ProductUpdateInput = Partial<NewProductInput>;
@@ -86,4 +88,14 @@ export interface IProductRepository {
    * por algum produto.
    */
   countByMenuCategory(restaurantId: string, menuCategoryId: string): Promise<number>;
+
+  /**
+   * specs/0041-item-adicional-vinculado-produto REQ-4 — produtos (ativos OU NÃO, mesmo espírito
+   * de `countAnyByRawMaterialId`) cuja árvore de `additionalGroups` (recursiva, só grupos
+   * inline — grupos vinculados a template são cobertos por
+   * `IAdditionalGroupTemplateRepository.findAnyByLinkedProductId`) referencia `linkedProductId`
+   * em alguma opção — usado pra bloquear a exclusão real do produto vinculado, listando onde ele
+   * é usado.
+   */
+  findAnyByLinkedProductId(restaurantId: string, linkedProductId: string): Promise<IAffectedProduct[]>;
 }

@@ -125,6 +125,7 @@ server
       restaurantOperatorMiddleware,
       orderRepository,
       restaurantRepository,
+      new AdditionalGroupTemplateMongooseRepository(),
     ),
     new OrdersController(
       orderRepository,

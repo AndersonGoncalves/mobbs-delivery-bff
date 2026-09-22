@@ -12,6 +12,10 @@ const productAdditionalOptionSchema = new Schema(
     name: { type: String, required: true },
     priceDelta: { type: Number, required: true },
     rawMaterialId: { type: String },
+    // specs/0041-item-adicional-vinculado-produto — referência opcional a outro Product
+    // (mutuamente exclusiva com rawMaterialId, validado no zod); name/imageUrl são sobrescritos
+    // na leitura a partir do produto vinculado, mesmo raciocínio de templateId abaixo.
+    linkedProductId: { type: String },
     // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-3 — corrige a foto que
     // estava no grupo (spec 0029): opção vinda de grupo vinculado sobrescreve na leitura, então
     // nunca `required` aqui (mesmo raciocínio já usado pros campos do grupo abaixo).
@@ -58,6 +62,8 @@ const productSchema = new Schema(
     // specs/0028-destaques-vendidos-banners REQ-3.
     isFeatured: { type: Boolean, required: true, default: false },
     featuredOrder: { type: Number, required: true, default: 0 },
+    // specs/0041-item-adicional-vinculado-produto REQ-1.
+    availableAsAdditional: { type: Boolean, required: true, default: false },
   },
   { _id: false, timestamps: true },
 );

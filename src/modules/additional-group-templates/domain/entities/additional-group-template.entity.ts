@@ -14,6 +14,10 @@ export interface IAdditionalGroupTemplateOption {
   name: string;
   priceDelta: number;
   rawMaterialId?: string;
+  /** specs/0041-item-adicional-vinculado-produto REQ-2/REQ-3 — mesmo campo/regra de
+   * `IProductAdditionalOption.linkedProductId` (mutuamente exclusivo com `rawMaterialId`,
+   * `name`/`imageUrl` resolvidos "ao vivo" a partir do produto vinculado). */
+  linkedProductId?: string;
   /**
    * specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-3 — corrige
    * `specs/0029` REQ-3: a foto é de cada opção, não do template/grupo inteiro.

@@ -21,7 +21,13 @@ export interface AdditionalGroupTemplateLeanDocument {
   required: boolean;
   minSelections: number;
   maxSelections: number;
-  options: { id: string; name: string; priceDelta: number; rawMaterialId?: string; imageUrl?: string }[];
+  options: { id: string; name: string; priceDelta: number; rawMaterialId?: string; linkedProductId?: string; imageUrl?: string }[];
+}
+
+interface LinkedProductLeanDocument {
+  _id: string;
+  name: string;
+  imageUrl?: string;
 }
 
 function toEntity(doc: ProductLeanDocument): IProduct {
@@ -37,6 +43,7 @@ function toEntity(doc: ProductLeanDocument): IProduct {
     additionalGroups: doc.additionalGroups ?? [],
     isFeatured: doc.isFeatured ?? false,
     featuredOrder: doc.featuredOrder ?? 0,
+    availableAsAdditional: doc.availableAsAdditional ?? false,
   };
 }
 
@@ -60,6 +67,19 @@ function referencesTemplate(groups: IProductAdditionalGroup[], templateId: strin
   return groups.some((group) => group.templateId === templateId);
 }
 
+// specs/0041-item-adicional-vinculado-produto REQ-4 — mesmo raciocínio recursivo de
+// `referencesRawMaterial` (produto composto pode ter o vínculo em qualquer nível de
+// `nestedAdditionalGroups`), só que procurando `linkedProductId` em vez de `rawMaterialId`.
+function referencesLinkedProduct(groups: IProductAdditionalGroup[], linkedProductId: string): boolean {
+  return groups.some((group) =>
+    group.options.some(
+      (option) =>
+        option.linkedProductId === linkedProductId ||
+        (option.nestedAdditionalGroups && referencesLinkedProduct(option.nestedAdditionalGroups, linkedProductId)),
+    ),
+  );
+}
+
 function templateToOptions(template: AdditionalGroupTemplateLeanDocument, groupId: string): IProductAdditionalOption[] {
   return template.options.map((option) => ({
     id: option.id,
@@ -67,8 +87,29 @@ function templateToOptions(template: AdditionalGroupTemplateLeanDocument, groupI
     name: option.name,
     priceDelta: option.priceDelta,
     rawMaterialId: option.rawMaterialId,
+    linkedProductId: option.linkedProductId,
     imageUrl: option.imageUrl,
   }));
+}
+
+// specs/0041-item-adicional-vinculado-produto REQ-3 — "vínculo vivo" igual `resolveGroup`, mas
+// pra opções com `linkedProductId`: `name`/`imageUrl` sempre refletem o produto vinculado ATUAL
+// (nunca o snapshot persistido na opção). Pura de propósito, mesmo raciocínio de `resolveGroup`.
+export function resolveOptionLinkedProduct(
+  option: IProductAdditionalOption,
+  productsById: Map<string, LinkedProductLeanDocument>,
+): IProductAdditionalOption {
+  const nestedAdditionalGroups = option.nestedAdditionalGroups?.map((group) => resolveGroupLinkedProducts(group, productsById));
+  const linked = option.linkedProductId ? productsById.get(option.linkedProductId) : undefined;
+  if (!linked) return nestedAdditionalGroups ? { ...option, nestedAdditionalGroups } : option;
+  return { ...option, name: linked.name, imageUrl: linked.imageUrl, nestedAdditionalGroups };
+}
+
+function resolveGroupLinkedProducts(
+  group: IProductAdditionalGroup,
+  productsById: Map<string, LinkedProductLeanDocument>,
+): IProductAdditionalGroup {
+  return { ...group, options: group.options.map((option) => resolveOptionLinkedProduct(option, productsById)) };
 }
 
 // REQ-3 — "vínculo vivo": um grupo com `templateId` sempre reflete os dados ATUAIS do template
@@ -115,11 +156,42 @@ async function resolveTemplates(docs: ProductLeanDocument[]): Promise<void> {
   }
 }
 
+function collectLinkedProductIds(groups: IProductAdditionalGroup[], acc: Set<string>): void {
+  for (const group of groups) {
+    for (const option of group.options) {
+      if (option.linkedProductId) acc.add(option.linkedProductId);
+      if (option.nestedAdditionalGroups) collectLinkedProductIds(option.nestedAdditionalGroups, acc);
+    }
+  }
+}
+
+// specs/0041-item-adicional-vinculado-produto REQ-3 — chamada sempre DEPOIS de `resolveTemplates`
+// (nunca antes): um grupo vinculado a template só revela suas opções — e um `linkedProductId`
+// eventual dentro delas — depois de resolvido; chamar na ordem contrária deixaria de resolver o
+// nome/imagem de opções vindas de template.
+async function resolveLinkedProducts(docs: ProductLeanDocument[]): Promise<void> {
+  const linkedProductIds = new Set<string>();
+  for (const doc of docs) {
+    collectLinkedProductIds(doc.additionalGroups ?? [], linkedProductIds);
+  }
+  if (linkedProductIds.size === 0) return;
+
+  const linkedProducts = await ProductModel.find({ _id: { $in: [...linkedProductIds] } })
+    .select('_id name imageUrl')
+    .lean<LinkedProductLeanDocument[]>();
+  const productsById = new Map(linkedProducts.map((product) => [product._id, product]));
+
+  for (const doc of docs) {
+    doc.additionalGroups = (doc.additionalGroups ?? []).map((group) => resolveGroupLinkedProducts(group, productsById));
+  }
+}
+
 export class ProductMongooseRepository implements IProductRepository {
   async findById(id: string): Promise<IProduct | null> {
     const doc = await ProductModel.findById(id).lean<ProductLeanDocument>();
     if (!doc) return null;
     await resolveTemplates([doc]);
+    await resolveLinkedProducts([doc]);
     return toEntity(doc);
   }
 
@@ -129,6 +201,7 @@ export class ProductMongooseRepository implements IProductRepository {
     if (filters?.isAvailable !== undefined) query.isAvailable = filters.isAvailable;
     const docs = await ProductModel.find(query).lean<ProductLeanDocument[]>();
     await resolveTemplates(docs);
+    await resolveLinkedProducts(docs);
     return docs.map(toEntity);
   }
 
@@ -202,6 +275,7 @@ export class ProductMongooseRepository implements IProductRepository {
       .sort({ featuredOrder: 1 })
       .lean<ProductLeanDocument[]>();
     await resolveTemplates(docs);
+    await resolveLinkedProducts(docs);
     return docs.map(toEntity);
   }
 
@@ -215,10 +289,20 @@ export class ProductMongooseRepository implements IProductRepository {
       .sort({ featuredOrder: 1 })
       .lean<ProductLeanDocument[]>();
     await resolveTemplates(docs);
+    await resolveLinkedProducts(docs);
     return docs.map(toEntity);
   }
 
   async countByMenuCategory(restaurantId: string, menuCategoryId: string): Promise<number> {
     return ProductModel.countDocuments({ restaurantId, menuCategoryId });
+  }
+
+  async findAnyByLinkedProductId(restaurantId: string, linkedProductId: string): Promise<IAffectedProduct[]> {
+    // Sem `isAvailable: true` — REQ-4 bloqueia a exclusão independente do produto que usa o
+    // vínculo estar disponível ou não (mesmo espírito de `countAnyByRawMaterialId`).
+    const docs = await ProductModel.find({ restaurantId }).lean<ProductLeanDocument[]>();
+    return docs
+      .filter((doc) => referencesLinkedProduct(doc.additionalGroups ?? [], linkedProductId))
+      .map((doc) => ({ id: doc._id, name: doc.name }));
   }
 }

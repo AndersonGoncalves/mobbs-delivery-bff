@@ -107,6 +107,49 @@ describe('AdditionalGroupTemplatesController', () => {
     expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ name: 'ACRESCIMOS' }));
   });
 
+  it('specs/0041: aceita opção com linkedProductId (sem rawMaterialId)', async () => {
+    const { templateRepository, routes } = setup();
+    const payload = {
+      name: 'Bebidas do combo',
+      type: 'adicionar',
+      required: true,
+      minSelections: 1,
+      maxSelections: 1,
+      options: [{ name: 'Coca-Cola 1L', priceDelta: -2, linkedProductId: 'prod-coca' }],
+    };
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/additional-group-templates'],
+      { restaurantId: 'r-1', body: payload },
+      { json: jest.fn() },
+    );
+
+    expect(templateRepository.create).toHaveBeenCalledWith(
+      'r-1',
+      expect.objectContaining({ options: [expect.objectContaining({ linkedProductId: 'prod-coca' })] }),
+    );
+  });
+
+  it('specs/0041: rejeita opção com rawMaterialId e linkedProductId ao mesmo tempo (400)', async () => {
+    const { routes } = setup();
+    const payload = {
+      name: 'Bebidas do combo',
+      type: 'adicionar',
+      required: true,
+      minSelections: 1,
+      maxSelections: 1,
+      options: [{ name: 'Coca-Cola 1L', priceDelta: -2, rawMaterialId: 'rm-1', linkedProductId: 'prod-coca' }],
+    };
+
+    await expect(
+      runOperatorChain(
+        routes['POST /restaurants/me/additional-group-templates'],
+        { restaurantId: 'r-1', body: payload },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
   it('AC-9: rejeita criação de template "remover" com opção de preço diferente de 0', async () => {
     const { routes } = setup();
     const payload = {
