@@ -4,6 +4,15 @@ interface DefaultCatalogProduct {
   name: string;
   description?: string;
   price: number;
+  /**
+   * specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-12 — nomes (não ids, que só
+   * existem depois de criados) de `DefaultCatalogAdditionalGroupTemplate` do mesmo catálogo a
+   * vincular (`templateId`) neste produto — resolvido em `seedDefaultCatalog.ts` depois de criar
+   * todos os templates. Ausente/vazio = produto sem grupos de adicionais (comportamento default,
+   * igual a todo o resto do seed — script continua sem vincular automaticamente por padrão,
+   * decisão confirmada com o usuário).
+   */
+  linkedAdditionalGroupTemplateNames?: string[];
 }
 
 interface DefaultCatalogAdditionalGroupTemplate {
@@ -15,10 +24,26 @@ interface DefaultCatalogAdditionalGroupTemplate {
   options: { name: string; priceDelta: number }[];
 }
 
-export interface DefaultCatalog {
+interface DefaultCatalogCategory {
   categoryName: string;
   products: DefaultCatalogProduct[];
+}
+
+export interface DefaultCatalog {
+  categories: DefaultCatalogCategory[];
   additionalGroupTemplates: DefaultCatalogAdditionalGroupTemplate[];
+}
+
+// specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-11 — mesmas 3 categorias, sempre
+// nesta ordem, depois da categoria própria do tipo de negócio, pra todos os 6 tipos. Nascem vazias
+// (sem produtos) — o usuário não pediu produtos padrão pra elas (só o produto específico de
+// REQ-12, na categoria própria da pizzaria).
+function extraCategories(): DefaultCatalogCategory[] {
+  return [
+    { categoryName: 'Lanche', products: [] },
+    { categoryName: 'Bebidas', products: [] },
+    { categoryName: 'Sobremesas', products: [] },
+  ];
 }
 
 // Template reaproveitável de Sabores de Pizza (Obrigatório escolher exatamente 2)
@@ -72,19 +97,28 @@ const BEBIDAS_TEMPLATE: DefaultCatalogAdditionalGroupTemplate = {
 
 export const DEFAULT_CATALOGS_BY_BUSINESS_TYPE: Record<BusinessType, DefaultCatalog> = {
   pizzaria: {
-    categoryName: 'Pizzas',
-    products: [      
-      { name: 'Pizza Margherita', description: 'Molho de tomate, mussarela e manjericão.', price: 42 },
-      { name: 'Pizza Calabresa', description: 'Molho de tomate, mussarela, calabresa e cebola.', price: 44 },
-      { name: 'Pizza Portuguesa', description: 'Presunto, ovos, cebola, azeitona e ervilha.', price: 46 },
-      { name: 'Pizza Quatro Queijos', description: 'Mussarela, provolone, parmesão e gorgonzola.', price: 48 },
-      { name: 'Pizza Frango com Catupiry', description: 'Frango desfiado e catupiry.', price: 45 },
-      { name: 'Pizza Carne do Sol', description: 'Carne do sol desfiada.', price: 55 },
+    categories: [
       {
-        name: 'Pizza 2 sabores + Refri 1l',
-        description: 'Escolha 2 sabores de sua preferência. Acompanha refrigerante de 1 litro.',
-        price: 65,
+        categoryName: 'Pizzas',
+        products: [
+          { name: 'Pizza Margherita', description: 'Molho de tomate, mussarela e manjericão.', price: 42 },
+          { name: 'Pizza Calabresa', description: 'Molho de tomate, mussarela, calabresa e cebola.', price: 44 },
+          { name: 'Pizza Portuguesa', description: 'Presunto, ovos, cebola, azeitona e ervilha.', price: 46 },
+          { name: 'Pizza Quatro Queijos', description: 'Mussarela, provolone, parmesão e gorgonzola.', price: 48 },
+          { name: 'Pizza Frango com Catupiry', description: 'Frango desfiado e catupiry.', price: 45 },
+          { name: 'Pizza Carne do Sol', description: 'Carne do sol desfiada.', price: 55 },
+          {
+            // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-12 — nome exato pedido
+            // pelo usuário (substitui o antigo "Pizza 2 sabores + Refri 1l", mesmo conceito, agora
+            // com os grupos de fato vinculados em vez de `additionalGroups: []`).
+            name: 'Pizza grande 2 sabores + Refri 1L grátis',
+            description: 'Escolha 2 sabores de sua preferência. Acompanha refrigerante de 1 litro grátis.',
+            price: 65,
+            linkedAdditionalGroupTemplateNames: ['Sabores da Pizza', 'Refri?'],
+          },
+        ],
       },
+      ...extraCategories(),
     ],
     additionalGroupTemplates: [
       {
@@ -113,7 +147,6 @@ export const DEFAULT_CATALOGS_BY_BUSINESS_TYPE: Record<BusinessType, DefaultCata
           { name: 'Borda Mussarela', priceDelta: 5 },
           { name: 'Borda Cream Cheese', priceDelta: 7 },
           { name: 'Borda Requeijão', priceDelta: 5 },
-
         ],
       },
       SABORES_PIZZA_TEMPLATE,
@@ -122,13 +155,18 @@ export const DEFAULT_CATALOGS_BY_BUSINESS_TYPE: Record<BusinessType, DefaultCata
     ],
   },
   hamburgueria: {
-    categoryName: 'Hambúrgueres',
-    products: [
-      { name: 'X-Burguer', description: 'Pão, carne bovina, queijo e alface.', price: 19.9 },
-      { name: 'X-Salada', description: 'Pão, carne bovina, queijo, alface, tomate e maionese.', price: 22.9 },
-      { name: 'X-Bacon', description: 'Pão, carne bovina, queijo, bacon e alface.', price: 25.9 },
-      { name: 'X-Tudo', description: 'Pão, carne bovina, queijo, bacon, ovo, presunto e salada.', price: 28.9 },
-      { name: 'Veggie Burger', description: 'Hambúrguer de grão-de-bico, queijo e salada.', price: 24.9 },
+    categories: [
+      {
+        categoryName: 'Hambúrgueres',
+        products: [
+          { name: 'X-Burguer', description: 'Pão, carne bovina, queijo e alface.', price: 19.9 },
+          { name: 'X-Salada', description: 'Pão, carne bovina, queijo, alface, tomate e maionese.', price: 22.9 },
+          { name: 'X-Bacon', description: 'Pão, carne bovina, queijo, bacon e alface.', price: 25.9 },
+          { name: 'X-Tudo', description: 'Pão, carne bovina, queijo, bacon, ovo, presunto e salada.', price: 28.9 },
+          { name: 'Veggie Burger', description: 'Hambúrguer de grão-de-bico, queijo e salada.', price: 24.9 },
+        ],
+      },
+      ...extraCategories(),
     ],
     additionalGroupTemplates: [
       {
@@ -161,13 +199,18 @@ export const DEFAULT_CATALOGS_BY_BUSINESS_TYPE: Record<BusinessType, DefaultCata
     ],
   },
   pastelaria: {
-    categoryName: 'Pastéis',
-    products: [
-      { name: 'Pastel de Carne', price: 12 },
-      { name: 'Pastel de Queijo', price: 10 },
-      { name: 'Pastel de Frango com Catupiry', price: 13 },
-      { name: 'Pastel de Pizza', description: 'Molho de tomate, mussarela e orégano.', price: 12 },
-      { name: 'Pastel Doce de Chocolate', price: 10 },
+    categories: [
+      {
+        categoryName: 'Pastéis',
+        products: [
+          { name: 'Pastel de Carne', price: 12 },
+          { name: 'Pastel de Queijo', price: 10 },
+          { name: 'Pastel de Frango com Catupiry', price: 13 },
+          { name: 'Pastel de Pizza', description: 'Molho de tomate, mussarela e orégano.', price: 12 },
+          { name: 'Pastel Doce de Chocolate', price: 10 },
+        ],
+      },
+      ...extraCategories(),
     ],
     additionalGroupTemplates: [
       {
@@ -186,13 +229,18 @@ export const DEFAULT_CATALOGS_BY_BUSINESS_TYPE: Record<BusinessType, DefaultCata
     ],
   },
   comida_japonesa: {
-    categoryName: 'Combinados',
-    products: [
-      { name: 'Combinado 10 peças', description: 'Sushi e sashimi variados.', price: 35 },
-      { name: 'Combinado 20 peças', description: 'Sushi e sashimi variados.', price: 60 },
-      { name: 'Temaki Salmão', price: 25 },
-      { name: 'Yakisoba', description: 'Macarrão oriental com legumes e proteína à escolha.', price: 30 },
-      { name: 'Hot Roll', description: 'Enroladinho empanado, recheio de salmão e cream cheese.', price: 28 },
+    categories: [
+      {
+        categoryName: 'Combinados',
+        products: [
+          { name: 'Combinado 10 peças', description: 'Sushi e sashimi variados.', price: 35 },
+          { name: 'Combinado 20 peças', description: 'Sushi e sashimi variados.', price: 60 },
+          { name: 'Temaki Salmão', price: 25 },
+          { name: 'Yakisoba', description: 'Macarrão oriental com legumes e proteína à escolha.', price: 30 },
+          { name: 'Hot Roll', description: 'Enroladinho empanado, recheio de salmão e cream cheese.', price: 28 },
+        ],
+      },
+      ...extraCategories(),
     ],
     additionalGroupTemplates: [
       {
@@ -211,13 +259,18 @@ export const DEFAULT_CATALOGS_BY_BUSINESS_TYPE: Record<BusinessType, DefaultCata
     ],
   },
   acai_sorveteria: {
-    categoryName: 'Açaí',
-    products: [
-      { name: 'Açaí 300ml', price: 12 },
-      { name: 'Açaí 500ml', price: 16 },
-      { name: 'Açaí 700ml', price: 20 },
-      { name: 'Sundae', price: 10 },
-      { name: 'Milkshake', price: 14 },
+    categories: [
+      {
+        categoryName: 'Açaí',
+        products: [
+          { name: 'Açaí 300ml', price: 12 },
+          { name: 'Açaí 500ml', price: 16 },
+          { name: 'Açaí 700ml', price: 20 },
+          { name: 'Sundae', price: 10 },
+          { name: 'Milkshake', price: 14 },
+        ],
+      },
+      ...extraCategories(),
     ],
     additionalGroupTemplates: [
       {
@@ -239,13 +292,18 @@ export const DEFAULT_CATALOGS_BY_BUSINESS_TYPE: Record<BusinessType, DefaultCata
     ],
   },
   lanches_gerais: {
-    categoryName: 'Lanches',
-    products: [
-      { name: 'Misto Quente', price: 8 },
-      { name: 'Bauru', description: 'Presunto, queijo, tomate e picles.', price: 12 },
-      { name: 'Coxinha', price: 7 },
-      { name: 'Salgado Assado', price: 6 },
-      { name: 'Suco Natural', price: 8 },
+    categories: [
+      {
+        categoryName: 'Lanches',
+        products: [
+          { name: 'Misto Quente', price: 8 },
+          { name: 'Bauru', description: 'Presunto, queijo, tomate e picles.', price: 12 },
+          { name: 'Coxinha', price: 7 },
+          { name: 'Salgado Assado', price: 6 },
+          { name: 'Suco Natural', price: 8 },
+        ],
+      },
+      ...extraCategories(),
     ],
     additionalGroupTemplates: [
       {

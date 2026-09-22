@@ -44,6 +44,7 @@ function toEntity(doc: ProductLeanDocument): IProduct {
     isFeatured: doc.isFeatured ?? false,
     featuredOrder: doc.featuredOrder ?? 0,
     availableAsAdditional: doc.availableAsAdditional ?? false,
+    stockQuantity: doc.stockQuantity,
   };
 }
 
@@ -295,6 +296,18 @@ export class ProductMongooseRepository implements IProductRepository {
 
   async countByMenuCategory(restaurantId: string, menuCategoryId: string): Promise<number> {
     return ProductModel.countDocuments({ restaurantId, menuCategoryId });
+  }
+
+  async decrementStock(id: string, quantity: number): Promise<boolean> {
+    // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16 — só baixa produtos com
+    // `stockQuantity` já definido (feito sob demanda = `null`/ausente, nunca mexido); update via
+    // pipeline agregação (`$max`) pra nunca deixar negativo, mesmo em baixas concorrentes.
+    // Devolve se de fato baixou (`matchedCount > 0`) — usado pelo caso de uso pra decidir se
+    // registra um `StockMovement` (não registra baixa "fantasma" de produto sem controle).
+    const result = await ProductModel.updateOne({ _id: id, stockQuantity: { $ne: null } }, [
+      { $set: { stockQuantity: { $max: [0, { $subtract: ['$stockQuantity', quantity] }] } } },
+    ]);
+    return result.matchedCount > 0;
   }
 
   async findAnyByLinkedProductId(restaurantId: string, linkedProductId: string): Promise<IAffectedProduct[]> {

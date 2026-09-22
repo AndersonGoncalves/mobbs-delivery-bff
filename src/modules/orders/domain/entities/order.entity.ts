@@ -17,6 +17,16 @@ export interface IOrderItemSelection {
   optionName: string;
   priceDelta: number;
   nestedSelections?: IOrderItemSelection[];
+  /**
+   * specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16 — diferente dos outros
+   * campos (nunca aceito do cliente): resolvido pelo próprio BFF em `POST /orders`, casando
+   * `groupName`/`optionName` contra o `Product.additionalGroups` atual do `productId` do item
+   * (mesmo raciocínio de "sem ids aqui" do comentário da interface — a única correlação possível
+   * com o catálogo é por nome, não por id). Usado só pra baixa de estoque (`specs/0041`
+   * `linkedProductId`) quando o pedido é entregue; `undefined` = opção sem vínculo, ou o vínculo
+   * não pôde ser resolvido (produto/opção renomeado ou removido entre o pedido e a entrega).
+   */
+  linkedProductId?: string;
 }
 
 /** docs/architecture/data-model.md §OrderItem — cópia congelada de `CartItem` (specs/0004). */

@@ -1,8 +1,10 @@
 import type { Request, Response, Server } from 'restify';
 
+import { IProductRepository } from '../../catalog/domain/repositories/product.repository.interface';
 import { ICouponRepository } from '../../coupons/domain/repositories/coupon.repository.interface';
 import { ICashRegisterService } from '../../financeiro/domain/services/i-cash-register.service';
 import { IWhatsAppNotificationService } from '../../notifications/domain/services/i-whatsapp-notification.service';
+import { IStockMovementRepository } from '../../raw-materials/domain/repositories/stock-movement.repository.interface';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IOrderRepository } from '../domain/repositories/order.repository.interface';
 import { IPaymentRepository } from '../domain/repositories/payment.repository.interface';
@@ -157,6 +159,8 @@ describe('OrdersController', () => {
       restaurantRepository?: Partial<IRestaurantRepository>;
       paymentRepository?: Partial<IPaymentRepository>;
       couponRepository?: Partial<ICouponRepository>;
+      productRepository?: Partial<IProductRepository>;
+      stockMovementRepository?: Partial<IStockMovementRepository>;
     } = {},
   ) {
     const orderRepository: Partial<IOrderRepository> = {
@@ -215,6 +219,16 @@ describe('OrdersController', () => {
       incrementUsageIfWithinLimit: jest.fn().mockImplementation(async (id) => ({ ...buildCoupon({ id }), usageCount: 1 })),
       ...overrides.couponRepository,
     };
+    // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16.
+    const productRepository: Partial<IProductRepository> = {
+      findById: jest.fn().mockResolvedValue(null),
+      decrementStock: jest.fn().mockResolvedValue(false),
+      ...overrides.productRepository,
+    };
+    const stockMovementRepository: Partial<IStockMovementRepository> = {
+      create: jest.fn().mockResolvedValue({}),
+      ...overrides.stockMovementRepository,
+    };
     const { application, routes } = buildFakeApplication();
     new OrdersController(
       orderRepository as IOrderRepository,
@@ -224,6 +238,8 @@ describe('OrdersController', () => {
       cashRegisterService,
       paymentRepository as IPaymentRepository,
       couponRepository as ICouponRepository,
+      productRepository as IProductRepository,
+      stockMovementRepository as IStockMovementRepository,
     ).initializeRoutes(application);
     return {
       orderRepository,
@@ -232,6 +248,8 @@ describe('OrdersController', () => {
       cashRegisterService,
       paymentRepository,
       couponRepository,
+      productRepository,
+      stockMovementRepository,
       routes,
     };
   }

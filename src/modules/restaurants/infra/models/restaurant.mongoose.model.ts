@@ -105,6 +105,14 @@ const restaurantSchema = new Schema(
     // verdade a tela de horário de funcionamento (não só o default automático do autocadastro).
     // `null`/ausente = nunca revisado desde a criação.
     businessHoursReviewedAt: { type: Date },
+    // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-10 — default as 5 formas
+    // (mesmo raciocínio de `RestaurantSignupController` passar explicitamente no create, mas
+    // como default de schema cobre também qualquer outro caminho de criação).
+    acceptedPaymentMethods: {
+      type: [String],
+      enum: ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'],
+      default: ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'],
+    },
   },
   { _id: false, timestamps: true },
 );

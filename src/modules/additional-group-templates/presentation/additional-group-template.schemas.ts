@@ -42,6 +42,16 @@ export const saveAdditionalGroupTemplateSchema = z
       });
     }
 
+    // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-15 — mesma checagem de
+    // `catalog.schemas.ts` (grupo inline de produto).
+    if (data.options.length < data.maxSelections) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['maxSelections'],
+        message: 'Máx. seleções não pode ser maior que a quantidade de opções cadastradas',
+      });
+    }
+
     // `required` é decorativo pra quem consome (app/web só leem `minSelections` pra saber se o
     // grupo pode ficar vazio) — sem essa checagem, um grupo `required: true, minSelections: 0`
     // (bug real já visto em dado legado) mostra "Obrigatório" na UI mas nunca bloqueia salvar sem

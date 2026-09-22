@@ -74,6 +74,16 @@ const productAdditionalGroupInlineSchema: z.ZodType<IProductAdditionalGroup> = z
           message: 'Grupo obrigatório precisa de Min. seleções >= 1',
         });
       }
+      // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-15 — achado real do usuário:
+      // dava pra salvar um grupo com "Máx. seleções" maior que a quantidade de opções cadastradas
+      // (ex.: max 5, só 2 opções), deixando o cliente nunca conseguir esgotar o limite.
+      if (data.options.length < data.maxSelections) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['maxSelections'],
+          message: 'Máx. seleções não pode ser maior que a quantidade de opções cadastradas',
+        });
+      }
       if (!data.required && data.minSelections >= 1) {
         ctx.addIssue({
           code: 'custom',
@@ -115,6 +125,9 @@ export const saveProductSchema = z.object({
   isFeatured: z.boolean().default(false),
   // specs/0041-item-adicional-vinculado-produto REQ-1.
   availableAsAdditional: z.boolean().default(false),
+  // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16 — `.optional()` de propósito
+  // (mesmo padrão de `defaultProductImageUrl`): ausente = feito sob demanda, sem controle.
+  stockQuantity: z.number().int().nonnegative().optional(),
 });
 
 export const updateProductSchema = saveProductSchema.partial();

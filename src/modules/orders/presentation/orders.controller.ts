@@ -5,14 +5,18 @@ import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
 import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
+import { IProductRepository } from '../../catalog/domain/repositories/product.repository.interface';
 import { ICouponRepository } from '../../coupons/domain/repositories/coupon.repository.interface';
 import { validateCoupon } from '../../coupons/domain/services/coupon-validator';
 import { ICashRegisterService } from '../../financeiro/domain/services/i-cash-register.service';
 import { IWhatsAppNotificationService } from '../../notifications/domain/services/i-whatsapp-notification.service';
+import { IStockMovementRepository } from '../../raw-materials/domain/repositories/stock-movement.repository.interface';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
-import { IOrder, IPayment } from '../domain/entities/order.entity';
+import { DeductStockForDeliveredOrderUseCase } from '../domain/deduct-stock-for-delivered-order.use-case';
+import { IOrder, IOrderItem, IPayment } from '../domain/entities/order.entity';
 import { isOrderCancellable, isValidOrderStatusTransition } from '../domain/order-status-transitions';
 import { buildPixBrCode } from '../domain/pix-br-code-builder';
+import { resolveOrderItemLinkedProducts } from '../domain/resolve-order-item-linked-products';
 import { IOrderRepository } from '../domain/repositories/order.repository.interface';
 import { IPaymentRepository } from '../domain/repositories/payment.repository.interface';
 import { cancelOrderWithReasonSchema, createOrderSchema, salesSummaryQuerySchema, updateOrderStatusSchema } from './orders.schemas';
@@ -32,6 +36,8 @@ type AsyncHandler = (req: Request, res: Response) => Promise<void>;
  * de manipular o valor pago.
  */
 export class OrdersController extends BaseRouter {
+  private readonly deductStockUseCase: DeductStockForDeliveredOrderUseCase;
+
   constructor(
     private readonly orderRepository: IOrderRepository,
     private readonly restaurantRepository: IRestaurantRepository,
@@ -40,8 +46,12 @@ export class OrdersController extends BaseRouter {
     private readonly cashRegisterService: ICashRegisterService,
     private readonly paymentRepository: IPaymentRepository,
     private readonly couponRepository: ICouponRepository,
+    // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16.
+    private readonly productRepository: IProductRepository,
+    stockMovementRepository: IStockMovementRepository,
   ) {
     super();
+    this.deductStockUseCase = new DeductStockForDeliveredOrderUseCase(productRepository, stockMovementRepository);
   }
 
   initializeRoutes(application: Server): void {
@@ -73,10 +83,16 @@ export class OrdersController extends BaseRouter {
       const { discount, couponCode } = await this.applyCoupon(payload.couponCode, payload.restaurantId, req.user!.uid, subtotal);
       const total = subtotal + deliveryFee - discount;
 
+      // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16 — resolve
+      // `linkedProductId` (`specs/0041`) de cada seleção casando contra o catálogo ATUAL do
+      // produto de cada item, antes de congelar o pedido — usado só na baixa de estoque quando
+      // o pedido for entregue (nunca aceito do cliente, ver `resolveOrderItemLinkedProducts`).
+      const items = await this.resolveItemsLinkedProducts(payload.items);
+
       const order = await this.orderRepository.create({
         customerId: req.user!.uid,
         restaurantId: payload.restaurantId,
-        items: payload.items,
+        items,
         orderType: payload.orderType,
         deliveryAddress: payload.deliveryAddress,
         notes: payload.notes,
@@ -189,6 +205,15 @@ export class OrdersController extends BaseRouter {
             });
           } catch (error) {
             console.error(`[financeiro] erro inesperado lançando movimento automático de caixa do pedido ${updated.id}:`, error);
+          }
+
+          // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16 — mesmo isolamento
+          // do lançamento de caixa acima: uma falha na baixa de estoque nunca reverte nem falha
+          // a resposta da mudança de status, que já foi persistida.
+          try {
+            await this.deductStockUseCase.execute(updated);
+          } catch (error) {
+            console.error(`[estoque] erro inesperado baixando estoque do pedido ${updated.id}:`, error);
           }
         }
 
@@ -316,6 +341,22 @@ export class OrdersController extends BaseRouter {
     }
 
     return { discount: result.discountAmount, couponCode: coupon!.code };
+  }
+
+  // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16 — busca o `Product` de cada
+  // item só uma vez (mesmo produto pode se repetir entre itens do carrinho), pra resolver
+  // `linkedProductId` de cada seleção contra a árvore atual de `additionalGroups`.
+  private async resolveItemsLinkedProducts(items: IOrderItem[]): Promise<IOrderItem[]> {
+    const productIds = [...new Set(items.map((item) => item.productId))];
+    const products = await Promise.all(productIds.map((id) => this.productRepository.findById(id)));
+    const productsById = new Map(products.filter((product) => product !== null).map((product) => [product.id, product]));
+
+    return items.map((item) => {
+      if (!item.selections || item.selections.length === 0) return item;
+      const product = productsById.get(item.productId);
+      if (!product) return item;
+      return { ...item, selections: resolveOrderItemLinkedProducts(item.selections, product.additionalGroups) };
+    });
   }
 
   private async findOwnedOrder(id: string, customerId: string): Promise<IOrder> {

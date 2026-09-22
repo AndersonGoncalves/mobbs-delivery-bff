@@ -96,4 +96,11 @@ export interface IProduct {
    * ser escolhido (`linkedProductId`) como opção de um grupo de adicionais de OUTRO produto —
    * default `false`, não afeta a listagem/venda normal deste produto. */
   availableAsAdditional: boolean;
+  /** specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16 — controle de estoque do
+   * produto "de prateleira" (mesma semântica já documentada pro `ProductAdmin` do lado web,
+   * `docs/architecture/data-model.md` §ProductAdmin: `undefined`/`null` = feito sob demanda, sem
+   * controle de estoque nenhum; um número = quantidade disponível, baixada automaticamente
+   * quando um pedido com este produto — vendido avulso ou como adicional vinculado,
+   * `specs/0041` — muda pra `entregue`). */
+  stockQuantity?: number;
 }

@@ -9,6 +9,9 @@ const orderItemSelectionSchema = new Schema(
     groupName: { type: String, required: true },
     optionName: { type: String, required: true },
     priceDelta: { type: Number, required: true },
+    // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16 — resolvido pelo BFF, nunca
+    // aceito do cliente (ver comentário na entity).
+    linkedProductId: { type: String },
   },
   { _id: false },
 );

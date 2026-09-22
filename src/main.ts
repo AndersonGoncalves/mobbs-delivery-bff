@@ -135,6 +135,8 @@ server
       cashRegisterService,
       paymentRepository,
       couponRepository,
+      productRepository,
+      stockMovementRepository,
     ),
     new RawMaterialsController(rawMaterialRepository, productRepository, restaurantOperatorMiddleware, stockMovementRepository),
     new AdditionalGroupTemplatesController(

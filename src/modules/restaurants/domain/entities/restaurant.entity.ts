@@ -1,3 +1,5 @@
+import { PaymentMethod } from '../../../orders/domain/entities/order.entity';
+
 export interface IBusinessHours {
   dayOfWeek: 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
   isClosed: boolean;
@@ -143,6 +145,10 @@ export interface IRestaurant {
    * tela de horário de funcionamento (não só o default automático do autocadastro), usado pelo
    * checklist de onboarding pra diferenciar "nunca revisou" de "revisou e manteve o padrão". */
   businessHoursReviewedAt?: Date;
+  /** specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-10 — formas de pagamento que
+   * este restaurante aceita hoje (reaproveita o mesmo `PaymentMethod` de `Order.paymentMethod`,
+   * não um enum próprio) — nasce com as 5 ativas no autocadastro (`RestaurantSignupController`). */
+  acceptedPaymentMethods: PaymentMethod[];
 }
 
 export type DeliveryFeeMode = 'fixed' | 'byNeighborhood' | 'free';

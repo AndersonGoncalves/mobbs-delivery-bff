@@ -95,7 +95,18 @@ describe('AdditionalGroupTemplatesController', () => {
   it('AC-1: POST /restaurants/me/additional-group-templates cria um template novo', async () => {
     const { templateRepository, routes } = setup();
     const json = jest.fn();
-    const payload = { name: 'ACRESCIMOS', type: 'adicionar', required: false, minSelections: 0, maxSelections: 5, options: [] };
+    const payload = {
+      name: 'ACRESCIMOS',
+      type: 'adicionar',
+      required: false,
+      minSelections: 0,
+      maxSelections: 3,
+      options: [
+        { name: 'Bacon extra', priceDelta: 5 },
+        { name: 'Queijo extra', priceDelta: 4 },
+        { name: 'Ovo', priceDelta: 3 },
+      ],
+    };
 
     await runOperatorChain(
       routes['POST /restaurants/me/additional-group-templates'],
@@ -177,7 +188,7 @@ describe('AdditionalGroupTemplatesController', () => {
       type: 'remover',
       required: false,
       minSelections: 0,
-      maxSelections: 3,
+      maxSelections: 1,
       options: [{ name: 'Cebola', priceDelta: 0 }],
     };
 
@@ -276,7 +287,7 @@ describe('AdditionalGroupTemplatesController', () => {
         {
           restaurantId: 'r-1',
           params: { id: 'agt-1' },
-          body: { name: 'X', type: 'adicionar', required: false, minSelections: 0, maxSelections: 1, options: [] },
+          body: { name: 'X', type: 'adicionar', required: false, minSelections: 0, maxSelections: 1, options: [{ name: 'Opção', priceDelta: 0 }] },
         },
         { json: jest.fn() },
       ),

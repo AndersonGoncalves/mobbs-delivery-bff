@@ -31,6 +31,7 @@ export type RestaurantProfileUpdate = Partial<
     | 'instagramUrl'
     | 'showHighlightsInMultipleRows'
     | 'cartSuggestionsCount'
+    | 'acceptedPaymentMethods'
   >
 >;
 

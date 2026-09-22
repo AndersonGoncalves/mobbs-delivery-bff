@@ -10,6 +10,9 @@ export type NewProductInput = {
   additionalGroups: IProductAdditionalGroupInput[];
   /** specs/0041-item-adicional-vinculado-produto REQ-1 — default `false` quando ausente. */
   availableAsAdditional?: boolean;
+  /** specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16 — ausente/`undefined` =
+   * feito sob demanda, sem controle de estoque (ver `IProduct.stockQuantity`). */
+  stockQuantity?: number;
 };
 
 export type ProductUpdateInput = Partial<NewProductInput>;
@@ -98,4 +101,10 @@ export interface IProductRepository {
    * é usado.
    */
   findAnyByLinkedProductId(restaurantId: string, linkedProductId: string): Promise<IAffectedProduct[]>;
+
+  /** specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16 — baixa `quantity` do
+   * `stockQuantity` do produto (nunca abaixo de 0); não faz nada se o produto não tiver
+   * `stockQuantity` definido (feito sob demanda). Devolve `true` se de fato baixou (produto
+   * existe e tem `stockQuantity` definido), `false` caso contrário. */
+  decrementStock(id: string, quantity: number): Promise<boolean>;
 }

@@ -64,6 +64,9 @@ const productSchema = new Schema(
     featuredOrder: { type: Number, required: true, default: 0 },
     // specs/0041-item-adicional-vinculado-produto REQ-1.
     availableAsAdditional: { type: Boolean, required: true, default: false },
+    // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16 — ausente = feito sob
+    // demanda, sem controle de estoque (nunca `default`, propositalmente).
+    stockQuantity: { type: Number },
   },
   { _id: false, timestamps: true },
 );

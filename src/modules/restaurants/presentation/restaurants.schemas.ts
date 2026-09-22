@@ -1,7 +1,13 @@
 import { z } from 'zod';
 
+import { normalizePhoneNumber } from '../../../shared/utils/normalize-phone-number';
 import { isValidCnpj } from '../domain/cnpj-validator';
 import { BUSINESS_TYPES } from '../domain/business-type';
+
+// specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-10 — reaproveita o mesmo enum já
+// usado em `Order.paymentMethod`/`Payment.method` (`modules/orders/domain/entities/order.entity.ts`),
+// não redefine um novo.
+export const paymentMethodSchema = z.enum(['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer']);
 
 // specs/0028-destaques-vendidos-banners REQ-5, REQ-6 — mesmo padrão de
 // `productAdditionalGroupSchema`/`type`: o campo de destino exigido depende de `linkType`,
@@ -39,7 +45,11 @@ const deliveryFeeZoneSchema = z.object({
 export const restaurantProfileSchema = z
   .object({
     name: z.string().min(1),
-    logoUrl: z.string().url(),
+    // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-14 — `.optional()` de
+    // propósito (achado real: sem isso, salvar a página "App do cliente" sem nunca ter enviado
+    // logo falhava `.url()`, já que o form manda a chave sempre, mesmo vazia) — mesmo padrão de
+    // `defaultProductImageUrl`/`instagramUrl` abaixo.
+    logoUrl: z.string().url().optional(),
     primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Cor deve estar em formato #RRGGBB'),
     onPrimaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Cor deve estar em formato #RRGGBB'),
     // specs/0031-imagem-padrao-disponibilidade-checkout-ajustes REQ-1.
@@ -58,7 +68,9 @@ export const restaurantProfileSchema = z
       state: z.string().min(1),
       zipCode: z.string().min(1),
     }),
-    phone: z.string().min(1),
+    // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-3 — sempre salvo com "55" na
+    // frente, independente do que o form mandar (máscara visual é só cosmética do lado web/app).
+    phone: z.string().min(1).transform(normalizePhoneNumber),
     // specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-4.
     document: z.string().refine(isValidCnpj, 'CNPJ inválido'),
     minimumOrderValue: z.number().nonnegative(),
@@ -96,6 +108,8 @@ export const restaurantProfileSchema = z
     // `.optional()` de `defaultProductImageUrl`/`instagramUrl`: ausente = seção desligada, não
     // "zero produtos".
     cartSuggestionsCount: z.number().int().positive().optional(),
+    // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-10.
+    acceptedPaymentMethods: z.array(paymentMethodSchema),
   })
   .partial();
 
@@ -124,7 +138,8 @@ export const setActiveSchema = z.object({ isActive: z.boolean() });
 // decide o catálogo inicial (REQ-9), sempre pedido no formulário de cadastro.
 export const signupSchema = z.object({
   name: z.string().min(1),
-  whatsapp: z.string().min(1),
+  // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-3.
+  whatsapp: z.string().min(1).transform(normalizePhoneNumber),
   businessType: z.enum(BUSINESS_TYPES),
 });
 

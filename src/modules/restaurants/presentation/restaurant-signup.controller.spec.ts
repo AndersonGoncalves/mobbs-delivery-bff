@@ -56,6 +56,9 @@ function buildMenuCategoryRepository(overrides: Partial<IMenuCategoryRepository>
 function buildProductRepository(overrides: Partial<IProductRepository> = {}): IProductRepository {
   return {
     create: jest.fn().mockResolvedValue({ id: 'p-1' }),
+    // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-12 — seedDefaultCatalog
+    // chama update() pra vincular additionalGroups no produto especial de pizzaria.
+    update: jest.fn().mockResolvedValue({ id: 'p-1' }),
     ...overrides,
   } as IProductRepository;
 }
@@ -99,7 +102,9 @@ describe('RestaurantSignupController', () => {
     );
 
     expect(restaurantRepository.create).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'Pizzaria do João', slug: 'pizzaria-do-joao', phone: '11999999999', category: 'pizzaria' }),
+      // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-3 — normalizado com "55" na
+      // frente antes de chegar aqui (validado no zod schema, `signupSchema`).
+      expect.objectContaining({ name: 'Pizzaria do João', slug: 'pizzaria-do-joao', phone: '5511999999999', category: 'pizzaria' }),
     );
     expect(operatorRepository.create).toHaveBeenCalledWith('r-1', 'joao@exemplo.com', 'dono');
     expect(json).toHaveBeenCalledWith(201, { restaurantId: 'r-1', slug: 'pizzaria-do-joao' });

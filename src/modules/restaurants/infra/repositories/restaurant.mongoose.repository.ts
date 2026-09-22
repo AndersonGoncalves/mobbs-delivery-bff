@@ -1,3 +1,4 @@
+import { PaymentMethod } from '../../../orders/domain/entities/order.entity';
 import {
   DeliveryFeeMode,
   IBusinessHours,
@@ -51,7 +52,10 @@ interface RestaurantLeanDocument {
   cartSuggestionsCount?: number;
   category?: string;
   businessHoursReviewedAt?: Date;
+  acceptedPaymentMethods?: PaymentMethod[];
 }
+
+const ALL_PAYMENT_METHODS: PaymentMethod[] = ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'];
 
 function toEntity(doc: RestaurantLeanDocument): IRestaurant {
   return {
@@ -92,6 +96,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     cartSuggestionsCount: doc.cartSuggestionsCount,
     category: doc.category,
     businessHoursReviewedAt: doc.businessHoursReviewedAt,
+    acceptedPaymentMethods: doc.acceptedPaymentMethods ?? ALL_PAYMENT_METHODS,
   };
 }
 
