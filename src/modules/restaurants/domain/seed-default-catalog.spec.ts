@@ -21,12 +21,14 @@ function buildDeps() {
     create: jest
       .fn()
       .mockImplementation(async (_restaurantId: string, input: Record<string, unknown>) => ({ id: `agt-${input.name}`, ...input })),
+    // specs/0049-catalogo-padrao-bebidas-reais REQ-18 — 3ª passada de seedDefaultCatalog.
+    update: jest.fn().mockResolvedValue({}),
   } as unknown as IAdditionalGroupTemplateRepository;
   return { menuCategoryRepository, productRepository, additionalGroupTemplateRepository };
 }
 
 describe('seedDefaultCatalog', () => {
-  it('cria todas as categorias, todos os produtos (sem imagem) e todos os grupos de adicionais do tipo de negócio', async () => {
+  it('cria todas as categorias, todos os produtos e todos os grupos de adicionais do tipo de negócio', async () => {
     const deps = buildDeps();
     const catalog = DEFAULT_CATALOGS_BY_BUSINESS_TYPE.pizzaria;
 
@@ -54,10 +56,18 @@ describe('seedDefaultCatalog', () => {
     expect(deps.productRepository.create).toHaveBeenCalledTimes(allProducts(businessType).length);
   });
 
-  it('nenhum produto do catálogo inicial tem imageUrl (REQ-9 — sem foto nesta v1)', () => {
+  // specs/0049-catalogo-padrao-bebidas-reais REQ-17 — corrige a asserção original (REQ-9,
+  // "nenhum produto tem imageUrl nesta v1"): agora 2 produtos de bebida (os únicos com foto real
+  // publicada) têm, todos os demais continuam sem.
+  it('só Coca-Cola 1 litro e Guaraná Antarctica 1 litro têm imageUrl — os demais produtos continuam sem foto', () => {
     for (const businessType of BUSINESS_TYPES) {
       for (const product of allProducts(businessType)) {
-        expect(product).not.toHaveProperty('imageUrl');
+        const shouldHaveImage = product.name === 'Coca-Cola 1 litro' || product.name === 'Guaraná Antarctica 1 litro';
+        if (shouldHaveImage) {
+          expect(product.imageUrl).toContain('app-imagens/');
+        } else {
+          expect(product).not.toHaveProperty('imageUrl');
+        }
       }
     }
   });
@@ -70,17 +80,78 @@ describe('seedDefaultCatalog', () => {
     expect(categoryNames.slice(1)).toEqual(['Lanche', 'Bebidas', 'Sobremesas']);
   });
 
-  it('AC-11: as 3 categorias novas nascem sem produto nenhum, pra todos os tipos', () => {
+  it('AC-11: "Lanche" e "Sobremesas" continuam sem produto nenhum, pra todos os tipos', () => {
     for (const businessType of BUSINESS_TYPES) {
-      const [, ...extraCategories] = DEFAULT_CATALOGS_BY_BUSINESS_TYPE[businessType].categories;
-      for (const category of extraCategories) {
-        expect(category.products).toEqual([]);
+      const categories = DEFAULT_CATALOGS_BY_BUSINESS_TYPE[businessType].categories;
+      expect(categories.find((category) => category.categoryName === 'Lanche')?.products).toEqual([]);
+      expect(categories.find((category) => category.categoryName === 'Sobremesas')?.products).toEqual([]);
+    }
+  });
+
+  // specs/0049-catalogo-padrao-bebidas-reais REQ-17.
+  it('AC-17: "Bebidas" tem os 12 produtos reais, todos availableAsAdditional, pra todos os tipos de negócio', () => {
+    for (const businessType of BUSINESS_TYPES) {
+      const bebidas = DEFAULT_CATALOGS_BY_BUSINESS_TYPE[businessType].categories.find((category) => category.categoryName === 'Bebidas');
+
+      expect(bebidas?.products).toHaveLength(12);
+      for (const product of bebidas!.products) {
+        expect(product.availableAsAdditional).toBe(true);
       }
     }
   });
 
-  // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-12.
-  it('AC-12: pizzaria ganha "Pizza grande 2 sabores + Refri 1L grátis" vinculado a Sabores da Pizza + Refri?', async () => {
+  // specs/0049-catalogo-padrao-bebidas-reais REQ-18/REQ-19.
+  it('AC-18/AC-19: template "Refri?" tem as 5 opções vinculadas aos produtos reais, com os preços validados em produção', async () => {
+    const deps = buildDeps();
+
+    await seedDefaultCatalog('r-1', 'pizzaria', deps);
+
+    expect(deps.additionalGroupTemplateRepository.update).toHaveBeenCalledWith(
+      'agt-Refri?',
+      expect.objectContaining({
+        options: [
+          expect.objectContaining({ name: 'Coca-Cola 1 litro', priceDelta: 10, linkedProductId: 'p-Coca-Cola 1 litro' }),
+          expect.objectContaining({ name: 'Guaraná Antarctica 1 litro', priceDelta: 8, linkedProductId: 'p-Guaraná Antarctica 1 litro' }),
+          expect.objectContaining({ name: 'Fanta Laranja 1 litro', priceDelta: 8, linkedProductId: 'p-Fanta Laranja 1 litro' }),
+          expect.objectContaining({ name: 'Fanta Uva 1 litro', priceDelta: 8, linkedProductId: 'p-Fanta Uva 1 litro' }),
+          expect.objectContaining({ name: 'Sprite 1 litro', priceDelta: 8, linkedProductId: 'p-Sprite 1 litro' }),
+        ],
+      }),
+    );
+  });
+
+  it('AC-18/AC-19: template "Bebidas?" tem as 7 opções vinculadas, "Água com gás" no preço novo (R$3,50)', async () => {
+    const deps = buildDeps();
+
+    await seedDefaultCatalog('r-1', 'pizzaria', deps);
+
+    expect(deps.additionalGroupTemplateRepository.update).toHaveBeenCalledWith(
+      'agt-Bebidas?',
+      expect.objectContaining({
+        options: [
+          expect.objectContaining({ name: 'Coca-Cola lata 350ml', linkedProductId: 'p-Coca-Cola lata 350ml' }),
+          expect.objectContaining({ name: 'Guaraná Antarctica lata 350ml', linkedProductId: 'p-Guaraná Antarctica lata 350ml' }),
+          expect.objectContaining({ name: 'Fanta Laranja lata 350ml', linkedProductId: 'p-Fanta Laranja lata 350ml' }),
+          expect.objectContaining({ name: 'Fanta Uva lata 350ml', linkedProductId: 'p-Fanta Uva lata 350ml' }),
+          expect.objectContaining({ name: 'Sprite lata 350ml', linkedProductId: 'p-Sprite lata 350ml' }),
+          expect.objectContaining({ name: 'Água com gás 500ml', priceDelta: 3.5, linkedProductId: 'p-Água com gás 500ml' }),
+          expect.objectContaining({ name: 'Água sem gás 500ml', linkedProductId: 'p-Água sem gás 500ml' }),
+        ],
+      }),
+    );
+  });
+
+  it('templates sem opção vinculada (ex.: "Sabores da Pizza") não chamam additionalGroupTemplateRepository.update', async () => {
+    const deps = buildDeps();
+
+    await seedDefaultCatalog('r-1', 'pizzaria', deps);
+
+    expect(deps.additionalGroupTemplateRepository.update).not.toHaveBeenCalledWith('agt-Sabores da Pizza', expect.anything());
+    expect(deps.additionalGroupTemplateRepository.update).not.toHaveBeenCalledWith('agt-Tamanho', expect.anything());
+  });
+
+  // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-12; specs/0049-catalogo-padrao-bebidas-reais REQ-20.
+  it('AC-12/AC-20: pizzaria ganha "Pizza grande 2 sabores + Refri 1L grátis" vinculado a Sabores da Pizza + Refri? + Bordas', async () => {
     const deps = buildDeps();
 
     await seedDefaultCatalog('r-1', 'pizzaria', deps);
@@ -91,6 +162,7 @@ describe('seedDefaultCatalog', () => {
         additionalGroups: [
           expect.objectContaining({ productId: 'p-Pizza grande 2 sabores + Refri 1L grátis', templateId: 'agt-Sabores da Pizza' }),
           expect.objectContaining({ productId: 'p-Pizza grande 2 sabores + Refri 1L grátis', templateId: 'agt-Refri?' }),
+          expect.objectContaining({ productId: 'p-Pizza grande 2 sabores + Refri 1L grátis', templateId: 'agt-Bordas' }),
         ],
       }),
     );

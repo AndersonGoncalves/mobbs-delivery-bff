@@ -22,7 +22,16 @@ export interface SeedDefaultCatalogDeps {
  * reais dos templates pra montar seu `additionalGroups` como referência (`templateId`), não como
  * grupo inline. Os demais produtos do seed continuam nascendo com `additionalGroups: []`, igual
  * antes — o script continua sem vincular automaticamente por padrão (decisão confirmada com o
- * usuário), só o produto explicitamente marcado no catálogo ganha o vínculo. */
+ * usuário), só o produto explicitamente marcado no catálogo ganha o vínculo.
+ *
+ * specs/0049-catalogo-padrao-bebidas-reais REQ-18 — 3ª passada nova, depois das duas acima: agora
+ * a dependência é nos dois sentidos (produto -> template, REQ-12; e opção de template -> produto,
+ * REQ-18) — resolvida em 3 passos porque nenhuma ordem única resolve os dois ao mesmo tempo:
+ * 1) cria templates (sem saber de produtos ainda); 2) cria categorias/produtos (usando ids de
+ * template da passada 1 pra linkar produto -> template); 3) volta nos templates que têm opção com
+ * `linkedProductName` e completa com o `linkedProductId` real (usando ids de produto da passada 2)
+ * — `update()` exige o objeto inteiro do template, não um patch parcial.
+ */
 export async function seedDefaultCatalog(restaurantId: string, businessType: BusinessType, deps: SeedDefaultCatalogDeps): Promise<void> {
   const catalog = DEFAULT_CATALOGS_BY_BUSINESS_TYPE[businessType];
 
@@ -34,11 +43,14 @@ export async function seedDefaultCatalog(restaurantId: string, businessType: Bus
       required: template.required,
       minSelections: template.minSelections,
       maxSelections: template.maxSelections,
-      options: template.options,
+      // `linkedProductName` ainda não é resolvido aqui (produtos não existem nesta passada) —
+      // fica só `name`/`priceDelta`, sem vínculo, até a 3ª passada mais abaixo.
+      options: template.options.map(({ name, priceDelta }) => ({ name, priceDelta })),
     });
     templateIdsByName.set(template.name, created.id);
   }
 
+  const productIdsByName = new Map<string, string>();
   for (const { categoryName, products } of catalog.categories) {
     const category = await deps.menuCategoryRepository.create(restaurantId, categoryName);
 
@@ -50,7 +62,11 @@ export async function seedDefaultCatalog(restaurantId: string, businessType: Bus
         price: product.price,
         isAvailable: true,
         additionalGroups: [],
+        // specs/0049-catalogo-padrao-bebidas-reais REQ-17.
+        imageUrl: product.imageUrl,
+        availableAsAdditional: product.availableAsAdditional,
       });
+      productIdsByName.set(product.name, created.id);
 
       const templateNames = product.linkedAdditionalGroupTemplateNames ?? [];
       if (templateNames.length === 0) continue;
@@ -64,5 +80,29 @@ export async function seedDefaultCatalog(restaurantId: string, businessType: Bus
           .map((templateId) => ({ id: randomUUID(), productId: created.id, templateId })),
       });
     }
+  }
+
+  // specs/0049-catalogo-padrao-bebidas-reais REQ-18 — 3ª passada: só reenvia os templates que
+  // realmente têm alguma opção com `linkedProductName` (a maioria não tem, e não precisa de um
+  // 2º `update` à toa).
+  for (const template of catalog.additionalGroupTemplates) {
+    const hasLinkedOption = template.options.some((option) => option.linkedProductName !== undefined);
+    if (!hasLinkedOption) continue;
+
+    const templateId = templateIdsByName.get(template.name);
+    if (!templateId) continue;
+
+    await deps.additionalGroupTemplateRepository.update(templateId, {
+      name: template.name,
+      type: template.type,
+      required: template.required,
+      minSelections: template.minSelections,
+      maxSelections: template.maxSelections,
+      options: template.options.map(({ name, priceDelta, linkedProductName }) => ({
+        name,
+        priceDelta,
+        linkedProductId: linkedProductName ? productIdsByName.get(linkedProductName) : undefined,
+      })),
+    });
   }
 }

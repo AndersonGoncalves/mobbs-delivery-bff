@@ -13,6 +13,27 @@ interface DefaultCatalogProduct {
    * decisão confirmada com o usuário).
    */
   linkedAdditionalGroupTemplateNames?: string[];
+  /** specs/0049-catalogo-padrao-bebidas-reais REQ-17 — só os produtos com foto real publicada em
+   * `app-imagens/` usam; os demais nascem sem `imageUrl` (caem no `defaultProductImageUrl` do
+   * restaurante, igual qualquer produto sem foto própria). */
+  imageUrl?: string;
+  /** specs/0049-catalogo-padrao-bebidas-reais REQ-17 — `true` nos produtos pensados pra
+   * aparecerem como opção vinculável em grupos de adicionais (REQ-18). Ausente = `false`
+   * (default de `NewProductInput`), igual a todo o resto do seed. */
+  availableAsAdditional?: boolean;
+}
+
+interface DefaultCatalogAdditionalGroupTemplateOption {
+  name: string;
+  priceDelta: number;
+  /**
+   * specs/0049-catalogo-padrao-bebidas-reais REQ-18 — nome (não id) de um `DefaultCatalogProduct`
+   * do mesmo catálogo a vincular (`linkedProductId`) — resolvido em `seedDefaultCatalog.ts`
+   * depois de criar todos os produtos (mesmo mecanismo de `linkedAdditionalGroupTemplateNames`,
+   * na direção oposta: lá é produto -> template, aqui é opção de template -> produto). Ausente =
+   * opção em texto puro, sem vínculo (comportamento default, igual antes desta spec).
+   */
+  linkedProductName?: string;
 }
 
 interface DefaultCatalogAdditionalGroupTemplate {
@@ -21,7 +42,7 @@ interface DefaultCatalogAdditionalGroupTemplate {
   required: boolean;
   minSelections: number;
   maxSelections: number;
-  options: { name: string; priceDelta: number }[];
+  options: DefaultCatalogAdditionalGroupTemplateOption[];
 }
 
 interface DefaultCatalogCategory {
@@ -34,14 +55,48 @@ export interface DefaultCatalog {
   additionalGroupTemplates: DefaultCatalogAdditionalGroupTemplate[];
 }
 
+// specs/0049-catalogo-padrao-bebidas-reais REQ-17 — 12 produtos de bebida reais, validados
+// manualmente pelo usuário em produção ("Meu Restaurante") e replicados aqui: substituem as
+// opções em texto puro sem vínculo de REFRIGERANTES_TEMPLATE/BEBIDAS_TEMPLATE (ver
+// `linkedProductName` nelas, REQ-18) por produtos de verdade, vinculáveis em qualquer grupo de
+// adicionais do restaurante (`availableAsAdditional: true`), do mesmo jeito que o usuário fez.
+// Só os 2 primeiros têm foto real publicada em `app-imagens/` — os nomes aqui precisam bater
+// exatamente com `linkedProductName` nos templates abaixo.
+function bebidasProducts(): DefaultCatalogProduct[] {
+  return [
+    {
+      name: 'Coca-Cola 1 litro',
+      price: 10,
+      availableAsAdditional: true,
+      imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/coca-cola-1l.jpeg',
+    },
+    {
+      name: 'Guaraná Antarctica 1 litro',
+      price: 8,
+      availableAsAdditional: true,
+      imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/guarana-antarctica-1l.jpeg',
+    },
+    { name: 'Fanta Laranja 1 litro', price: 8, availableAsAdditional: true },
+    { name: 'Fanta Uva 1 litro', price: 8, availableAsAdditional: true },
+    { name: 'Sprite 1 litro', price: 8, availableAsAdditional: true },
+    { name: 'Coca-Cola lata 350ml', price: 6, availableAsAdditional: true },
+    { name: 'Guaraná Antarctica lata 350ml', price: 5.5, availableAsAdditional: true },
+    { name: 'Fanta Laranja lata 350ml', price: 5.5, availableAsAdditional: true },
+    { name: 'Fanta Uva lata 350ml', price: 5.5, availableAsAdditional: true },
+    { name: 'Sprite lata 350ml', price: 5.5, availableAsAdditional: true },
+    { name: 'Água com gás 500ml', price: 3.5, availableAsAdditional: true },
+    { name: 'Água sem gás 500ml', price: 3, availableAsAdditional: true },
+  ];
+}
+
 // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-11 — mesmas 3 categorias, sempre
-// nesta ordem, depois da categoria própria do tipo de negócio, pra todos os 6 tipos. Nascem vazias
-// (sem produtos) — o usuário não pediu produtos padrão pra elas (só o produto específico de
-// REQ-12, na categoria própria da pizzaria).
+// nesta ordem, depois da categoria própria do tipo de negócio, pra todos os 6 tipos. "Lanche" e
+// "Sobremesas" continuam vazias (usuário não pediu produtos padrão pra elas); "Bebidas" ganhou os
+// 12 produtos reais de `bebidasProducts()` em specs/0049-catalogo-padrao-bebidas-reais.
 function extraCategories(): DefaultCatalogCategory[] {
   return [
     { categoryName: 'Lanche', products: [] },
-    { categoryName: 'Bebidas', products: [] },
+    { categoryName: 'Bebidas', products: bebidasProducts() },
     { categoryName: 'Sobremesas', products: [] },
   ];
 }
@@ -62,7 +117,10 @@ const SABORES_PIZZA_TEMPLATE: DefaultCatalogAdditionalGroupTemplate = {
   ],
 };
 
-// Template reaproveitável de Refrigerantes 1 Litro
+// Template reaproveitável de Refrigerantes 1 Litro — specs/0049-catalogo-padrao-bebidas-reais
+// REQ-18/REQ-19: opções agora vinculadas (`linkedProductName`) aos produtos reais de
+// `bebidasProducts()`, preços atualizados pros valores validados em produção (Guaraná/Fanta/
+// Sprite: R$9 -> R$8; Coca-Cola manteve R$10).
 const REFRIGERANTES_TEMPLATE: DefaultCatalogAdditionalGroupTemplate = {
   name: 'Refri?',
   type: 'adicionar',
@@ -70,14 +128,15 @@ const REFRIGERANTES_TEMPLATE: DefaultCatalogAdditionalGroupTemplate = {
   minSelections: 0,
   maxSelections: 1,
   options: [
-    { name: 'Coca-Cola 1 litro', priceDelta: 10 },
-    { name: 'Guaraná Antarctica 1 litro', priceDelta: 9 },
-    { name: 'Fanta Laranja 1 litro', priceDelta: 9 },
-    { name: 'Fanta Uva 1 litro', priceDelta: 9 },
-    { name: 'Sprite 1 litro', priceDelta: 9 },
+    { name: 'Coca-Cola 1 litro', priceDelta: 10, linkedProductName: 'Coca-Cola 1 litro' },
+    { name: 'Guaraná Antarctica 1 litro', priceDelta: 8, linkedProductName: 'Guaraná Antarctica 1 litro' },
+    { name: 'Fanta Laranja 1 litro', priceDelta: 8, linkedProductName: 'Fanta Laranja 1 litro' },
+    { name: 'Fanta Uva 1 litro', priceDelta: 8, linkedProductName: 'Fanta Uva 1 litro' },
+    { name: 'Sprite 1 litro', priceDelta: 8, linkedProductName: 'Sprite 1 litro' },
   ],
 };
-// Template reaproveitável de Bebidas
+// Template reaproveitável de Bebidas — specs/0049-catalogo-padrao-bebidas-reais REQ-18/REQ-19:
+// opções vinculadas aos produtos reais, "Água com gás" atualizada pro preço validado (R$4 -> R$3,50).
 const BEBIDAS_TEMPLATE: DefaultCatalogAdditionalGroupTemplate = {
   name: 'Bebidas?',
   type: 'adicionar',
@@ -85,13 +144,13 @@ const BEBIDAS_TEMPLATE: DefaultCatalogAdditionalGroupTemplate = {
   minSelections: 0,
   maxSelections: 1,
   options: [
-    { name: 'Coca-Cola lata 350ml', priceDelta: 6 },
-    { name: 'Guaraná Antarctica lata 350ml', priceDelta: 5.5 },
-    { name: 'Fanta Laranja lata 350ml', priceDelta: 5.5 },
-    { name: 'Fanta Uva lata 350ml', priceDelta: 5.5 },
-    { name: 'Sprite lata 350ml', priceDelta: 5.5 },
-    { name: 'Água com gás 500ml', priceDelta: 4 },
-    { name: 'Água sem gás 500ml', priceDelta: 3.5 },
+    { name: 'Coca-Cola lata 350ml', priceDelta: 6, linkedProductName: 'Coca-Cola lata 350ml' },
+    { name: 'Guaraná Antarctica lata 350ml', priceDelta: 5.5, linkedProductName: 'Guaraná Antarctica lata 350ml' },
+    { name: 'Fanta Laranja lata 350ml', priceDelta: 5.5, linkedProductName: 'Fanta Laranja lata 350ml' },
+    { name: 'Fanta Uva lata 350ml', priceDelta: 5.5, linkedProductName: 'Fanta Uva lata 350ml' },
+    { name: 'Sprite lata 350ml', priceDelta: 5.5, linkedProductName: 'Sprite lata 350ml' },
+    { name: 'Água com gás 500ml', priceDelta: 3.5, linkedProductName: 'Água com gás 500ml' },
+    { name: 'Água sem gás 500ml', priceDelta: 3, linkedProductName: 'Água sem gás 500ml' },
   ],
 };
 
@@ -111,10 +170,12 @@ export const DEFAULT_CATALOGS_BY_BUSINESS_TYPE: Record<BusinessType, DefaultCata
             // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-12 — nome exato pedido
             // pelo usuário (substitui o antigo "Pizza 2 sabores + Refri 1l", mesmo conceito, agora
             // com os grupos de fato vinculados em vez de `additionalGroups: []`).
+            // specs/0049-catalogo-padrao-bebidas-reais REQ-20 — "Bordas" também vinculado, achado
+            // real ao ler o banco de produção (o usuário vinculou manualmente).
             name: 'Pizza grande 2 sabores + Refri 1L grátis',
             description: 'Escolha 2 sabores de sua preferência. Acompanha refrigerante de 1 litro grátis.',
             price: 65,
-            linkedAdditionalGroupTemplateNames: ['Sabores da Pizza', 'Refri?'],
+            linkedAdditionalGroupTemplateNames: ['Sabores da Pizza', 'Refri?', 'Bordas'],
           },
         ],
       },

@@ -66,6 +66,9 @@ function buildProductRepository(overrides: Partial<IProductRepository> = {}): IP
 function buildAdditionalGroupTemplateRepository(overrides: Partial<IAdditionalGroupTemplateRepository> = {}): IAdditionalGroupTemplateRepository {
   return {
     create: jest.fn().mockResolvedValue({ id: 'agt-1' }),
+    // specs/0049-catalogo-padrao-bebidas-reais REQ-18 — seedDefaultCatalog chama update() pra
+    // resolver linkedProductId nas opções de "Refri?"/"Bebidas?".
+    update: jest.fn().mockResolvedValue({ id: 'agt-1' }),
     ...overrides,
   } as IAdditionalGroupTemplateRepository;
 }
