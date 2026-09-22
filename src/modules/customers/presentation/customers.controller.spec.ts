@@ -186,7 +186,10 @@ describe('CustomersController', () => {
       name: 'Ana',
       email: 'ana@example.com',
       photoUrl: undefined,
-      phone: '11999999999',
+      // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-3 — normalizado com "55" na
+      // escrita (updateCustomerProfileSchema.phone), mesmo comportamento já aplicado em
+      // restaurants.schemas.ts.
+      phone: '5511999999999',
       document: undefined,
     });
   });
