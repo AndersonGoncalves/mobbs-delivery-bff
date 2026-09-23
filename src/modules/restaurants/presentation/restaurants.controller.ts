@@ -36,9 +36,13 @@ export class RestaurantsController extends BaseRouter {
   }
 
   initializeRoutes(application: Server): void {
+    // specs/0046-abrir-fechar-restaurante-manual REQ-3 (bug, specs/0054) — 404 só quando o slug
+    // não corresponde a NENHUM restaurante; `isActive: false` (fechado manualmente ou "de
+    // férias") ainda resolve normalmente com 200, pro cliente entrar no cardápio e ver o banner
+    // de fechado (`Restaurant.isOpenNow`) — não uma tela de "restaurante não encontrado".
     application.get('/restaurants/resolve/:slug', async (req: Request, res: Response) => {
       const restaurant = await this.restaurantRepository.findBySlug(req.params.slug);
-      const resolved = this.render(restaurant && restaurant.isActive ? restaurant : null);
+      const resolved = this.render(restaurant);
       res.json(200, resolved);
     });
 

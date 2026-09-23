@@ -82,7 +82,11 @@ describe('RestaurantsController', () => {
       ).rejects.toMatchObject({ statusCode: 404 });
     });
 
-    it('lança erro 404 quando o restaurante existe mas está inativo', async () => {
+    // specs/0046-abrir-fechar-restaurante-manual REQ-3 (bug, specs/0054) — resolvia como 404
+    // antes; restaurante fechado manualmente/de férias (isActive: false) precisa continuar
+    // resolvendo normalmente, senão o cliente nunca vê o banner de "fechado" (cai numa tela de
+    // "restaurante não encontrado" em vez disso).
+    it('AC-1 (specs/0054): resolve normalmente (200) quando o restaurante existe mas está inativo (fechado)', async () => {
       const repository: Partial<IRestaurantRepository> = {
         findBySlug: jest.fn().mockResolvedValue(buildRestaurant({ isActive: false, slug: 'fechado' })),
       };
@@ -91,9 +95,10 @@ describe('RestaurantsController', () => {
         application,
       );
 
-      await expect(
-        routes['GET /restaurants/resolve/:slug'][0]({ params: { slug: 'fechado' } }, { json: jest.fn() }),
-      ).rejects.toMatchObject({ statusCode: 404 });
+      const json = jest.fn();
+      await routes['GET /restaurants/resolve/:slug'][0]({ params: { slug: 'fechado' } }, { json });
+
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ slug: 'fechado', isActive: false }));
     });
   });
 
