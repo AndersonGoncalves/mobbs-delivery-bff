@@ -44,6 +44,8 @@ import { WhatsAppConnectionController } from './modules/whatsapp-connection/pres
 import { NodemailerEmailService } from './shared/email/nodemailer-email.service';
 import { RatingMongooseRepository } from './modules/ratings/infra/repositories/rating.mongoose.repository';
 import { RatingsController } from './modules/ratings/presentation/ratings.controller';
+import { PresenceMongooseRepository } from './modules/presence/infra/repositories/presence.mongoose.repository';
+import { PresenceController } from './modules/presence/presentation/presence.controller';
 import { UploadsController } from './modules/uploads/presentation/uploads.controller';
 
 const server = new Server();
@@ -160,6 +162,7 @@ server
     new PurchaseOrdersController(purchaseOrderRepository, receivePurchaseOrderService, restaurantOperatorMiddleware),
     new CouponsController(couponRepository, orderRepository, restaurantOperatorMiddleware),
     new RatingsController(new RatingMongooseRepository(), orderRepository, restaurantRepository),
+    new PresenceController(new PresenceMongooseRepository(), restaurantRepository, restaurantOperatorMiddleware),
     new UploadsController(restaurantOperatorMiddleware),
   ], [migrateOperatorRolesToDono])
   .catch((error) => {
