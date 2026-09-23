@@ -74,7 +74,15 @@ function buildRestaurant(
     name: 'Prime Pizza',
     slug: 'primepizza',
     isActive: true,
-    businessHours: [],
+    // specs/0055-checkout-revalida-restaurante-aberto — aberto o dia inteiro, todo dia, por
+    // padrão (não é o foco da maioria dos testes deste arquivo); os testes específicos de
+    // "restaurante fechado" (abaixo) sobrescrevem isso.
+    businessHours: (['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const).map((dayOfWeek) => ({
+      dayOfWeek,
+      isClosed: false,
+      openTime: '00:00',
+      closeTime: '23:59',
+    })),
     minimumOrderValue: 0,
     deliveryFeeCents: 5,
     deliveryFeeMode: 'fixed',
@@ -268,6 +276,19 @@ describe('OrdersController', () => {
       expect.objectContaining({ customerId: 'customer-1', subtotal: 50, deliveryFee: 5, discount: 0, total: 55 }),
     );
     expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ id: 'o-1', orderNumber: 1 }));
+  });
+
+  // specs/0055-checkout-revalida-restaurante-aberto (reabre 0046/0033-REQ-7) — nunca confia só no
+  // client achar que a loja está aberta (a tela de checkout pode ter aberto antes de fechar).
+  it('AC-1 (specs/0055): POST /orders rejeita (409) quando o restaurante está fechado manualmente', async () => {
+    const { orderRepository, routes } = setup({
+      restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ isActive: false })) },
+    });
+
+    await expect(
+      runAuthenticatedChain(routes['POST /orders'], { body: buildValidBody(), user: { uid: 'customer-1' } }, { json: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect(orderRepository.create).not.toHaveBeenCalled();
   });
 
   it('specs/0013 REQ-1: POST /orders dispara o recibo por WhatsApp (fire-and-forget) após criar o pedido', async () => {

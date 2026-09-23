@@ -11,6 +11,7 @@ import { validateCoupon } from '../../coupons/domain/services/coupon-validator';
 import { ICashRegisterService } from '../../financeiro/domain/services/i-cash-register.service';
 import { IWhatsAppNotificationService } from '../../notifications/domain/services/i-whatsapp-notification.service';
 import { IStockMovementRepository } from '../../raw-materials/domain/repositories/stock-movement.repository.interface';
+import { isRestaurantOpenNow } from '../../restaurants/domain/is-restaurant-open-now';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { DeductStockForDeliveredOrderUseCase } from '../domain/deduct-stock-for-delivered-order.use-case';
 import { IOrder, IOrderItem, IPayment } from '../domain/entities/order.entity';
@@ -60,6 +61,14 @@ export class OrdersController extends BaseRouter {
 
       const restaurant = await this.restaurantRepository.findById(payload.restaurantId);
       if (!restaurant) throw new NotFoundError('Restaurante não encontrado');
+
+      // specs/0055-checkout-revalida-restaurante-aberto (reabre 0046/0033-REQ-7) — nunca confia
+      // só no client achar que a loja está aberta: a tela de checkout pode ter sido aberta antes
+      // do restaurante fechar (manualmente ou por horário). Revalida aqui, mesma regra de
+      // Restaurant.isOpenAt() no app (isActive tem prioridade sobre businessHours).
+      if (!isRestaurantOpenNow(restaurant)) {
+        throw new ConflictError('Restaurante fechado no momento');
+      }
 
       // specs/0020-pix-no-app REQ-3 — Pix só é uma opção válida quando o restaurante tem chave
       // cadastrada; o app já esconde a opção nesse caso (defesa em profundidade, nunca confiar só
