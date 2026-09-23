@@ -15,6 +15,8 @@ import { PaymentMongooseRepository } from './modules/orders/infra/repositories/p
 import { OrdersController } from './modules/orders/presentation/orders.controller';
 import { CouponMongooseRepository } from './modules/coupons/infra/repositories/coupon.mongoose.repository';
 import { CouponsController } from './modules/coupons/presentation/coupons.controller';
+import { PromotionMongooseRepository } from './modules/promotions/infra/repositories/promotion.mongoose.repository';
+import { PromotionsController } from './modules/promotions/presentation/promotions.controller';
 import { RawMaterialMongooseRepository } from './modules/raw-materials/infra/repositories/raw-material.mongoose.repository';
 import { StockMovementMongooseRepository } from './modules/raw-materials/infra/repositories/stock-movement.mongoose.repository';
 import { RawMaterialsController } from './modules/raw-materials/presentation/raw-materials.controller';
@@ -53,7 +55,11 @@ const server = new Server();
 const restaurantOperatorRepository = new RestaurantOperatorMongooseRepository();
 const restaurantOperatorMiddleware = buildRestaurantOperatorMiddleware(restaurantOperatorRepository);
 const restaurantRepository = new RestaurantMongooseRepository();
-const productRepository = new ProductMongooseRepository();
+// specs/0044-promocoes-produtos — instância única, compartilhada por ProductMongooseRepository
+// (preço/percentual promocional + desconto em opção vinculada) e MenuCategoryMongooseRepository
+// (versão leve do cardápio por categoria), além do PromotionsController (CRUD da retaguarda).
+const promotionRepository = new PromotionMongooseRepository();
+const productRepository = new ProductMongooseRepository(promotionRepository);
 const customerRepository = new CustomerMongooseRepository();
 
 // specs/0013-notificacoes-whatsapp — uma única instância de `WhatsAppConnectionService`
@@ -110,19 +116,19 @@ server
     new RestaurantSignupController(
       restaurantRepository,
       restaurantOperatorRepository,
-      new MenuCategoryMongooseRepository(),
+      new MenuCategoryMongooseRepository(promotionRepository),
       productRepository,
       new AdditionalGroupTemplateMongooseRepository(),
     ),
     new OnboardingChecklistController(
       restaurantRepository,
-      new MenuCategoryMongooseRepository(),
+      new MenuCategoryMongooseRepository(promotionRepository),
       productRepository,
       restaurantOperatorMiddleware,
     ),
     new RestaurantOperatorsController(restaurantOperatorRepository, restaurantOperatorMiddleware),
     new CatalogController(
-      new MenuCategoryMongooseRepository(),
+      new MenuCategoryMongooseRepository(promotionRepository),
       productRepository,
       restaurantOperatorMiddleware,
       orderRepository,
@@ -161,6 +167,7 @@ server
     new SuppliersController(new SupplierMongooseRepository(), restaurantOperatorMiddleware),
     new PurchaseOrdersController(purchaseOrderRepository, receivePurchaseOrderService, restaurantOperatorMiddleware),
     new CouponsController(couponRepository, orderRepository, restaurantOperatorMiddleware),
+    new PromotionsController(promotionRepository, restaurantOperatorMiddleware),
     new RatingsController(new RatingMongooseRepository(), orderRepository, restaurantRepository),
     new PresenceController(new PresenceMongooseRepository(), restaurantRepository, restaurantOperatorMiddleware),
     new UploadsController(restaurantOperatorMiddleware),

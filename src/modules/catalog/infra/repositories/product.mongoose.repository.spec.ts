@@ -1,5 +1,25 @@
 import { IProductAdditionalGroup, IProductAdditionalOption } from '../../domain/entities/product.entity';
+import { IPromotion } from '../../../promotions/domain/entities/promotion.entity';
 import { AdditionalGroupTemplateLeanDocument, resolveGroup, resolveOptionLinkedProduct } from './product.mongoose.repository';
+
+function buildLinkedProduct(overrides: Partial<{ _id: string; name: string; imageUrl?: string; price: number }> = {}) {
+  return { _id: 'prod-coca', name: 'Coca-Cola 1L', price: 10, ...overrides };
+}
+
+function buildPromotion(overrides: Partial<IPromotion> = {}): IPromotion {
+  return {
+    id: 'promo-1',
+    restaurantId: 'r-1',
+    name: 'Promoção',
+    discountPercentage: 20,
+    productIds: ['prod-coca'],
+    isActive: true,
+    startDate: '2026-09-01T00:00:00.000Z',
+    endDate: '2026-09-30T23:59:59.000Z',
+    createdAt: '2026-08-25T00:00:00.000Z',
+    ...overrides,
+  };
+}
 
 function buildGroup(overrides: Partial<IProductAdditionalGroup> = {}): IProductAdditionalGroup {
   return {
@@ -111,7 +131,7 @@ describe('resolveOptionLinkedProduct (specs/0041-item-adicional-vinculado-produt
 
   it('AC-4: opção com linkedProductId resolve name/imageUrl do produto vinculado ATUAL, não do snapshot salvo', () => {
     const option = buildOption({ linkedProductId: 'prod-coca', name: 'nome antigo', imageUrl: 'https://cdn.example.com/antiga.png' });
-    const productsById = new Map([['prod-coca', { _id: 'prod-coca', name: 'Coca-Cola 1L', imageUrl: 'https://cdn.example.com/coca.png' }]]);
+    const productsById = new Map([['prod-coca', buildLinkedProduct({ imageUrl: 'https://cdn.example.com/coca.png' })]]);
 
     const resolved = resolveOptionLinkedProduct(option, productsById);
 
@@ -121,9 +141,53 @@ describe('resolveOptionLinkedProduct (specs/0041-item-adicional-vinculado-produt
 
   it('AC-2/AC-3: priceDelta nunca é sobrescrito pelo produto vinculado — continua o valor digitado na opção', () => {
     const option = buildOption({ linkedProductId: 'prod-coca', priceDelta: -2 });
-    const productsById = new Map([['prod-coca', { _id: 'prod-coca', name: 'Coca-Cola 1L' }]]);
+    const productsById = new Map([['prod-coca', buildLinkedProduct()]]);
 
     expect(resolveOptionLinkedProduct(option, productsById).priceDelta).toBe(-2);
+  });
+
+  // specs/0044-promocoes-produtos REQ-8/AC-8.
+  it('AC-8: produto vinculado com promoção ativa desconta o priceDelta resolvido (nunca o persistido)', () => {
+    const option = buildOption({ linkedProductId: 'prod-coca', priceDelta: 10 });
+    const productsById = new Map([['prod-coca', buildLinkedProduct()]]);
+    const promotionsByProductId = new Map([['prod-coca', buildPromotion({ discountPercentage: 20 })]]);
+
+    const resolved = resolveOptionLinkedProduct(option, productsById, promotionsByProductId);
+
+    expect(resolved.priceDelta).toBe(8);
+    expect(option.priceDelta).toBe(10);
+  });
+
+  it('produto vinculado sem promoção ativa mantém priceDelta intacto, mesmo com outras promoções no map', () => {
+    const option = buildOption({ linkedProductId: 'prod-coca', priceDelta: 10 });
+    const productsById = new Map([['prod-coca', buildLinkedProduct()]]);
+    const promotionsByProductId = new Map([['prod-guarana', buildPromotion({ productIds: ['prod-guarana'] })]]);
+
+    expect(resolveOptionLinkedProduct(option, productsById, promotionsByProductId).priceDelta).toBe(10);
+  });
+
+  it('AC-8: desconto de opção vinculada também resolve recursivamente dentro de nestedAdditionalGroups', () => {
+    const option = buildOption({
+      linkedProductId: undefined,
+      nestedAdditionalGroups: [
+        {
+          id: 'g-nested',
+          productId: 'p-1',
+          name: 'Bebidas do combo',
+          type: 'adicionar',
+          required: false,
+          minSelections: 0,
+          maxSelections: 1,
+          options: [buildOption({ id: 'o-nested', linkedProductId: 'prod-coca', priceDelta: 10 })],
+        },
+      ],
+    });
+    const productsById = new Map([['prod-coca', buildLinkedProduct()]]);
+    const promotionsByProductId = new Map([['prod-coca', buildPromotion({ discountPercentage: 20 })]]);
+
+    const resolved = resolveOptionLinkedProduct(option, productsById, promotionsByProductId);
+
+    expect(resolved.nestedAdditionalGroups?.[0].options[0].priceDelta).toBe(8);
   });
 
   it('produto vinculado apagado/não encontrado mantém o último snapshot conhecido, sem quebrar', () => {
@@ -150,7 +214,7 @@ describe('resolveOptionLinkedProduct (specs/0041-item-adicional-vinculado-produt
         },
       ],
     });
-    const productsById = new Map([['prod-coca', { _id: 'prod-coca', name: 'Coca-Cola 1L' }]]);
+    const productsById = new Map([['prod-coca', buildLinkedProduct()]]);
 
     const resolved = resolveOptionLinkedProduct(option, productsById);
 

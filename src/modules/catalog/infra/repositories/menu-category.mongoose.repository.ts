@@ -1,6 +1,8 @@
 import { IMenuCategory, IMenuCategoryWithProducts } from '../../domain/entities/menu-category.entity';
 import { IProduct } from '../../domain/entities/product.entity';
 import { IMenuCategoryRepository } from '../../domain/repositories/menu-category.repository.interface';
+import { computePromotionalPrice, isPromotionCurrentlyActive } from '../../../promotions/domain/promotion-pricing';
+import { IPromotionRepository } from '../../../promotions/domain/repositories/promotion.repository.interface';
 import { MenuCategoryModel } from '../models/menu-category.mongoose.model';
 import { ProductModel } from '../models/product.mongoose.model';
 
@@ -19,7 +21,11 @@ type ProductLightLeanDocument = Omit<IProduct, 'id' | 'additionalGroups'> & {
   additionalGroups?: { id: string }[];
 };
 
-function toProductLight(doc: ProductLightLeanDocument): Omit<IProduct, 'additionalGroups'> {
+// specs/0044-promocoes-produtos REQ-2/REQ-3 — mesmo cruzamento de
+// `product.mongoose.repository.ts` (`resolvePromotions`), mas nesta versão leve do cardápio
+// (`activePromotionPercentage != null` decide se o app mostra a tag+preço riscado).
+function toProductLight(doc: ProductLightLeanDocument, promotionPercentageByProductId: Map<string, number>): Omit<IProduct, 'additionalGroups'> {
+  const activePromotionPercentage = promotionPercentageByProductId.get(doc._id);
   return {
     id: doc._id,
     restaurantId: doc.restaurantId,
@@ -35,12 +41,16 @@ function toProductLight(doc: ProductLightLeanDocument): Omit<IProduct, 'addition
     featuredOrder: doc.featuredOrder ?? 0,
     hasAdditionalGroups: (doc.additionalGroups?.length ?? 0) > 0,
     availableAsAdditional: doc.availableAsAdditional ?? false,
+    activePromotionPercentage,
+    promotionalPrice: activePromotionPercentage !== undefined ? computePromotionalPrice(doc.price, activePromotionPercentage) : undefined,
   };
 }
 
 export class MenuCategoryMongooseRepository implements IMenuCategoryRepository {
+  constructor(private readonly promotionRepository: IPromotionRepository) {}
+
   async listByRestaurant(restaurantId: string): Promise<IMenuCategoryWithProducts[]> {
-    const [categories, products] = await Promise.all([
+    const [categories, products, activePromotions] = await Promise.all([
       MenuCategoryModel.find({ restaurantId })
         .sort({ sortOrder: 1 })
         .lean<MenuCategoryLeanDocument[]>(),
@@ -51,14 +61,26 @@ export class MenuCategoryMongooseRepository implements IMenuCategoryRepository {
       ProductModel.find({ restaurantId })
         .select('restaurantId menuCategoryId name description imageUrl price isAvailable isFeatured featuredOrder additionalGroups.id')
         .lean<ProductLightLeanDocument[]>(),
+      this.promotionRepository.findActiveByRestaurantId(restaurantId),
     ]);
+
+    const now = new Date();
+    const promotionPercentageByProductId = new Map<string, number>();
+    for (const promotion of activePromotions) {
+      if (!isPromotionCurrentlyActive(promotion, now)) continue;
+      for (const productId of promotion.productIds) {
+        promotionPercentageByProductId.set(productId, promotion.discountPercentage);
+      }
+    }
 
     return categories.map((category) => ({
       id: category._id,
       restaurantId: category.restaurantId,
       name: category.name,
       sortOrder: category.sortOrder,
-      products: products.filter((product) => product.menuCategoryId === category._id).map(toProductLight),
+      products: products
+        .filter((product) => product.menuCategoryId === category._id)
+        .map((product) => toProductLight(product, promotionPercentageByProductId)),
     }));
   }
 

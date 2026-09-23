@@ -103,4 +103,12 @@ export interface IProduct {
    * quando um pedido com este produto — vendido avulso ou como adicional vinculado,
    * `specs/0041` — muda pra `entregue`). */
   stockQuantity?: number;
+  /**
+   * specs/0044-promocoes-produtos REQ-2/REQ-3 — computados na leitura (nunca armazenados no
+   * documento do produto), cruzando com `Promotion`s "efetivamente ativas"
+   * (`isPromotionCurrentlyActive`, `modules/promotions`) do restaurante. `undefined` = sem
+   * promoção ativa agora — o app cliente mostra o preço base normal, sem tag, quando ausente.
+   */
+  activePromotionPercentage?: number;
+  promotionalPrice?: number;
 }

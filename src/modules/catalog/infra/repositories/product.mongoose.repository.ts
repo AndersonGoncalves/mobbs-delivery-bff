@@ -8,6 +8,9 @@ import {
 } from '../../domain/repositories/product.repository.interface';
 import { escapeRegex } from '../../../../shared/utils/escape-regex';
 import { AdditionalGroupTemplateModel } from '../../../additional-group-templates/infra/models/additional-group-template.mongoose.model';
+import { IPromotion } from '../../../promotions/domain/entities/promotion.entity';
+import { computePromotionalPrice, isPromotionCurrentlyActive } from '../../../promotions/domain/promotion-pricing';
+import { IPromotionRepository } from '../../../promotions/domain/repositories/promotion.repository.interface';
 import { ProductModel } from '../models/product.mongoose.model';
 
 interface ProductLeanDocument extends Omit<IProduct, 'id'> {
@@ -28,6 +31,10 @@ interface LinkedProductLeanDocument {
   _id: string;
   name: string;
   imageUrl?: string;
+  // specs/0044-promocoes-produtos REQ-8 — precisa do `price` base pra computar o `priceDelta`
+  // descontado quando o produto vinculado tem promoção ativa (nunca pra ressincronizar
+  // priceDelta com price em si, ver comentário em resolveOptionLinkedProduct).
+  price: number;
 }
 
 function toEntity(doc: ProductLeanDocument): IProduct {
@@ -45,6 +52,8 @@ function toEntity(doc: ProductLeanDocument): IProduct {
     featuredOrder: doc.featuredOrder ?? 0,
     availableAsAdditional: doc.availableAsAdditional ?? false,
     stockQuantity: doc.stockQuantity,
+    activePromotionPercentage: doc.activePromotionPercentage,
+    promotionalPrice: doc.promotionalPrice,
   };
 }
 
@@ -96,21 +105,34 @@ function templateToOptions(template: AdditionalGroupTemplateLeanDocument, groupI
 // specs/0041-item-adicional-vinculado-produto REQ-3 — "vínculo vivo" igual `resolveGroup`, mas
 // pra opções com `linkedProductId`: `name`/`imageUrl` sempre refletem o produto vinculado ATUAL
 // (nunca o snapshot persistido na opção). Pura de propósito, mesmo raciocínio de `resolveGroup`.
+//
+// specs/0044-promocoes-produtos REQ-8/AC-8 — `promotionsByProductId` (default vazio, mantém as
+// chamadas de teste antigas sem promoção passando) permite descontar o `priceDelta` resolvido
+// quando o produto vinculado tem promoção ativa — o `priceDelta` PERSISTIDO nunca muda (mesmo
+// espírito de nunca ressincronizar com `price`), só o valor devolvido nesta leitura.
 export function resolveOptionLinkedProduct(
   option: IProductAdditionalOption,
   productsById: Map<string, LinkedProductLeanDocument>,
+  promotionsByProductId: Map<string, IPromotion> = new Map(),
 ): IProductAdditionalOption {
-  const nestedAdditionalGroups = option.nestedAdditionalGroups?.map((group) => resolveGroupLinkedProducts(group, productsById));
+  const nestedAdditionalGroups = option.nestedAdditionalGroups?.map((group) =>
+    resolveGroupLinkedProducts(group, productsById, promotionsByProductId),
+  );
   const linked = option.linkedProductId ? productsById.get(option.linkedProductId) : undefined;
   if (!linked) return nestedAdditionalGroups ? { ...option, nestedAdditionalGroups } : option;
-  return { ...option, name: linked.name, imageUrl: linked.imageUrl, nestedAdditionalGroups };
+
+  const promotion = option.linkedProductId ? promotionsByProductId.get(option.linkedProductId) : undefined;
+  const priceDelta = promotion ? computePromotionalPrice(option.priceDelta, promotion.discountPercentage) : option.priceDelta;
+
+  return { ...option, name: linked.name, imageUrl: linked.imageUrl, priceDelta, nestedAdditionalGroups };
 }
 
 function resolveGroupLinkedProducts(
   group: IProductAdditionalGroup,
   productsById: Map<string, LinkedProductLeanDocument>,
+  promotionsByProductId: Map<string, IPromotion>,
 ): IProductAdditionalGroup {
-  return { ...group, options: group.options.map((option) => resolveOptionLinkedProduct(option, productsById)) };
+  return { ...group, options: group.options.map((option) => resolveOptionLinkedProduct(option, productsById, promotionsByProductId)) };
 }
 
 // REQ-3 — "vínculo vivo": um grupo com `templateId` sempre reflete os dados ATUAIS do template
@@ -170,7 +192,7 @@ function collectLinkedProductIds(groups: IProductAdditionalGroup[], acc: Set<str
 // (nunca antes): um grupo vinculado a template só revela suas opções — e um `linkedProductId`
 // eventual dentro delas — depois de resolvido; chamar na ordem contrária deixaria de resolver o
 // nome/imagem de opções vindas de template.
-async function resolveLinkedProducts(docs: ProductLeanDocument[]): Promise<void> {
+async function resolveLinkedProducts(docs: ProductLeanDocument[], promotionsByProductId: Map<string, IPromotion>): Promise<void> {
   const linkedProductIds = new Set<string>();
   for (const doc of docs) {
     collectLinkedProductIds(doc.additionalGroups ?? [], linkedProductIds);
@@ -178,21 +200,57 @@ async function resolveLinkedProducts(docs: ProductLeanDocument[]): Promise<void>
   if (linkedProductIds.size === 0) return;
 
   const linkedProducts = await ProductModel.find({ _id: { $in: [...linkedProductIds] } })
-    .select('_id name imageUrl')
+    .select('_id name imageUrl price')
     .lean<LinkedProductLeanDocument[]>();
   const productsById = new Map(linkedProducts.map((product) => [product._id, product]));
 
   for (const doc of docs) {
-    doc.additionalGroups = (doc.additionalGroups ?? []).map((group) => resolveGroupLinkedProducts(group, productsById));
+    doc.additionalGroups = (doc.additionalGroups ?? []).map((group) => resolveGroupLinkedProducts(group, productsById, promotionsByProductId));
   }
 }
 
+/**
+ * specs/0044-promocoes-produtos REQ-2/REQ-3 — cruza os produtos lidos com as promoções
+ * "efetivamente ativas" (`isPromotionCurrentlyActive`, isActive + dentro da janela de datas) dos
+ * restaurantes envolvidos, preenchendo `activePromotionPercentage`/`promotionalPrice` nos que
+ * estão em promoção. Devolve o map productId -> promoção, reaproveitado por
+ * `resolveLinkedProducts` (REQ-8: mesma promoção desconta o `priceDelta` de opções vinculadas a
+ * esse produto).
+ */
+async function resolvePromotions(docs: ProductLeanDocument[], promotionRepository: IPromotionRepository): Promise<Map<string, IPromotion>> {
+  const restaurantIds = new Set(docs.map((doc) => doc.restaurantId));
+  const now = new Date();
+  const promotionsByProductId = new Map<string, IPromotion>();
+
+  for (const restaurantId of restaurantIds) {
+    const activePromotions = await promotionRepository.findActiveByRestaurantId(restaurantId);
+    for (const promotion of activePromotions) {
+      if (!isPromotionCurrentlyActive(promotion, now)) continue;
+      for (const productId of promotion.productIds) {
+        promotionsByProductId.set(productId, promotion);
+      }
+    }
+  }
+
+  for (const doc of docs) {
+    const promotion = promotionsByProductId.get(doc._id);
+    if (!promotion) continue;
+    doc.activePromotionPercentage = promotion.discountPercentage;
+    doc.promotionalPrice = computePromotionalPrice(doc.price, promotion.discountPercentage);
+  }
+
+  return promotionsByProductId;
+}
+
 export class ProductMongooseRepository implements IProductRepository {
+  constructor(private readonly promotionRepository: IPromotionRepository) {}
+
   async findById(id: string): Promise<IProduct | null> {
     const doc = await ProductModel.findById(id).lean<ProductLeanDocument>();
     if (!doc) return null;
+    const promotionsByProductId = await resolvePromotions([doc], this.promotionRepository);
     await resolveTemplates([doc]);
-    await resolveLinkedProducts([doc]);
+    await resolveLinkedProducts([doc], promotionsByProductId);
     return toEntity(doc);
   }
 
@@ -201,8 +259,9 @@ export class ProductMongooseRepository implements IProductRepository {
     if (filters?.name) query.name = { $regex: escapeRegex(filters.name), $options: 'i' };
     if (filters?.isAvailable !== undefined) query.isAvailable = filters.isAvailable;
     const docs = await ProductModel.find(query).lean<ProductLeanDocument[]>();
+    const promotionsByProductId = await resolvePromotions(docs, this.promotionRepository);
     await resolveTemplates(docs);
-    await resolveLinkedProducts(docs);
+    await resolveLinkedProducts(docs, promotionsByProductId);
     return docs.map(toEntity);
   }
 
@@ -275,8 +334,9 @@ export class ProductMongooseRepository implements IProductRepository {
     const docs = await ProductModel.find({ restaurantId, isFeatured: true })
       .sort({ featuredOrder: 1 })
       .lean<ProductLeanDocument[]>();
+    const promotionsByProductId = await resolvePromotions(docs, this.promotionRepository);
     await resolveTemplates(docs);
-    await resolveLinkedProducts(docs);
+    await resolveLinkedProducts(docs, promotionsByProductId);
     return docs.map(toEntity);
   }
 
@@ -289,8 +349,9 @@ export class ProductMongooseRepository implements IProductRepository {
     const docs = await ProductModel.find({ restaurantId, isFeatured: true, isAvailable: true })
       .sort({ featuredOrder: 1 })
       .lean<ProductLeanDocument[]>();
+    const promotionsByProductId = await resolvePromotions(docs, this.promotionRepository);
     await resolveTemplates(docs);
-    await resolveLinkedProducts(docs);
+    await resolveLinkedProducts(docs, promotionsByProductId);
     return docs.map(toEntity);
   }
 
