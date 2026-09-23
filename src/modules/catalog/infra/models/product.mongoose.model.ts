@@ -10,11 +10,14 @@ const productAdditionalOptionSchema = new Schema(
     id: { type: String, required: true },
     groupId: { type: String, required: true },
     name: { type: String, required: true },
-    priceDelta: { type: Number, required: true },
+    // specs/0044-promocoes-produtos (follow-up) — não `required`: ausente quando a opção tem
+    // `linkedProductId` (preço resolvido "ao vivo" do produto vinculado, nunca armazenado; XOR
+    // validado no zod).
+    priceDelta: { type: Number },
     rawMaterialId: { type: String },
     // specs/0041-item-adicional-vinculado-produto — referência opcional a outro Product
-    // (mutuamente exclusiva com rawMaterialId, validado no zod); name/imageUrl são sobrescritos
-    // na leitura a partir do produto vinculado, mesmo raciocínio de templateId abaixo.
+    // (mutuamente exclusiva com rawMaterialId, validado no zod); name/imageUrl/priceDelta são
+    // sobrescritos na leitura a partir do produto vinculado, mesmo raciocínio de templateId abaixo.
     linkedProductId: { type: String },
     // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-3 — corrige a foto que
     // estava no grupo (spec 0029): opção vinda de grupo vinculado sobrescreve na leitura, então

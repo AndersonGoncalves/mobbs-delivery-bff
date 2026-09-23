@@ -139,28 +139,30 @@ describe('resolveOptionLinkedProduct (specs/0041-item-adicional-vinculado-produt
     expect(resolved.imageUrl).toBe('https://cdn.example.com/coca.png');
   });
 
-  it('AC-2/AC-3: priceDelta nunca é sobrescrito pelo produto vinculado — continua o valor digitado na opção', () => {
-    const option = buildOption({ linkedProductId: 'prod-coca', priceDelta: -2 });
-    const productsById = new Map([['prod-coca', buildLinkedProduct()]]);
+  // specs/0044-promocoes-produtos (follow-up) — "opção B": priceDelta de uma opção vinculada
+  // nunca é digitado nem persistido (schema garante isso), é sempre resolvido a partir do
+  // `price` ATUAL do produto vinculado — nunca do que estava salvo na opção antes do vínculo.
+  it('priceDelta é resolvido a partir do price do produto vinculado, nunca do valor antigo salvo na opção', () => {
+    const option = buildOption({ linkedProductId: 'prod-coca', priceDelta: undefined });
+    const productsById = new Map([['prod-coca', buildLinkedProduct({ price: 12 })]]);
 
-    expect(resolveOptionLinkedProduct(option, productsById).priceDelta).toBe(-2);
+    expect(resolveOptionLinkedProduct(option, productsById).priceDelta).toBe(12);
   });
 
   // specs/0044-promocoes-produtos REQ-8/AC-8.
-  it('AC-8: produto vinculado com promoção ativa desconta o priceDelta resolvido (nunca o persistido)', () => {
-    const option = buildOption({ linkedProductId: 'prod-coca', priceDelta: 10 });
-    const productsById = new Map([['prod-coca', buildLinkedProduct()]]);
+  it('AC-8: produto vinculado com promoção ativa desconta o priceDelta resolvido a partir do price atual', () => {
+    const option = buildOption({ linkedProductId: 'prod-coca', priceDelta: undefined });
+    const productsById = new Map([['prod-coca', buildLinkedProduct({ price: 10 })]]);
     const promotionsByProductId = new Map([['prod-coca', buildPromotion({ discountPercentage: 20 })]]);
 
     const resolved = resolveOptionLinkedProduct(option, productsById, promotionsByProductId);
 
     expect(resolved.priceDelta).toBe(8);
-    expect(option.priceDelta).toBe(10);
   });
 
-  it('produto vinculado sem promoção ativa mantém priceDelta intacto, mesmo com outras promoções no map', () => {
-    const option = buildOption({ linkedProductId: 'prod-coca', priceDelta: 10 });
-    const productsById = new Map([['prod-coca', buildLinkedProduct()]]);
+  it('produto vinculado sem promoção ativa resolve priceDelta = price do produto, sem desconto', () => {
+    const option = buildOption({ linkedProductId: 'prod-coca', priceDelta: undefined });
+    const productsById = new Map([['prod-coca', buildLinkedProduct({ price: 10 })]]);
     const promotionsByProductId = new Map([['prod-guarana', buildPromotion({ productIds: ['prod-guarana'] })]]);
 
     expect(resolveOptionLinkedProduct(option, productsById, promotionsByProductId).priceDelta).toBe(10);
@@ -178,11 +180,11 @@ describe('resolveOptionLinkedProduct (specs/0041-item-adicional-vinculado-produt
           required: false,
           minSelections: 0,
           maxSelections: 1,
-          options: [buildOption({ id: 'o-nested', linkedProductId: 'prod-coca', priceDelta: 10 })],
+          options: [buildOption({ id: 'o-nested', linkedProductId: 'prod-coca', priceDelta: undefined })],
         },
       ],
     });
-    const productsById = new Map([['prod-coca', buildLinkedProduct()]]);
+    const productsById = new Map([['prod-coca', buildLinkedProduct({ price: 10 })]]);
     const promotionsByProductId = new Map([['prod-coca', buildPromotion({ discountPercentage: 20 })]]);
 
     const resolved = resolveOptionLinkedProduct(option, productsById, promotionsByProductId);

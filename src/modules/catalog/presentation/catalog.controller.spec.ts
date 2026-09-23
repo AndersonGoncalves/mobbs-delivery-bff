@@ -316,7 +316,7 @@ describe('CatalogController', () => {
           required: true,
           minSelections: 1,
           maxSelections: 1,
-          options: [{ id: 'o-1', groupId: 'g-1', name: 'Coca-Cola 1L', priceDelta: -2, linkedProductId: 'prod-coca' }],
+          options: [{ id: 'o-1', groupId: 'g-1', name: 'Coca-Cola 1L', linkedProductId: 'prod-coca' }],
         },
       ],
     };
@@ -348,6 +348,58 @@ describe('CatalogController', () => {
           options: [
             { id: 'o-1', groupId: 'g-1', name: 'Coca-Cola 1L', priceDelta: -2, rawMaterialId: 'rm-1', linkedProductId: 'prod-coca' },
           ],
+        },
+      ],
+    };
+
+    await expect(
+      runOperatorChain(routes['POST /restaurants/me/products'], { restaurantId: 'r-1', body }, { json: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  // specs/0044-promocoes-produtos (follow-up) — priceDelta é resolvido do produto vinculado,
+  // nunca digitado: mandar os dois junto é rejeitado.
+  it('rejeita opção de adicional com priceDelta e linkedProductId ao mesmo tempo (400)', async () => {
+    const { routes } = setup();
+    const body = {
+      menuCategoryId: 'c-1',
+      name: 'Combo Família',
+      price: 60,
+      additionalGroups: [
+        {
+          id: 'g-1',
+          productId: 'p-2',
+          name: 'Bebidas do combo',
+          required: true,
+          minSelections: 1,
+          maxSelections: 1,
+          options: [{ id: 'o-1', groupId: 'g-1', name: 'Coca-Cola 1L', priceDelta: -2, linkedProductId: 'prod-coca' }],
+        },
+      ],
+    };
+
+    await expect(
+      runOperatorChain(routes['POST /restaurants/me/products'], { restaurantId: 'r-1', body }, { json: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  // specs/0044-promocoes-produtos (follow-up) — sem linkedProductId, priceDelta continua
+  // obrigatório (preço livre digitado pelo operador).
+  it('rejeita opção de adicional sem priceDelta e sem linkedProductId (400)', async () => {
+    const { routes } = setup();
+    const body = {
+      menuCategoryId: 'c-1',
+      name: 'Combo Família',
+      price: 60,
+      additionalGroups: [
+        {
+          id: 'g-1',
+          productId: 'p-2',
+          name: 'Bebidas do combo',
+          required: true,
+          minSelections: 1,
+          maxSelections: 1,
+          options: [{ id: 'o-1', groupId: 'g-1', name: 'Catupiry' }],
         },
       ],
     };

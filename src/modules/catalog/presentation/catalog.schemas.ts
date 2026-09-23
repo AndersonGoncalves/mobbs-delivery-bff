@@ -17,7 +17,11 @@ const productAdditionalOptionSchema: z.ZodType<IProductAdditionalOption> = z.laz
       id: z.string().min(1),
       groupId: z.string().min(1),
       name: z.string().min(1),
-      priceDelta: z.number(),
+      // specs/0044-promocoes-produtos (follow-up) — obrigatório quando NÃO tem
+      // `linkedProductId` (preço livre digitado pelo operador); deve vir ausente quando TEM,
+      // porque nesse caso o preço é sempre resolvido "ao vivo" a partir do produto vinculado
+      // (`resolveOptionLinkedProduct`), nunca armazenado (validado abaixo).
+      priceDelta: z.number().optional(),
       rawMaterialId: z.string().min(1).optional(),
       // specs/0041-item-adicional-vinculado-produto REQ-1/REQ-2 — referência opcional a um
       // Product já cadastrado (`availableAsAdditional: true`), mutuamente exclusiva com
@@ -33,6 +37,14 @@ const productAdditionalOptionSchema: z.ZodType<IProductAdditionalOption> = z.laz
     .refine((data) => !(data.rawMaterialId && data.linkedProductId), {
       message: 'Uma opção não pode ter rawMaterialId e linkedProductId ao mesmo tempo',
       path: ['linkedProductId'],
+    })
+    .refine((data) => data.linkedProductId || data.priceDelta !== undefined, {
+      message: 'priceDelta é obrigatório quando a opção não tem linkedProductId',
+      path: ['priceDelta'],
+    })
+    .refine((data) => !data.linkedProductId || data.priceDelta === undefined, {
+      message: 'priceDelta não deve ser enviado quando a opção tem linkedProductId (preço é resolvido do produto vinculado)',
+      path: ['priceDelta'],
     }),
 );
 
@@ -54,7 +66,7 @@ const productAdditionalGroupInlineSchema: z.ZodType<IProductAdditionalGroup> = z
     .superRefine((data, ctx) => {
       if (data.type === 'remover') {
         data.options.forEach((option, index) => {
-          if (option.priceDelta !== 0) {
+          if (option.priceDelta !== undefined && option.priceDelta !== 0) {
             ctx.addIssue({
               code: 'custom',
               path: ['options', index, 'priceDelta'],

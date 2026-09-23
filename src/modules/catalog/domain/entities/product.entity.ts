@@ -7,16 +7,22 @@ export interface IProductAdditionalOption {
   id: string;
   groupId: string;
   name: string;
-  priceDelta: number;
+  /**
+   * specs/0044-promocoes-produtos (follow-up) — obrigatório quando a opção NÃO tem
+   * `linkedProductId` (preço livre, digitado pelo operador); ausente/ignorado quando TEM
+   * `linkedProductId` — nesse caso o preço é sempre resolvido "ao vivo" a partir do `price`
+   * atual do produto vinculado (`resolveOptionLinkedProduct`), nunca armazenado. Validado em
+   * `catalog.schemas.ts`/`additional-group-template.schemas.ts` (XOR com `linkedProductId`).
+   */
+  priceDelta?: number;
   rawMaterialId?: string;
   /**
    * specs/0041-item-adicional-vinculado-produto REQ-2/REQ-3 — referência opcional a um
    * `IProduct` já cadastrado (produto vendável, ex. "Coca-Cola 1L"), mutuamente exclusiva com
    * `rawMaterialId` (nunca os dois preenchidos ao mesmo tempo, validado em `catalog.schemas.ts`).
-   * Diferente de `rawMaterialId` (só guarda o vínculo, `name`/`priceDelta` não são
-   * resincronizados): `name`/`imageUrl` de uma opção com `linkedProductId` são resolvidos "ao
-   * vivo" a partir do produto vinculado em toda leitura (mesmo mecanismo de resolução já usado
-   * pra `templateId` abaixo) — só `priceDelta` continua sendo digitado livremente por opção.
+   * `name`/`imageUrl`/`priceDelta` de uma opção com `linkedProductId` são resolvidos "ao vivo" a
+   * partir do produto vinculado em toda leitura (mesmo mecanismo de resolução já usado pra
+   * `templateId` abaixo) — nada disso é digitado nem sincronizado por escrita.
    */
   linkedProductId?: string;
   nestedAdditionalGroups?: IProductAdditionalGroup[];

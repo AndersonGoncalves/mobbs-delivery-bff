@@ -12,11 +12,16 @@ export interface IAdditionalGroupTemplateOption {
   id: string;
   templateId: string;
   name: string;
-  priceDelta: number;
+  /**
+   * specs/0044-promocoes-produtos (follow-up) — obrigatório quando a opção NÃO tem
+   * `linkedProductId`; ausente quando TEM, pois nesse caso o preço é sempre resolvido "ao vivo"
+   * a partir do produto vinculado (`resolveOptionLinkedProduct`), nunca armazenado.
+   */
+  priceDelta?: number;
   rawMaterialId?: string;
   /** specs/0041-item-adicional-vinculado-produto REQ-2/REQ-3 — mesmo campo/regra de
    * `IProductAdditionalOption.linkedProductId` (mutuamente exclusivo com `rawMaterialId`,
-   * `name`/`imageUrl` resolvidos "ao vivo" a partir do produto vinculado). */
+   * `name`/`imageUrl`/`priceDelta` resolvidos "ao vivo" a partir do produto vinculado). */
   linkedProductId?: string;
   /**
    * specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-3 — corrige

@@ -24,16 +24,16 @@ export interface AdditionalGroupTemplateLeanDocument {
   required: boolean;
   minSelections: number;
   maxSelections: number;
-  options: { id: string; name: string; priceDelta: number; rawMaterialId?: string; linkedProductId?: string; imageUrl?: string }[];
+  options: { id: string; name: string; priceDelta?: number; rawMaterialId?: string; linkedProductId?: string; imageUrl?: string }[];
 }
 
 interface LinkedProductLeanDocument {
   _id: string;
   name: string;
   imageUrl?: string;
-  // specs/0044-promocoes-produtos REQ-8 — precisa do `price` base pra computar o `priceDelta`
-  // descontado quando o produto vinculado tem promoção ativa (nunca pra ressincronizar
-  // priceDelta com price em si, ver comentário em resolveOptionLinkedProduct).
+  // specs/0044-promocoes-produtos (follow-up) — base do `priceDelta` resolvido "ao vivo" de uma
+  // opção vinculada (ver resolveOptionLinkedProduct); com promoção ativa no produto vinculado,
+  // o desconto é aplicado por cima deste valor.
   price: number;
 }
 
@@ -106,10 +106,14 @@ function templateToOptions(template: AdditionalGroupTemplateLeanDocument, groupI
 // pra opções com `linkedProductId`: `name`/`imageUrl` sempre refletem o produto vinculado ATUAL
 // (nunca o snapshot persistido na opção). Pura de propósito, mesmo raciocínio de `resolveGroup`.
 //
-// specs/0044-promocoes-produtos REQ-8/AC-8 — `promotionsByProductId` (default vazio, mantém as
-// chamadas de teste antigas sem promoção passando) permite descontar o `priceDelta` resolvido
-// quando o produto vinculado tem promoção ativa — o `priceDelta` PERSISTIDO nunca muda (mesmo
-// espírito de nunca ressincronizar com `price`), só o valor devolvido nesta leitura.
+// specs/0044-promocoes-produtos (follow-up) — `priceDelta` de uma opção vinculada NUNCA é
+// digitado nem armazenado (schema/model garantem isso — ver catalog.schemas.ts): é sempre
+// substituído aqui pelo `price` ATUAL do produto vinculado, com o desconto da promoção ativa
+// (`promotionsByProductId`, default vazio — mantém as chamadas de teste antigas sem promoção
+// passando) aplicado por cima. Isso implementa "opção B" acordada com o usuário: o preço do
+// adicional vinculado segue o preço avulso do produto automaticamente, sem risco de
+// dessincronia — quem quiser um preço de combo diferente do avulso não vincula o produto (usa
+// `priceDelta` livre em vez de `linkedProductId`).
 export function resolveOptionLinkedProduct(
   option: IProductAdditionalOption,
   productsById: Map<string, LinkedProductLeanDocument>,
@@ -122,7 +126,7 @@ export function resolveOptionLinkedProduct(
   if (!linked) return nestedAdditionalGroups ? { ...option, nestedAdditionalGroups } : option;
 
   const promotion = option.linkedProductId ? promotionsByProductId.get(option.linkedProductId) : undefined;
-  const priceDelta = promotion ? computePromotionalPrice(option.priceDelta, promotion.discountPercentage) : option.priceDelta;
+  const priceDelta = promotion ? computePromotionalPrice(linked.price, promotion.discountPercentage) : linked.price;
 
   return { ...option, name: linked.name, imageUrl: linked.imageUrl, priceDelta, nestedAdditionalGroups };
 }

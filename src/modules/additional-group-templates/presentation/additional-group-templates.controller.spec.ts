@@ -126,7 +126,7 @@ describe('AdditionalGroupTemplatesController', () => {
       required: true,
       minSelections: 1,
       maxSelections: 1,
-      options: [{ name: 'Coca-Cola 1L', priceDelta: -2, linkedProductId: 'prod-coca' }],
+      options: [{ name: 'Coca-Cola 1L', linkedProductId: 'prod-coca' }],
     };
 
     await runOperatorChain(
@@ -150,6 +150,50 @@ describe('AdditionalGroupTemplatesController', () => {
       minSelections: 1,
       maxSelections: 1,
       options: [{ name: 'Coca-Cola 1L', priceDelta: -2, rawMaterialId: 'rm-1', linkedProductId: 'prod-coca' }],
+    };
+
+    await expect(
+      runOperatorChain(
+        routes['POST /restaurants/me/additional-group-templates'],
+        { restaurantId: 'r-1', body: payload },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  // specs/0044-promocoes-produtos (follow-up) — priceDelta é resolvido do produto vinculado,
+  // nunca digitado: mandar os dois junto é rejeitado.
+  it('rejeita opção com priceDelta e linkedProductId ao mesmo tempo (400)', async () => {
+    const { routes } = setup();
+    const payload = {
+      name: 'Bebidas do combo',
+      type: 'adicionar',
+      required: true,
+      minSelections: 1,
+      maxSelections: 1,
+      options: [{ name: 'Coca-Cola 1L', priceDelta: -2, linkedProductId: 'prod-coca' }],
+    };
+
+    await expect(
+      runOperatorChain(
+        routes['POST /restaurants/me/additional-group-templates'],
+        { restaurantId: 'r-1', body: payload },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  // specs/0044-promocoes-produtos (follow-up) — sem linkedProductId, priceDelta continua
+  // obrigatório (preço livre digitado pelo operador).
+  it('rejeita opção sem priceDelta e sem linkedProductId (400)', async () => {
+    const { routes } = setup();
+    const payload = {
+      name: 'Bebidas do combo',
+      type: 'adicionar',
+      required: true,
+      minSelections: 1,
+      maxSelections: 1,
+      options: [{ name: 'Catupiry' }],
     };
 
     await expect(
