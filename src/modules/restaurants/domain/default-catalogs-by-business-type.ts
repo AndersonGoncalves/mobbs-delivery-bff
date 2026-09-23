@@ -95,7 +95,7 @@ function bebidasProducts(): DefaultCatalogProduct[] {
 // 12 produtos reais de `bebidasProducts()` em specs/0049-catalogo-padrao-bebidas-reais.
 function extraCategories(): DefaultCatalogCategory[] {
   return [
-    { categoryName: 'Lanche', products: [] },
+    { categoryName: 'Lanches', products: [] },
     { categoryName: 'Bebidas', products: bebidasProducts() },
     { categoryName: 'Sobremesas', products: [] },
   ];
@@ -175,7 +175,7 @@ export const DEFAULT_CATALOGS_BY_BUSINESS_TYPE: Record<BusinessType, DefaultCata
             name: 'Pizza grande 2 sabores + Refri 1L grátis',
             description: 'Escolha 2 sabores de sua preferência. Acompanha refrigerante de 1 litro grátis.',
             price: 65,
-            linkedAdditionalGroupTemplateNames: ['Sabores da Pizza', 'Refri?', 'Bordas'],
+            linkedAdditionalGroupTemplateNames: ['Bordas', 'Sabores da Pizza', 'Refri?'],
           },
         ],
       },

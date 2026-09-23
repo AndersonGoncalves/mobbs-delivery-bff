@@ -72,19 +72,25 @@ describe('seedDefaultCatalog', () => {
     }
   });
 
-  // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-11.
-  it.each(BUSINESS_TYPES)('AC-11: tipo "%s" tem as categorias na ordem [própria, Lanche, Bebidas, Sobremesas]', (businessType) => {
+  // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-11 — "Lanche" virou "Lanches"
+  // (ajuste manual do usuário, fora desta spec, mas replicado aqui pra bater com o código real).
+  it.each(BUSINESS_TYPES)('AC-11: tipo "%s" tem as categorias na ordem [própria, Lanches, Bebidas, Sobremesas]', (businessType) => {
     const categoryNames = DEFAULT_CATALOGS_BY_BUSINESS_TYPE[businessType].categories.map((category) => category.categoryName);
 
     expect(categoryNames).toHaveLength(4);
-    expect(categoryNames.slice(1)).toEqual(['Lanche', 'Bebidas', 'Sobremesas']);
+    expect(categoryNames.slice(1)).toEqual(['Lanches', 'Bebidas', 'Sobremesas']);
   });
 
-  it('AC-11: "Lanche" e "Sobremesas" continuam sem produto nenhum, pra todos os tipos', () => {
+  // Checagem por posição (não por nome): pro tipo "lanches_gerais", a categoria própria (posição
+  // 0) já se chama "Lanches" — desde que "Lanche" virou "Lanches" (ajuste manual do usuário), esse
+  // tipo específico fica com 2 categorias de nome igual (achado real, sinalizado à parte). Por
+  // posição continua correto: `extraCategories()` sempre entra em [1]="Lanches" (extra, vazia),
+  // [2]="Bebidas" (com produtos, REQ-17), [3]="Sobremesas" (vazia) — não depende do nome bater.
+  it('AC-11: as categorias extras "Lanches" (posição 2) e "Sobremesas" (posição 4) continuam sem produto nenhum', () => {
     for (const businessType of BUSINESS_TYPES) {
       const categories = DEFAULT_CATALOGS_BY_BUSINESS_TYPE[businessType].categories;
-      expect(categories.find((category) => category.categoryName === 'Lanche')?.products).toEqual([]);
-      expect(categories.find((category) => category.categoryName === 'Sobremesas')?.products).toEqual([]);
+      expect(categories[1].products).toEqual([]);
+      expect(categories[3].products).toEqual([]);
     }
   });
 
@@ -151,7 +157,8 @@ describe('seedDefaultCatalog', () => {
   });
 
   // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-12; specs/0049-catalogo-padrao-bebidas-reais REQ-20.
-  it('AC-12/AC-20: pizzaria ganha "Pizza grande 2 sabores + Refri 1L grátis" vinculado a Sabores da Pizza + Refri? + Bordas', async () => {
+  // Ordem ajustada manualmente pelo usuário (fora desta spec) — "Bordas" primeiro.
+  it('AC-12/AC-20: pizzaria ganha "Pizza grande 2 sabores + Refri 1L grátis" vinculado a Bordas + Sabores da Pizza + Refri?', async () => {
     const deps = buildDeps();
 
     await seedDefaultCatalog('r-1', 'pizzaria', deps);
@@ -160,9 +167,9 @@ describe('seedDefaultCatalog', () => {
       'p-Pizza grande 2 sabores + Refri 1L grátis',
       expect.objectContaining({
         additionalGroups: [
+          expect.objectContaining({ productId: 'p-Pizza grande 2 sabores + Refri 1L grátis', templateId: 'agt-Bordas' }),
           expect.objectContaining({ productId: 'p-Pizza grande 2 sabores + Refri 1L grátis', templateId: 'agt-Sabores da Pizza' }),
           expect.objectContaining({ productId: 'p-Pizza grande 2 sabores + Refri 1L grátis', templateId: 'agt-Refri?' }),
-          expect.objectContaining({ productId: 'p-Pizza grande 2 sabores + Refri 1L grátis', templateId: 'agt-Bordas' }),
         ],
       }),
     );
