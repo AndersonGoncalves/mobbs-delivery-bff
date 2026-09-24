@@ -11,6 +11,7 @@ import { IProductRepository } from '../../catalog/domain/repositories/product.re
 import { IAdditionalGroupTemplateRepository } from '../../additional-group-templates/domain/repositories/additional-group-template.repository.interface';
 import { generateUniqueSlug } from '../domain/generate-unique-slug';
 import { seedDefaultCatalog } from '../domain/seed-default-catalog';
+import { DEFAULT_NEW_ORDER_RESTAURANT_TEMPLATE } from '../../notifications/domain/new-order-restaurant-message-builder';
 import { IBusinessHours } from '../domain/entities/restaurant.entity';
 import { signupSchema } from './restaurants.schemas';
 
@@ -67,6 +68,9 @@ export class RestaurantSignupController extends BaseRouter {
         allowCustomerCancelOrder: false,
         productImageOnRight: false,
         category: businessType,
+        // specs/0062-confirmar-pedido-whatsapp-restaurante REQ-3 — grava o template de verdade
+        // (não só confia no fallback do builder), igual todo default gravado nesta chamada.
+        newOrderRestaurantWhatsAppTemplate: DEFAULT_NEW_ORDER_RESTAURANT_TEMPLATE,
       });
       await this.restaurantOperatorRepository.create(restaurant.id, email, 'dono');
       // REQ-9 — catálogo inicial típico do tipo de negócio, sem imagem, pronto pro dono editar.

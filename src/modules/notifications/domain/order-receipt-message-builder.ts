@@ -1,5 +1,6 @@
-import { IOrder, IOrderItem, IOrderItemSelection } from '../../orders/domain/entities/order.entity';
+import { IOrder } from '../../orders/domain/entities/order.entity';
 import { PixKeyType } from '../../restaurants/domain/entities/restaurant.entity';
+import { buildPaymentBlock as buildSharedPaymentBlock, buildTrackingLink, formatCurrency, renderItem } from './whatsapp-message-helpers';
 
 export interface OrderReceiptRestaurantInput {
   name: string;
@@ -26,96 +27,15 @@ export interface OrderReceiptInput {
 
 const DEFAULT_GREETING = 'Obrigado por pedir com a gente, {customerName}!';
 
-function formatCurrency(value: number): string {
-  return `R$ ${value.toFixed(2).replace('.', ',')}`;
-}
-
 /** REQ-7/REQ-8 — só a saudação é editável pelo restaurante; o resto do recibo nunca é. */
 function buildGreeting(template: string | undefined, customerName: string): string {
   return (template ?? DEFAULT_GREETING).replace('{customerName}', customerName);
 }
 
-/** REQ-9 — mesmo domínio do canal web resolvido em `specs/0009-resolucao-restaurante`
- * (`<slug>.bsdelivery.com.br`), página pública por token (`specs/0006-acompanhamento-pedido`,
- * `/track?token=`), sem exigir login. */
-function buildTrackingLink(slug: string, trackingToken: string): string {
-  return `https://${slug}.bsdelivery.com.br/track?token=${trackingToken}`;
-}
-
-function renderSelections(selections: IOrderItemSelection[] | undefined, indent: string): string {
-  if (!selections || selections.length === 0) return '';
-  return selections
-    .map((selection) => {
-      const priceSuffix = selection.priceDelta > 0 ? ` (+${formatCurrency(selection.priceDelta)})` : '';
-      const line = `${indent}+ ${selection.optionName}${priceSuffix}`;
-      const nested = renderSelections(selection.nestedSelections, `${indent}  `);
-      return nested ? `${line}\n${nested}` : line;
-    })
-    .join('\n');
-}
-
-function renderItem(item: IOrderItem): string {
-  const lines = [`${item.quantity}x ${item.productName} — ${formatCurrency(item.unitPrice * item.quantity)}`];
-  const selections = renderSelections(item.selections, '  ');
-  if (selections) lines.push(selections);
-  if (item.notes) lines.push(`  Obs.: ${item.notes}`);
-  return lines.join('\n');
-}
-
-/** REQ-10 — bloco de pagamento varia por método; reforça que o pagamento acontece na
- * entrega/retirada, não pelo app (`docs/architecture/data-model.md`, nota em `Payment`) — **exceto**
- * pra Pix (specs/0020-pix-no-app REQ-7): desde que o Pix passou a ser processado dentro do app
- * (QR/copia-e-cola na tela de acompanhamento, confirmação manual do operador), essa frase deixou
- * de ser verdade só pra esse método; as outras formas continuam mostrando normalmente. */
+/** specs/0062-confirmar-pedido-whatsapp-restaurante — repassa pro helper compartilhado
+ * (`whatsapp-message-helpers.ts`), mantendo a assinatura `OrderReceiptInput` já usada aqui. */
 function buildPaymentBlock(input: OrderReceiptInput): string {
-  const { order, restaurant, cardBrand } = input;
-  const lines = ['*Pagamento*'];
-
-  switch (order.paymentMethod) {
-    case 'pix':
-      lines.push('Forma: Pix');
-      if (restaurant.pixKey) {
-        lines.push(`Chave Pix (${pixKeyTypeLabel(restaurant.pixKeyType)}): ${restaurant.pixKey}`);
-      }
-      if (restaurant.pixBeneficiaryName) {
-        lines.push(`Beneficiário: ${restaurant.pixBeneficiaryName}`);
-      }
-      break;
-    case 'creditCard':
-      lines.push(`Forma: Cartão de crédito${cardBrand ? ` (${cardBrand})` : ''}`);
-      break;
-    case 'debitCard':
-      lines.push(`Forma: Cartão de débito${cardBrand ? ` (${cardBrand})` : ''}`);
-      break;
-    case 'cash':
-      lines.push('Forma: Dinheiro');
-      break;
-    case 'bankTransfer':
-      lines.push('Forma: Transferência bancária');
-      break;
-  }
-
-  if (order.paymentMethod !== 'pix') {
-    lines.push(`O pagamento é feito na ${order.orderType === 'delivery' ? 'entrega' : 'retirada'}, não pelo app.`);
-  }
-  return lines.join('\n');
-}
-
-function pixKeyTypeLabel(type: PixKeyType | undefined): string {
-  switch (type) {
-    case 'telefone':
-      return 'telefone';
-    case 'cpf':
-      return 'CPF';
-    case 'cnpj':
-      return 'CNPJ';
-    case 'email':
-      return 'e-mail';
-    case 'aleatoria':
-      return 'aleatória';
-    default:
-      return 'chave';
-  }
+  return buildSharedPaymentBlock(input);
 }
 
 /**

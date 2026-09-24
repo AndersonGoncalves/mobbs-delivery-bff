@@ -2,6 +2,7 @@ import type { Request, Response, Server } from 'restify';
 
 import { IProductRepository } from '../../catalog/domain/repositories/product.repository.interface';
 import { ICouponRepository } from '../../coupons/domain/repositories/coupon.repository.interface';
+import { ICustomerRepository } from '../../customers/domain/repositories/customer.repository.interface';
 import { ICashRegisterService } from '../../financeiro/domain/services/i-cash-register.service';
 import { IWhatsAppNotificationService } from '../../notifications/domain/services/i-whatsapp-notification.service';
 import { IStockMovementRepository } from '../../raw-materials/domain/repositories/stock-movement.repository.interface';
@@ -67,6 +68,9 @@ function buildRestaurant(
     pixKeyType: string;
     pixBeneficiaryName: string;
     address: { city: string };
+    phone: string;
+    notifyRestaurantOnNewOrder: boolean;
+    newOrderRestaurantWhatsAppTemplate: string;
   }> = {},
 ) {
   return {
@@ -74,6 +78,8 @@ function buildRestaurant(
     name: 'Prime Pizza',
     slug: 'primepizza',
     isActive: true,
+    phone: '11912345678',
+    notifyRestaurantOnNewOrder: true,
     // specs/0055-checkout-revalida-restaurante-aberto — aberto o dia inteiro, todo dia, por
     // padrão (não é o foco da maioria dos testes deste arquivo); os testes específicos de
     // "restaurante fechado" (abaixo) sobrescrevem isso.
@@ -169,6 +175,7 @@ describe('OrdersController', () => {
       couponRepository?: Partial<ICouponRepository>;
       productRepository?: Partial<IProductRepository>;
       stockMovementRepository?: Partial<IStockMovementRepository>;
+      customerRepository?: Partial<ICustomerRepository>;
     } = {},
   ) {
     const orderRepository: Partial<IOrderRepository> = {
@@ -237,6 +244,10 @@ describe('OrdersController', () => {
       create: jest.fn().mockResolvedValue({}),
       ...overrides.stockMovementRepository,
     };
+    const customerRepository: Partial<ICustomerRepository> = {
+      findById: jest.fn().mockResolvedValue({ id: 'customer-1', name: 'Ana', email: 'ana@exemplo.com' }),
+      ...overrides.customerRepository,
+    };
     const { application, routes } = buildFakeApplication();
     new OrdersController(
       orderRepository as IOrderRepository,
@@ -248,6 +259,7 @@ describe('OrdersController', () => {
       couponRepository as ICouponRepository,
       productRepository as IProductRepository,
       stockMovementRepository as IStockMovementRepository,
+      customerRepository as ICustomerRepository,
     ).initializeRoutes(application);
     return {
       orderRepository,
@@ -258,6 +270,7 @@ describe('OrdersController', () => {
       couponRepository,
       productRepository,
       stockMovementRepository,
+      customerRepository,
       routes,
     };
   }
@@ -425,6 +438,76 @@ describe('OrdersController', () => {
         { json: jest.fn() },
       ),
     ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  // specs/0062-confirmar-pedido-whatsapp-restaurante REQ-5/REQ-6.
+  describe('GET /orders/:id/whatsapp-confirmation-message', () => {
+    it('AC-4: devolve o texto pronto e o telefone do restaurante', async () => {
+      const { routes } = setup();
+      const json = jest.fn();
+
+      await runAuthenticatedChain(
+        routes['GET /orders/:id/whatsapp-confirmation-message'],
+        { params: { id: 'o-1' }, user: { uid: 'customer-1' } },
+        { json },
+      );
+
+      expect(json).toHaveBeenCalledWith(200, {
+        text: expect.stringContaining('Pedido #1') as string,
+        restaurantPhone: '11912345678',
+      });
+    });
+
+    it('lança 404 quando notifyRestaurantOnNewOrder está desligado', async () => {
+      const { routes } = setup({ restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ notifyRestaurantOnNewOrder: false })) } });
+
+      await expect(
+        runAuthenticatedChain(
+          routes['GET /orders/:id/whatsapp-confirmation-message'],
+          { params: { id: 'o-1' }, user: { uid: 'customer-1' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    it('lança 404 quando o restaurante não tem telefone cadastrado', async () => {
+      const { routes } = setup({ restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ phone: undefined })) } });
+
+      await expect(
+        runAuthenticatedChain(
+          routes['GET /orders/:id/whatsapp-confirmation-message'],
+          { params: { id: 'o-1' }, user: { uid: 'customer-1' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    it('lança 404 quando o pedido é de outro cliente', async () => {
+      const { routes } = setup();
+
+      await expect(
+        runAuthenticatedChain(
+          routes['GET /orders/:id/whatsapp-confirmation-message'],
+          { params: { id: 'o-1' }, user: { uid: 'outro-customer' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    it('usa o template customizado do restaurante quando presente, senão o default', async () => {
+      const { routes } = setup({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ newOrderRestaurantWhatsAppTemplate: 'Pedido #{orderNumber} confirmado, {customerName}!' })) },
+      });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(
+        routes['GET /orders/:id/whatsapp-confirmation-message'],
+        { params: { id: 'o-1' }, user: { uid: 'customer-1' } },
+        { json },
+      );
+
+      expect(json).toHaveBeenCalledWith(200, { text: 'Pedido #1 confirmado, Ana!', restaurantPhone: '11912345678' });
+    });
   });
 
   it('AC-6: PATCH /orders/:id/cancel cancela um pedido aguardandoConfirmacao', async () => {

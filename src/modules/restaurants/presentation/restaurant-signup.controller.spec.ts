@@ -139,6 +139,22 @@ describe('RestaurantSignupController', () => {
     expect(businessHoursArg).toHaveLength(7);
   });
 
+  // specs/0062-confirmar-pedido-whatsapp-restaurante AC-2.
+  it('AC-2: restaurante nasce com newOrderRestaurantWhatsAppTemplate já preenchido (não vazio/undefined)', async () => {
+    const { restaurantRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runAuthenticatedChain(
+      routes['POST /restaurants/signup'],
+      { body: { name: 'Pizzaria do João', whatsapp: '11999999999', businessType: 'pizzaria' }, user: { email: 'joao@exemplo.com' } },
+      { json },
+    );
+
+    const createArg = (restaurantRepository.create as jest.Mock).mock.calls[0][0];
+    expect(createArg.newOrderRestaurantWhatsAppTemplate).toBeTruthy();
+    expect(typeof createArg.newOrderRestaurantWhatsAppTemplate).toBe('string');
+  });
+
   // specs/0039-onboarding-primeiro-acesso REQ-9/AC-7.
   it('AC-7 (specs/0039): cria o catálogo inicial do tipo de negócio (categoria + produtos + grupos de adicionais)', async () => {
     const { menuCategoryRepository, productRepository, additionalGroupTemplateRepository, routes } = setup();

@@ -8,7 +8,9 @@ import { requireOperatorRole } from '../../../shared/http/require-operator-role.
 import { IProductRepository } from '../../catalog/domain/repositories/product.repository.interface';
 import { ICouponRepository } from '../../coupons/domain/repositories/coupon.repository.interface';
 import { validateCoupon } from '../../coupons/domain/services/coupon-validator';
+import { ICustomerRepository } from '../../customers/domain/repositories/customer.repository.interface';
 import { ICashRegisterService } from '../../financeiro/domain/services/i-cash-register.service';
+import { buildNewOrderRestaurantMessage, DEFAULT_NEW_ORDER_RESTAURANT_TEMPLATE } from '../../notifications/domain/new-order-restaurant-message-builder';
 import { IWhatsAppNotificationService } from '../../notifications/domain/services/i-whatsapp-notification.service';
 import { IStockMovementRepository } from '../../raw-materials/domain/repositories/stock-movement.repository.interface';
 import { isRestaurantOpenNow } from '../../restaurants/domain/is-restaurant-open-now';
@@ -50,6 +52,9 @@ export class OrdersController extends BaseRouter {
     // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16.
     private readonly productRepository: IProductRepository,
     stockMovementRepository: IStockMovementRepository,
+    // specs/0062-confirmar-pedido-whatsapp-restaurante — só pro `customerName` da mensagem de
+    // aviso; `IOrder` não guarda o nome do cliente.
+    private readonly customerRepository: ICustomerRepository,
   ) {
     super();
     this.deductStockUseCase = new DeductStockForDeliveredOrderUseCase(productRepository, stockMovementRepository);
@@ -139,6 +144,29 @@ export class OrdersController extends BaseRouter {
     application.get('/orders/:id', firebaseAuthMiddleware, async (req: Request, res: Response) => {
       const order = await this.findOwnedOrder(req.params.id, req.user!.uid);
       res.json(200, await this.attachPaymentDetails(order));
+    });
+
+    // specs/0062-confirmar-pedido-whatsapp-restaurante REQ-5/REQ-6 — texto pronto (placeholders já
+    // substituídos) pro botão "WhatsApp" (`ContactRestaurantActions`) na tela de detalhe do
+    // pedido do app cliente. 404 quando `notifyRestaurantOnNewOrder` está desligado ou o
+    // restaurante não tem telefone — mesma regra que decide, do lado do app, se ele passa
+    // `buildWhatsAppMessage` pro botão (reforçada aqui no servidor).
+    application.get('/orders/:id/whatsapp-confirmation-message', firebaseAuthMiddleware, async (req: Request, res: Response) => {
+      const order = await this.findOwnedOrder(req.params.id, req.user!.uid);
+      const restaurant = await this.restaurantRepository.findById(order.restaurantId);
+      if (!restaurant || !restaurant.notifyRestaurantOnNewOrder || !restaurant.phone) {
+        throw new NotFoundError('Aviso de pedido novo via WhatsApp não está disponível');
+      }
+      const customer = await this.customerRepository.findById(order.customerId);
+
+      const text = buildNewOrderRestaurantMessage({
+        template: restaurant.newOrderRestaurantWhatsAppTemplate ?? DEFAULT_NEW_ORDER_RESTAURANT_TEMPLATE,
+        order,
+        customerName: customer?.name ?? 'Cliente',
+        restaurantSlug: restaurant.slug,
+      });
+
+      res.json(200, { text, restaurantPhone: restaurant.phone });
     });
 
     // REQ-6: só cancela em `aguardandoConfirmacao` — a partir de `confirmado` o cliente precisa

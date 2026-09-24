@@ -53,6 +53,8 @@ interface RestaurantLeanDocument {
   category?: string;
   businessHoursReviewedAt?: Date;
   acceptedPaymentMethods?: PaymentMethod[];
+  notifyRestaurantOnNewOrder?: boolean;
+  newOrderRestaurantWhatsAppTemplate?: string;
 }
 
 const ALL_PAYMENT_METHODS: PaymentMethod[] = ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'];
@@ -97,6 +99,8 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     category: doc.category,
     businessHoursReviewedAt: doc.businessHoursReviewedAt,
     acceptedPaymentMethods: doc.acceptedPaymentMethods ?? ALL_PAYMENT_METHODS,
+    notifyRestaurantOnNewOrder: doc.notifyRestaurantOnNewOrder ?? true,
+    newOrderRestaurantWhatsAppTemplate: doc.newOrderRestaurantWhatsAppTemplate,
   };
 }
 
@@ -111,6 +115,7 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
     allowCustomerCancelOrder?: boolean;
     productImageOnRight?: boolean;
     category?: string;
+    newOrderRestaurantWhatsAppTemplate?: string;
   }): Promise<IRestaurant> {
     const doc = await RestaurantModel.create(input);
     return toEntity(doc.toObject());

@@ -145,6 +145,7 @@ server
       couponRepository,
       productRepository,
       stockMovementRepository,
+      customerRepository,
     ),
     new RawMaterialsController(rawMaterialRepository, productRepository, restaurantOperatorMiddleware, stockMovementRepository),
     new AdditionalGroupTemplatesController(

@@ -149,6 +149,16 @@ export interface IRestaurant {
    * este restaurante aceita hoje (reaproveita o mesmo `PaymentMethod` de `Order.paymentMethod`,
    * não um enum próprio) — nasce com as 5 ativas no autocadastro (`RestaurantSignupController`). */
   acceptedPaymentMethods: PaymentMethod[];
+  /** specs/0062-confirmar-pedido-whatsapp-restaurante — liga/desliga o botão "WhatsApp" (já
+   * existente, `ContactRestaurantActions`) buscando e pré-preenchendo a mensagem do pedido, na
+   * tela de detalhe do pedido do app cliente. Desligado = o mesmo botão continua abrindo o chat
+   * vazio, comportamento de sempre. */
+  notifyRestaurantOnNewOrder: boolean;
+  /** specs/0062-confirmar-pedido-whatsapp-restaurante — template da mensagem que o cliente
+   * revisa/envia pro WhatsApp do restaurante ao confirmar um pedido. Nasce preenchido no
+   * autocadastro (`RestaurantSignupController`) — diferente de `orderConfirmationGreeting`, nunca
+   * fica `undefined` num restaurante criado depois desta spec. */
+  newOrderRestaurantWhatsAppTemplate?: string;
 }
 
 export type DeliveryFeeMode = 'fixed' | 'byNeighborhood' | 'free';

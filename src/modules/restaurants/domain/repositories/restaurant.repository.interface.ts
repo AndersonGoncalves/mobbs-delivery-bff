@@ -32,6 +32,8 @@ export type RestaurantProfileUpdate = Partial<
     | 'showHighlightsInMultipleRows'
     | 'cartSuggestionsCount'
     | 'acceptedPaymentMethods'
+    | 'notifyRestaurantOnNewOrder'
+    | 'newOrderRestaurantWhatsAppTemplate'
   >
 >;
 
@@ -51,6 +53,9 @@ export interface IRestaurantRepository {
     allowCustomerCancelOrder?: boolean;
     productImageOnRight?: boolean;
     category?: string;
+    /** specs/0062-confirmar-pedido-whatsapp-restaurante REQ-3 — grava de verdade no autocadastro
+     * (não só serve como fallback em memória no builder). */
+    newOrderRestaurantWhatsAppTemplate?: string;
   }): Promise<IRestaurant>;
   findBySlug(slug: string): Promise<IRestaurant | null>;
   findById(id: string): Promise<IRestaurant | null>;

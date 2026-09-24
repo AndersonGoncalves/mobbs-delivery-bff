@@ -110,6 +110,9 @@ export const restaurantProfileSchema = z
     cartSuggestionsCount: z.number().int().positive().optional(),
     // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-10.
     acceptedPaymentMethods: z.array(paymentMethodSchema),
+    // specs/0062-confirmar-pedido-whatsapp-restaurante.
+    notifyRestaurantOnNewOrder: z.boolean(),
+    newOrderRestaurantWhatsAppTemplate: z.string(),
   })
   .partial();
 
