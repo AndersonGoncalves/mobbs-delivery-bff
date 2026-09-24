@@ -30,10 +30,10 @@ export interface AdditionalGroupTemplateLeanDocument {
 interface LinkedProductLeanDocument {
   _id: string;
   name: string;
-  imageUrl?: string;
   // specs/0044-promocoes-produtos (follow-up) — base do `priceDelta` resolvido "ao vivo" de uma
   // opção vinculada (ver resolveOptionLinkedProduct); com promoção ativa no produto vinculado,
-  // o desconto é aplicado por cima deste valor.
+  // o desconto é aplicado por cima deste valor. Sem `imageUrl` aqui — specs/0056: essa foto NÃO
+  // é mais forçada na leitura (ver comentário de `resolveOptionLinkedProduct`).
   price: number;
 }
 
@@ -103,8 +103,8 @@ function templateToOptions(template: AdditionalGroupTemplateLeanDocument, groupI
 }
 
 // specs/0041-item-adicional-vinculado-produto REQ-3 — "vínculo vivo" igual `resolveGroup`, mas
-// pra opções com `linkedProductId`: `name`/`imageUrl` sempre refletem o produto vinculado ATUAL
-// (nunca o snapshot persistido na opção). Pura de propósito, mesmo raciocínio de `resolveGroup`.
+// pra opções com `linkedProductId`: `name` sempre reflete o produto vinculado ATUAL (nunca o
+// snapshot persistido na opção). Pura de propósito, mesmo raciocínio de `resolveGroup`.
 //
 // specs/0044-promocoes-produtos (follow-up) — `priceDelta` de uma opção vinculada NUNCA é
 // digitado nem armazenado (schema/model garantem isso — ver catalog.schemas.ts): é sempre
@@ -114,6 +114,14 @@ function templateToOptions(template: AdditionalGroupTemplateLeanDocument, groupI
 // adicional vinculado segue o preço avulso do produto automaticamente, sem risco de
 // dessincronia — quem quiser um preço de combo diferente do avulso não vincula o produto (usa
 // `priceDelta` livre em vez de `linkedProductId`).
+//
+// specs/0056-preco-adicional-vinculado-sincroniza-produto (follow-up) — `imageUrl`, diferente de
+// `name`/`priceDelta`, NÃO é forçado aqui: bug real reportado pelo usuário — sobrescrever sempre
+// com `linked.imageUrl` descartava silenciosamente qualquer foto própria que o operador enviasse
+// pra opção (voltava a foto do produto no próximo carregamento da página, mesmo já salva). A web
+// carrega `imageUrl` automaticamente a partir do produto SÓ no momento em que ele é escolhido
+// (`AdditionalGroupFieldsEditor`), mas depois disso é um campo normal, editável e persistido —
+// `option.imageUrl` (via `...option` abaixo) já é o valor certo, sem precisar tocar aqui.
 export function resolveOptionLinkedProduct(
   option: IProductAdditionalOption,
   productsById: Map<string, LinkedProductLeanDocument>,
@@ -128,7 +136,7 @@ export function resolveOptionLinkedProduct(
   const promotion = option.linkedProductId ? promotionsByProductId.get(option.linkedProductId) : undefined;
   const priceDelta = promotion ? computePromotionalPrice(linked.price, promotion.discountPercentage) : linked.price;
 
-  return { ...option, name: linked.name, imageUrl: linked.imageUrl, priceDelta, nestedAdditionalGroups };
+  return { ...option, name: linked.name, priceDelta, nestedAdditionalGroups };
 }
 
 function resolveGroupLinkedProducts(
@@ -204,7 +212,7 @@ async function resolveLinkedProducts(docs: ProductLeanDocument[], promotionsByPr
   if (linkedProductIds.size === 0) return;
 
   const linkedProducts = await ProductModel.find({ _id: { $in: [...linkedProductIds] } })
-    .select('_id name imageUrl price')
+    .select('_id name price')
     .lean<LinkedProductLeanDocument[]>();
   const productsById = new Map(linkedProducts.map((product) => [product._id, product]));
 

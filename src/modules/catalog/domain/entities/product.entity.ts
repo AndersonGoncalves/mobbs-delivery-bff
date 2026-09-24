@@ -20,9 +20,11 @@ export interface IProductAdditionalOption {
    * specs/0041-item-adicional-vinculado-produto REQ-2/REQ-3 — referência opcional a um
    * `IProduct` já cadastrado (produto vendável, ex. "Coca-Cola 1L"), mutuamente exclusiva com
    * `rawMaterialId` (nunca os dois preenchidos ao mesmo tempo, validado em `catalog.schemas.ts`).
-   * `name`/`imageUrl`/`priceDelta` de uma opção com `linkedProductId` são resolvidos "ao vivo" a
-   * partir do produto vinculado em toda leitura (mesmo mecanismo de resolução já usado pra
-   * `templateId` abaixo) — nada disso é digitado nem sincronizado por escrita.
+   * `name`/`priceDelta` de uma opção com `linkedProductId` são resolvidos "ao vivo" a partir do
+   * produto vinculado em toda leitura (mesmo mecanismo de resolução já usado pra `templateId`
+   * abaixo) — nada disso é digitado nem sincronizado por escrita. `imageUrl` é diferente (ver
+   * abaixo): só carregada automaticamente do produto no momento do vínculo (client-side), depois
+   * disso é um campo normal, editável e persistido — nunca forçada na leitura.
    */
   linkedProductId?: string;
   nestedAdditionalGroups?: IProductAdditionalGroup[];
@@ -31,8 +33,11 @@ export interface IProductAdditionalOption {
    * `specs/0029` REQ-3: a foto pertence a cada **opção** do grupo (mostrada na linha da opção,
    * entre o texto e o controle de seleção), não ao grupo inteiro. Numa opção vinda de grupo
    * vinculado a template, é resolvida do template junto com o resto dos campos (mesmo mecanismo
-   * de `name`/`priceDelta`/etc.). Numa opção com `linkedProductId`, é resolvida do produto
-   * vinculado (specs/0041).
+   * de `name`/`priceDelta`/etc.). Numa opção com `linkedProductId`, a retaguarda carrega essa
+   * foto automaticamente do produto vinculado só no momento de escolhê-lo — depois disso é um
+   * campo normal, editável pelo operador e persistido como qualquer outro (specs/0041,
+   * `resolveOptionLinkedProduct` NÃO sobrescreve `imageUrl` na leitura — bug real corrigido em
+   * specs/0056: sobrescrever sempre descartava silenciosamente uma foto própria enviada).
    */
   imageUrl?: string;
 }

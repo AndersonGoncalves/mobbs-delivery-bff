@@ -21,11 +21,15 @@ export interface IAdditionalGroupTemplateOption {
   rawMaterialId?: string;
   /** specs/0041-item-adicional-vinculado-produto REQ-2/REQ-3 — mesmo campo/regra de
    * `IProductAdditionalOption.linkedProductId` (mutuamente exclusivo com `rawMaterialId`,
-   * `name`/`imageUrl`/`priceDelta` resolvidos "ao vivo" a partir do produto vinculado). */
+   * `name`/`priceDelta` resolvidos "ao vivo" a partir do produto vinculado — `imageUrl` NÃO,
+   * ver comentário do campo abaixo). */
   linkedProductId?: string;
   /**
    * specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-3 — corrige
-   * `specs/0029` REQ-3: a foto é de cada opção, não do template/grupo inteiro.
+   * `specs/0029` REQ-3: a foto é de cada opção, não do template/grupo inteiro. Numa opção com
+   * `linkedProductId`, carregada automaticamente do produto só no momento de escolhê-lo
+   * (client-side); depois disso é um campo normal, editável e persistido —
+   * `resolveOptionLinkedProduct` (specs/0041/0056) nunca sobrescreve na leitura.
    */
   imageUrl?: string;
 }

@@ -129,14 +129,30 @@ describe('resolveOptionLinkedProduct (specs/0041-item-adicional-vinculado-produt
     expect(resolveOptionLinkedProduct(option, new Map())).toBe(option);
   });
 
-  it('AC-4: opção com linkedProductId resolve name/imageUrl do produto vinculado ATUAL, não do snapshot salvo', () => {
-    const option = buildOption({ linkedProductId: 'prod-coca', name: 'nome antigo', imageUrl: 'https://cdn.example.com/antiga.png' });
+  it('AC-4: opção com linkedProductId resolve name do produto vinculado ATUAL, não do snapshot salvo', () => {
+    const option = buildOption({ linkedProductId: 'prod-coca', name: 'nome antigo', imageUrl: 'https://cdn.example.com/propria.png' });
     const productsById = new Map([['prod-coca', buildLinkedProduct({ imageUrl: 'https://cdn.example.com/coca.png' })]]);
 
     const resolved = resolveOptionLinkedProduct(option, productsById);
 
     expect(resolved.name).toBe('Coca-Cola 1L');
-    expect(resolved.imageUrl).toBe('https://cdn.example.com/coca.png');
+  });
+
+  // specs/0056-preco-adicional-vinculado-sincroniza-produto (follow-up) — bug real: diferente de
+  // name/priceDelta, imageUrl NÃO é forçado a partir do produto vinculado na leitura — senão uma
+  // foto própria enviada pelo operador pra opção seria descartada no próximo carregamento.
+  it('imageUrl NÃO é sobrescrito pelo produto vinculado — mantém a foto própria salva na opção', () => {
+    const option = buildOption({ linkedProductId: 'prod-coca', imageUrl: 'https://cdn.example.com/propria.png' });
+    const productsById = new Map([['prod-coca', buildLinkedProduct({ imageUrl: 'https://cdn.example.com/coca.png' })]]);
+
+    expect(resolveOptionLinkedProduct(option, productsById).imageUrl).toBe('https://cdn.example.com/propria.png');
+  });
+
+  it('opção vinculada sem imageUrl própria continua sem imagem (não herda a do produto)', () => {
+    const option = buildOption({ linkedProductId: 'prod-coca', imageUrl: undefined });
+    const productsById = new Map([['prod-coca', buildLinkedProduct({ imageUrl: 'https://cdn.example.com/coca.png' })]]);
+
+    expect(resolveOptionLinkedProduct(option, productsById).imageUrl).toBeUndefined();
   });
 
   // specs/0044-promocoes-produtos (follow-up) — "opção B": priceDelta de uma opção vinculada
