@@ -34,6 +34,14 @@ interface DefaultCatalogAdditionalGroupTemplateOption {
    * opção em texto puro, sem vínculo (comportamento default, igual antes desta spec).
    */
   linkedProductName?: string;
+  /**
+   * Diferente de `name`/`priceDelta` (sempre resolvidos "ao vivo" a partir do produto vinculado),
+   * `imageUrl` da opção é um campo independente — só copiado automaticamente do produto no momento
+   * em que o operador vincula pela retaguarda web (client-side); o seed não passa por essa UI,
+   * então precisa vir preenchido aqui, batendo com o `imageUrl` do `DefaultCatalogProduct` de mesmo
+   * `linkedProductName`, senão a opção nasce sem foto mesmo com o produto vinculado tendo uma.
+   */
+  imageUrl?: string;
 }
 
 interface DefaultCatalogAdditionalGroupTemplate {
@@ -60,8 +68,8 @@ export interface DefaultCatalog {
 // opções em texto puro sem vínculo de REFRIGERANTES_TEMPLATE/BEBIDAS_TEMPLATE (ver
 // `linkedProductName` nelas, REQ-18) por produtos de verdade, vinculáveis em qualquer grupo de
 // adicionais do restaurante (`availableAsAdditional: true`), do mesmo jeito que o usuário fez.
-// Só os 2 primeiros têm foto real publicada em `app-imagens/` — os nomes aqui precisam bater
-// exatamente com `linkedProductName` nos templates abaixo.
+// Todos com foto real publicada em `app-imagens/` — os nomes aqui precisam bater exatamente com
+// `linkedProductName` (e o `imageUrl`, repetido) nos templates abaixo.
 function bebidasProducts(): DefaultCatalogProduct[] {
   return [
     {
@@ -149,11 +157,26 @@ const SABORES_PIZZA_TEMPLATE: DefaultCatalogAdditionalGroupTemplate = {
   minSelections: 2,
   maxSelections: 2,
   options: [
-    { name: 'Mussarela', priceDelta: 0 },
-    { name: 'Mista', priceDelta: 0 },
-    { name: 'Calabresa', priceDelta: 0 },
-    { name: 'Frango', priceDelta: 0 },
-    { name: 'Carne do Sol', priceDelta: 10 },
+    { name: 'Mussarela',
+      priceDelta: 0,
+      imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/pizza-mussarela.jpeg'
+    },
+    { name: 'Mista',
+      priceDelta: 0,
+      imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/pizza-mista.jpeg'
+    },
+    { name: 'Calabresa',
+      priceDelta: 0,
+      imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/pizza-calabresa.jpeg'
+    },
+    { name: 'Frango',
+      priceDelta: 0,
+      imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/pizza-frango.jpeg'
+    },
+    { name: 'Carne do Sol',
+      priceDelta: 10,
+      imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/pizza-carne-do-sol.jpeg'
+    },
   ],
 };
 
@@ -168,11 +191,36 @@ const REFRIGERANTES_TEMPLATE: DefaultCatalogAdditionalGroupTemplate = {
   minSelections: 0,
   maxSelections: 1,
   options: [
-    { name: 'Coca-Cola 1 litro', priceDelta: 10, linkedProductName: 'Coca-Cola 1 litro' },
-    { name: 'Guaraná Antarctica 1 litro', priceDelta: 8, linkedProductName: 'Guaraná Antarctica 1 litro' },
-    { name: 'Fanta Laranja 1 litro', priceDelta: 8, linkedProductName: 'Fanta Laranja 1 litro' },
-    { name: 'Fanta Uva 1 litro', priceDelta: 8, linkedProductName: 'Fanta Uva 1 litro' },
-    { name: 'Sprite 1 litro', priceDelta: 8, linkedProductName: 'Sprite 1 litro' },
+    {
+      name: 'Coca-Cola 1 litro',
+      priceDelta: 10,
+      linkedProductName: 'Coca-Cola 1 litro',
+      imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/coca-cola-1l.jpeg',
+    },
+    {
+      name: 'Guaraná Antarctica 1 litro',
+      priceDelta: 8,
+      linkedProductName: 'Guaraná Antarctica 1 litro',
+      imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/guarana-antarctica-1l.jpeg',
+    },
+    {
+      name: 'Fanta Laranja 1 litro',
+      priceDelta: 8,
+      linkedProductName: 'Fanta Laranja 1 litro',
+      imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/fanta-laranja-1l.jpeg',
+    },
+    {
+      name: 'Fanta Uva 1 litro',
+      priceDelta: 8,
+      linkedProductName: 'Fanta Uva 1 litro',
+      imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/fanta-uva-1l.webp',
+    },
+    {
+      name: 'Sprite 1 litro',
+      priceDelta: 8,
+      linkedProductName: 'Sprite 1 litro',
+      imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/sprite-1l.jpeg',
+    },
   ],
 };
 // Template reaproveitável de Bebidas — specs/0049-catalogo-padrao-bebidas-reais REQ-18/REQ-19:
@@ -184,13 +232,48 @@ const BEBIDAS_TEMPLATE: DefaultCatalogAdditionalGroupTemplate = {
   minSelections: 0,
   maxSelections: 1,
   options: [
-    { name: 'Coca-Cola lata 350ml', priceDelta: 6, linkedProductName: 'Coca-Cola lata 350ml' },
-    { name: 'Guaraná Antarctica lata 350ml', priceDelta: 5.5, linkedProductName: 'Guaraná Antarctica lata 350ml' },
-    { name: 'Fanta Laranja lata 350ml', priceDelta: 5.5, linkedProductName: 'Fanta Laranja lata 350ml' },
-    { name: 'Fanta Uva lata 350ml', priceDelta: 5.5, linkedProductName: 'Fanta Uva lata 350ml' },
-    { name: 'Sprite lata 350ml', priceDelta: 5.5, linkedProductName: 'Sprite lata 350ml' },
-    { name: 'Água indaiá com gás 500ml', priceDelta: 3.5, linkedProductName: 'Água indaiá com gás 500ml' },
-    { name: 'Água indaiá sem gás 500ml', priceDelta: 3, linkedProductName: 'Água indaiá sem gás 500ml' },
+    {
+      name: 'Coca-Cola lata 350ml',
+      priceDelta: 6,
+      linkedProductName: 'Coca-Cola lata 350ml',
+      imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/coca-cola-350ml.jpeg',
+    },
+    {
+      name: 'Guaraná Antarctica lata 350ml',
+      priceDelta: 5.5,
+      linkedProductName: 'Guaraná Antarctica lata 350ml',
+      imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/guarana-antarctica-350ml.jpeg',
+    },
+    {
+      name: 'Fanta Laranja lata 350ml',
+      priceDelta: 5.5,
+      linkedProductName: 'Fanta Laranja lata 350ml',
+      imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/fanta-laranja-350ml.jpeg',
+    },
+    {
+      name: 'Fanta Uva lata 350ml',
+      priceDelta: 5.5,
+      linkedProductName: 'Fanta Uva lata 350ml',
+      imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/fanta-uva-350ml.jpeg',
+    },
+    {
+      name: 'Sprite lata 350ml',
+      priceDelta: 5.5,
+      linkedProductName: 'Sprite lata 350ml',
+      imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/sprite-350ml.jpeg',
+    },
+    {
+      name: 'Água indaiá com gás 500ml',
+      priceDelta: 3.5,
+      linkedProductName: 'Água indaiá com gás 500ml',
+      imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/agua-indaia-com-gas-500ml.jpeg',
+    },
+    {
+      name: 'Água indaiá sem gás 500ml',
+      priceDelta: 3,
+      linkedProductName: 'Água indaiá sem gás 500ml',
+      imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/agua-indaia-sem-gas-500ml.jpeg',
+    },
   ],
 };
 
@@ -200,6 +283,16 @@ export const DEFAULT_CATALOGS_BY_BUSINESS_TYPE: Record<BusinessType, DefaultCata
       {
         categoryName: 'Pizzas',
         products: [
+          { name: 'Pizza Mussarela',
+            description: 'Molho de tomate e mussarela.',
+            price: 38,
+            imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/pizza-mussarela.jpeg',
+          },
+          { name: 'Pizza Mista',
+            description: 'Molho de tomate, presunto e mussarela.',
+            price: 39,
+            imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/pizza-mista.jpeg',
+          },
           { name: 'Pizza Margherita',
             description: 'Molho de tomate, mussarela e manjericão.',
             price: 42,
@@ -220,10 +313,16 @@ export const DEFAULT_CATALOGS_BY_BUSINESS_TYPE: Record<BusinessType, DefaultCata
             price: 48,
             imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/pizza-quatro-queijos.jpeg',
           },
+          { name: 'Pizza Frango',
+            description: 'Frango desfiado.',
+            price: 40,
+            imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/pizza-frango.jpeg',
+          },
           { name: 'Pizza Frango com Catupiry',
             description: 'Frango desfiado e catupiry.',
             price: 45,
-            imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/pizza-frango-com-catupiry.jpeg' },
+            imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/pizza-frango-com-catupiry.jpeg',
+          },
           { name: 'Pizza Carne do Sol',
             description: 'Carne do sol desfiada.',
             price: 55,

@@ -44,8 +44,8 @@ export async function seedDefaultCatalog(restaurantId: string, businessType: Bus
       minSelections: template.minSelections,
       maxSelections: template.maxSelections,
       // `linkedProductName` ainda não é resolvido aqui (produtos não existem nesta passada) —
-      // fica só `name`/`priceDelta`, sem vínculo, até a 3ª passada mais abaixo.
-      options: template.options.map(({ name, priceDelta }) => ({ name, priceDelta })),
+      // fica só `name`/`priceDelta`/`imageUrl`, sem vínculo, até a 3ª passada mais abaixo.
+      options: template.options.map(({ name, priceDelta, imageUrl }) => ({ name, priceDelta, imageUrl })),
     });
     templateIdsByName.set(template.name, created.id);
   }
@@ -98,9 +98,10 @@ export async function seedDefaultCatalog(restaurantId: string, businessType: Bus
       required: template.required,
       minSelections: template.minSelections,
       maxSelections: template.maxSelections,
-      options: template.options.map(({ name, priceDelta, linkedProductName }) => ({
+      options: template.options.map(({ name, priceDelta, linkedProductName, imageUrl }) => ({
         name,
         priceDelta,
+        imageUrl,
         linkedProductId: linkedProductName ? productIdsByName.get(linkedProductName) : undefined,
       })),
     });

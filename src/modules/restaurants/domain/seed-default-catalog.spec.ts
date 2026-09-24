@@ -57,17 +57,14 @@ describe('seedDefaultCatalog', () => {
   });
 
   // specs/0049-catalogo-padrao-bebidas-reais REQ-17 — corrige a asserção original (REQ-9,
-  // "nenhum produto tem imageUrl nesta v1"): agora 2 produtos de bebida (os únicos com foto real
-  // publicada) têm, todos os demais continuam sem.
-  it('só Coca-Cola 1 litro e Guaraná Antarctica 1 litro têm imageUrl — os demais produtos continuam sem foto', () => {
+  // "nenhum produto tem imageUrl nesta v1"): os 12 produtos de bebida (todos com foto real
+  // publicada) têm imageUrl, em todos os tipos de negócio — outras categorias podem ou não ter
+  // (ex.: as pizzas de "pizzaria" também ganharam foto, fora do escopo desta spec).
+  it('os 12 produtos de "Bebidas" têm imageUrl, em todos os tipos de negócio', () => {
     for (const businessType of BUSINESS_TYPES) {
-      for (const product of allProducts(businessType)) {
-        const shouldHaveImage = product.name === 'Coca-Cola 1 litro' || product.name === 'Guaraná Antarctica 1 litro';
-        if (shouldHaveImage) {
-          expect(product.imageUrl).toContain('app-imagens/');
-        } else {
-          expect(product).not.toHaveProperty('imageUrl');
-        }
+      const bebidas = DEFAULT_CATALOGS_BY_BUSINESS_TYPE[businessType].categories.find((category) => category.categoryName === 'Bebidas');
+      for (const product of bebidas!.products) {
+        expect(product.imageUrl).toContain('app-imagens/');
       }
     }
   });
@@ -116,17 +113,17 @@ describe('seedDefaultCatalog', () => {
       'agt-Refri?',
       expect.objectContaining({
         options: [
-          expect.objectContaining({ name: 'Coca-Cola 1 litro', priceDelta: 10, linkedProductId: 'p-Coca-Cola 1 litro' }),
-          expect.objectContaining({ name: 'Guaraná Antarctica 1 litro', priceDelta: 8, linkedProductId: 'p-Guaraná Antarctica 1 litro' }),
-          expect.objectContaining({ name: 'Fanta Laranja 1 litro', priceDelta: 8, linkedProductId: 'p-Fanta Laranja 1 litro' }),
-          expect.objectContaining({ name: 'Fanta Uva 1 litro', priceDelta: 8, linkedProductId: 'p-Fanta Uva 1 litro' }),
-          expect.objectContaining({ name: 'Sprite 1 litro', priceDelta: 8, linkedProductId: 'p-Sprite 1 litro' }),
+          expect.objectContaining({ name: 'Coca-Cola 1 litro', priceDelta: 10, linkedProductId: 'p-Coca-Cola 1 litro', imageUrl: expect.stringContaining('app-imagens/') }),
+          expect.objectContaining({ name: 'Guaraná Antarctica 1 litro', priceDelta: 8, linkedProductId: 'p-Guaraná Antarctica 1 litro', imageUrl: expect.stringContaining('app-imagens/') }),
+          expect.objectContaining({ name: 'Fanta Laranja 1 litro', priceDelta: 8, linkedProductId: 'p-Fanta Laranja 1 litro', imageUrl: expect.stringContaining('app-imagens/') }),
+          expect.objectContaining({ name: 'Fanta Uva 1 litro', priceDelta: 8, linkedProductId: 'p-Fanta Uva 1 litro', imageUrl: expect.stringContaining('app-imagens/') }),
+          expect.objectContaining({ name: 'Sprite 1 litro', priceDelta: 8, linkedProductId: 'p-Sprite 1 litro', imageUrl: expect.stringContaining('app-imagens/') }),
         ],
       }),
     );
   });
 
-  it('AC-18/AC-19: template "Bebidas?" tem as 7 opções vinculadas, "Água com gás" no preço novo (R$3,50)', async () => {
+  it('AC-18/AC-19: template "Bebidas?" tem as 7 opções vinculadas, "Água indaiá com gás" no preço novo (R$3,50)', async () => {
     const deps = buildDeps();
 
     await seedDefaultCatalog('r-1', 'pizzaria', deps);
@@ -135,13 +132,13 @@ describe('seedDefaultCatalog', () => {
       'agt-Bebidas?',
       expect.objectContaining({
         options: [
-          expect.objectContaining({ name: 'Coca-Cola lata 350ml', linkedProductId: 'p-Coca-Cola lata 350ml' }),
-          expect.objectContaining({ name: 'Guaraná Antarctica lata 350ml', linkedProductId: 'p-Guaraná Antarctica lata 350ml' }),
-          expect.objectContaining({ name: 'Fanta Laranja lata 350ml', linkedProductId: 'p-Fanta Laranja lata 350ml' }),
-          expect.objectContaining({ name: 'Fanta Uva lata 350ml', linkedProductId: 'p-Fanta Uva lata 350ml' }),
-          expect.objectContaining({ name: 'Sprite lata 350ml', linkedProductId: 'p-Sprite lata 350ml' }),
-          expect.objectContaining({ name: 'Água com gás 500ml', priceDelta: 3.5, linkedProductId: 'p-Água com gás 500ml' }),
-          expect.objectContaining({ name: 'Água sem gás 500ml', linkedProductId: 'p-Água sem gás 500ml' }),
+          expect.objectContaining({ name: 'Coca-Cola lata 350ml', linkedProductId: 'p-Coca-Cola lata 350ml', imageUrl: expect.stringContaining('app-imagens/') }),
+          expect.objectContaining({ name: 'Guaraná Antarctica lata 350ml', linkedProductId: 'p-Guaraná Antarctica lata 350ml', imageUrl: expect.stringContaining('app-imagens/') }),
+          expect.objectContaining({ name: 'Fanta Laranja lata 350ml', linkedProductId: 'p-Fanta Laranja lata 350ml', imageUrl: expect.stringContaining('app-imagens/') }),
+          expect.objectContaining({ name: 'Fanta Uva lata 350ml', linkedProductId: 'p-Fanta Uva lata 350ml', imageUrl: expect.stringContaining('app-imagens/') }),
+          expect.objectContaining({ name: 'Sprite lata 350ml', linkedProductId: 'p-Sprite lata 350ml', imageUrl: expect.stringContaining('app-imagens/') }),
+          expect.objectContaining({ name: 'Água indaiá com gás 500ml', priceDelta: 3.5, linkedProductId: 'p-Água indaiá com gás 500ml', imageUrl: expect.stringContaining('app-imagens/') }),
+          expect.objectContaining({ name: 'Água indaiá sem gás 500ml', linkedProductId: 'p-Água indaiá sem gás 500ml', imageUrl: expect.stringContaining('app-imagens/') }),
         ],
       }),
     );
@@ -182,6 +179,30 @@ describe('seedDefaultCatalog', () => {
     expect(template?.minSelections).toBe(2);
     expect(template?.maxSelections).toBe(2);
     expect(template?.options.map((option) => option.name)).toEqual(['Mussarela', 'Mista', 'Calabresa', 'Frango', 'Carne do Sol']);
+  });
+
+  // Regressão — "Sabores da Pizza" não tem `linkedProductName` nas opções (são texto puro, não
+  // vinculadas a um produto), então a 3ª passada do seed (que só resolve `linkedProductId`) nunca
+  // toca nesse template — o `imageUrl` precisa chegar já na criação (1ª passada), senão a opção
+  // nasce sem foto mesmo com `imageUrl` preenchido no catálogo.
+  it('AC-12: o template "Sabores da Pizza" é criado com o imageUrl de cada opção', async () => {
+    const deps = buildDeps();
+
+    await seedDefaultCatalog('r-1', 'pizzaria', deps);
+
+    expect(deps.additionalGroupTemplateRepository.create).toHaveBeenCalledWith(
+      'r-1',
+      expect.objectContaining({
+        name: 'Sabores da Pizza',
+        options: [
+          expect.objectContaining({ name: 'Mussarela', imageUrl: expect.stringContaining('app-imagens/') }),
+          expect.objectContaining({ name: 'Mista', imageUrl: expect.stringContaining('app-imagens/') }),
+          expect.objectContaining({ name: 'Calabresa', imageUrl: expect.stringContaining('app-imagens/') }),
+          expect.objectContaining({ name: 'Frango', imageUrl: expect.stringContaining('app-imagens/') }),
+          expect.objectContaining({ name: 'Carne do Sol', imageUrl: expect.stringContaining('app-imagens/') }),
+        ],
+      }),
+    );
   });
 
   it('produtos sem linkedAdditionalGroupTemplateNames não chamam productRepository.update', async () => {
