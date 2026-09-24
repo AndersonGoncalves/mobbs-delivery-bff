@@ -58,7 +58,17 @@ export class WhatsAppNotificationService implements IWhatsAppNotificationService
 
       if (!customer?.phone || !restaurant?.whatsappConnected) return;
 
-      const message = buildOrderStatusMessage(order.status, order.orderNumber, reason);
+      // specs/0063-notificacao-whatsapp-pedido-confirmado REQ-3/REQ-4 — `=== false` (não `!`) pra
+      // tratar um documento antigo sem o campo (`undefined`) como ligado, mesmo default do schema.
+      if (order.status === 'confirmado' && restaurant.notifyCustomerOnOrderConfirmed === false) return;
+
+      const message = buildOrderStatusMessage({
+        order,
+        customerName: customer.name,
+        customerPhone: customer.phone,
+        reason,
+        templates: { confirmado: restaurant.orderConfirmedWhatsAppTemplate },
+      });
       if (!message) return;
 
       await this.whatsAppConnectionService.sendMessage(restaurant.id, customer.phone, message);

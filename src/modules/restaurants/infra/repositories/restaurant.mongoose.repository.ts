@@ -55,6 +55,8 @@ interface RestaurantLeanDocument {
   acceptedPaymentMethods?: PaymentMethod[];
   notifyRestaurantOnNewOrder?: boolean;
   newOrderRestaurantWhatsAppTemplate?: string;
+  notifyCustomerOnOrderConfirmed?: boolean;
+  orderConfirmedWhatsAppTemplate?: string;
 }
 
 const ALL_PAYMENT_METHODS: PaymentMethod[] = ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'];
@@ -101,6 +103,8 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     acceptedPaymentMethods: doc.acceptedPaymentMethods ?? ALL_PAYMENT_METHODS,
     notifyRestaurantOnNewOrder: doc.notifyRestaurantOnNewOrder ?? true,
     newOrderRestaurantWhatsAppTemplate: doc.newOrderRestaurantWhatsAppTemplate,
+    notifyCustomerOnOrderConfirmed: doc.notifyCustomerOnOrderConfirmed ?? true,
+    orderConfirmedWhatsAppTemplate: doc.orderConfirmedWhatsAppTemplate,
   };
 }
 

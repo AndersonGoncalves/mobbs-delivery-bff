@@ -34,6 +34,8 @@ export type RestaurantProfileUpdate = Partial<
     | 'acceptedPaymentMethods'
     | 'notifyRestaurantOnNewOrder'
     | 'newOrderRestaurantWhatsAppTemplate'
+    | 'notifyCustomerOnOrderConfirmed'
+    | 'orderConfirmedWhatsAppTemplate'
   >
 >;
 

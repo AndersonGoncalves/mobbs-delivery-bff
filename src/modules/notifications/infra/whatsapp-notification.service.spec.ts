@@ -30,7 +30,9 @@ describe('WhatsAppNotificationService', () => {
   function setup(
     overrides: {
       customer?: { id: string; name: string; phone?: string } | null;
-      restaurant?: { id: string; name: string; slug: string; whatsappConnected: boolean } | null;
+      restaurant?:
+        | { id: string; name: string; slug: string; whatsappConnected: boolean; notifyCustomerOnOrderConfirmed?: boolean; orderConfirmedWhatsAppTemplate?: string }
+        | null;
     } = {},
   ) {
     const customerRepository: Partial<ICustomerRepository> = {
@@ -138,6 +140,43 @@ describe('WhatsAppNotificationService', () => {
       (whatsAppConnectionService.sendMessage as jest.Mock).mockRejectedValue(new Error('sessão caiu'));
 
       await expect(service.sendOrderStatusUpdate(buildOrder({ status: 'confirmado' }))).resolves.toBeUndefined();
+    });
+
+    // specs/0063-notificacao-whatsapp-pedido-confirmado REQ-3/REQ-4/AC-2/AC-3.
+    it('AC-3: notifyCustomerOnOrderConfirmed false pula o envio quando status é confirmado', async () => {
+      const { service, whatsAppConnectionService } = setup({
+        restaurant: { id: 'r-1', name: 'Prime Pizza', slug: 'primepizza', whatsappConnected: true, notifyCustomerOnOrderConfirmed: false },
+      });
+
+      await service.sendOrderStatusUpdate(buildOrder({ status: 'confirmado' }));
+
+      expect(whatsAppConnectionService.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('notifyCustomerOnOrderConfirmed false não afeta outros status (ex.: entregue continua enviando)', async () => {
+      const { service, whatsAppConnectionService } = setup({
+        restaurant: { id: 'r-1', name: 'Prime Pizza', slug: 'primepizza', whatsappConnected: true, notifyCustomerOnOrderConfirmed: false },
+      });
+
+      await service.sendOrderStatusUpdate(buildOrder({ status: 'entregue' }));
+
+      expect(whatsAppConnectionService.sendMessage).toHaveBeenCalledWith('r-1', '11999999999', expect.stringContaining('#123'));
+    });
+
+    it('AC-2: usa orderConfirmedWhatsAppTemplate do restaurante quando configurado', async () => {
+      const { service, whatsAppConnectionService } = setup({
+        restaurant: {
+          id: 'r-1',
+          name: 'Prime Pizza',
+          slug: 'primepizza',
+          whatsappConnected: true,
+          orderConfirmedWhatsAppTemplate: 'Oi {customerName}, pedido #{orderNumber} confirmado!',
+        },
+      });
+
+      await service.sendOrderStatusUpdate(buildOrder({ status: 'confirmado' }));
+
+      expect(whatsAppConnectionService.sendMessage).toHaveBeenCalledWith('r-1', '11999999999', 'Oi Ana, pedido #123 confirmado!');
     });
   });
 });

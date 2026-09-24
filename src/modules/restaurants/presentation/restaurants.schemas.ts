@@ -113,6 +113,9 @@ export const restaurantProfileSchema = z
     // specs/0062-confirmar-pedido-whatsapp-restaurante.
     notifyRestaurantOnNewOrder: z.boolean(),
     newOrderRestaurantWhatsAppTemplate: z.string(),
+    // specs/0063-notificacao-whatsapp-pedido-confirmado.
+    notifyCustomerOnOrderConfirmed: z.boolean(),
+    orderConfirmedWhatsAppTemplate: z.string(),
   })
   .partial();
 

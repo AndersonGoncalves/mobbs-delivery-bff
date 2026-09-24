@@ -159,6 +159,13 @@ export interface IRestaurant {
    * autocadastro (`RestaurantSignupController`) — diferente de `orderConfirmationGreeting`, nunca
    * fica `undefined` num restaurante criado depois desta spec. */
   newOrderRestaurantWhatsAppTemplate?: string;
+  /** specs/0063-notificacao-whatsapp-pedido-confirmado — liga/desliga o envio automático de
+   * WhatsApp pro cliente quando o restaurante confirma o pedido (`status: 'confirmado'`). */
+  notifyCustomerOnOrderConfirmed: boolean;
+  /** specs/0063-notificacao-whatsapp-pedido-confirmado — template dessa mensagem; `undefined` usa
+   * o texto fixo atual (`DEFAULT_ORDER_CONFIRMED_TEMPLATE`), retrocompatível com todo restaurante
+   * já existente antes desta spec. */
+  orderConfirmedWhatsAppTemplate?: string;
 }
 
 export type DeliveryFeeMode = 'fixed' | 'byNeighborhood' | 'free';

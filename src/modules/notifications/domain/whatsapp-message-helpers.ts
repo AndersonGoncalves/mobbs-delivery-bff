@@ -29,6 +29,14 @@ export function formatCurrency(value: number): string {
   return `R$ ${value.toFixed(2).replace('.', ',')}`;
 }
 
+/** specs/0063-notificacao-whatsapp-pedido-confirmado — substituição genérica de placeholder
+ * `{chave}` por valor, usada pelos templates editáveis na retaguarda (diferente de
+ * `new-order-restaurant-message-builder.ts`, que faz a própria substituição encadeada porque
+ * nasceu antes deste helper — não vale a pena migrar só por consistência). */
+export function renderTemplate(template: string, values: Record<string, string>): string {
+  return Object.entries(values).reduce((text, [key, value]) => text.replaceAll(`{${key}}`, value), template);
+}
+
 /** REQ-9 — mesmo domínio do canal web resolvido em `specs/0009-resolucao-restaurante`
  * (`<slug>.bsdelivery.com.br`), página pública por token (`specs/0006-acompanhamento-pedido`,
  * `/track?token=`), sem exigir login. */
