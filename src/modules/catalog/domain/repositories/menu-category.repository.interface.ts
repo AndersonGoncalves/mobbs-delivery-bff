@@ -9,6 +9,9 @@ export interface IMenuCategoryRepository {
 
   update(id: string, name: string): Promise<IMenuCategory>;
 
+  /** specs/0061-categoria-ativa-inativa — mesmo padrão de `IProductRepository.setAvailable`. */
+  setActive(id: string, isActive: boolean): Promise<IMenuCategory>;
+
   /** REQ-1: `orderedIds` é a nova ordem completa — `sortOrder` de cada categoria = seu índice. */
   reorder(restaurantId: string, orderedIds: string[]): Promise<IMenuCategory[]>;
 

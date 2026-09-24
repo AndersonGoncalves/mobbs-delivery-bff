@@ -7,6 +7,8 @@ const menuCategorySchema = new Schema(
     restaurantId: { type: String, required: true },
     name: { type: String, required: true },
     sortOrder: { type: Number, required: true },
+    // specs/0061-categoria-ativa-inativa.
+    isActive: { type: Boolean, required: true, default: true },
   },
   { _id: false, timestamps: true },
 );

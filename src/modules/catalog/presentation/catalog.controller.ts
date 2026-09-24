@@ -18,6 +18,7 @@ import {
   reorderFeaturedProductsSchema,
   reorderMenuCategoriesSchema,
   saveProductSchema,
+  setMenuCategoryActiveSchema,
   setProductAvailableSchema,
   updateProductSchema,
 } from './catalog.schemas';
@@ -142,6 +143,18 @@ export class CatalogController extends BaseRouter {
         const { name } = parseBody(menuCategoryNameSchema, req.body);
         await this.findOwnedMenuCategory(req.params.id, req.restaurantId!);
         const category = await this.menuCategoryRepository.update(req.params.id, name);
+        res.json(200, category);
+      },
+    );
+
+    // specs/0061-categoria-ativa-inativa — mesmo padrão de `PATCH .../products/:id/available`.
+    application.patch(
+      '/restaurants/me/menu-categories/:id/active',
+      ...authenticated,
+      async (req: Request, res: Response) => {
+        const { isActive } = parseBody(setMenuCategoryActiveSchema, req.body);
+        await this.findOwnedMenuCategory(req.params.id, req.restaurantId!);
+        const category = await this.menuCategoryRepository.setActive(req.params.id, isActive);
         res.json(200, category);
       },
     );

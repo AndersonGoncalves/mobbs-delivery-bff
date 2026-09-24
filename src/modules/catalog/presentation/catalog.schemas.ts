@@ -5,6 +5,9 @@ import { IProductAdditionalGroup, IProductAdditionalOption } from '../domain/ent
 // specs/0007-cadastro-produtos REQ-1.
 export const menuCategoryNameSchema = z.object({ name: z.string().min(1) });
 
+// specs/0061-categoria-ativa-inativa — mesmo padrão de `setProductAvailableSchema`.
+export const setMenuCategoryActiveSchema = z.object({ isActive: z.boolean() });
+
 export const reorderMenuCategoriesSchema = z.object({ orderedIds: z.array(z.string().min(1)).min(1) });
 
 // REQ-6: árvore recursiva de adicionais (produto composto, arquétipo 4) — precisa de `z.lazy()`.

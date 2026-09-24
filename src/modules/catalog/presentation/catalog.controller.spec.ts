@@ -191,6 +191,41 @@ describe('CatalogController', () => {
     ).rejects.toMatchObject({ statusCode: 404 });
   });
 
+  // specs/0061-categoria-ativa-inativa.
+  it('PATCH /restaurants/me/menu-categories/:id/active desativa a categoria', async () => {
+    const { menuCategoryRepository, routes } = setup({
+      menuCategoryRepository: {
+        setActive: jest.fn().mockResolvedValue({ id: 'c-1', restaurantId: 'r-1', name: 'Lanches', sortOrder: 0, isActive: false }),
+      },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/menu-categories/:id/active'],
+      { restaurantId: 'r-1', params: { id: 'c-1' }, body: { isActive: false } },
+      { json },
+    );
+
+    expect(menuCategoryRepository.setActive).toHaveBeenCalledWith('c-1', false);
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ isActive: false }));
+  });
+
+  it('PATCH /restaurants/me/menu-categories/:id/active lança 404 se a categoria é de outro restaurante', async () => {
+    const { routes } = setup({
+      menuCategoryRepository: {
+        findById: jest.fn().mockResolvedValue({ id: 'c-1', restaurantId: 'r-OUTRO', name: 'Lanches', sortOrder: 0 }),
+      },
+    });
+
+    await expect(
+      runOperatorChain(
+        routes['PATCH /restaurants/me/menu-categories/:id/active'],
+        { restaurantId: 'r-1', params: { id: 'c-1' }, body: { isActive: false } },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
   it('AC-1: PUT /restaurants/me/menu-categories/reorder reordena as categorias do restaurante', async () => {
     const { menuCategoryRepository, routes } = setup();
     const json = jest.fn();

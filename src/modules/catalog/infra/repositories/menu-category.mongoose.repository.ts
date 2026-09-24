@@ -11,6 +11,7 @@ interface MenuCategoryLeanDocument {
   restaurantId: string;
   name: string;
   sortOrder: number;
+  isActive?: boolean;
 }
 
 type ProductLightLeanDocument = Omit<IProduct, 'id' | 'additionalGroups'> & {
@@ -78,6 +79,7 @@ export class MenuCategoryMongooseRepository implements IMenuCategoryRepository {
       restaurantId: category.restaurantId,
       name: category.name,
       sortOrder: category.sortOrder,
+      isActive: category.isActive ?? true,
       products: products
         .filter((product) => product.menuCategoryId === category._id)
         .map((product) => toProductLight(product, promotionPercentageByProductId)),
@@ -92,6 +94,11 @@ export class MenuCategoryMongooseRepository implements IMenuCategoryRepository {
 
   async update(id: string, name: string): Promise<IMenuCategory> {
     const doc = await MenuCategoryModel.findByIdAndUpdate(id, { $set: { name } }, { new: true }).lean<MenuCategoryLeanDocument>();
+    return toMenuCategoryEntity(doc as MenuCategoryLeanDocument);
+  }
+
+  async setActive(id: string, isActive: boolean): Promise<IMenuCategory> {
+    const doc = await MenuCategoryModel.findByIdAndUpdate(id, { $set: { isActive } }, { new: true }).lean<MenuCategoryLeanDocument>();
     return toMenuCategoryEntity(doc as MenuCategoryLeanDocument);
   }
 
@@ -125,5 +132,5 @@ export class MenuCategoryMongooseRepository implements IMenuCategoryRepository {
 }
 
 function toMenuCategoryEntity(doc: MenuCategoryLeanDocument): IMenuCategory {
-  return { id: doc._id, restaurantId: doc.restaurantId, name: doc.name, sortOrder: doc.sortOrder };
+  return { id: doc._id, restaurantId: doc.restaurantId, name: doc.name, sortOrder: doc.sortOrder, isActive: doc.isActive ?? true };
 }
