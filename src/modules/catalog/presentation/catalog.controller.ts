@@ -80,8 +80,14 @@ export class CatalogController extends BaseRouter {
       firebaseAuthMiddleware,
       async (req: Request, res: Response) => {
         const restaurant = await this.restaurantRepository.findById(req.params.id);
-        const limit = restaurant?.bestSellersCount ?? 0;
-        const bestSellingIds = limit > 0 ? await this.orderRepository.getBestSellingProductIds(req.params.id, limit) : [];
+        // `bestSellersCount` é o limite da seção "Mais vendidos" do cardápio (controlada por
+        // `showBestSellers`), mas este endpoint também alimenta a tag "Mais pedido" em Destaques/
+        // Favoritos/"Peça também" — usos independentes do toggle. Um restaurante que nunca abriu
+        // essa configuração (`bestSellersCount` zerado/ausente) ainda assim tem produtos com
+        // vendas reais, então cai num teto padrão de 10 em vez de not_configured => sem ranking
+        // nenhum.
+        const limit = restaurant?.bestSellersCount || 10;
+        const bestSellingIds = restaurant ? await this.orderRepository.getBestSellingProductIds(req.params.id, limit) : [];
         const products = await Promise.all(bestSellingIds.map((id) => this.productRepository.findById(id)));
         // specs/0031-imagem-padrao-disponibilidade-checkout-ajustes REQ-5 — produto indisponível
         // não aparece em "Mais vendidos", mesmo tendo vendas passadas.

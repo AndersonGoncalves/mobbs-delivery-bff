@@ -860,6 +860,46 @@ describe('CatalogController', () => {
     expect(json).toHaveBeenCalledWith(200, []);
   });
 
+  // Regressão — a tag "Mais pedido" (app: Destaques/Favoritos/"Peça também") também depende
+  // deste endpoint, então um restaurante que nunca configurou "Mostrar mais vendidos"
+  // (`bestSellersCount` zerado/ausente) precisa continuar recebendo um ranking, não uma lista
+  // vazia — o teto de 10 é só um default de leitura, não altera o que fica salvo no restaurante.
+  it('bestSellersCount zerado (nunca configurado) usa 10 como teto em vez de devolver lista vazia', async () => {
+    const { orderRepository, routes } = setup({
+      restaurantRepository: { findById: jest.fn().mockResolvedValue({ id: 'r-1', bestSellersCount: 0 }) },
+      orderRepository: { getBestSellingProductIds: jest.fn().mockResolvedValue([]) },
+    });
+    const json = jest.fn();
+
+    await runAuthenticatedChain(routes['GET /restaurants/:id/best-sellers'], { params: { id: 'r-1' } }, { json });
+
+    expect(orderRepository.getBestSellingProductIds).toHaveBeenCalledWith('r-1', 10);
+  });
+
+  it('bestSellersCount ausente no restaurante usa 10 como teto', async () => {
+    const { orderRepository, routes } = setup({
+      restaurantRepository: { findById: jest.fn().mockResolvedValue({ id: 'r-1' }) },
+      orderRepository: { getBestSellingProductIds: jest.fn().mockResolvedValue([]) },
+    });
+    const json = jest.fn();
+
+    await runAuthenticatedChain(routes['GET /restaurants/:id/best-sellers'], { params: { id: 'r-1' } }, { json });
+
+    expect(orderRepository.getBestSellingProductIds).toHaveBeenCalledWith('r-1', 10);
+  });
+
+  it('restaurante inexistente devolve lista vazia, sem consultar pedidos', async () => {
+    const { orderRepository, routes } = setup({
+      restaurantRepository: { findById: jest.fn().mockResolvedValue(null) },
+    });
+    const json = jest.fn();
+
+    await runAuthenticatedChain(routes['GET /restaurants/:id/best-sellers'], { params: { id: 'r-1' } }, { json });
+
+    expect(orderRepository.getBestSellingProductIds).not.toHaveBeenCalled();
+    expect(json).toHaveBeenCalledWith(200, []);
+  });
+
   // specs/0028-destaques-vendidos-banners REQ-3/AC-9.
   it('AC-9: PUT /restaurants/me/products/featured/reorder chama reorderFeatured com a nova ordem', async () => {
     const { productRepository, routes } = setup({
