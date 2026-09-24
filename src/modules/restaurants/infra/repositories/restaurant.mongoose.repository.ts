@@ -53,6 +53,7 @@ interface RestaurantLeanDocument {
   category?: string;
   businessHoursReviewedAt?: Date;
   acceptedPaymentMethods?: PaymentMethod[];
+  catalogEnabled?: boolean;
 }
 
 const ALL_PAYMENT_METHODS: PaymentMethod[] = ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'];
@@ -97,6 +98,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     category: doc.category,
     businessHoursReviewedAt: doc.businessHoursReviewedAt,
     acceptedPaymentMethods: doc.acceptedPaymentMethods ?? ALL_PAYMENT_METHODS,
+    catalogEnabled: doc.catalogEnabled ?? true,
   };
 }
 

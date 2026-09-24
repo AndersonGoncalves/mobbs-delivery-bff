@@ -247,6 +247,19 @@ describe('RestaurantsController', () => {
       expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ productImageOnRight: false }));
     });
 
+    // specs/0058-cardapio-ativo-inativo.
+    it('PUT /restaurants/me aceita e persiste catalogEnabled', async () => {
+      const { repository, routes } = setup({
+        updateProfile: jest.fn().mockResolvedValue(buildRestaurant({ catalogEnabled: false })),
+      });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['PUT /restaurants/me'], { body: { catalogEnabled: false } }, { json });
+
+      expect(repository.updateProfile).toHaveBeenCalledWith('1', { catalogEnabled: false });
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ catalogEnabled: false }));
+    });
+
     it('PUT /restaurants/me aceita e persiste onPrimaryColor', async () => {
       const onPrimaryColor = '#000000';
       const { repository, routes } = setup({ updateProfile: jest.fn().mockResolvedValue(buildRestaurant({ onPrimaryColor })) });
