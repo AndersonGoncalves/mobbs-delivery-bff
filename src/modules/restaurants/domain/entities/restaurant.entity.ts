@@ -149,15 +149,6 @@ export interface IRestaurant {
    * este restaurante aceita hoje (reaproveita o mesmo `PaymentMethod` de `Order.paymentMethod`,
    * não um enum próprio) — nasce com as 5 ativas no autocadastro (`RestaurantSignupController`). */
   acceptedPaymentMethods: PaymentMethod[];
-  /**
-   * specs/0058-cardapio-ativo-inativo — liga/desliga o cardápio do app cliente: `false` esconde a
-   * aba "Menu" da tabbar (`AppBottomNavScaffold`, `specs/0027-navegacao-por-abas`) e faz a busca
-   * de produtos não devolver nada, mesmo que o cardápio continue cadastrado normalmente. Default
-   * `true` (comportamento atual, preserva restaurantes existentes). Diferente de `isActive`
-   * (`specs/0046-abrir-fechar-restaurante-manual`, aberto/fechado pra ACEITAR PEDIDOS agora) —
-   * este campo é sobre o cardápio existir/aparecer no app, não sobre horário de funcionamento.
-   */
-  catalogEnabled: boolean;
 }
 
 export type DeliveryFeeMode = 'fixed' | 'byNeighborhood' | 'free';

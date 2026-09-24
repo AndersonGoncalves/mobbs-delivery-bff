@@ -110,8 +110,6 @@ export const restaurantProfileSchema = z
     cartSuggestionsCount: z.number().int().positive().optional(),
     // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-10.
     acceptedPaymentMethods: z.array(paymentMethodSchema),
-    // specs/0058-cardapio-ativo-inativo.
-    catalogEnabled: z.boolean(),
   })
   .partial();
 

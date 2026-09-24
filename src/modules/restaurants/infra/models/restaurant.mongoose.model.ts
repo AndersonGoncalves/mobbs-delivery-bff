@@ -113,9 +113,6 @@ const restaurantSchema = new Schema(
       enum: ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'],
       default: ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'],
     },
-    // specs/0058-cardapio-ativo-inativo — default true preserva o comportamento atual (aba
-    // "Menu" visível) pra todo restaurante já existente.
-    catalogEnabled: { type: Boolean, required: true, default: true },
   },
   { _id: false, timestamps: true },
 );
