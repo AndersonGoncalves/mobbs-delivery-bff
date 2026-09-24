@@ -44,11 +44,17 @@ export class CustomerMongooseRepository implements ICustomerRepository {
     return toEntity(doc as CustomerLeanDocument);
   }
 
-  async acceptTerms(id: string, version: string): Promise<ICustomer> {
+  async acceptTerms(id: string, version: string, profileOnInsert: CustomerProfileUpsert): Promise<ICustomer> {
     const doc = await CustomerModel.findByIdAndUpdate(
       id,
-      { $set: { termsAcceptedAt: new Date(), termsVersionAccepted: version } },
-      { new: true },
+      {
+        $set: { termsAcceptedAt: new Date(), termsVersionAccepted: version },
+        // `$setOnInsert` — só entra em vigor se o documento ainda não existir (upsert cria um
+        // novo); num update normal (documento já existente), nunca sobrescreve name/email/
+        // photoUrl já persistidos.
+        $setOnInsert: { name: profileOnInsert.name, email: profileOnInsert.email, photoUrl: profileOnInsert.photoUrl },
+      },
+      { new: true, upsert: true },
     ).lean<CustomerLeanDocument>();
     return toEntity(doc as CustomerLeanDocument);
   }

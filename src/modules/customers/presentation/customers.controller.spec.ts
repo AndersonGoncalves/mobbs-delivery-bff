@@ -350,8 +350,29 @@ describe('CustomersController', () => {
       { json },
     );
 
-    expect(customerRepository.acceptTerms).toHaveBeenCalledWith('c-1', '2026-09-08');
+    expect(customerRepository.acceptTerms).toHaveBeenCalledWith('c-1', '2026-09-08', expect.anything());
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ termsVersionAccepted: '2026-09-08' }));
+  });
+
+  // Bug real: 1º acesso (Google login) aceitando os termos ANTES de qualquer PUT
+  // /customers/me — sem Customer persistido ainda, `findByIdAndUpdate` sem `upsert` sempre
+  // falhava (devolvia null). Confirma que a rota resolve name/email/photoUrl do token pra cobrir
+  // esse caso (mesma resolução de PUT /customers/me).
+  it('AC-2 (bug real): 1º acesso sem Customer persistido resolve name/email/photoUrl do token pro upsert', async () => {
+    const { customerRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runAuthenticatedChain(
+      routes['PATCH /customers/me/terms-acceptance'],
+      { user: { uid: 'c-1', name: 'Ana', email: 'ana@example.com', picture: 'http://pic' }, body: { version: '2026-09-08' } },
+      { json },
+    );
+
+    expect(customerRepository.acceptTerms).toHaveBeenCalledWith('c-1', '2026-09-08', {
+      name: 'Ana',
+      email: 'ana@example.com',
+      photoUrl: 'http://pic',
+    });
   });
 
   it('PATCH /customers/me/terms-acceptance rejeita corpo sem version', async () => {

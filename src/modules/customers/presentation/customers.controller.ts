@@ -159,7 +159,13 @@ export class CustomersController extends BaseRouter {
       firebaseAuthMiddleware,
       async (req: Request, res: Response) => {
         const { version } = parseBody(acceptTermsSchema, req.body);
-        const customer = await this.customerRepository.acceptTerms(req.user!.uid, version);
+        // Mesma resolução de `PUT /customers/me` (REQ-1) — só usada se o documento ainda não
+        // existir (`$setOnInsert`, ver `CustomerMongooseRepository.acceptTerms`).
+        const customer = await this.customerRepository.acceptTerms(req.user!.uid, version, {
+          name: req.user!.name ?? '',
+          email: req.user!.email ?? '',
+          photoUrl: req.user!.picture,
+        });
         res.json(200, customer);
       },
     );
