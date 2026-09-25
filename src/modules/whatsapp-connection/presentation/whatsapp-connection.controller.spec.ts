@@ -38,6 +38,7 @@ describe('WhatsAppConnectionController', () => {
       getConnectionStatus: jest.fn().mockResolvedValue(false),
       disconnect: jest.fn().mockResolvedValue(undefined),
       sendMessage: jest.fn().mockResolvedValue(undefined),
+      restoreConnectedSessions: jest.fn().mockResolvedValue(undefined),
       ...overrides,
     };
     const { application, routes } = buildFakeApplication();

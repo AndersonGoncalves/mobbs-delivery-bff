@@ -173,6 +173,9 @@ server
     new PresenceController(new PresenceMongooseRepository(), restaurantRepository, restaurantOperatorMiddleware),
     new UploadsController(restaurantOperatorMiddleware),
   ], [migrateOperatorRolesToDono])
+  // specs/0066 REQ-1 — sessões do Baileys vivem em memória; sem isto todo restart do container
+  // derruba o envio de WhatsApp em silêncio. Fire-and-forget: nunca atrasa nem derruba o boot.
+  .then(() => whatsAppConnectionService.restoreConnectedSessions())
   .catch((error) => {
     // eslint-disable-next-line no-console
     console.error('Falha ao iniciar o servidor:', error);

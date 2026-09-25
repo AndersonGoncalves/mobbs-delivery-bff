@@ -70,6 +70,10 @@ export interface IRestaurantRepository {
    * a cada mudança de estado da conexão (conectado/desconectado), não pelo operador direto. */
   setWhatsappConnected(id: string, connected: boolean): Promise<IRestaurant>;
 
+  /** specs/0066 REQ-1 — ids dos restaurantes com `whatsappConnected: true`, pra reabrir as
+   * sessões do Baileys quando o BFF sobe. */
+  findWhatsappConnectedIds(): Promise<string[]>;
+
   /** specs/0032-ajustes-diversos-rating-taxa-entrega REQ-6 — atualizado pelo `RatingsController`
    * a cada `POST /restaurants/:id/ratings`, nunca pelo operador direto (por isso fora de
    * `RestaurantProfileUpdate`, mesmo raciocínio de `setWhatsappConnected`). */

@@ -64,6 +64,18 @@ export class WhatsAppConnectionService implements IWhatsAppConnectionService {
     await entry.socket.sendMessage(toWhatsAppJid(phone), { text });
   }
 
+  async restoreConnectedSessions(): Promise<void> {
+    const restaurantIds = await this.restaurantRepository.findWhatsappConnectedIds();
+    for (const restaurantId of restaurantIds) {
+      try {
+        await this.connect(restaurantId);
+        console.log(`[whatsapp] sessão do restaurante ${restaurantId} reaberta no boot`);
+      } catch (error) {
+        console.error(`[whatsapp] falha ao reabrir a sessão do restaurante ${restaurantId}:`, error);
+      }
+    }
+  }
+
   /** Espera o primeiro QR (evento assíncrono do Baileys) chegar, com um teto de tempo — não tem
    * como devolver o QR de forma síncrona. */
   private async waitForQr(restaurantId: string, timeoutMs = 15_000): Promise<string | null> {
