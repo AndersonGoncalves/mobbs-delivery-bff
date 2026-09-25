@@ -31,7 +31,7 @@ describe('WhatsAppNotificationService', () => {
     overrides: {
       customer?: { id: string; name: string; phone?: string } | null;
       restaurant?:
-        | { id: string; name: string; slug: string; whatsappConnected: boolean; notifyCustomerOnOrderConfirmed?: boolean; orderConfirmedWhatsAppTemplate?: string; notifyCustomerOnPixConfirmed?: boolean; pixConfirmedWhatsAppTemplate?: string; notifyCustomerOnOrderCreated?: boolean; orderReceiptWhatsAppTemplate?: string; notifyCustomerOnOrderOutForDelivery?: boolean; orderOutForDeliveryWhatsAppTemplate?: string; pixKey?: string }
+        | { id: string; name: string; slug: string; whatsappConnected: boolean; notifyCustomerOnOrderConfirmed?: boolean; orderConfirmedWhatsAppTemplate?: string; notifyCustomerOnPixConfirmed?: boolean; pixConfirmedWhatsAppTemplate?: string; notifyCustomerOnOrderCreated?: boolean; orderReceiptWhatsAppTemplate?: string; notifyCustomerOnOrderOutForDelivery?: boolean; orderOutForDeliveryWhatsAppTemplate?: string; notifyCustomerOnOrderPreparing?: boolean; orderPreparingWhatsAppTemplate?: string; notifyCustomerOnOrderCancelled?: boolean; orderCancelledWhatsAppTemplate?: string; pixKey?: string }
         | null;
     } = {},
   ) {
@@ -264,6 +264,54 @@ describe('WhatsAppNotificationService', () => {
       await service.sendOrderStatusUpdate(buildOrder({ status: 'saiuParaEntrega' }));
 
       expect(whatsAppConnectionService.sendMessage).toHaveBeenCalledWith('r-1', '11999999999', 'Seu pedido #123 saiu para entrega!');
+    });
+
+    it('specs/0071: notifyCustomerOnOrderPreparing false não envia em "emPreparo"', async () => {
+      const { service, whatsAppConnectionService } = setup({
+        restaurant: { id: 'r-1', name: 'Prime Pizza', slug: 'primepizza', whatsappConnected: true, notifyCustomerOnOrderPreparing: false },
+      });
+
+      await service.sendOrderStatusUpdate(buildOrder({ status: 'emPreparo' }));
+
+      expect(whatsAppConnectionService.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('specs/0071: usa orderPreparingWhatsAppTemplate quando configurado', async () => {
+      const { service, whatsAppConnectionService } = setup({
+        restaurant: { id: 'r-1', name: 'Prime Pizza', slug: 'primepizza', whatsappConnected: true, orderPreparingWhatsAppTemplate: 'Na chapa! #{numeroPedido}' },
+      });
+
+      await service.sendOrderStatusUpdate(buildOrder({ status: 'emPreparo' }));
+
+      expect(whatsAppConnectionService.sendMessage).toHaveBeenCalledWith('r-1', '11999999999', 'Na chapa! #123');
+    });
+
+    it('specs/0071: notifyCustomerOnOrderCancelled false não envia em "cancelado", mas os outros status seguem', async () => {
+      const { service, whatsAppConnectionService } = setup({
+        restaurant: { id: 'r-1', name: 'Prime Pizza', slug: 'primepizza', whatsappConnected: true, notifyCustomerOnOrderCancelled: false },
+      });
+
+      await service.sendOrderStatusUpdate(buildOrder({ status: 'cancelado' }), 'sem estoque');
+      expect(whatsAppConnectionService.sendMessage).not.toHaveBeenCalled();
+
+      await service.sendOrderStatusUpdate(buildOrder({ status: 'emPreparo' }));
+      expect(whatsAppConnectionService.sendMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('specs/0071: cancelamento usa orderCancelledWhatsAppTemplate com {motivoCancelamento}', async () => {
+      const { service, whatsAppConnectionService } = setup({
+        restaurant: {
+          id: 'r-1',
+          name: 'Prime Pizza',
+          slug: 'primepizza',
+          whatsappConnected: true,
+          orderCancelledWhatsAppTemplate: 'Cancelado #{numeroPedido}: {motivoCancelamento}',
+        },
+      });
+
+      await service.sendOrderStatusUpdate(buildOrder({ status: 'cancelado' }), 'sem estoque');
+
+      expect(whatsAppConnectionService.sendMessage).toHaveBeenCalledWith('r-1', '11999999999', 'Cancelado #123: sem estoque');
     });
 
     it('AC-2: usa orderConfirmedWhatsAppTemplate do restaurante quando configurado', async () => {

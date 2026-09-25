@@ -15,6 +15,8 @@ export interface MessagePlaceholdersInput {
   pixCode?: string;
   /** só o recibo conhece a operadora do cartão (`Order` não guarda). */
   cardBrand?: string;
+  /** motivo informado ao cancelar (`specs/0071`); ausente = `{motivoCancelamento}` vazio. */
+  cancellationReason?: string;
 }
 
 /**
@@ -24,7 +26,7 @@ export interface MessagePlaceholdersInput {
  * (`renderTemplate`), então `{desconto}`/`{previsaoEntrega}` podem ficar em linhas opcionais.
  */
 export function buildMessagePlaceholders(input: MessagePlaceholdersInput): Record<string, string> {
-  const { order, customerName, customerPhone, restaurantSlug, pixCode, cardBrand } = input;
+  const { order, customerName, customerPhone, restaurantSlug, pixCode, cardBrand, cancellationReason } = input;
 
   const enderecoEntrega =
     order.orderType === 'delivery'
@@ -47,5 +49,6 @@ export function buildMessagePlaceholders(input: MessagePlaceholdersInput): Recor
     pagamento: buildPaymentBlock({ order, cardBrand, pixCode }),
     pixCopiaECola: pixCode ?? '',
     linkAcompanhamento: buildTrackingLink(restaurantSlug, order.trackingToken),
+    motivoCancelamento: cancellationReason ?? '',
   };
 }
