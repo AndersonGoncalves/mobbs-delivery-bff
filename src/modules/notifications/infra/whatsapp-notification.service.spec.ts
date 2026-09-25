@@ -31,7 +31,7 @@ describe('WhatsAppNotificationService', () => {
     overrides: {
       customer?: { id: string; name: string; phone?: string } | null;
       restaurant?:
-        | { id: string; name: string; slug: string; whatsappConnected: boolean; notifyCustomerOnOrderConfirmed?: boolean; orderConfirmedWhatsAppTemplate?: string; notifyCustomerOnPixConfirmed?: boolean; pixConfirmedWhatsAppTemplate?: string; notifyCustomerOnOrderCreated?: boolean; orderReceiptWhatsAppTemplate?: string; pixKey?: string }
+        | { id: string; name: string; slug: string; whatsappConnected: boolean; notifyCustomerOnOrderConfirmed?: boolean; orderConfirmedWhatsAppTemplate?: string; notifyCustomerOnPixConfirmed?: boolean; pixConfirmedWhatsAppTemplate?: string; notifyCustomerOnOrderCreated?: boolean; orderReceiptWhatsAppTemplate?: string; notifyCustomerOnOrderOutForDelivery?: boolean; orderOutForDeliveryWhatsAppTemplate?: string; pixKey?: string }
         | null;
     } = {},
   ) {
@@ -220,6 +220,50 @@ describe('WhatsAppNotificationService', () => {
       await service.sendOrderStatusUpdate(buildOrder({ status: 'entregue' }));
 
       expect(whatsAppConnectionService.sendMessage).toHaveBeenCalledWith('r-1', '11999999999', expect.stringContaining('#123'));
+    });
+
+    it('specs/0065 AC-3: notifyCustomerOnOrderOutForDelivery false pula o envio quando status é saiuParaEntrega', async () => {
+      const { service, whatsAppConnectionService } = setup({
+        restaurant: { id: 'r-1', name: 'Prime Pizza', slug: 'primepizza', whatsappConnected: true, notifyCustomerOnOrderOutForDelivery: false },
+      });
+
+      await service.sendOrderStatusUpdate(buildOrder({ status: 'saiuParaEntrega' }));
+
+      expect(whatsAppConnectionService.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('specs/0065: desligar "saiu para entrega" não afeta "confirmado" (toggles independentes)', async () => {
+      const { service, whatsAppConnectionService } = setup({
+        restaurant: { id: 'r-1', name: 'Prime Pizza', slug: 'primepizza', whatsappConnected: true, notifyCustomerOnOrderOutForDelivery: false },
+      });
+
+      await service.sendOrderStatusUpdate(buildOrder({ status: 'confirmado' }));
+
+      expect(whatsAppConnectionService.sendMessage).toHaveBeenCalledWith('r-1', '11999999999', expect.stringContaining('#123'));
+    });
+
+    it('specs/0065 AC-2: usa orderOutForDeliveryWhatsAppTemplate do restaurante quando configurado', async () => {
+      const { service, whatsAppConnectionService } = setup({
+        restaurant: {
+          id: 'r-1',
+          name: 'Prime Pizza',
+          slug: 'primepizza',
+          whatsappConnected: true,
+          orderOutForDeliveryWhatsAppTemplate: 'Oi {nomeCliente}, o pedido #{numeroPedido} saiu!',
+        },
+      });
+
+      await service.sendOrderStatusUpdate(buildOrder({ status: 'saiuParaEntrega' }));
+
+      expect(whatsAppConnectionService.sendMessage).toHaveBeenCalledWith('r-1', '11999999999', 'Oi Ana, o pedido #123 saiu!');
+    });
+
+    it('specs/0065 AC-4: sem template configurado envia o texto fixo de sempre', async () => {
+      const { service, whatsAppConnectionService } = setup();
+
+      await service.sendOrderStatusUpdate(buildOrder({ status: 'saiuParaEntrega' }));
+
+      expect(whatsAppConnectionService.sendMessage).toHaveBeenCalledWith('r-1', '11999999999', 'Seu pedido #123 saiu para entrega!');
     });
 
     it('AC-2: usa orderConfirmedWhatsAppTemplate do restaurante quando configurado', async () => {

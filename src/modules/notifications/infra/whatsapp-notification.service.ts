@@ -82,6 +82,8 @@ export class WhatsAppNotificationService implements IWhatsAppNotificationService
       // specs/0063-notificacao-whatsapp-pedido-confirmado REQ-3/REQ-4 — `=== false` (não `!`) pra
       // tratar um documento antigo sem o campo (`undefined`) como ligado, mesmo default do schema.
       if (order.status === 'confirmado' && restaurant.notifyCustomerOnOrderConfirmed === false) return;
+      // specs/0065 REQ-4 — toggle próprio, independente do de "confirmado".
+      if (order.status === 'saiuParaEntrega' && restaurant.notifyCustomerOnOrderOutForDelivery === false) return;
 
       const message = buildOrderStatusMessage({
         order,
@@ -90,7 +92,10 @@ export class WhatsAppNotificationService implements IWhatsAppNotificationService
         restaurantSlug: restaurant!.slug,
         pixCode: buildOrderPixCode(restaurant!, order),
         reason,
-        templates: { confirmado: restaurant.orderConfirmedWhatsAppTemplate },
+        templates: {
+          confirmado: restaurant.orderConfirmedWhatsAppTemplate,
+          saiuParaEntrega: restaurant.orderOutForDeliveryWhatsAppTemplate,
+        },
       });
       if (!message) return;
 

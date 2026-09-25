@@ -346,6 +346,18 @@ describe('RestaurantsController', () => {
       expect(json).toHaveBeenCalledWith(200, expect.objectContaining(patch));
     });
 
+    // specs/0065-notificacao-whatsapp-saiu-para-entrega AC-1.
+    it('PUT /restaurants/me aceita e persiste notifyCustomerOnOrderOutForDelivery/orderOutForDeliveryWhatsAppTemplate', async () => {
+      const patch = { notifyCustomerOnOrderOutForDelivery: false, orderOutForDeliveryWhatsAppTemplate: 'Saiu, {nomeCliente}!' };
+      const { repository, routes } = setup({ updateProfile: jest.fn().mockResolvedValue(buildRestaurant(patch)) });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['PUT /restaurants/me'], { body: patch }, { json });
+
+      expect(repository.updateProfile).toHaveBeenCalledWith('1', patch);
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining(patch));
+    });
+
     // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-2.
     it('PUT /restaurants/me aceita e persiste allowCustomerCancelOrder', async () => {
       const patch = { allowCustomerCancelOrder: false };

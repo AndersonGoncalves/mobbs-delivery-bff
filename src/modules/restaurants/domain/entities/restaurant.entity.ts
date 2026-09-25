@@ -175,6 +175,10 @@ export interface IRestaurant {
   notifyCustomerOnOrderCreated: boolean;
   /** specs/0069 — template do recibo; `undefined` usa `DEFAULT_ORDER_RECEIPT_TEMPLATE`. */
   orderReceiptWhatsAppTemplate?: string;
+  /** specs/0065 — liga/desliga a mensagem automática de WhatsApp quando o pedido sai pra entrega. */
+  notifyCustomerOnOrderOutForDelivery: boolean;
+  /** specs/0065 — template; `undefined` usa `DEFAULT_OUT_FOR_DELIVERY_TEMPLATE` (texto de sempre). */
+  orderOutForDeliveryWhatsAppTemplate?: string;
 }
 
 export type DeliveryFeeMode = 'fixed' | 'byNeighborhood' | 'free';

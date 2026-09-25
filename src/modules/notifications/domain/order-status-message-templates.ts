@@ -6,6 +6,10 @@ import { renderTemplate, resolveTemplate } from './whatsapp-message-helpers';
 // como fallback quando o restaurante não configurou um template próprio (retrocompatibilidade).
 export const DEFAULT_ORDER_CONFIRMED_TEMPLATE = 'Seu pedido #{numeroPedido} foi confirmado pelo restaurante!';
 
+// specs/0065 REQ-2/AC-4 — texto fixo já usado hoje, agora como fallback quando o restaurante não
+// configurou um template próprio (retrocompatibilidade).
+export const DEFAULT_OUT_FOR_DELIVERY_TEMPLATE = 'Seu pedido #{numeroPedido} saiu para entrega!';
+
 export interface OrderStatusMessageInput {
   order: IOrder;
   customerName: string;
@@ -20,6 +24,7 @@ export interface OrderStatusMessageInput {
    */
   templates: {
     confirmado?: string;
+    saiuParaEntrega?: string;
   };
 }
 
@@ -40,7 +45,10 @@ export function buildOrderStatusMessage(input: OrderStatusMessageInput): string 
     case 'emPreparo':
       return `Seu pedido #${order.orderNumber} está sendo preparado.`;
     case 'saiuParaEntrega':
-      return `Seu pedido #${order.orderNumber} saiu para entrega!`;
+      return renderTemplate(
+        resolveTemplate(templates.saiuParaEntrega, DEFAULT_OUT_FOR_DELIVERY_TEMPLATE),
+        buildMessagePlaceholders({ order, customerName, customerPhone, restaurantSlug, pixCode }),
+      );
     case 'entregue':
       return `Seu pedido #${order.orderNumber} foi entregue. Bom apetite!`;
     case 'cancelado':

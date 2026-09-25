@@ -40,6 +40,8 @@ export type RestaurantProfileUpdate = Partial<
     | 'pixConfirmedWhatsAppTemplate'
     | 'notifyCustomerOnOrderCreated'
     | 'orderReceiptWhatsAppTemplate'
+    | 'notifyCustomerOnOrderOutForDelivery'
+    | 'orderOutForDeliveryWhatsAppTemplate'
   >
 >;
 
