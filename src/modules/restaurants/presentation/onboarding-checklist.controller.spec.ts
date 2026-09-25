@@ -67,6 +67,8 @@ describe('OnboardingChecklistController', () => {
         { key: 'catalog', done: false },
         { key: 'businessHours', done: false },
         { key: 'pix', done: false },
+        { key: 'whatsapp', done: false },
+        { key: 'customerApp', done: false },
       ],
       allDone: false,
     });
@@ -80,6 +82,8 @@ describe('OnboardingChecklistController', () => {
             address: { street: 'Rua 1', number: '10', neighborhood: 'Centro', city: 'Fortaleza', state: 'CE', zipCode: '60000000' },
             businessHoursReviewedAt: new Date('2026-09-17'),
             pixKey: 'chave-pix',
+            whatsappConnected: true,
+            logoUrl: 'https://exemplo.com/logo.png',
           }),
         ),
       },
@@ -95,6 +99,8 @@ describe('OnboardingChecklistController', () => {
         { key: 'catalog', done: true },
         { key: 'businessHours', done: true },
         { key: 'pix', done: true },
+        { key: 'whatsapp', done: true },
+        { key: 'customerApp', done: true },
       ],
       allDone: true,
     });
@@ -115,5 +121,30 @@ describe('OnboardingChecklistController', () => {
     await expect(
       runAuthenticatedChain(routes['GET /restaurants/me/onboarding-checklist'], {}, { json: jest.fn() }),
     ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  // specs/0070.
+  it('specs/0070 AC-1: whatsapp fica done só com whatsappConnected true', async () => {
+    const { routes } = setup({ findById: jest.fn().mockResolvedValue(buildRestaurant({ whatsappConnected: true })) });
+    const json = jest.fn();
+
+    await runAuthenticatedChain(routes['GET /restaurants/me/onboarding-checklist'], {}, { json });
+
+    const [, payload] = json.mock.calls[0] as [number, { items: { key: string; done: boolean }[]; allDone: boolean }];
+    expect(payload.items.find((item) => item.key === 'whatsapp')).toEqual({ key: 'whatsapp', done: true });
+    expect(payload.items.find((item) => item.key === 'customerApp')).toEqual({ key: 'customerApp', done: false });
+    expect(payload.allDone).toBe(false);
+  });
+
+  it('specs/0070 AC-2: customerApp fica done com logo OU cor primária', async () => {
+    for (const branding of [{ logoUrl: 'https://exemplo.com/logo.png' }, { primaryColor: '#ff0000' }]) {
+      const { routes } = setup({ findById: jest.fn().mockResolvedValue(buildRestaurant(branding)) });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['GET /restaurants/me/onboarding-checklist'], {}, { json });
+
+      const [, payload] = json.mock.calls[0] as [number, { items: { key: string; done: boolean }[] }];
+      expect(payload.items.find((item) => item.key === 'customerApp')?.done).toBe(true);
+    }
   });
 });
