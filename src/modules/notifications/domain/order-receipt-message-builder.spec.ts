@@ -49,16 +49,10 @@ function buildInput(overrides: Partial<OrderReceiptInput> = {}): OrderReceiptInp
 }
 
 describe('buildOrderReceiptMessage', () => {
-  it('AC-5: usa a saudação padrão quando o restaurante não configurou uma', () => {
+  // specs/0072 — a saudação virou a 1ª linha do template padrão (não há mais campo separado).
+  it('a 1ª linha do recibo padrão é o agradecimento com o nome do cliente', () => {
     const message = buildOrderReceiptMessage(buildInput());
-    expect(message).toContain('Obrigado por pedir com a gente, Ana!');
-  });
-
-  it('AC-5: usa a saudação customizada com {nomeCliente} substituído', () => {
-    const message = buildOrderReceiptMessage(
-      buildInput({ restaurant: { slug: 'primepizza', orderConfirmationGreeting: 'Fala, {nomeCliente}, valeu pelo pedido!' } }),
-    );
-    expect(message).toContain('Fala, Ana, valeu pelo pedido!');
+    expect(message.split('\n')[0]).toBe('Obrigado por pedir com a gente, Ana!');
   });
 
   it('AC-1/AC-6: inclui orderNumber e o link de acompanhamento com o trackingToken correto', () => {
@@ -158,13 +152,13 @@ describe('buildOrderReceiptMessage', () => {
 });
 
 describe('buildOrderReceiptMessage — template editável (specs/0069)', () => {
-  it('template customizado usa os placeholders em português, incl. {saudacao}', () => {
+  it('template customizado usa os placeholders em português', () => {
     const message = buildOrderReceiptMessage(
-      buildInput({ restaurant: { slug: 'primepizza', orderReceiptWhatsAppTemplate: '{saudacao}\nPedido {numeroPedido} — {total}\n{linkAcompanhamento}' } }),
+      buildInput({ restaurant: { slug: 'primepizza', orderReceiptWhatsAppTemplate: 'Oi {nomeCliente}!\nPedido {numeroPedido} — {total}\n{linkAcompanhamento}' } }),
     );
 
     expect(message).toBe(
-      'Obrigado por pedir com a gente, Ana!\nPedido 123 — R$ 55,00\nhttps://bsdelivery.com.br/primepizza/track?token=abc123',
+      'Oi Ana!\nPedido 123 — R$ 55,00\nhttps://bsdelivery.com.br/primepizza/track?token=abc123',
     );
   });
 

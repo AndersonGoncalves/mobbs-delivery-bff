@@ -46,7 +46,6 @@ export class WhatsAppNotificationService implements IWhatsAppNotificationService
       const message = buildOrderReceiptMessage({
         restaurant: {
           slug: restaurant!.slug,
-          orderConfirmationGreeting: restaurant!.orderConfirmationGreeting,
           orderReceiptWhatsAppTemplate: restaurant!.orderReceiptWhatsAppTemplate,
         },
         customer: { name: customer!.name, phone: customer!.phone },

@@ -65,12 +65,13 @@ export interface IRestaurant {
    * `OrdersController`), e em `byNeighborhood` quem decide é `deliveryFeeZones`.
    */
   deliveryFeeCents: number;
-  welcomeMessage?: string;
-  orderConfirmationGreeting?: string;
   /**
    * specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-2 — texto configurável mostrado
    * junto do link público do restaurante (`https://bsdelivery.com.br/r/<slug>`, mesmo formato de
    * `GET /restaurants/me/onboarding`) quando o cliente usa o ícone de compartilhar do app.
+   * `specs/0072` — nunca vem vazio de um restaurante que não configurou: a leitura
+   * (`toEntity`) devolve `buildDefaultShareMessage(name)`; só uma string vazia gravada de
+   * propósito faz o app compartilhar apenas o link.
    */
   shareMessage?: string;
   pixKey?: string;

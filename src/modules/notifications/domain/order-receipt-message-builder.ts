@@ -4,7 +4,6 @@ import { renderTemplate, resolveTemplate } from './whatsapp-message-helpers';
 
 export interface OrderReceiptRestaurantInput {
   slug: string;
-  orderConfirmationGreeting?: string;
   /** specs/0069 — template editável do recibo; ausente usa `DEFAULT_ORDER_RECEIPT_TEMPLATE`. */
   orderReceiptWhatsAppTemplate?: string;
 }
@@ -26,15 +25,14 @@ export interface OrderReceiptInput {
   pixCode?: string;
 }
 
-export const DEFAULT_GREETING = 'Obrigado por pedir com a gente, {nomeCliente}!';
-
 /**
  * specs/0069 — layout do recibo quando o restaurante não configurou um template próprio (igual ao
- * layout fixo de antes, agora como template). Linhas cujo placeholder fica vazio (`Previsão`,
+ * layout fixo de antes, agora como template; a saudação virou a 1ª linha — `specs/0072` removeu o
+ * campo separado). Linhas cujo placeholder fica vazio (`Previsão`,
  * `Desconto`) somem sozinhas (`renderTemplate`).
  */
 export const DEFAULT_ORDER_RECEIPT_TEMPLATE = [
-  '{saudacao}',
+  'Obrigado por pedir com a gente, {nomeCliente}!',
   '',
   '*Pedido #{numeroPedido}*',
   'Acompanhe: {linkAcompanhamento}',
@@ -57,7 +55,6 @@ export const DEFAULT_ORDER_RECEIPT_TEMPLATE = [
 /**
  * specs/0013-notificacoes-whatsapp REQ-1/REQ-6 a REQ-10 + specs/0069 — recibo enviado ao CLIENTE
  * na criação do pedido. Domain puro (sem I/O), testável sem sessão de WhatsApp/Mongo real.
- * `{saudacao}` é a saudação configurável (`orderConfirmationGreeting`) já resolvida.
  */
 export function buildOrderReceiptMessage(input: OrderReceiptInput): string {
   const { restaurant, customer, order, cardBrand, pixCode } = input;
@@ -70,7 +67,6 @@ export function buildOrderReceiptMessage(input: OrderReceiptInput): string {
     pixCode,
     cardBrand,
   });
-  const saudacao = renderTemplate(resolveTemplate(restaurant.orderConfirmationGreeting, DEFAULT_GREETING), values);
 
-  return renderTemplate(resolveTemplate(restaurant.orderReceiptWhatsAppTemplate, DEFAULT_ORDER_RECEIPT_TEMPLATE), { ...values, saudacao });
+  return renderTemplate(resolveTemplate(restaurant.orderReceiptWhatsAppTemplate, DEFAULT_ORDER_RECEIPT_TEMPLATE), values);
 }

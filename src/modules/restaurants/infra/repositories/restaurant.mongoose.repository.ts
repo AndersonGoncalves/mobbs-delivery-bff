@@ -1,3 +1,4 @@
+import { buildDefaultShareMessage } from '../../domain/default-share-message';
 import { PaymentMethod } from '../../../orders/domain/entities/order.entity';
 import {
   DeliveryFeeMode,
@@ -29,8 +30,6 @@ interface RestaurantLeanDocument {
   document?: string;
   minimumOrderValue?: number;
   deliveryFeeCents?: number;
-  welcomeMessage?: string;
-  orderConfirmationGreeting?: string;
   shareMessage?: string;
   pixKey?: string;
   pixKeyType?: PixKeyType;
@@ -87,9 +86,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     document: doc.document,
     minimumOrderValue: doc.minimumOrderValue ?? 0,
     deliveryFeeCents: doc.deliveryFeeCents ?? 0,
-    welcomeMessage: doc.welcomeMessage,
-    orderConfirmationGreeting: doc.orderConfirmationGreeting,
-    shareMessage: doc.shareMessage,
+    shareMessage: doc.shareMessage ?? buildDefaultShareMessage(doc.name),
     pixKey: doc.pixKey,
     pixKeyType: doc.pixKeyType,
     pixBeneficiaryName: doc.pixBeneficiaryName,
