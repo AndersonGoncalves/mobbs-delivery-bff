@@ -1,12 +1,21 @@
 import { buildOrderPixCode } from '../../orders/domain/build-order-pix-code';
 import { ICustomerRepository } from '../../customers/domain/repositories/customer.repository.interface';
 import { IOrder } from '../../orders/domain/entities/order.entity';
+import { IRestaurant } from '../../restaurants/domain/entities/restaurant.entity';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IWhatsAppConnectionService } from '../../whatsapp-connection/domain/services/i-whatsapp-connection.service';
 import { buildOrderReceiptMessage } from '../domain/order-receipt-message-builder';
 import { buildPaymentConfirmedMessage } from '../domain/payment-confirmed-message-builder';
 import { buildOrderStatusMessage } from '../domain/order-status-message-templates';
 import { IWhatsAppNotificationService } from '../domain/services/i-whatsapp-notification.service';
+
+/** Qual toggle de `Restaurant` liga/desliga a mensagem de cada status (`entregue` não tem toggle). */
+const STATUS_TOGGLES: Partial<Record<IOrder['status'], keyof IRestaurant>> = {
+  confirmado: 'notifyCustomerOnOrderConfirmed',
+  emPreparo: 'notifyCustomerOnOrderPreparing',
+  saiuParaEntrega: 'notifyCustomerOnOrderOutForDelivery',
+  cancelado: 'notifyCustomerOnOrderCancelled',
+};
 
 /**
  * specs/0013-notificacoes-whatsapp — `Order` não denormaliza dados de `Customer`/`Restaurant`
@@ -79,11 +88,10 @@ export class WhatsAppNotificationService implements IWhatsAppNotificationService
 
       if (this.skipReason(order, customer, restaurant)) return;
 
-      // specs/0063-notificacao-whatsapp-pedido-confirmado REQ-3/REQ-4 — `=== false` (não `!`) pra
-      // tratar um documento antigo sem o campo (`undefined`) como ligado, mesmo default do schema.
-      if (order.status === 'confirmado' && restaurant.notifyCustomerOnOrderConfirmed === false) return;
-      // specs/0065 REQ-4 — toggle próprio, independente do de "confirmado".
-      if (order.status === 'saiuParaEntrega' && restaurant.notifyCustomerOnOrderOutForDelivery === false) return;
+      // specs/0063/0065/0071 — toggle independente por status; `=== false` (não `!`) pra tratar um
+      // documento antigo sem o campo (`undefined`) como ligado, mesmo default do schema.
+      const toggle = STATUS_TOGGLES[order.status];
+      if (toggle && restaurant![toggle] === false) return;
 
       const message = buildOrderStatusMessage({
         order,
@@ -95,6 +103,8 @@ export class WhatsAppNotificationService implements IWhatsAppNotificationService
         templates: {
           confirmado: restaurant.orderConfirmedWhatsAppTemplate,
           saiuParaEntrega: restaurant.orderOutForDeliveryWhatsAppTemplate,
+          emPreparo: restaurant.orderPreparingWhatsAppTemplate,
+          cancelado: restaurant.orderCancelledWhatsAppTemplate,
         },
       });
       if (!message) return;

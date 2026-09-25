@@ -114,7 +114,7 @@ describe('buildOrderStatusMessage', () => {
 
   it('cancelamento com motivo inclui o motivo', () => {
     expect(buildOrderStatusMessage(buildInput({ order: buildOrder({ status: 'cancelado' }), reason: 'sem estoque' }))).toBe(
-      'Pedido #123 cancelado: sem estoque',
+      'Pedido #123 foi cancelado.\nMotivo: sem estoque',
     );
   });
 
@@ -124,5 +124,40 @@ describe('buildOrderStatusMessage', () => {
 
   it('status inicial (aguardandoConfirmacao) não gera mensagem de mudança de status', () => {
     expect(buildOrderStatusMessage(buildInput({ order: buildOrder({ status: 'aguardandoConfirmacao' }) }))).toBeNull();
+  });
+
+  // specs/0071.
+  it('specs/0071: "em preparo" com template configurado substitui os placeholders', () => {
+    const message = buildOrderStatusMessage(
+      buildInput({ order: buildOrder({ status: 'emPreparo' }), templates: { emPreparo: 'Já estamos preparando o #{numeroPedido}, {nomeCliente}!' } }),
+    );
+
+    expect(message).toBe('Já estamos preparando o #123, Ana!');
+  });
+
+  it('specs/0071: "cancelado" com template usa {motivoCancelamento}', () => {
+    const message = buildOrderStatusMessage(
+      buildInput({
+        order: buildOrder({ status: 'cancelado' }),
+        reason: 'sem estoque',
+        templates: { cancelado: 'Sentimos muito, {nomeCliente}. Pedido #{numeroPedido} cancelado ({motivoCancelamento}).' },
+      }),
+    );
+
+    expect(message).toBe('Sentimos muito, Ana. Pedido #123 cancelado (sem estoque).');
+  });
+
+  it('specs/0071: "cancelado" sem motivo omite a linha "Motivo" do texto padrão', () => {
+    const message = buildOrderStatusMessage(buildInput({ order: buildOrder({ status: 'cancelado' }) }));
+
+    expect(message).toBe('Pedido #123 foi cancelado.');
+    expect(message).not.toContain('Motivo');
+  });
+
+  it('specs/0071: cada status usa só o próprio template', () => {
+    const templates = { confirmado: 'C', emPreparo: 'P', saiuParaEntrega: 'S', cancelado: 'X' };
+
+    expect(buildOrderStatusMessage(buildInput({ order: buildOrder({ status: 'emPreparo' }), templates }))).toBe('P');
+    expect(buildOrderStatusMessage(buildInput({ order: buildOrder({ status: 'cancelado' }), templates }))).toBe('X');
   });
 });

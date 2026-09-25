@@ -179,6 +179,14 @@ export interface IRestaurant {
   notifyCustomerOnOrderOutForDelivery: boolean;
   /** specs/0065 — template; `undefined` usa `DEFAULT_OUT_FOR_DELIVERY_TEMPLATE` (texto de sempre). */
   orderOutForDeliveryWhatsAppTemplate?: string;
+  /** specs/0071 — liga/desliga a mensagem automática de WhatsApp quando o pedido entra em preparo. */
+  notifyCustomerOnOrderPreparing: boolean;
+  /** specs/0071 — template; `undefined` usa `DEFAULT_ORDER_PREPARING_TEMPLATE`. */
+  orderPreparingWhatsAppTemplate?: string;
+  /** specs/0071 — liga/desliga a mensagem automática de WhatsApp quando o pedido é cancelado. */
+  notifyCustomerOnOrderCancelled: boolean;
+  /** specs/0071 — template; `undefined` usa `DEFAULT_ORDER_CANCELLED_TEMPLATE`. */
+  orderCancelledWhatsAppTemplate?: string;
 }
 
 export type DeliveryFeeMode = 'fixed' | 'byNeighborhood' | 'free';
