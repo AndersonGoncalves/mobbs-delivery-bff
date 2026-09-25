@@ -497,7 +497,7 @@ describe('OrdersController', () => {
 
     it('usa o template customizado do restaurante quando presente, senão o default', async () => {
       const { routes } = setup({
-        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ newOrderRestaurantWhatsAppTemplate: 'Pedido #{orderNumber} confirmado, {customerName}!' })) },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ newOrderRestaurantWhatsAppTemplate: 'Pedido #{numeroPedido} confirmado, {nomeCliente}!' })) },
       });
       const json = jest.fn();
 

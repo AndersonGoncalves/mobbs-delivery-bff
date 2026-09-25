@@ -5,6 +5,9 @@ dotenv.config({ path: '.env' });
 export const environment = {
   server: { port: Number(process.env.SERVER_PORT) || 3001 },
   db: { url: process.env.DB_URL || 'mongodb://localhost:27017/mobbs-delivery' },
+  /** specs/0069 — origem pública do app do cliente (Flutter Web em `<origem>/<slug>`), usada nos links
+   * de acompanhamento enviados por WhatsApp. */
+  publicApp: { baseUrl: process.env.PUBLIC_APP_BASE_URL || 'https://bsdelivery.com.br' },
   /** specs/0023-portabilidade-dados — SMTP genérico (qualquer provedor), sem SDK específico.
    * Sem essas variáveis configuradas, `NodemailerEmailService.send()` falha em runtime — REQ-5
    * garante que essa falha nunca trava o cliente (fire-and-forget, só logada). */

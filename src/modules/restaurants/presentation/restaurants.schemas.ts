@@ -119,6 +119,9 @@ export const restaurantProfileSchema = z
     // specs/0064-notificacao-whatsapp-pix-confirmado.
     notifyCustomerOnPixConfirmed: z.boolean(),
     pixConfirmedWhatsAppTemplate: z.string(),
+    // specs/0069.
+    notifyCustomerOnOrderCreated: z.boolean(),
+    orderReceiptWhatsAppTemplate: z.string(),
   })
   .partial();
 

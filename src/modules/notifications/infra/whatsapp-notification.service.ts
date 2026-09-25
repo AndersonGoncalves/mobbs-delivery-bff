@@ -1,3 +1,4 @@
+import { buildOrderPixCode } from '../../orders/domain/build-order-pix-code';
 import { ICustomerRepository } from '../../customers/domain/repositories/customer.repository.interface';
 import { IOrder } from '../../orders/domain/entities/order.entity';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
@@ -30,21 +31,22 @@ export class WhatsAppNotificationService implements IWhatsAppNotificationService
       // com log do motivo (antes era silencioso e a falha ficava invisível).
       if (this.skipReason(order, customer, restaurant)) return;
 
+      // specs/0069 — `=== false` (não `!`): documento antigo sem o campo conta como ligado.
+      if (restaurant!.notifyCustomerOnOrderCreated === false) return;
+
       const message = buildOrderReceiptMessage({
         restaurant: {
-          name: restaurant!.name,
-          slug: restaurant.slug,
-          orderConfirmationGreeting: restaurant.orderConfirmationGreeting,
-          pixKey: restaurant.pixKey,
-          pixKeyType: restaurant.pixKeyType,
-          pixBeneficiaryName: restaurant.pixBeneficiaryName,
+          slug: restaurant!.slug,
+          orderConfirmationGreeting: restaurant!.orderConfirmationGreeting,
+          orderReceiptWhatsAppTemplate: restaurant!.orderReceiptWhatsAppTemplate,
         },
-        customer: { name: customer.name },
+        customer: { name: customer!.name, phone: customer!.phone },
         order,
         cardBrand,
+        pixCode: buildOrderPixCode(restaurant!, order),
       });
 
-      await this.whatsAppConnectionService.sendMessage(restaurant.id, customer.phone, message);
+      await this.whatsAppConnectionService.sendMessage(restaurant!.id, customer!.phone!, message);
     } catch (error) {
       // REQ-4 — nunca propaga: falha de envio não pode reverter/travar a criação do pedido.
       console.error(`[whatsapp] falha ao enviar recibo do pedido ${order.id}:`, error);
@@ -83,8 +85,10 @@ export class WhatsAppNotificationService implements IWhatsAppNotificationService
 
       const message = buildOrderStatusMessage({
         order,
-        customerName: customer.name,
-        customerPhone: customer.phone,
+        customerName: customer!.name,
+        customerPhone: customer!.phone,
+        restaurantSlug: restaurant!.slug,
+        pixCode: buildOrderPixCode(restaurant!, order),
         reason,
         templates: { confirmado: restaurant.orderConfirmedWhatsAppTemplate },
       });
@@ -111,6 +115,8 @@ export class WhatsAppNotificationService implements IWhatsAppNotificationService
         template: restaurant!.pixConfirmedWhatsAppTemplate,
         order,
         customerName: customer!.name,
+        customerPhone: customer!.phone,
+        restaurantSlug: restaurant!.slug,
       });
 
       await this.whatsAppConnectionService.sendMessage(restaurant!.id, customer!.phone!, message);

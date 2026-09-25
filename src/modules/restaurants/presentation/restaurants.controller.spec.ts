@@ -300,7 +300,7 @@ describe('RestaurantsController', () => {
 
     // specs/0062-confirmar-pedido-whatsapp-restaurante AC-1.
     it('PUT /restaurants/me aceita e persiste notifyRestaurantOnNewOrder/newOrderRestaurantWhatsAppTemplate', async () => {
-      const patch = { notifyRestaurantOnNewOrder: false, newOrderRestaurantWhatsAppTemplate: 'Pedido #{orderNumber} confirmado!' };
+      const patch = { notifyRestaurantOnNewOrder: false, newOrderRestaurantWhatsAppTemplate: 'Pedido #{numeroPedido} confirmado!' };
       const { repository, routes } = setup({ updateProfile: jest.fn().mockResolvedValue(buildRestaurant(patch)) });
       const json = jest.fn();
 
@@ -312,7 +312,7 @@ describe('RestaurantsController', () => {
 
     // specs/0063-notificacao-whatsapp-pedido-confirmado AC-1.
     it('PUT /restaurants/me aceita e persiste notifyCustomerOnOrderConfirmed/orderConfirmedWhatsAppTemplate', async () => {
-      const patch = { notifyCustomerOnOrderConfirmed: false, orderConfirmedWhatsAppTemplate: 'Oi {customerName}, pedido confirmado!' };
+      const patch = { notifyCustomerOnOrderConfirmed: false, orderConfirmedWhatsAppTemplate: 'Oi {nomeCliente}, pedido confirmado!' };
       const { repository, routes } = setup({ updateProfile: jest.fn().mockResolvedValue(buildRestaurant(patch)) });
       const json = jest.fn();
 
@@ -324,7 +324,19 @@ describe('RestaurantsController', () => {
 
     // specs/0064-notificacao-whatsapp-pix-confirmado AC-1.
     it('PUT /restaurants/me aceita e persiste notifyCustomerOnPixConfirmed/pixConfirmedWhatsAppTemplate', async () => {
-      const patch = { notifyCustomerOnPixConfirmed: false, pixConfirmedWhatsAppTemplate: 'Pix recebido, {customerName}!' };
+      const patch = { notifyCustomerOnPixConfirmed: false, pixConfirmedWhatsAppTemplate: 'Pix recebido, {nomeCliente}!' };
+      const { repository, routes } = setup({ updateProfile: jest.fn().mockResolvedValue(buildRestaurant(patch)) });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['PUT /restaurants/me'], { body: patch }, { json });
+
+      expect(repository.updateProfile).toHaveBeenCalledWith('1', patch);
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining(patch));
+    });
+
+    // specs/0069.
+    it('PUT /restaurants/me aceita e persiste notifyCustomerOnOrderCreated/orderReceiptWhatsAppTemplate', async () => {
+      const patch = { notifyCustomerOnOrderCreated: false, orderReceiptWhatsAppTemplate: 'Recibo {numeroPedido}' };
       const { repository, routes } = setup({ updateProfile: jest.fn().mockResolvedValue(buildRestaurant(patch)) });
       const json = jest.fn();
 

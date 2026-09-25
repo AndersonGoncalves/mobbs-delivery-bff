@@ -41,7 +41,7 @@ function buildOrder(overrides: Partial<IOrder> = {}): IOrder {
 
 function buildInput(overrides: Partial<OrderReceiptInput> = {}): OrderReceiptInput {
   return {
-    restaurant: { name: 'Prime Pizza', slug: 'primepizza' },
+    restaurant: { slug: 'primepizza' },
     customer: { name: 'Ana' },
     order: buildOrder(),
     ...overrides,
@@ -54,9 +54,9 @@ describe('buildOrderReceiptMessage', () => {
     expect(message).toContain('Obrigado por pedir com a gente, Ana!');
   });
 
-  it('AC-5: usa a saudação customizada com {customerName} substituído', () => {
+  it('AC-5: usa a saudação customizada com {nomeCliente} substituído', () => {
     const message = buildOrderReceiptMessage(
-      buildInput({ restaurant: { name: 'Prime Pizza', slug: 'primepizza', orderConfirmationGreeting: 'Fala, {customerName}, valeu pelo pedido!' } }),
+      buildInput({ restaurant: { slug: 'primepizza', orderConfirmationGreeting: 'Fala, {nomeCliente}, valeu pelo pedido!' } }),
     );
     expect(message).toContain('Fala, Ana, valeu pelo pedido!');
   });
@@ -64,7 +64,7 @@ describe('buildOrderReceiptMessage', () => {
   it('AC-1/AC-6: inclui orderNumber e o link de acompanhamento com o trackingToken correto', () => {
     const message = buildOrderReceiptMessage(buildInput());
     expect(message).toContain('#123');
-    expect(message).toContain('https://primepizza.bsdelivery.com.br/track?token=abc123');
+    expect(message).toContain('https://bsdelivery.com.br/primepizza/track?token=abc123');
   });
 
   it('AC-1: lista os itens com quantidade/preço e as seleções aninhadas', () => {
@@ -88,33 +88,34 @@ describe('buildOrderReceiptMessage', () => {
     expect(message).toContain('Retirada no local.');
   });
 
-  it('AC-7: bloco de pagamento com Pix mostra chave/tipo/beneficiário do restaurante', () => {
+  it('specs/0069: Pix mostra o copia-e-cola do pedido e NUNCA a chave Pix crua nem o beneficiário', () => {
     const message = buildOrderReceiptMessage(
-      buildInput({
-        restaurant: {
-          name: 'Prime Pizza',
-          slug: 'primepizza',
-          pixKey: '11999999999',
-          pixKeyType: 'telefone',
-          pixBeneficiaryName: 'Prime Pizza LTDA',
-        },
-        order: buildOrder({ paymentMethod: 'pix' }),
-      }),
+      buildInput({ order: buildOrder({ paymentMethod: 'pix' }), pixCode: '00020126...6304ABCD' }),
     );
-    expect(message).toContain('Chave Pix (telefone): 11999999999');
-    expect(message).toContain('Beneficiário: Prime Pizza LTDA');
+
+    expect(message).toContain('Forma: Pix');
+    expect(message).toContain('Pix copia e cola:\n00020126...6304ABCD');
+    expect(message).not.toContain('Chave Pix');
+    expect(message).not.toContain('Beneficiário');
+  });
+
+  it('specs/0069: Pix sem copia-e-cola disponível mostra só a forma de pagamento', () => {
+    const message = buildOrderReceiptMessage(buildInput({ order: buildOrder({ paymentMethod: 'pix' }) }));
+
+    expect(message).toContain('Forma: Pix');
+    expect(message).not.toContain('copia e cola');
   });
 
   it('specs/0020-pix-no-app AC-5/REQ-7: Pix não mostra mais "pagamento é feito na entrega/retirada, não pelo app" (deixou de ser verdade — processado dentro do app)', () => {
     const deliveryMessage = buildOrderReceiptMessage(
       buildInput({
-        restaurant: { name: 'Prime Pizza', slug: 'primepizza', pixKey: '11999999999', pixKeyType: 'telefone' },
+        restaurant: { slug: 'primepizza' },
         order: buildOrder({ paymentMethod: 'pix', orderType: 'delivery' }),
       }),
     );
     const pickupMessage = buildOrderReceiptMessage(
       buildInput({
-        restaurant: { name: 'Prime Pizza', slug: 'primepizza', pixKey: '11999999999', pixKeyType: 'telefone' },
+        restaurant: { slug: 'primepizza' },
         order: buildOrder({ paymentMethod: 'pix', orderType: 'pickup' }),
       }),
     );
@@ -153,5 +154,31 @@ describe('buildOrderReceiptMessage', () => {
     const message = buildOrderReceiptMessage(buildInput({ order: buildOrder({ discount: 10, total: 45 }) }));
     expect(message).toContain('Desconto: -R$ 10,00');
     expect(message).toContain('Total: R$ 45,00');
+  });
+});
+
+describe('buildOrderReceiptMessage — template editável (specs/0069)', () => {
+  it('template customizado usa os placeholders em português, incl. {saudacao}', () => {
+    const message = buildOrderReceiptMessage(
+      buildInput({ restaurant: { slug: 'primepizza', orderReceiptWhatsAppTemplate: '{saudacao}\nPedido {numeroPedido} — {total}\n{linkAcompanhamento}' } }),
+    );
+
+    expect(message).toBe(
+      'Obrigado por pedir com a gente, Ana!\nPedido 123 — R$ 55,00\nhttps://bsdelivery.com.br/primepizza/track?token=abc123',
+    );
+  });
+
+  it('linhas opcionais (Previsão/Desconto) somem quando não há valor', () => {
+    const message = buildOrderReceiptMessage(buildInput());
+
+    expect(message).not.toContain('Previsão');
+    expect(message).not.toContain('Desconto');
+    expect(message).not.toContain('{');
+  });
+
+  it('com previsão de entrega, a linha "Previsão" aparece', () => {
+    const message = buildOrderReceiptMessage(buildInput({ order: buildOrder({ estimatedDeliveryAt: '2026-09-25T20:30:00.000Z' }) }));
+
+    expect(message).toContain('Previsão:');
   });
 });

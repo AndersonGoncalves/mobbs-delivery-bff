@@ -171,6 +171,10 @@ export interface IRestaurant {
   notifyCustomerOnPixConfirmed: boolean;
   /** specs/0064 — template dessa mensagem; `undefined` usa `DEFAULT_PIX_CONFIRMED_TEMPLATE`. */
   pixConfirmedWhatsAppTemplate?: string;
+  /** specs/0069 — liga/desliga o recibo de WhatsApp enviado ao cliente quando ele faz o pedido. */
+  notifyCustomerOnOrderCreated: boolean;
+  /** specs/0069 — template do recibo; `undefined` usa `DEFAULT_ORDER_RECEIPT_TEMPLATE`. */
+  orderReceiptWhatsAppTemplate?: string;
 }
 
 export type DeliveryFeeMode = 'fixed' | 'byNeighborhood' | 'free';
