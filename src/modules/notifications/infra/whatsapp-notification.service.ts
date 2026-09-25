@@ -55,6 +55,18 @@ export class WhatsAppNotificationService implements IWhatsAppNotificationService
       });
 
       await this.whatsAppConnectionService.sendMessage(restaurant!.id, customer!.phone!, message);
+
+      // specs/0073 — copia-e-cola Pix numa mensagem só com o código (segurar a mensagem e tocar em
+      // "Copiar" copia tudo, sem ter que selecionar um trecho do recibo). Envio em sequência: a
+      // ordem no chat é recibo -> código. Falha aqui não desfaz o recibo já enviado.
+      const pixCode = buildOrderPixCode(restaurant!, order);
+      if (pixCode) {
+        try {
+          await this.whatsAppConnectionService.sendMessage(restaurant!.id, customer!.phone!, pixCode);
+        } catch (error) {
+          console.error(`[whatsapp] falha ao enviar o Pix copia e cola do pedido ${order.id}:`, error);
+        }
+      }
     } catch (error) {
       // REQ-4 — nunca propaga: falha de envio não pode reverter/travar a criação do pedido.
       console.error(`[whatsapp] falha ao enviar recibo do pedido ${order.id}:`, error);

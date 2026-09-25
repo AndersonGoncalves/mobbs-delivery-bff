@@ -18,6 +18,9 @@ export interface PaymentBlockInput {
   cardBrand?: string;
   /** copia-e-cola Pix já montado (`buildOrderPixCode`); ausente = só "Forma: Pix". */
   pixCode?: string;
+  /** `specs/0073` — o código vai numa mensagem SEPARADA (só o código, pra copiar com um toque): o
+   * bloco só avisa "na mensagem abaixo 👇" em vez de repetir o código. */
+  pixCodeSentSeparately?: boolean;
 }
 
 export function formatCurrency(value: number): string {
@@ -95,15 +98,18 @@ export function paymentMethodLabel(method: PaymentMethod): string {
 
 /** REQ-10 — bloco de pagamento varia por método; reforça que o pagamento acontece na
  * entrega/retirada, não pelo app — **exceto** pra Pix (specs/0020-pix-no-app REQ-7). `specs/0069`:
- * o Pix mostra o copia-e-cola do pedido (o mesmo da tela do app), nunca a chave crua. */
+ * o Pix mostra o copia-e-cola do pedido (o mesmo da tela do app), nunca a chave crua; `specs/0073`:
+ * no recibo o código vai numa 2ª mensagem só com ele. */
 export function buildPaymentBlock(input: PaymentBlockInput): string {
-  const { order, cardBrand, pixCode } = input;
+  const { order, cardBrand, pixCode, pixCodeSentSeparately } = input;
   const lines = ['*Pagamento*'];
 
   switch (order.paymentMethod) {
     case 'pix':
       lines.push('Forma: Pix');
-      if (pixCode) lines.push('Pix copia e cola:', pixCode);
+      if (pixCode) {
+        lines.push(pixCodeSentSeparately ? 'Pix copia e cola: na mensagem abaixo 👇' : `Pix copia e cola:\n${pixCode}`);
+      }
       break;
     case 'creditCard':
       lines.push(`Forma: Cartão de crédito${cardBrand ? ` (${cardBrand})` : ''}`);
