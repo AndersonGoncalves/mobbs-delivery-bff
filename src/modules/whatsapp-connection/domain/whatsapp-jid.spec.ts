@@ -1,4 +1,4 @@
-import { toWhatsAppJid } from './whatsapp-jid';
+import { toWhatsAppJid, toWhatsAppJidCandidates } from './whatsapp-jid';
 
 describe('toWhatsAppJid', () => {
   it('adiciona o código do país (55) a um celular sem ele', () => {
@@ -20,5 +20,25 @@ describe('toWhatsAppJid', () => {
 
   it('telefone fixo (10 dígitos) também recebe o código do país', () => {
     expect(toWhatsAppJid('1133334444')).toBe('551133334444@s.whatsapp.net');
+  });
+});
+
+describe('toWhatsAppJidCandidates (specs/0068)', () => {
+  it('celular com nono dígito: tenta com o 9 e depois sem (conta antiga registrada sem o 9)', () => {
+    expect(toWhatsAppJidCandidates('(85)98422-4877')).toEqual([
+      '5585984224877@s.whatsapp.net',
+      '558584224877@s.whatsapp.net',
+    ]);
+  });
+
+  it('celular sem o nono dígito: tenta como veio e depois com o 9', () => {
+    expect(toWhatsAppJidCandidates('558584224877')).toEqual([
+      '558584224877@s.whatsapp.net',
+      '5585984224877@s.whatsapp.net',
+    ]);
+  });
+
+  it('telefone fixo (começa com 2-5 após o DDD) tem um único candidato', () => {
+    expect(toWhatsAppJidCandidates('1133334444')).toEqual(['551133334444@s.whatsapp.net']);
   });
 });

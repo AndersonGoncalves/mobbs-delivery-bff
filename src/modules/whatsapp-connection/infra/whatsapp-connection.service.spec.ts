@@ -129,3 +129,72 @@ describe('WhatsAppConnectionService — quedas de conexão (specs/0067)', () => 
     expect(restaurantRepository.setWhatsappConnected).toHaveBeenCalledWith('r-1', false);
   });
 });
+
+describe('WhatsAppConnectionService.sendMessage — resolve o JID real (specs/0068)', () => {
+  type Handler = (update: Record<string, unknown>) => Promise<void>;
+
+  async function setupConnected(onWhatsApp: jest.Mock) {
+    let handler: Handler = async () => undefined;
+    const socket = {
+      ev: {
+        on: (event: string, h: Handler) => {
+          if (event === 'connection.update') handler = h;
+        },
+      },
+      logout: jest.fn(),
+      onWhatsApp,
+      sendMessage: jest.fn().mockResolvedValue(undefined),
+    };
+    (loadBaileys as jest.Mock).mockResolvedValue({
+      makeWASocket: jest.fn().mockReturnValue(socket),
+      makeCacheableSignalKeyStore: jest.fn(),
+      DisconnectReason: { loggedOut: 401, restartRequired: 515 },
+    });
+    const restaurantRepository: Partial<IRestaurantRepository> = {
+      setWhatsappConnected: jest.fn().mockResolvedValue(undefined),
+      findWhatsappConnectedIds: jest.fn().mockResolvedValue(['r-1']),
+    };
+    const service = new WhatsAppConnectionService(restaurantRepository as IRestaurantRepository);
+    await service.restoreConnectedSessions();
+    await handler({ connection: 'open' });
+    return { service, socket };
+  }
+
+  beforeEach(() => {
+    jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('envia pro JID que o WhatsApp confirma existir (conta antiga sem o nono dígito)', async () => {
+    const onWhatsApp = jest.fn().mockResolvedValue([
+      { jid: '5585984224877@s.whatsapp.net', exists: false },
+      { jid: '558584224877@s.whatsapp.net', exists: true },
+    ]);
+    const { service, socket } = await setupConnected(onWhatsApp);
+
+    await service.sendMessage('r-1', '85984224877', 'oi');
+
+    expect(onWhatsApp).toHaveBeenCalledWith('5585984224877@s.whatsapp.net', '558584224877@s.whatsapp.net');
+    expect(socket.sendMessage).toHaveBeenCalledWith('558584224877@s.whatsapp.net', { text: 'oi' });
+  });
+
+  it('número que não existe no WhatsApp lança (o erro aparece no log, não some em silêncio)', async () => {
+    const onWhatsApp = jest.fn().mockResolvedValue([
+      { jid: '5585984224877@s.whatsapp.net', exists: false },
+      { jid: '558584224877@s.whatsapp.net', exists: false },
+    ]);
+    const { service, socket } = await setupConnected(onWhatsApp);
+
+    await expect(service.sendMessage('r-1', '85984224877', 'oi')).rejects.toThrow('não está registrado no WhatsApp');
+    expect(socket.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('se a consulta onWhatsApp falhar, envia pro JID padrão em vez de travar', async () => {
+    const { service, socket } = await setupConnected(jest.fn().mockRejectedValue(new Error('timeout')));
+
+    await service.sendMessage('r-1', '85984224877', 'oi');
+
+    expect(socket.sendMessage).toHaveBeenCalledWith('5585984224877@s.whatsapp.net', { text: 'oi' });
+  });
+});
