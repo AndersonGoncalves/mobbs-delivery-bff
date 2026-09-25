@@ -78,8 +78,6 @@ export const restaurantProfileSchema = z
     // quando deliveryFeeMode === 'fixed', mas sempre aceito/gravado (mesmo raciocínio de
     // deliveryFeeZones, que também persiste mesmo fora do modo byNeighborhood).
     deliveryFeeCents: z.number().nonnegative(),
-    welcomeMessage: z.string(),
-    orderConfirmationGreeting: z.string(),
     // specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-2.
     shareMessage: z.string(),
     pixKey: z.string(),
