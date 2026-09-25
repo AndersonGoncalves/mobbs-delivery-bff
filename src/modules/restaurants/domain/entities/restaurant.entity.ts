@@ -166,6 +166,11 @@ export interface IRestaurant {
    * o texto fixo atual (`DEFAULT_ORDER_CONFIRMED_TEMPLATE`), retrocompatível com todo restaurante
    * já existente antes desta spec. */
   orderConfirmedWhatsAppTemplate?: string;
+  /** specs/0064-notificacao-whatsapp-pix-confirmado — liga/desliga o WhatsApp automático pro
+   * cliente quando o operador confirma o recebimento do Pix. */
+  notifyCustomerOnPixConfirmed: boolean;
+  /** specs/0064 — template dessa mensagem; `undefined` usa `DEFAULT_PIX_CONFIRMED_TEMPLATE`. */
+  pixConfirmedWhatsAppTemplate?: string;
 }
 
 export type DeliveryFeeMode = 'fixed' | 'byNeighborhood' | 'free';

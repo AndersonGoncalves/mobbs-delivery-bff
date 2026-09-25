@@ -309,6 +309,12 @@ export class OrdersController extends BaseRouter {
 
         const updatedPayment = await this.paymentRepository.markAsApproved(order.id);
 
+        // specs/0064-notificacao-whatsapp-pix-confirmado REQ-3 — fire-and-forget, mesmo padrão dos
+        // outros disparos de WhatsApp deste arquivo: nunca bloqueia nem reverte a confirmação.
+        void this.whatsAppNotificationService.sendPaymentConfirmedMessage(order).catch((error) => {
+          console.error(`[whatsapp] erro inesperado enviando confirmação de pagamento do pedido ${order.id}:`, error);
+        });
+
         res.json(200, { ...order, payment: this.toPaymentSummary(updatedPayment) });
       },
     );
