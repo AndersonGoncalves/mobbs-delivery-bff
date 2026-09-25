@@ -27,6 +27,7 @@ function buildInput(overrides: Partial<OrderStatusMessageInput> = {}): OrderStat
   return {
     order: buildOrder(),
     customerName: 'Ana',
+    restaurantSlug: 'primepizza',
     templates: {},
     ...overrides,
   };
@@ -45,7 +46,7 @@ describe('buildOrderStatusMessage', () => {
       buildInput({
         customerName: 'Ana',
         customerPhone: '11999999999',
-        templates: { confirmado: 'Oi {customerName}, pedido #{orderNumber} confirmado! Total {total}, {orderTypeLabel}.\n{items}\nTel: {customerPhone}' },
+        templates: { confirmado: 'Oi {nomeCliente}, pedido #{numeroPedido} confirmado! Total {total}, {tipoPedido}.\n{itens}\nTel: {telefoneCliente}' },
       }),
     );
 
@@ -54,23 +55,23 @@ describe('buildOrderStatusMessage', () => {
     );
   });
 
-  it('"confirmado" com pedido de retirada usa o rótulo "Retirada" em {orderTypeLabel}', () => {
+  it('"confirmado" com pedido de retirada usa o rótulo "Retirada" em {tipoPedido}', () => {
     const message = buildOrderStatusMessage(
-      buildInput({ order: buildOrder({ orderType: 'pickup' }), templates: { confirmado: '{orderTypeLabel}' } }),
+      buildInput({ order: buildOrder({ orderType: 'pickup' }), templates: { confirmado: '{tipoPedido}' } }),
     );
 
     expect(message).toBe('Retirada');
   });
 
-  it('"confirmado" sem customerPhone substitui {customerPhone} por vazio, sem quebrar', () => {
-    const message = buildOrderStatusMessage(buildInput({ templates: { confirmado: 'Tel: [{customerPhone}]' } }));
+  it('"confirmado" sem customerPhone omite a linha que só tem {telefoneCliente} (specs/0069)', () => {
+    const message = buildOrderStatusMessage(buildInput({ templates: { confirmado: 'Pedido {numeroPedido}\nTel: {telefoneCliente}' } }));
 
-    expect(message).toBe('Tel: []');
+    expect(message).toBe('Pedido 123');
   });
 
   it('DEFAULT_ORDER_CONFIRMED_TEMPLATE é o texto usado quando nenhum template é configurado', () => {
     expect(buildOrderStatusMessage(buildInput({ order: buildOrder({ orderNumber: 999 }) }))).toBe(
-      DEFAULT_ORDER_CONFIRMED_TEMPLATE.replace('{orderNumber}', '999'),
+      DEFAULT_ORDER_CONFIRMED_TEMPLATE.replace('{numeroPedido}', '999'),
     );
   });
 

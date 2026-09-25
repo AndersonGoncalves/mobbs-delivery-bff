@@ -31,7 +31,7 @@ describe('WhatsAppNotificationService', () => {
     overrides: {
       customer?: { id: string; name: string; phone?: string } | null;
       restaurant?:
-        | { id: string; name: string; slug: string; whatsappConnected: boolean; notifyCustomerOnOrderConfirmed?: boolean; orderConfirmedWhatsAppTemplate?: string; notifyCustomerOnPixConfirmed?: boolean; pixConfirmedWhatsAppTemplate?: string }
+        | { id: string; name: string; slug: string; whatsappConnected: boolean; notifyCustomerOnOrderConfirmed?: boolean; orderConfirmedWhatsAppTemplate?: string; notifyCustomerOnPixConfirmed?: boolean; pixConfirmedWhatsAppTemplate?: string; notifyCustomerOnOrderCreated?: boolean; orderReceiptWhatsAppTemplate?: string; pixKey?: string }
         | null;
     } = {},
   ) {
@@ -86,6 +86,45 @@ describe('WhatsAppNotificationService', () => {
         '11999999999',
         expect.stringContaining('#123'),
       );
+    });
+
+    it('specs/0069: notifyCustomerOnOrderCreated false não envia o recibo', async () => {
+      const { service, whatsAppConnectionService } = setup({
+        restaurant: { id: 'r-1', name: 'Prime Pizza', slug: 'primepizza', whatsappConnected: true, notifyCustomerOnOrderCreated: false },
+      });
+
+      await service.sendOrderReceipt(buildOrder());
+
+      expect(whatsAppConnectionService.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('specs/0069: usa orderReceiptWhatsAppTemplate do restaurante quando configurado', async () => {
+      const { service, whatsAppConnectionService } = setup({
+        restaurant: {
+          id: 'r-1',
+          name: 'Prime Pizza',
+          slug: 'primepizza',
+          whatsappConnected: true,
+          orderReceiptWhatsAppTemplate: 'Recibo {numeroPedido} de {nomeCliente}: {total}',
+        },
+      });
+
+      await service.sendOrderReceipt(buildOrder());
+
+      expect(whatsAppConnectionService.sendMessage).toHaveBeenCalledWith('r-1', '11999999999', 'Recibo 123 de Ana: R$ 30,00');
+    });
+
+    it('specs/0069: recibo de pedido Pix leva o copia-e-cola e não a chave Pix crua do restaurante', async () => {
+      const { service, whatsAppConnectionService } = setup({
+        restaurant: { id: 'r-1', name: 'Prime Pizza', slug: 'primepizza', whatsappConnected: true, pixKey: '81507020325' },
+      });
+
+      await service.sendOrderReceipt(buildOrder({ paymentMethod: 'pix' }));
+
+      const message = (whatsAppConnectionService.sendMessage as jest.Mock).mock.calls[0][2] as string;
+      expect(message).toContain('Pix copia e cola:\n000201');
+      expect(message).not.toContain('Chave Pix');
+      expect(message).not.toContain('Beneficiário');
     });
 
     it('AC-3: pula o envio quando o cliente não tem telefone', async () => {
@@ -190,7 +229,7 @@ describe('WhatsAppNotificationService', () => {
           name: 'Prime Pizza',
           slug: 'primepizza',
           whatsappConnected: true,
-          orderConfirmedWhatsAppTemplate: 'Oi {customerName}, pedido #{orderNumber} confirmado!',
+          orderConfirmedWhatsAppTemplate: 'Oi {nomeCliente}, pedido #{numeroPedido} confirmado!',
         },
       });
 
@@ -216,7 +255,7 @@ describe('WhatsAppNotificationService', () => {
           name: 'Prime Pizza',
           slug: 'primepizza',
           whatsappConnected: true,
-          pixConfirmedWhatsAppTemplate: 'Oi {customerName}, Pix do pedido #{orderNumber} recebido!',
+          pixConfirmedWhatsAppTemplate: 'Oi {nomeCliente}, Pix do pedido #{numeroPedido} recebido!',
         },
       });
 

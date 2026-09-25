@@ -1,5 +1,5 @@
 import { IOrderItem, IOrderItemSelection, PaymentMethod } from '../../orders/domain/entities/order.entity';
-import { PixKeyType } from '../../restaurants/domain/entities/restaurant.entity';
+import { environment } from '../../../shared/config/environment';
 
 /**
  * specs/0062-confirmar-pedido-whatsapp-restaurante — helpers de formatação de mensagem de
@@ -8,12 +8,6 @@ import { PixKeyType } from '../../restaurants/domain/entities/restaurant.entity'
  * extraídos daqui pra não duplicar a lógica de formatação de itens/pagamento nos dois builders.
  */
 
-export interface PaymentBlockRestaurantInput {
-  pixKey?: string;
-  pixKeyType?: PixKeyType;
-  pixBeneficiaryName?: string;
-}
-
 export interface PaymentBlockOrderInput {
   paymentMethod: PaymentMethod;
   orderType: 'delivery' | 'pickup';
@@ -21,27 +15,43 @@ export interface PaymentBlockOrderInput {
 
 export interface PaymentBlockInput {
   order: PaymentBlockOrderInput;
-  restaurant: PaymentBlockRestaurantInput;
   cardBrand?: string;
+  /** copia-e-cola Pix já montado (`buildOrderPixCode`); ausente = só "Forma: Pix". */
+  pixCode?: string;
 }
 
 export function formatCurrency(value: number): string {
   return `R$ ${value.toFixed(2).replace('.', ',')}`;
 }
 
-/** specs/0063-notificacao-whatsapp-pedido-confirmado — substituição genérica de placeholder
- * `{chave}` por valor, usada pelos templates editáveis na retaguarda (diferente de
- * `new-order-restaurant-message-builder.ts`, que faz a própria substituição encadeada porque
- * nasceu antes deste helper — não vale a pena migrar só por consistência). */
+/**
+ * Substitui `{chave}` por valor nos templates editáveis na retaguarda (chaves em português, ver
+ * `message-placeholders.ts`). Chave desconhecida fica literal. **Linha cujos placeholders
+ * resultaram todos vazios é omitida** (ex.: "Previsão: {previsaoEntrega}" sem previsão, ou
+ * "Desconto: {desconto}" sem desconto) — o template pode ter linhas opcionais sem deixar rótulo
+ * solto na mensagem.
+ */
 export function renderTemplate(template: string, values: Record<string, string>): string {
-  return Object.entries(values).reduce((text, [key, value]) => text.replaceAll(`{${key}}`, value), template);
+  const lines = template.split('\n').flatMap((line) => {
+    const keys = [...line.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).filter((key) => key in values);
+    if (keys.length > 0 && keys.every((key) => values[key] === '')) return [];
+    // Passada única: um valor que contenha "{...}" (ex.: nome do cliente) nunca é re-substituído.
+    return [line.replace(/\{(\w+)\}/g, (match, key: string) => (key in values ? values[key] : match))];
+  });
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-/** REQ-9 — mesmo domínio do canal web resolvido em `specs/0009-resolucao-restaurante`
- * (`<slug>.bsdelivery.com.br`), página pública por token (`specs/0006-acompanhamento-pedido`,
- * `/track?token=`), sem exigir login. */
-export function buildTrackingLink(slug: string, trackingToken: string): string {
-  return `https://${slug}.bsdelivery.com.br/track?token=${trackingToken}`;
+/** Template salvo em branco (operador apagou o campo e salvou) conta como "não configurado" —
+ * usa o padrão em vez de mandar mensagem vazia pro cliente. */
+export function resolveTemplate(template: string | undefined, fallback: string): string {
+  return template && template.trim() !== '' ? template : fallback;
+}
+
+/** Link público de acompanhamento (`specs/0006`): `<origem>/<slug>/track?token=` — o app do
+ * cliente é servido por slug em path (`bsdelivery.com.br/<slug>`), não por subdomínio. A origem
+ * vem de `PUBLIC_APP_BASE_URL` (`specs/0069`). */
+export function buildTrackingLink(slug: string, trackingToken: string, baseUrl: string = environment.publicApp.baseUrl): string {
+  return `${baseUrl.replace(/\/+$/, '')}/${slug}/track?token=${trackingToken}`;
 }
 
 export function renderSelections(selections: IOrderItemSelection[] | undefined, indent: string): string {
@@ -83,41 +93,17 @@ export function paymentMethodLabel(method: PaymentMethod): string {
   }
 }
 
-function pixKeyTypeLabel(type: PixKeyType | undefined): string {
-  switch (type) {
-    case 'telefone':
-      return 'telefone';
-    case 'cpf':
-      return 'CPF';
-    case 'cnpj':
-      return 'CNPJ';
-    case 'email':
-      return 'e-mail';
-    case 'aleatoria':
-      return 'aleatória';
-    default:
-      return 'chave';
-  }
-}
-
 /** REQ-10 — bloco de pagamento varia por método; reforça que o pagamento acontece na
- * entrega/retirada, não pelo app (`docs/architecture/data-model.md`, nota em `Payment`) — **exceto**
- * pra Pix (specs/0020-pix-no-app REQ-7): desde que o Pix passou a ser processado dentro do app
- * (QR/copia-e-cola na tela de acompanhamento, confirmação manual do operador), essa frase deixou
- * de ser verdade só pra esse método; as outras formas continuam mostrando normalmente. */
+ * entrega/retirada, não pelo app — **exceto** pra Pix (specs/0020-pix-no-app REQ-7). `specs/0069`:
+ * o Pix mostra o copia-e-cola do pedido (o mesmo da tela do app), nunca a chave crua. */
 export function buildPaymentBlock(input: PaymentBlockInput): string {
-  const { order, restaurant, cardBrand } = input;
+  const { order, cardBrand, pixCode } = input;
   const lines = ['*Pagamento*'];
 
   switch (order.paymentMethod) {
     case 'pix':
       lines.push('Forma: Pix');
-      if (restaurant.pixKey) {
-        lines.push(`Chave Pix (${pixKeyTypeLabel(restaurant.pixKeyType)}): ${restaurant.pixKey}`);
-      }
-      if (restaurant.pixBeneficiaryName) {
-        lines.push(`Beneficiário: ${restaurant.pixBeneficiaryName}`);
-      }
+      if (pixCode) lines.push('Pix copia e cola:', pixCode);
       break;
     case 'creditCard':
       lines.push(`Forma: Cartão de crédito${cardBrand ? ` (${cardBrand})` : ''}`);

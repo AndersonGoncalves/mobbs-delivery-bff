@@ -18,7 +18,7 @@ import { IRestaurantRepository } from '../../restaurants/domain/repositories/res
 import { DeductStockForDeliveredOrderUseCase } from '../domain/deduct-stock-for-delivered-order.use-case';
 import { IOrder, IOrderItem, IPayment } from '../domain/entities/order.entity';
 import { isOrderCancellable, isValidOrderStatusTransition } from '../domain/order-status-transitions';
-import { buildPixBrCode } from '../domain/pix-br-code-builder';
+import { buildOrderPixCode } from '../domain/build-order-pix-code';
 import { resolveOrderItemLinkedProducts } from '../domain/resolve-order-item-linked-products';
 import { IOrderRepository } from '../domain/repositories/order.repository.interface';
 import { IPaymentRepository } from '../domain/repositories/payment.repository.interface';
@@ -163,7 +163,9 @@ export class OrdersController extends BaseRouter {
         template: restaurant.newOrderRestaurantWhatsAppTemplate ?? DEFAULT_NEW_ORDER_RESTAURANT_TEMPLATE,
         order,
         customerName: customer?.name ?? 'Cliente',
+        customerPhone: customer?.phone,
         restaurantSlug: restaurant.slug,
+        pixCode: buildOrderPixCode(restaurant, order),
       });
 
       res.json(200, { text, restaurantPhone: restaurant.phone });
@@ -432,15 +434,7 @@ export class OrdersController extends BaseRouter {
     let pixCode: string | undefined;
     if (order.paymentMethod === 'pix' && payment.status === 'pendente') {
       const restaurant = await this.restaurantRepository.findById(order.restaurantId);
-      if (restaurant?.pixKey) {
-        pixCode = buildPixBrCode({
-          pixKey: restaurant.pixKey,
-          merchantName: restaurant.pixBeneficiaryName || restaurant.name,
-          merchantCity: restaurant.address?.city ?? 'BRASIL',
-          amount: order.total,
-          txId: order.id,
-        });
-      }
+      if (restaurant) pixCode = buildOrderPixCode(restaurant, order);
     }
 
     return { ...order, payment: this.toPaymentSummary(payment), pixCode };

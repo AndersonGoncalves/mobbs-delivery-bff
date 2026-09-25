@@ -122,6 +122,9 @@ const restaurantSchema = new Schema(
     // specs/0064-notificacao-whatsapp-pix-confirmado.
     notifyCustomerOnPixConfirmed: { type: Boolean, required: true, default: true },
     pixConfirmedWhatsAppTemplate: { type: String },
+    // specs/0069.
+    notifyCustomerOnOrderCreated: { type: Boolean, required: true, default: true },
+    orderReceiptWhatsAppTemplate: { type: String },
   },
   { _id: false, timestamps: true },
 );

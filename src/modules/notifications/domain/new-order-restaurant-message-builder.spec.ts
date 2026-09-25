@@ -49,7 +49,7 @@ describe('buildNewOrderRestaurantMessage', () => {
     expect(message).toContain('Taxa de entrega: R$ 5,00');
     expect(message).toContain('Total: R$ 63,00');
     expect(message).toContain('Pagamento: Pix');
-    expect(message).toContain('Acompanhar: https://primepizza.bsdelivery.com.br/track?token=abc123');
+    expect(message).toContain('Acompanhar: https://bsdelivery.com.br/primepizza/track?token=abc123');
     expect(message).not.toContain('{');
   });
 
@@ -67,7 +67,7 @@ describe('buildNewOrderRestaurantMessage', () => {
   });
 
   it('cada método de pagamento vira o rótulo certo, sem reafirmar a chave Pix do restaurante', () => {
-    const template = 'Pagamento: {paymentMethod}';
+    const template = 'Pagamento: {formaPagamento}';
 
     expect(buildNewOrderRestaurantMessage(buildInput({ template, order: buildOrder({ paymentMethod: 'pix' }) }))).toBe('Pagamento: Pix');
     expect(buildNewOrderRestaurantMessage(buildInput({ template, order: buildOrder({ paymentMethod: 'creditCard' }) }))).toBe('Pagamento: Cartão de crédito');
@@ -77,14 +77,16 @@ describe('buildNewOrderRestaurantMessage', () => {
   });
 
   it('template customizado (restaurante editou na retaguarda) também tem os placeholders substituídos', () => {
-    const message = buildNewOrderRestaurantMessage(buildInput({ template: 'Oi! Pedido #{orderNumber} de {customerName}, total {total}.' }));
+    const message = buildNewOrderRestaurantMessage(buildInput({ template: 'Oi! Pedido #{numeroPedido} de {nomeCliente}, total {total}.' }));
 
     expect(message).toBe('Oi! Pedido #123 de Ana, total R$ 63,00.');
   });
 
-  it('{estimatedDelivery} vira "não informada" quando o pedido não tem previsão', () => {
-    const message = buildNewOrderRestaurantMessage(buildInput({ template: 'Previsão: {estimatedDelivery}', order: buildOrder({ estimatedDeliveryAt: undefined }) }));
+  it('{previsaoEntrega} sem previsão omite a linha inteira (specs/0069)', () => {
+    const message = buildNewOrderRestaurantMessage(
+      buildInput({ template: 'Pedido {numeroPedido}\nPrevisão: {previsaoEntrega}', order: buildOrder({ estimatedDeliveryAt: undefined }) }),
+    );
 
-    expect(message).toBe('Previsão: não informada');
+    expect(message).toBe('Pedido 123');
   });
 });

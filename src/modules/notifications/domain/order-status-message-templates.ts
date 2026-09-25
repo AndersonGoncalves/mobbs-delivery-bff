@@ -1,19 +1,17 @@
 import { IOrder } from '../../orders/domain/entities/order.entity';
-import { formatCurrency, renderItem, renderTemplate } from './whatsapp-message-helpers';
-
-const ORDER_TYPE_LABELS: Record<IOrder['orderType'], string> = {
-  delivery: 'Entrega',
-  pickup: 'Retirada',
-};
+import { buildMessagePlaceholders } from './message-placeholders';
+import { renderTemplate, resolveTemplate } from './whatsapp-message-helpers';
 
 // specs/0063-notificacao-whatsapp-pedido-confirmado REQ-2/AC-4 — texto fixo já usado hoje, agora
 // como fallback quando o restaurante não configurou um template próprio (retrocompatibilidade).
-export const DEFAULT_ORDER_CONFIRMED_TEMPLATE = 'Seu pedido #{orderNumber} foi confirmado pelo restaurante!';
+export const DEFAULT_ORDER_CONFIRMED_TEMPLATE = 'Seu pedido #{numeroPedido} foi confirmado pelo restaurante!';
 
 export interface OrderStatusMessageInput {
   order: IOrder;
   customerName: string;
   customerPhone?: string;
+  restaurantSlug: string;
+  pixCode?: string;
   reason?: string;
   /**
    * specs/0063-notificacao-whatsapp-pedido-confirmado — só `confirmado` é parametrizável nesta
@@ -31,19 +29,14 @@ export interface OrderStatusMessageInput {
  * escopo de `specs/0063`/`0065`, que tratam só `confirmado`/`saiuParaEntrega`).
  */
 export function buildOrderStatusMessage(input: OrderStatusMessageInput): string | null {
-  const { order, customerName, customerPhone, reason, templates } = input;
+  const { order, customerName, customerPhone, restaurantSlug, pixCode, reason, templates } = input;
 
   switch (order.status) {
     case 'confirmado':
-      return renderTemplate(templates.confirmado ?? DEFAULT_ORDER_CONFIRMED_TEMPLATE, {
-        customerName,
-        orderNumber: String(order.orderNumber),
-        customerPhone: customerPhone ?? '',
-        items: order.items.map(renderItem).join('\n'),
-        subtotal: formatCurrency(order.subtotal),
-        total: formatCurrency(order.total),
-        orderTypeLabel: ORDER_TYPE_LABELS[order.orderType],
-      });
+      return renderTemplate(
+        resolveTemplate(templates.confirmado, DEFAULT_ORDER_CONFIRMED_TEMPLATE),
+        buildMessagePlaceholders({ order, customerName, customerPhone, restaurantSlug, pixCode }),
+      );
     case 'emPreparo':
       return `Seu pedido #${order.orderNumber} está sendo preparado.`;
     case 'saiuParaEntrega':
