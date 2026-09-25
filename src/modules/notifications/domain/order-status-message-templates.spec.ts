@@ -1,5 +1,5 @@
 import { IOrder } from '../../orders/domain/entities/order.entity';
-import { buildOrderStatusMessage, DEFAULT_ORDER_CONFIRMED_TEMPLATE, OrderStatusMessageInput } from './order-status-message-templates';
+import { buildOrderStatusMessage, DEFAULT_ORDER_CONFIRMED_TEMPLATE, DEFAULT_OUT_FOR_DELIVERY_TEMPLATE, OrderStatusMessageInput } from './order-status-message-templates';
 
 function buildOrder(overrides: Partial<IOrder> = {}): IOrder {
   return {
@@ -75,7 +75,32 @@ describe('buildOrderStatusMessage', () => {
     );
   });
 
-  it('texto de "saiu para entrega"', () => {
+  // specs/0065 AC-4 — sem template configurado, o texto é idêntico ao fixo de antes.
+  it('specs/0065 AC-4: sem template configurado, "saiu para entrega" usa o texto fixo atual', () => {
+    expect(buildOrderStatusMessage(buildInput({ order: buildOrder({ status: 'saiuParaEntrega' }) }))).toBe('Seu pedido #123 saiu para entrega!');
+    expect(DEFAULT_OUT_FOR_DELIVERY_TEMPLATE).toBe('Seu pedido #{numeroPedido} saiu para entrega!');
+  });
+
+  // specs/0065 AC-2.
+  it('specs/0065 AC-2: "saiu para entrega" com template configurado substitui os placeholders', () => {
+    const message = buildOrderStatusMessage(
+      buildInput({
+        order: buildOrder({ status: 'saiuParaEntrega' }),
+        templates: { saiuParaEntrega: 'Oi {nomeCliente}! Pedido #{numeroPedido} a caminho: {linkAcompanhamento}' },
+      }),
+    );
+
+    expect(message).toBe('Oi Ana! Pedido #123 a caminho: https://bsdelivery.com.br/primepizza/track?token=abc123');
+  });
+
+  it('specs/0065: template de "saiu para entrega" não interfere no de "confirmado" (e vice-versa)', () => {
+    const templates = { confirmado: 'CONFIRMADO {numeroPedido}', saiuParaEntrega: 'SAIU {numeroPedido}' };
+
+    expect(buildOrderStatusMessage(buildInput({ templates }))).toBe('CONFIRMADO 123');
+    expect(buildOrderStatusMessage(buildInput({ order: buildOrder({ status: 'saiuParaEntrega' }), templates }))).toBe('SAIU 123');
+  });
+
+  it('texto de "saiu para entrega" antigo segue valendo (compat.)', () => {
     expect(buildOrderStatusMessage(buildInput({ order: buildOrder({ status: 'saiuParaEntrega' }) }))).toBe('Seu pedido #123 saiu para entrega!');
   });
 

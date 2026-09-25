@@ -122,6 +122,9 @@ export const restaurantProfileSchema = z
     // specs/0069.
     notifyCustomerOnOrderCreated: z.boolean(),
     orderReceiptWhatsAppTemplate: z.string(),
+    // specs/0065.
+    notifyCustomerOnOrderOutForDelivery: z.boolean(),
+    orderOutForDeliveryWhatsAppTemplate: z.string(),
   })
   .partial();
 

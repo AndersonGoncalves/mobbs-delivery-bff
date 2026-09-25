@@ -125,6 +125,9 @@ const restaurantSchema = new Schema(
     // specs/0069.
     notifyCustomerOnOrderCreated: { type: Boolean, required: true, default: true },
     orderReceiptWhatsAppTemplate: { type: String },
+    // specs/0065.
+    notifyCustomerOnOrderOutForDelivery: { type: Boolean, required: true, default: true },
+    orderOutForDeliveryWhatsAppTemplate: { type: String },
   },
   { _id: false, timestamps: true },
 );
