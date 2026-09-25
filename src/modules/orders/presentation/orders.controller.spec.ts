@@ -219,6 +219,7 @@ describe('OrdersController', () => {
     const whatsAppNotificationService: IWhatsAppNotificationService = {
       sendOrderReceipt: jest.fn().mockResolvedValue(undefined),
       sendOrderStatusUpdate: jest.fn().mockResolvedValue(undefined),
+      sendPaymentConfirmedMessage: jest.fn().mockResolvedValue(undefined),
     };
     const cashRegisterService: ICashRegisterService = {
       addAutomaticEntry: jest.fn().mockResolvedValue(undefined),
@@ -885,6 +886,37 @@ describe('OrdersController', () => {
       expect(paymentRepository.markAsApproved).toHaveBeenCalledWith('o-1');
       const [, payload] = json.mock.calls[0] as [number, Record<string, unknown>];
       expect(payload).toMatchObject({ payment: { status: 'aprovado' } });
+    });
+
+    it('specs/0064 AC-2: PATCH .../payment/confirm dispara a mensagem de Pix confirmado por WhatsApp', async () => {
+      const { whatsAppNotificationService, routes } = setup({
+        paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ method: 'pix', status: 'pendente' })) },
+      });
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/payment/confirm'],
+        { restaurantId: 'r-1', params: { id: 'o-1' } },
+        { json: jest.fn() },
+      );
+
+      expect(whatsAppNotificationService.sendPaymentConfirmedMessage).toHaveBeenCalledWith(expect.objectContaining({ id: 'o-1' }));
+    });
+
+    it('specs/0064 AC-3: falha no envio do WhatsApp não afeta a confirmação (200 mesmo assim)', async () => {
+      jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      const { whatsAppNotificationService, routes } = setup({
+        paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ method: 'pix', status: 'pendente' })) },
+      });
+      (whatsAppNotificationService.sendPaymentConfirmedMessage as jest.Mock).mockRejectedValue(new Error('sem conexão'));
+      const json = jest.fn();
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/payment/confirm'],
+        { restaurantId: 'r-1', params: { id: 'o-1' } },
+        { json },
+      );
+
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ payment: expect.objectContaining({ status: 'aprovado' }) }));
     });
 
     it('T005: PATCH .../payment/confirm rejeita (409) quando o pagamento já foi confirmado', async () => {

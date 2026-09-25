@@ -12,4 +12,8 @@ export interface IWhatsAppNotificationService {
 
   /** REQ-2, REQ-5 — aviso simples numa mudança de status subsequente. */
   sendOrderStatusUpdate(order: IOrder, reason?: string): Promise<void>;
+
+  /** specs/0064 — ao confirmar manualmente um pagamento Pix. Não é mudança de `OrderStatus` (só
+   * `Payment.status`), por isso separado de `sendOrderStatusUpdate`. */
+  sendPaymentConfirmedMessage(order: IOrder): Promise<void>;
 }

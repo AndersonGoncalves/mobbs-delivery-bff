@@ -31,7 +31,7 @@ describe('WhatsAppNotificationService', () => {
     overrides: {
       customer?: { id: string; name: string; phone?: string } | null;
       restaurant?:
-        | { id: string; name: string; slug: string; whatsappConnected: boolean; notifyCustomerOnOrderConfirmed?: boolean; orderConfirmedWhatsAppTemplate?: string }
+        | { id: string; name: string; slug: string; whatsappConnected: boolean; notifyCustomerOnOrderConfirmed?: boolean; orderConfirmedWhatsAppTemplate?: string; notifyCustomerOnPixConfirmed?: boolean; pixConfirmedWhatsAppTemplate?: string }
         | null;
     } = {},
   ) {
@@ -197,6 +197,59 @@ describe('WhatsAppNotificationService', () => {
       await service.sendOrderStatusUpdate(buildOrder({ status: 'confirmado' }));
 
       expect(whatsAppConnectionService.sendMessage).toHaveBeenCalledWith('r-1', '11999999999', 'Oi Ana, pedido #123 confirmado!');
+    });
+  });
+
+  describe('sendPaymentConfirmedMessage (specs/0064)', () => {
+    it('AC-4: sem template configurado envia exatamente "Pagamento confirmado!"', async () => {
+      const { service, whatsAppConnectionService } = setup();
+
+      await service.sendPaymentConfirmedMessage(buildOrder());
+
+      expect(whatsAppConnectionService.sendMessage).toHaveBeenCalledWith('r-1', '11999999999', 'Pagamento confirmado!');
+    });
+
+    it('AC-2: usa pixConfirmedWhatsAppTemplate do restaurante, com placeholders substituídos', async () => {
+      const { service, whatsAppConnectionService } = setup({
+        restaurant: {
+          id: 'r-1',
+          name: 'Prime Pizza',
+          slug: 'primepizza',
+          whatsappConnected: true,
+          pixConfirmedWhatsAppTemplate: 'Oi {customerName}, Pix do pedido #{orderNumber} recebido!',
+        },
+      });
+
+      await service.sendPaymentConfirmedMessage(buildOrder());
+
+      expect(whatsAppConnectionService.sendMessage).toHaveBeenCalledWith('r-1', '11999999999', 'Oi Ana, Pix do pedido #123 recebido!');
+    });
+
+    it('AC-3: notifyCustomerOnPixConfirmed false não envia nada', async () => {
+      const { service, whatsAppConnectionService } = setup({
+        restaurant: { id: 'r-1', name: 'Prime Pizza', slug: 'primepizza', whatsappConnected: true, notifyCustomerOnPixConfirmed: false },
+      });
+
+      await service.sendPaymentConfirmedMessage(buildOrder());
+
+      expect(whatsAppConnectionService.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('cliente sem telefone: não envia (e loga o motivo)', async () => {
+      jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const { service, whatsAppConnectionService } = setup({ customer: { id: 'c-1', name: 'Ana', phone: undefined } });
+
+      await service.sendPaymentConfirmedMessage(buildOrder());
+
+      expect(whatsAppConnectionService.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('uma falha no envio não propaga (nunca lança)', async () => {
+      jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      const { service, whatsAppConnectionService } = setup();
+      (whatsAppConnectionService.sendMessage as jest.Mock).mockRejectedValue(new Error('offline'));
+
+      await expect(service.sendPaymentConfirmedMessage(buildOrder())).resolves.toBeUndefined();
     });
   });
 });

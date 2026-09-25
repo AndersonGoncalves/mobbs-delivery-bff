@@ -3,6 +3,7 @@ import { IOrder } from '../../orders/domain/entities/order.entity';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IWhatsAppConnectionService } from '../../whatsapp-connection/domain/services/i-whatsapp-connection.service';
 import { buildOrderReceiptMessage } from '../domain/order-receipt-message-builder';
+import { buildPaymentConfirmedMessage } from '../domain/payment-confirmed-message-builder';
 import { buildOrderStatusMessage } from '../domain/order-status-message-templates';
 import { IWhatsAppNotificationService } from '../domain/services/i-whatsapp-notification.service';
 
@@ -92,6 +93,29 @@ export class WhatsAppNotificationService implements IWhatsAppNotificationService
       await this.whatsAppConnectionService.sendMessage(restaurant.id, customer.phone, message);
     } catch (error) {
       console.error(`[whatsapp] falha ao enviar atualização de status do pedido ${order.id}:`, error);
+    }
+  }
+
+  async sendPaymentConfirmedMessage(order: IOrder): Promise<void> {
+    try {
+      const [customer, restaurant] = await Promise.all([
+        this.customerRepository.findById(order.customerId),
+        this.restaurantRepository.findById(order.restaurantId),
+      ]);
+
+      if (this.skipReason(order, customer, restaurant)) return;
+      // `=== false` (não `!`): documento antigo sem o campo conta como ligado (mesmo default do schema).
+      if (restaurant!.notifyCustomerOnPixConfirmed === false) return;
+
+      const message = buildPaymentConfirmedMessage({
+        template: restaurant!.pixConfirmedWhatsAppTemplate,
+        order,
+        customerName: customer!.name,
+      });
+
+      await this.whatsAppConnectionService.sendMessage(restaurant!.id, customer!.phone!, message);
+    } catch (error) {
+      console.error(`[whatsapp] falha ao enviar confirmação de pagamento do pedido ${order.id}:`, error);
     }
   }
 }
