@@ -82,13 +82,15 @@ describe('buildOrderReceiptMessage', () => {
     expect(message).toContain('Retirada no local.');
   });
 
-  it('specs/0069: Pix mostra o copia-e-cola do pedido e NUNCA a chave Pix crua nem o beneficiário', () => {
+  it('specs/0069/0073: Pix avisa que o copia-e-cola vem na mensagem abaixo e NUNCA mostra a chave Pix crua nem o beneficiário', () => {
     const message = buildOrderReceiptMessage(
       buildInput({ order: buildOrder({ paymentMethod: 'pix' }), pixCode: '00020126...6304ABCD' }),
     );
 
     expect(message).toContain('Forma: Pix');
-    expect(message).toContain('Pix copia e cola:\n00020126...6304ABCD');
+    // specs/0073 — o código vai numa 2ª mensagem; o recibo só avisa.
+    expect(message).toContain('Pix copia e cola: na mensagem abaixo 👇');
+    expect(message).not.toContain('00020126...6304ABCD');
     expect(message).not.toContain('Chave Pix');
     expect(message).not.toContain('Beneficiário');
   });

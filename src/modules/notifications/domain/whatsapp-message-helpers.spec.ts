@@ -44,6 +44,13 @@ describe('buildPaymentBlock (specs/0069)', () => {
 
     expect(block).toBe('*Pagamento*\nForma: Pix\nPix copia e cola:\nCODIGO-PIX');
   });
+
+  it('specs/0073: com o código em mensagem separada, o bloco só avisa "na mensagem abaixo" e não repete o código', () => {
+    const block = buildPaymentBlock({ order: { paymentMethod: 'pix', orderType: 'delivery' }, pixCode: 'CODIGO-PIX', pixCodeSentSeparately: true });
+
+    expect(block).toBe('*Pagamento*\nForma: Pix\nPix copia e cola: na mensagem abaixo 👇');
+    expect(block).not.toContain('CODIGO-PIX');
+  });
 });
 
 describe('resolveTemplate (specs/0069)', () => {

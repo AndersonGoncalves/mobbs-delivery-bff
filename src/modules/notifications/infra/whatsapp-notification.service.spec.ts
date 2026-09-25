@@ -122,9 +122,74 @@ describe('WhatsAppNotificationService', () => {
       await service.sendOrderReceipt(buildOrder({ paymentMethod: 'pix' }));
 
       const message = (whatsAppConnectionService.sendMessage as jest.Mock).mock.calls[0][2] as string;
-      expect(message).toContain('Pix copia e cola:\n000201');
+      expect(message).toContain('Pix copia e cola: na mensagem abaixo 👇');
       expect(message).not.toContain('Chave Pix');
       expect(message).not.toContain('Beneficiário');
+      expect(message).not.toContain('000201');
+    });
+
+    // specs/0073 — segundo envio só com o código.
+    it('specs/0073 AC-1: pedido Pix manda uma 2ª mensagem contendo APENAS o copia-e-cola, depois do recibo', async () => {
+      const { service, whatsAppConnectionService } = setup({
+        restaurant: { id: 'r-1', name: 'Prime Pizza', slug: 'primepizza', whatsappConnected: true, pixKey: '81507020325' },
+      });
+
+      await service.sendOrderReceipt(buildOrder({ paymentMethod: 'pix' }));
+
+      const calls = (whatsAppConnectionService.sendMessage as jest.Mock).mock.calls as [string, string, string][];
+      expect(calls).toHaveLength(2);
+      expect(calls[0][2]).toContain('*Pedido #123*');
+      expect(calls[1]).toEqual(['r-1', '11999999999', expect.stringMatching(/^000201.*br\.gov\.bcb\.pix.*[0-9A-F]{4}$/)]);
+      // Só o código: uma linha, sem texto em volta (o BR Code em si pode ter espaços, ex.: nome do beneficiário).
+      expect(calls[1][2]).not.toContain('\n');
+      expect(calls[1][2]).not.toContain('Pix');
+    });
+
+    it('specs/0073 AC-2: pedido que não é Pix manda só o recibo', async () => {
+      const { service, whatsAppConnectionService } = setup({
+        restaurant: { id: 'r-1', name: 'Prime Pizza', slug: 'primepizza', whatsappConnected: true, pixKey: '81507020325' },
+      });
+
+      await service.sendOrderReceipt(buildOrder({ paymentMethod: 'cash' }));
+
+      expect(whatsAppConnectionService.sendMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('specs/0073 AC-2: Pix sem chave cadastrada no restaurante manda só o recibo', async () => {
+      const { service, whatsAppConnectionService } = setup();
+
+      await service.sendOrderReceipt(buildOrder({ paymentMethod: 'pix' }));
+
+      expect(whatsAppConnectionService.sendMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('specs/0073 AC-3: falha na 2ª mensagem não propaga e não desfaz o recibo já enviado', async () => {
+      jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      const { service, whatsAppConnectionService } = setup({
+        restaurant: { id: 'r-1', name: 'Prime Pizza', slug: 'primepizza', whatsappConnected: true, pixKey: '81507020325' },
+      });
+      (whatsAppConnectionService.sendMessage as jest.Mock).mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('offline'));
+
+      await expect(service.sendOrderReceipt(buildOrder({ paymentMethod: 'pix' }))).resolves.toBeUndefined();
+
+      expect(whatsAppConnectionService.sendMessage).toHaveBeenCalledTimes(2);
+    });
+
+    it('specs/0073: recibo desligado não manda nem o recibo nem o código', async () => {
+      const { service, whatsAppConnectionService } = setup({
+        restaurant: {
+          id: 'r-1',
+          name: 'Prime Pizza',
+          slug: 'primepizza',
+          whatsappConnected: true,
+          pixKey: '81507020325',
+          notifyCustomerOnOrderCreated: false,
+        },
+      });
+
+      await service.sendOrderReceipt(buildOrder({ paymentMethod: 'pix' }));
+
+      expect(whatsAppConnectionService.sendMessage).not.toHaveBeenCalled();
     });
 
     it('AC-3: pula o envio quando o cliente não tem telefone', async () => {

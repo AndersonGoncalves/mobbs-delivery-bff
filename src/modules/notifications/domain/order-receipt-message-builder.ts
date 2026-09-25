@@ -66,6 +66,8 @@ export function buildOrderReceiptMessage(input: OrderReceiptInput): string {
     restaurantSlug: restaurant.slug,
     pixCode,
     cardBrand,
+    // specs/0073 — `WhatsAppNotificationService.sendOrderReceipt` manda o código numa 2ª mensagem.
+    pixCodeSentSeparately: true,
   });
 
   return renderTemplate(resolveTemplate(restaurant.orderReceiptWhatsAppTemplate, DEFAULT_ORDER_RECEIPT_TEMPLATE), values);
