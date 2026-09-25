@@ -13,6 +13,8 @@ interface SessionEntry {
   socket: WASocket;
   qr: string | null;
   connected: boolean;
+  /** `true` depois do primeiro `open` — distingue queda de uma sessão viva de um QR abandonado. */
+  everConnected: boolean;
 }
 
 const logger = pino({ level: 'silent' });
@@ -98,7 +100,7 @@ export class WhatsAppConnectionService implements IWhatsAppConnectionService {
       logger,
     });
 
-    const entry: SessionEntry = { socket, qr: null, connected: false };
+    const entry: SessionEntry = { socket, qr: null, connected: false, everConnected: false };
     this.sessions.set(restaurantId, entry);
 
     socket.ev.on('creds.update', saveCreds);
@@ -110,19 +112,41 @@ export class WhatsAppConnectionService implements IWhatsAppConnectionService {
 
       if (update.connection === 'open') {
         entry.connected = true;
+        entry.everConnected = true;
         entry.qr = null;
         await this.restaurantRepository.setWhatsappConnected(restaurantId, true);
       }
 
       if (update.connection === 'close') {
         entry.connected = false;
-        this.sessions.delete(restaurantId);
-        await this.restaurantRepository.setWhatsappConnected(restaurantId, false);
+        // `disconnect()` já tirou a entrada do mapa antes do `logout()` — nesse caso não há o que
+        // reconectar. Só remove a própria entrada: um reconector pode ter posto um socket novo.
+        const wasCurrent = this.sessions.get(restaurantId) === entry;
+        if (wasCurrent) this.sessions.delete(restaurantId);
 
         const statusCode = (update.lastDisconnect?.error as { output?: { statusCode?: number } } | undefined)?.output
           ?.statusCode;
         if (statusCode === DisconnectReason.loggedOut) {
+          await this.restaurantRepository.setWhatsappConnected(restaurantId, false);
           await clearWhatsAppSession(restaurantId);
+          return;
+        }
+        if (!wasCurrent) return;
+
+        // specs/0067 — depois de ler o QR o WhatsApp encerra o socket com `restartRequired` (515) e
+        // exige abrir um novo com as credenciais recém-salvas; sem isto o pareamento nunca
+        // completava. Uma queda de sessão que já esteve conectada também reconecta (rede/timeout);
+        // um QR que expirou sem ninguém ler NÃO reconecta (o operador clica de novo).
+        if (statusCode !== DisconnectReason.restartRequired && !entry.everConnected) {
+          await this.restaurantRepository.setWhatsappConnected(restaurantId, false);
+          return;
+        }
+        console.log(`[whatsapp] conexão do restaurante ${restaurantId} fechou (código ${statusCode}); reconectando`);
+        try {
+          await this.connect(restaurantId);
+        } catch (error) {
+          await this.restaurantRepository.setWhatsappConnected(restaurantId, false);
+          console.error(`[whatsapp] falha ao reconectar o restaurante ${restaurantId}:`, error);
         }
       }
     });
