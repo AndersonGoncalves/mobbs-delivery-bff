@@ -202,7 +202,7 @@ export class OrdersController extends BaseRouter {
     // quais estão com Pix pendente de confirmação (`ActiveOrdersPage`, mobbs-delivery-web).
     application.get('/restaurants/me/orders', ...operatorAuthenticated, async (req: Request, res: Response) => {
       const orders = await this.orderRepository.findActiveByRestaurant(req.restaurantId!);
-      res.json(200, await this.attachPaymentSummaries(orders));
+      res.json(200, await this.attachCustomers(await this.attachPaymentSummaries(orders)));
     });
 
     // REQ-2/REQ-5: só avança um passo por vez (`isValidOrderStatusTransition`) — fonte de
@@ -448,6 +448,19 @@ export class OrdersController extends BaseRouter {
     return orders.map((order) => {
       const payment = paymentByOrderId.get(order.id);
       return payment ? { ...order, payment: this.toPaymentSummary(payment) } : order;
+    });
+  }
+
+  /** specs/0066 REQ-4 — nome/telefone do cliente pra retaguarda mostrar nos pedidos em andamento
+   * (`IOrder` só guarda `customerId`). Poucos pedidos ativos, então `findById` por cliente único. */
+  private async attachCustomers<T extends IOrder>(orders: T[]): Promise<(T & { customer?: { name: string; phone?: string } })[]> {
+    const customerIds = [...new Set(orders.map((order) => order.customerId))];
+    const customers = await Promise.all(customerIds.map((id) => this.customerRepository.findById(id)));
+    const customerById = new Map(customerIds.map((id, index) => [id, customers[index]]));
+
+    return orders.map((order) => {
+      const customer = customerById.get(order.customerId);
+      return customer ? { ...order, customer: { name: customer.name, phone: customer.phone } } : order;
     });
   }
 

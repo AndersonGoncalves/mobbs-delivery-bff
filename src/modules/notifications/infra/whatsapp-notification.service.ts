@@ -25,12 +25,13 @@ export class WhatsAppNotificationService implements IWhatsAppNotificationService
         this.restaurantRepository.findById(order.restaurantId),
       ]);
 
-      // REQ-3 — sem telefone, pula silenciosamente. REQ-12 — sem conexão ativa, idem.
-      if (!customer?.phone || !restaurant?.whatsappConnected) return;
+      // REQ-3 — sem telefone, pula. REQ-12 — sem conexão ativa, idem. specs/0066 REQ-3: sempre
+      // com log do motivo (antes era silencioso e a falha ficava invisível).
+      if (this.skipReason(order, customer, restaurant)) return;
 
       const message = buildOrderReceiptMessage({
         restaurant: {
-          name: restaurant.name,
+          name: restaurant!.name,
           slug: restaurant.slug,
           orderConfirmationGreeting: restaurant.orderConfirmationGreeting,
           pixKey: restaurant.pixKey,
@@ -49,6 +50,23 @@ export class WhatsAppNotificationService implements IWhatsAppNotificationService
     }
   }
 
+  /** specs/0066 REQ-3 — `true` (e já logou o motivo) quando o envio deve ser pulado. */
+  private skipReason(
+    order: IOrder,
+    customer: { phone?: string } | null,
+    restaurant: { whatsappConnected: boolean } | null,
+  ): boolean {
+    if (!customer?.phone) {
+      console.warn(`[whatsapp] pedido ${order.id}: mensagem não enviada — cliente sem telefone cadastrado`);
+      return true;
+    }
+    if (!restaurant?.whatsappConnected) {
+      console.warn(`[whatsapp] pedido ${order.id}: mensagem não enviada — WhatsApp do restaurante não está conectado`);
+      return true;
+    }
+    return false;
+  }
+
   async sendOrderStatusUpdate(order: IOrder, reason?: string): Promise<void> {
     try {
       const [customer, restaurant] = await Promise.all([
@@ -56,7 +74,7 @@ export class WhatsAppNotificationService implements IWhatsAppNotificationService
         this.restaurantRepository.findById(order.restaurantId),
       ]);
 
-      if (!customer?.phone || !restaurant?.whatsappConnected) return;
+      if (this.skipReason(order, customer, restaurant)) return;
 
       // specs/0063-notificacao-whatsapp-pedido-confirmado REQ-3/REQ-4 — `=== false` (não `!`) pra
       // tratar um documento antigo sem o campo (`undefined`) como ligado, mesmo default do schema.

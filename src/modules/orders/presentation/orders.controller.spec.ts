@@ -583,6 +583,19 @@ describe('OrdersController', () => {
     expect(json).toHaveBeenCalledWith(200, [expect.objectContaining({ id: 'o-1' })]);
   });
 
+  it('specs/0066 AC-4: GET /restaurants/me/orders inclui customer { name, phone } de cada pedido', async () => {
+    const { routes } = setup({
+      customerRepository: { findById: jest.fn().mockResolvedValue({ id: 'customer-1', name: 'Michelle', email: 'm@exemplo.com', phone: '85984224877' }) },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(routes['GET /restaurants/me/orders'], { restaurantId: 'r-1' }, { json });
+
+    expect(json).toHaveBeenCalledWith(200, [
+      expect.objectContaining({ id: 'o-1', customer: { name: 'Michelle', phone: '85984224877' } }),
+    ]);
+  });
+
   it('AC-2: PATCH /restaurants/me/orders/:id/status avança um passo (aguardandoConfirmacao -> confirmado)', async () => {
     const { orderRepository, routes } = setup();
     const json = jest.fn();

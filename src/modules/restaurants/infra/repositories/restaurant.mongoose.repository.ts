@@ -162,6 +162,11 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
     return toEntity(doc as RestaurantLeanDocument);
   }
 
+  async findWhatsappConnectedIds(): Promise<string[]> {
+    const docs = await RestaurantModel.find({ whatsappConnected: true }, { _id: 1 }).lean<{ _id: string }[]>();
+    return docs.map((doc) => String(doc._id));
+  }
+
   async setWhatsappConnected(id: string, connected: boolean): Promise<IRestaurant> {
     const doc = await RestaurantModel.findByIdAndUpdate(
       id,

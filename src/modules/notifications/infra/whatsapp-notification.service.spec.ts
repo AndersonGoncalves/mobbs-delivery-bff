@@ -106,6 +106,26 @@ describe('WhatsAppNotificationService', () => {
       expect(whatsAppConnectionService.sendMessage).not.toHaveBeenCalled();
     });
 
+    it('specs/0066 AC-3: cliente sem telefone loga o motivo (não fica silencioso)', async () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const { service } = setup({ customer: { id: 'c-1', name: 'Ana', phone: undefined } });
+
+      await service.sendOrderStatusUpdate(buildOrder({ status: 'confirmado' }));
+
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('cliente sem telefone'));
+      warn.mockRestore();
+    });
+
+    it('specs/0066 AC-3: restaurante sem WhatsApp conectado loga o motivo (não fica silencioso)', async () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const { service } = setup({ restaurant: { id: 'r-1', name: 'Prime Pizza', slug: 'primepizza', whatsappConnected: false } });
+
+      await service.sendOrderStatusUpdate(buildOrder({ status: 'confirmado' }));
+
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('não está conectado'));
+      warn.mockRestore();
+    });
+
     it('AC-4: uma falha no envio não propaga (nunca lança)', async () => {
       const { service, whatsAppConnectionService } = setup();
       (whatsAppConnectionService.sendMessage as jest.Mock).mockRejectedValue(new Error('sessão caiu'));
