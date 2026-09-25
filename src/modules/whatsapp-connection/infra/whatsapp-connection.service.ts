@@ -2,7 +2,7 @@ import pino from 'pino';
 
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IWhatsAppConnectionService } from '../domain/services/i-whatsapp-connection.service';
-import { toWhatsAppJid } from '../domain/whatsapp-jid';
+import { toWhatsAppJidCandidates } from '../domain/whatsapp-jid';
 import { loadBaileys } from './load-baileys';
 import { clearWhatsAppSession, useMongoAuthState } from './mongo-auth-state';
 
@@ -63,7 +63,28 @@ export class WhatsAppConnectionService implements IWhatsAppConnectionService {
     if (!entry?.connected) {
       throw new Error(`WhatsApp não conectado para o restaurante ${restaurantId}`);
     }
-    await entry.socket.sendMessage(toWhatsAppJid(phone), { text });
+    const jid = await this.resolveRecipientJid(entry.socket, phone);
+    await entry.socket.sendMessage(jid, { text });
+    console.log(`[whatsapp] mensagem enviada pelo restaurante ${restaurantId} para ${jid}`);
+  }
+
+  /** specs/0068 — o `sendMessage` do Baileys não falha pra um número que não existe no WhatsApp
+   * (some sem entrega e sem erro). Pergunta ao WhatsApp qual JID candidato (com/sem o nono dígito)
+   * é real; se a consulta em si falhar, cai no JID padrão em vez de travar o envio. */
+  private async resolveRecipientJid(socket: WASocket, phone: string): Promise<string> {
+    const candidates = toWhatsAppJidCandidates(phone);
+    let results: Array<{ jid: string; exists: boolean }> | undefined;
+    try {
+      results = await socket.onWhatsApp(...candidates);
+    } catch (error) {
+      console.warn('[whatsapp] onWhatsApp falhou; usando o JID padrão:', error);
+      return candidates[0];
+    }
+    const found = results?.find((result) => result.exists);
+    if (!found) {
+      throw new Error(`O número ${candidates[0].split('@')[0]} não está registrado no WhatsApp`);
+    }
+    return found.jid;
   }
 
   async restoreConnectedSessions(): Promise<void> {
