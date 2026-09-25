@@ -41,6 +41,11 @@ export class OnboardingChecklistController extends BaseRouter {
         { key: 'catalog', done: categories.length > 0 && products.length > 0 },
         { key: 'businessHours', done: !!found.businessHoursReviewedAt },
         { key: 'pix', done: !!found.pixKey },
+        // specs/0070 — WhatsApp conectado é o que envia as mensagens automáticas pro cliente; e o
+        // app do cliente é considerado personalizado quando tem logo ou cor primária (nenhum dos
+        // dois nasce preenchido no autocadastro).
+        { key: 'whatsapp', done: !!found.whatsappConnected },
+        { key: 'customerApp', done: !!found.logoUrl || !!found.primaryColor },
       ];
 
       res.json(200, { items, allDone: items.every((item) => item.done) });
