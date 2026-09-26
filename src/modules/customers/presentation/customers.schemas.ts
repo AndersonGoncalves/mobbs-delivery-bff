@@ -3,18 +3,23 @@ import { z } from 'zod';
 import { isValidCpf } from '../domain/cpf-validator';
 import { normalizePhoneNumber } from '../../../shared/utils/normalize-phone-number';
 
+/** specs/0077 — string em branco (`""`/só espaços) vira "campo não enviado". O app antigo mandava
+ * `document: ""` quando o cliente não tinha CPF e o "Salvar" do perfil falhava com 400; cada campo já é
+ * opcional e "não enviado" já significa "não mexer" (`?? existing`), então em branco = igual. */
+const blankToUndefined = (value: unknown) => (typeof value === 'string' && value.trim() === '' ? undefined : value);
+
 /** REQ-1/REQ-11 — cada campo é opcional (o app manda só o que edita); CPF, se enviado, precisa
  * passar no dígito verificador (não só formato).
  * specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-3 — `phone` normalizado do mesmo
  * jeito que `restaurants.schemas.ts` (prefixo "55", sem duplicar se já vier com ele). */
 export const updateCustomerProfileSchema = z
   .object({
-    name: z.string().min(1).optional(),
-    phone: z.string().min(1).transform(normalizePhoneNumber).optional(),
-    document: z.string().min(1).optional(),
+    name: z.preprocess(blankToUndefined, z.string().min(1).optional()),
+    phone: z.preprocess(blankToUndefined, z.string().min(1).transform(normalizePhoneNumber).optional()),
+    document: z.preprocess(blankToUndefined, z.string().min(1).optional()),
     // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-6 — sessão anônima
     // (convidado) sem e-mail vindo do token Firebase; "Entrar com e-mail" manda esse campo.
-    email: z.string().email().optional(),
+    email: z.preprocess(blankToUndefined, z.string().email().optional()),
   })
   .refine((data) => !data.document || isValidCpf(data.document), {
     message: 'CPF inválido',

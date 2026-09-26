@@ -227,6 +227,51 @@ describe('CustomersController', () => {
     );
   });
 
+  // specs/0077 — o "Salvar" do perfil (app antigo) mandava `document: ""` sem CPF e levava 400.
+  it('specs/0077: PUT /customers/me com campos em branco (CPF/telefone vazios) NÃO falha e preserva os existentes', async () => {
+    const { customerRepository, routes } = setup({
+      customerRepository: {
+        findById: jest.fn().mockResolvedValue(buildCustomer({ phone: '11888888888', document: '52998224725' })),
+      },
+    });
+    const json = jest.fn();
+
+    await runAuthenticatedChain(
+      routes['PUT /customers/me'],
+      { user: { uid: 'c-1' }, body: { name: 'Micheline', phone: '', document: '   ', email: '' } },
+      { json },
+    );
+
+    expect(customerRepository.upsertProfile).toHaveBeenCalledWith(
+      'c-1',
+      expect.objectContaining({ name: 'Micheline', phone: '11888888888', document: '52998224725' }),
+    );
+    expect(json).toHaveBeenCalledWith(200, expect.anything());
+  });
+
+  it('specs/0077: PUT /customers/me com CPF em branco no primeiro acesso grava o cliente sem CPF', async () => {
+    const { customerRepository, routes } = setup();
+
+    await runAuthenticatedChain(
+      routes['PUT /customers/me'],
+      { user: { uid: 'c-1', name: 'Ana', email: 'ana@example.com' }, body: { name: 'Micheline', document: '' } },
+      { json: jest.fn() },
+    );
+
+    expect(customerRepository.upsertProfile).toHaveBeenCalledWith(
+      'c-1',
+      expect.objectContaining({ name: 'Micheline', document: undefined }),
+    );
+  });
+
+  it('specs/0077: CPF preenchido e inválido continua sendo rejeitado (só o "em branco" foi relaxado)', async () => {
+    const { routes } = setup();
+
+    await expect(
+      runAuthenticatedChain(routes['PUT /customers/me'], { user: { uid: 'c-1' }, body: { document: '123' } }, { json: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
   it('AC-11: PUT /customers/me rejeita CPF com dígito verificador inválido', async () => {
     const { customerRepository, routes } = setup();
 
