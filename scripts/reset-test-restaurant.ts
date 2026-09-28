@@ -19,7 +19,10 @@ import * as admin from 'firebase-admin';
 
 dotenv.config({ path: '.env' });
 
+import { environment } from '../src/shared/config/environment';
 import { ensureFirebaseAdminInitialized } from '../src/shared/config/firebase-admin';
+import { deleteS3Prefix } from '../src/shared/storage/delete-s3-prefix';
+import { s3Client } from '../src/shared/storage/s3-client';
 import { RestaurantModel } from '../src/modules/restaurants/infra/models/restaurant.mongoose.model';
 import { RestaurantOperatorModel } from '../src/modules/restaurant-operators/infra/models/restaurant-operator.mongoose.model';
 import { ProductModel } from '../src/modules/catalog/infra/models/product.mongoose.model';
@@ -130,6 +133,14 @@ async function main(): Promise<void> {
   results['order_counter'] = orderCounterResult.deletedCount ?? 0;
 
   await RestaurantModel.deleteOne({ _id: restaurantId });
+
+  // specs/0040 — mesmo prefixo montado em `buildUploadKey` (`uploads/domain/build-upload-key.ts`):
+  // logo, imagem padrão de produto, produtos, banners e opções de adicional ficam todos sob
+  // `restaurants/<restaurantId>/`. Sem isso, a imagem do restaurante de teste ficava órfã no
+  // bucket pra sempre — achado real em produção (7 pastas acumuladas, nunca limpas por nenhum
+  // fluxo do sistema, já que não existe nem uma rota de excluir restaurante).
+  const s3DeletedCount = await deleteS3Prefix(s3Client, environment.s3.bucket, `restaurants/${restaurantId}/`);
+  results['s3_objects'] = s3DeletedCount;
 
   console.log(`\n[reset-test-restaurant] restaurante "${slug}" (${restaurantId}) removido.`);
   console.log('Documentos apagados por coleção:');

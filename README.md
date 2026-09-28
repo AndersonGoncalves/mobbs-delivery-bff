@@ -30,11 +30,15 @@ arquivo.
   `seed:highlights` — dados de teste complementares.
 - `npm run reset:test-restaurant -- --slug=<slug>` (default `meu-restaurante`) —
   `specs/0040-reset-restaurante-teste`: apaga um restaurante de teste por completo (todo o
-  catálogo/pedidos/financeiro/estoque que pertence só a ele) **e** a conta Firebase
-  Authentication do(s) e-mail(is) de operador vinculados — pra poder recriar o mesmo restaurante
-  com o mesmo slug e o mesmo e-mail de login numa rodada de teste seguinte, sem esbarrar em
-  "slug já existe" nem "e-mail já cadastrado". Idempotente: se o slug não existir, só avisa e
-  sai, sem erro.
+  catálogo/pedidos/financeiro/estoque que pertence só a ele), a conta Firebase
+  Authentication do(s) e-mail(is) de operador vinculados, **e** todas as imagens dele no S3
+  (`restaurants/<id>/` — logo, produtos, banners, opções de adicional) — pra poder recriar o mesmo
+  restaurante com o mesmo slug e o mesmo e-mail de login numa rodada de teste seguinte, sem
+  esbarrar em "slug já existe" nem "e-mail já cadastrado", e sem deixar imagem órfã acumulando no
+  bucket. Idempotente: se o slug não existir, só avisa e sai, sem erro; se o restaurante não tinha
+  imagem nenhuma, a parte do S3 também não lança. Precisa de credenciais AWS configuradas
+  (`~/.aws/credentials` ou variáveis de ambiente — mesma cadeia padrão usada pelo `s3Client`,
+  `shared/storage/s3-client.ts`), além do `DB_URL`.
 
 ### Rodando o reset contra o banco local (dev)
 
@@ -70,8 +74,16 @@ do `.env` que está na própria instância EC2, não as do seu `.env` local — 
 diferentes). A variável `DB_URL` na linha de comando só vale pra essa execução, não altera seu
 `.env` local.
 
-Ao final, o script imprime quantos documentos apagou por coleção e quais e-mails removeu do
-Firebase.
+Ao final, o script imprime quantos documentos apagou por coleção, quais e-mails removeu do
+Firebase e quantos objetos apagou do S3.
+
+**Achado real em produção (2026-09-28)**: antes desta limpeza de S3 existir, restaurantes de teste
+apagados (seja pelo script na versão antiga, seja apagados manualmente no Mongo) deixavam a pasta
+de imagens órfã no bucket pra sempre — não existe nenhuma rota no sistema pra excluir um
+restaurante além deste script, então nada mais cobria isso. Pastas órfãs de antes desta correção
+não são limpas automaticamente por uma rodada nova do script (ele só age sobre um restaurante que
+ainda existe no Mongo); precisam ser apagadas à parte, uma vez, via `aws s3 rm
+s3://mobbs-delivery-images/restaurants/<id>/ --recursive`.
 
 ## Pendências
 
