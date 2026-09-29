@@ -57,7 +57,9 @@ export class RestaurantSignupController extends BaseRouter {
       // specs/0039-onboarding-primeiro-acesso REQ-1/REQ-2 — destaques/banners/cancelar pedido/
       // imagem à direita nascem desligados (o default do schema é ligado) porque uma loja recém-
       // criada, sem produto/foto nenhum, fica com essas seções vazias/quebradas até o dono
-      // configurar de verdade.
+      // configurar de verdade. REQ-10 — taxa de entrega nasce grátis (o default do schema é
+      // `fixed`/R$ 0), pelo mesmo motivo: sem zona/valor configurado ainda, "grátis" é o estado
+      // inicial mais correto até o dono decidir a taxa de verdade.
       const restaurant = await this.restaurantRepository.create({
         name,
         slug,
@@ -71,6 +73,8 @@ export class RestaurantSignupController extends BaseRouter {
         // specs/0062-confirmar-pedido-whatsapp-restaurante REQ-3 — grava o template de verdade
         // (não só confia no fallback do builder), igual todo default gravado nesta chamada.
         newOrderRestaurantWhatsAppTemplate: DEFAULT_NEW_ORDER_RESTAURANT_TEMPLATE,
+        deliveryFeeMode: 'free',
+        deliveryFeeCents: 0,
       });
       await this.restaurantOperatorRepository.create(restaurant.id, email, 'dono');
       // REQ-9 — catálogo inicial típico do tipo de negócio, sem imagem, pronto pro dono editar.

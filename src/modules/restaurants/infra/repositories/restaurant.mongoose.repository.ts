@@ -141,6 +141,8 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
     productImageOnRight?: boolean;
     category?: string;
     newOrderRestaurantWhatsAppTemplate?: string;
+    deliveryFeeMode?: DeliveryFeeMode;
+    deliveryFeeCents?: number;
   }): Promise<IRestaurant> {
     const doc = await RestaurantModel.create(input);
     return toEntity(doc.toObject());

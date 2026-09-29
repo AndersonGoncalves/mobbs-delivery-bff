@@ -1,4 +1,4 @@
-import { IBusinessHours, IRestaurant } from '../entities/restaurant.entity';
+import { DeliveryFeeMode, IBusinessHours, IRestaurant } from '../entities/restaurant.entity';
 
 export type RestaurantProfileUpdate = Partial<
   Pick<
@@ -66,6 +66,11 @@ export interface IRestaurantRepository {
     /** specs/0062-confirmar-pedido-whatsapp-restaurante REQ-3 — grava de verdade no autocadastro
      * (não só serve como fallback em memória no builder). */
     newOrderRestaurantWhatsAppTemplate?: string;
+    /** specs/0039-onboarding-primeiro-acesso — autocadastro nasce com taxa de entrega grátis
+     * (o dono configura de verdade depois na retaguarda), em vez do default `fixed`/`R$ 0` do
+     * schema (mantido pros demais caminhos de criação). */
+    deliveryFeeMode?: DeliveryFeeMode;
+    deliveryFeeCents?: number;
   }): Promise<IRestaurant>;
   findBySlug(slug: string): Promise<IRestaurant | null>;
   findById(id: string): Promise<IRestaurant | null>;

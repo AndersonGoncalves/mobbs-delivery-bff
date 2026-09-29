@@ -113,8 +113,8 @@ describe('RestaurantSignupController', () => {
     expect(json).toHaveBeenCalledWith(201, { restaurantId: 'r-1', slug: 'pizzaria-do-joao' });
   });
 
-  // specs/0039-onboarding-primeiro-acesso REQ-1/REQ-2/AC-1/AC-2.
-  it('AC-1/AC-2 (specs/0039): restaurante nasce com horário 08:00-23:00 todo dia e destaques/banners/cancelar pedido/imagem à direita desligados', async () => {
+  // specs/0039-onboarding-primeiro-acesso REQ-1/REQ-2/REQ-10/AC-1/AC-2/AC-8.
+  it('AC-1/AC-2/AC-8 (specs/0039): restaurante nasce com horário 08:00-23:00 todo dia, destaques/banners/cancelar pedido/imagem à direita desligados e taxa de entrega grátis', async () => {
     const { restaurantRepository, routes } = setup();
     const json = jest.fn();
 
@@ -133,6 +133,8 @@ describe('RestaurantSignupController', () => {
         showBanners: false,
         allowCustomerCancelOrder: false,
         productImageOnRight: false,
+        deliveryFeeMode: 'free',
+        deliveryFeeCents: 0,
       }),
     );
     const businessHoursArg = (restaurantRepository.create as jest.Mock).mock.calls[0][0].businessHours;
