@@ -29,4 +29,13 @@ export interface IRatingRepository {
   /** Média (arredondada pra 1 casa decimal) e contagem total — recalculado a cada `upsert()`
    * pelo controller, nunca perdido em `Restaurant.rating`/`Restaurant.ratingCount`. */
   getStats(restaurantId: string): Promise<RatingStats>;
+
+  /**
+   * specs/0078-resposta-restaurante-avaliacoes REQ-2/REQ-3 — `findOneAndUpdate({ _id: id,
+   * restaurantId })` num só passo (garante o isolamento multi-tenant sem uma query extra pra
+   * conferir dono antes); `null` quando o rating não existe OU não é deste restaurante (o
+   * controller trata os dois casos como 404, sem distinguir — nunca revela se o id existe em
+   * outro restaurante). Upsert: uma nova resposta substitui a anterior, nunca acumula.
+   */
+  reply(id: string, restaurantId: string, text: string): Promise<IRating | null>;
 }

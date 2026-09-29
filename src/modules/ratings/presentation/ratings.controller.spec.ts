@@ -5,7 +5,7 @@ import { IRestaurantRepository } from '../../restaurants/domain/repositories/res
 import { IRatingRepository } from '../domain/repositories/rating.repository.interface';
 import { RatingsController } from './ratings.controller';
 
-type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & { user?: { uid: string } };
+type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & { user?: { uid: string }; restaurantId?: string };
 type FakeResponse = Pick<Response, 'json'>;
 type RouteHandler = (req: FakeRequest, res: FakeResponse) => Promise<void>;
 
@@ -17,6 +17,9 @@ function buildFakeApplication() {
     },
     get: (path: string, ...handlers: RouteHandler[]) => {
       routes[`GET ${path}`] = handlers;
+    },
+    patch: (path: string, ...handlers: RouteHandler[]) => {
+      routes[`PATCH ${path}`] = handlers;
     },
   };
   return { application: application as unknown as Server, routes };
@@ -36,6 +39,15 @@ async function runPublicChain(handlers: RouteHandler[], req: FakeRequest, res: F
   }
 }
 
+// specs/0078-resposta-restaurante-avaliacoes — pula firebaseAuthMiddleware +
+// restaurantOperatorMiddleware + requireOperatorRole (3 primeiros da chain do PATCH .../reply),
+// mesmo padrão de promotions.controller.spec.ts.
+async function runOperatorChain(handlers: RouteHandler[], req: FakeRequest, res: FakeResponse): Promise<void> {
+  for (const handler of handlers.slice(3)) {
+    await handler(req, res);
+  }
+}
+
 function buildRestaurant(overrides: Partial<Record<string, unknown>> = {}) {
   return { id: 'r-1', name: 'Prime Pizza', slug: 'primepizza', isActive: true, rating: 0, ratingCount: 0, ...overrides };
 }
@@ -49,6 +61,15 @@ function setup(overrides: {
     upsert: jest.fn().mockResolvedValue({ id: 'rt-1', restaurantId: 'r-1', customerId: 'cu-1', score: 5, createdAt: new Date(), updatedAt: new Date() }),
     getStats: jest.fn().mockResolvedValue({ average: 5, count: 1 }),
     findManyByRestaurant: jest.fn().mockResolvedValue({ items: [], total: 0 }),
+    reply: jest.fn().mockResolvedValue({
+      id: 'rt-1',
+      restaurantId: 'r-1',
+      customerId: 'cu-1',
+      score: 5,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      reply: { text: 'Obrigado!', createdAt: new Date() },
+    }),
     ...overrides.ratingRepository,
   };
   const orderRepository: Partial<IOrderRepository> = {
@@ -60,11 +81,13 @@ function setup(overrides: {
     updateRatingStats: jest.fn().mockResolvedValue(buildRestaurant({ rating: 5, ratingCount: 1 })),
     ...overrides.restaurantRepository,
   };
+  const restaurantOperatorMiddleware = jest.fn(async () => {});
   const { application, routes } = buildFakeApplication();
   new RatingsController(
     ratingRepository as IRatingRepository,
     orderRepository as IOrderRepository,
     restaurantRepository as IRestaurantRepository,
+    restaurantOperatorMiddleware,
   ).initializeRoutes(application);
   return { ratingRepository, orderRepository, restaurantRepository, routes };
 }
@@ -182,6 +205,60 @@ describe('RatingsController', () => {
           { json: jest.fn() },
         ),
       ).rejects.toMatchObject({ statusCode: 404 });
+    });
+  });
+
+  // specs/0078-resposta-restaurante-avaliacoes
+  describe('PATCH /restaurants/me/ratings/:id/reply', () => {
+    it('AC-1: responde uma avaliação sem resposta ainda', async () => {
+      const { ratingRepository, routes } = setup();
+      const json = jest.fn();
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/ratings/:id/reply'],
+        { params: { id: 'rt-1' }, restaurantId: 'r-1', body: { text: 'Obrigado pela avaliação!' } },
+        { json },
+      );
+
+      expect(ratingRepository.reply).toHaveBeenCalledWith('rt-1', 'r-1', 'Obrigado pela avaliação!');
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ reply: expect.objectContaining({ text: 'Obrigado!' }) }));
+    });
+
+    it('AC-2: responder de novo substitui a resposta anterior (upsert, não uma 2ª resposta)', async () => {
+      const { ratingRepository, routes } = setup();
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/ratings/:id/reply'],
+        { params: { id: 'rt-1' }, restaurantId: 'r-1', body: { text: 'Resposta nova' } },
+        { json: jest.fn() },
+      );
+
+      expect(ratingRepository.reply).toHaveBeenCalledTimes(1);
+      expect(ratingRepository.reply).toHaveBeenCalledWith('rt-1', 'r-1', 'Resposta nova');
+    });
+
+    it('AC-3: rejeita (404) responder uma avaliação de outro restaurante', async () => {
+      const { routes } = setup({ ratingRepository: { reply: jest.fn().mockResolvedValue(null) } });
+
+      await expect(
+        runOperatorChain(
+          routes['PATCH /restaurants/me/ratings/:id/reply'],
+          { params: { id: 'rt-de-outro-restaurante' }, restaurantId: 'r-1', body: { text: 'Obrigado!' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    it('rejeita texto vazio', async () => {
+      const { routes } = setup();
+
+      await expect(
+        runOperatorChain(
+          routes['PATCH /restaurants/me/ratings/:id/reply'],
+          { params: { id: 'rt-1' }, restaurantId: 'r-1', body: { text: '' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 400 });
     });
   });
 });

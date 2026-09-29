@@ -102,4 +102,17 @@ describe('buildNewOrderRestaurantMessage', () => {
 
     expect(message).not.toContain('Observação');
   });
+
+  // specs/0080-troco-pagamento-dinheiro-checkout AC-4
+  it('specs/0080: com troco informado, a linha "Troco para" aparece no aviso de pedido novo', () => {
+    const message = buildNewOrderRestaurantMessage(buildInput({ order: buildOrder({ paymentMethod: 'cash', cashChangeFor: 50 }) }));
+
+    expect(message).toContain('Troco para: R$ 50,00');
+  });
+
+  it('specs/0080: sem troco informado, a linha "Troco para" some do aviso de pedido novo', () => {
+    const message = buildNewOrderRestaurantMessage(buildInput());
+
+    expect(message).not.toContain('Troco para');
+  });
 });

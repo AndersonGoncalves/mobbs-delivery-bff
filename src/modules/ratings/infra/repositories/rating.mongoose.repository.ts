@@ -1,4 +1,4 @@
-import { IRating } from '../../domain/entities/rating.entity';
+import { IRating, IRatingReply } from '../../domain/entities/rating.entity';
 import { IRatingRepository, RatingPage, RatingStats, UpsertRatingInput } from '../../domain/repositories/rating.repository.interface';
 import { RatingModel } from '../models/rating.mongoose.model';
 
@@ -10,6 +10,7 @@ interface RatingLeanDocument {
   comment?: string;
   createdAt: Date;
   updatedAt: Date;
+  reply?: IRatingReply;
 }
 
 function toEntity(doc: RatingLeanDocument): IRating {
@@ -21,6 +22,7 @@ function toEntity(doc: RatingLeanDocument): IRating {
     comment: doc.comment,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
+    reply: doc.reply,
   };
 }
 
@@ -53,5 +55,14 @@ export class RatingMongooseRepository implements IRatingRepository {
     ]);
     if (!result) return { average: 0, count: 0 };
     return { average: Math.round(result.average * 10) / 10, count: result.count };
+  }
+
+  async reply(id: string, restaurantId: string, text: string): Promise<IRating | null> {
+    const doc = await RatingModel.findOneAndUpdate(
+      { _id: id, restaurantId },
+      { $set: { reply: { text, createdAt: new Date() } } },
+      { new: true },
+    ).lean<RatingLeanDocument>();
+    return doc ? toEntity(doc) : null;
   }
 }

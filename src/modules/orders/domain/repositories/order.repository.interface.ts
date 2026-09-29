@@ -22,6 +22,8 @@ export interface NewOrderInput {
   cardBrand?: string;
   /** specs/0022-cupons-desconto REQ-2/REQ-4 — ver `IOrder.couponCode`. */
   couponCode?: string;
+  /** specs/0080-troco-pagamento-dinheiro-checkout REQ-2 — ver `IOrder.cashChangeFor`. */
+  cashChangeFor?: number;
 }
 
 export interface IOrderRepository {

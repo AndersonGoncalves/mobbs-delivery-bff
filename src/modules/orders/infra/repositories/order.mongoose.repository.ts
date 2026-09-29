@@ -24,6 +24,7 @@ interface OrderLeanDocument {
   total: number;
   couponCode?: string;
   paymentMethod: PaymentMethod;
+  cashChangeFor?: number;
   createdAt: Date;
   estimatedDeliveryAt?: Date;
 }
@@ -52,6 +53,7 @@ function toEntity(doc: OrderLeanDocument): IOrder {
     total: doc.total,
     couponCode: doc.couponCode,
     paymentMethod: doc.paymentMethod,
+    cashChangeFor: doc.cashChangeFor,
     createdAt: doc.createdAt.toISOString(),
     estimatedDeliveryAt: doc.estimatedDeliveryAt?.toISOString(),
   };
@@ -80,6 +82,7 @@ export class OrderMongooseRepository implements IOrderRepository {
       total: input.total,
       couponCode: input.couponCode,
       paymentMethod: input.paymentMethod,
+      cashChangeFor: input.cashChangeFor,
     });
 
     // docs/architecture/data-model.md §Payment — registro separado, usado por

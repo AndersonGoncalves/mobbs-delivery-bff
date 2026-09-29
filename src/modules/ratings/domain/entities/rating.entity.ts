@@ -4,6 +4,16 @@
  * restaurante"). Um `Rating` por `(restaurantId, customerId)` — avaliar de novo atualiza o
  * existente (upsert), não cria um segundo.
  */
+/**
+ * specs/0078-resposta-restaurante-avaliacoes REQ-1 — resposta do restaurante a este `Rating`,
+ * opcional; upsert (uma resposta só por avaliação, uma nova substitui a anterior — REQ-2, mesmo
+ * raciocínio do próprio `Rating` sobre `(restaurantId, customerId)`).
+ */
+export interface IRatingReply {
+  text: string;
+  createdAt: Date;
+}
+
 export interface IRating {
   id: string;
   restaurantId: string;
@@ -13,4 +23,5 @@ export interface IRating {
   comment?: string;
   createdAt: Date;
   updatedAt: Date;
+  reply?: IRatingReply;
 }

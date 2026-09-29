@@ -169,7 +169,7 @@ server
     new PurchaseOrdersController(purchaseOrderRepository, receivePurchaseOrderService, restaurantOperatorMiddleware),
     new CouponsController(couponRepository, orderRepository, restaurantOperatorMiddleware),
     new PromotionsController(promotionRepository, restaurantOperatorMiddleware),
-    new RatingsController(new RatingMongooseRepository(), orderRepository, restaurantRepository),
+    new RatingsController(new RatingMongooseRepository(), orderRepository, restaurantRepository, restaurantOperatorMiddleware),
     new PresenceController(new PresenceMongooseRepository(), restaurantRepository, restaurantOperatorMiddleware),
     new UploadsController(restaurantOperatorMiddleware),
   ], [migrateOperatorRolesToDono])

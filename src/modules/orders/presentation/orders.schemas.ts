@@ -52,6 +52,10 @@ export const createOrderSchema = z
     notes: optionalString(z.string()),
     paymentMethod: z.enum(['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer']),
     cardBrand: optionalString(z.string().min(1)),
+    // specs/0080-troco-pagamento-dinheiro-checkout REQ-2 — opcional mesmo em dinheiro ("se não
+    // precisar, deixe em branco"); sem validação de negócio (fora de escopo — é só informativo
+    // pro entregador separar o troco, mesmo espírito de `cardBrand`).
+    cashChangeFor: z.coerce.number().positive().optional(),
     // specs/0022-cupons-desconto REQ-2 — opcional; o app só manda quando o cliente digitou e
     // "aplicou" um código no checkout. Revalidado sempre no controller (nunca confia no desconto
     // calculado pelo app) — este schema só garante o formato, não a validade do cupom em si.

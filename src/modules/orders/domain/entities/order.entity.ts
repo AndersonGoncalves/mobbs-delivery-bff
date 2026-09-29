@@ -83,6 +83,12 @@ export interface IOrder {
    */
   couponCode?: string;
   paymentMethod: PaymentMethod;
+  /**
+   * specs/0080-troco-pagamento-dinheiro-checkout REQ-2 — só faz sentido com `paymentMethod ===
+   * 'cash'`; opcional mesmo nesse caso ("se não precisar, deixe em branco" — sem validação de
+   * negócio, é só informativo pro entregador separar o troco).
+   */
+  cashChangeFor?: number;
   createdAt: string;
   estimatedDeliveryAt?: string;
 }
