@@ -49,6 +49,8 @@ export const DEFAULT_ORDER_RECEIPT_TEMPLATE = [
   'Desconto: {desconto}',
   '*Total: {total}*',
   '',
+  'Observação: {observacao}',
+  '',
   '{pagamento}',
 ].join('\n');
 

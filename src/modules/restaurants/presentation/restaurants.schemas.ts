@@ -128,6 +128,9 @@ export const restaurantProfileSchema = z
     orderPreparingWhatsAppTemplate: z.string(),
     notifyCustomerOnOrderCancelled: z.boolean(),
     orderCancelledWhatsAppTemplate: z.string(),
+    // specs/0086-mensagens-whatsapp-pedido-entregue-pagamento-confirmado.
+    notifyCustomerOnOrderDelivered: z.boolean(),
+    orderDeliveredWhatsAppTemplate: z.string(),
   })
   .partial();
 

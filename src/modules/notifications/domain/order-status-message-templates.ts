@@ -15,6 +15,11 @@ export const DEFAULT_OUT_FOR_DELIVERY_TEMPLATE = 'Seu pedido #{numeroPedido} sai
 export const DEFAULT_ORDER_PREPARING_TEMPLATE = 'Seu pedido #{numeroPedido} está sendo preparado.';
 export const DEFAULT_ORDER_CANCELLED_TEMPLATE = 'Pedido #{numeroPedido} foi cancelado.\nMotivo: {motivoCancelamento}';
 
+// specs/0086-mensagens-whatsapp-pedido-entregue-pagamento-confirmado REQ-1 — texto fixo já usado
+// hoje, agora como fallback quando o restaurante não configurou um template próprio (mesmo padrão
+// dos outros status; antes desta spec `entregue` não era parametrizável nem tinha toggle).
+export const DEFAULT_ORDER_DELIVERED_TEMPLATE = 'Seu pedido #{numeroPedido} foi entregue. Bom apetite!';
+
 export interface OrderStatusMessageInput {
   order: IOrder;
   customerName: string;
@@ -22,23 +27,19 @@ export interface OrderStatusMessageInput {
   restaurantSlug: string;
   pixCode?: string;
   reason?: string;
-  /**
-   * specs/0063-notificacao-whatsapp-pedido-confirmado — só `confirmado` é parametrizável nesta
-   * spec (`specs/0065-notificacao-whatsapp-saiu-para-entrega` adiciona `saiuParaEntrega` do mesmo
-   * jeito, quando implementada). Os demais status continuam com o texto fixo abaixo.
-   */
   templates: {
     confirmado?: string;
     saiuParaEntrega?: string;
     emPreparo?: string;
     cancelado?: string;
+    entregue?: string;
   };
 }
 
 /**
  * specs/0013-notificacoes-whatsapp REQ-2/REQ-5 — texto diferente por status, sempre incluindo
- * `orderNumber`. `confirmado`/`emPreparo`/`saiuParaEntrega`/`cancelado` têm template editável por
- * restaurante (`specs/0063`/`0065`/`0071`); só `entregue` segue com texto fixo.
+ * `orderNumber`. Todo status pós-criação (`confirmado`/`emPreparo`/`saiuParaEntrega`/`cancelado`/
+ * `entregue`, specs/0063/0065/0071/0086) tem template editável por restaurante.
  */
 export function buildOrderStatusMessage(input: OrderStatusMessageInput): string | null {
   const { order, customerName, customerPhone, restaurantSlug, pixCode, reason, templates } = input;
@@ -57,7 +58,7 @@ export function buildOrderStatusMessage(input: OrderStatusMessageInput): string 
     case 'saiuParaEntrega':
       return render(templates.saiuParaEntrega, DEFAULT_OUT_FOR_DELIVERY_TEMPLATE);
     case 'entregue':
-      return `Seu pedido #${order.orderNumber} foi entregue. Bom apetite!`;
+      return render(templates.entregue, DEFAULT_ORDER_DELIVERED_TEMPLATE);
     case 'cancelado':
       return render(templates.cancelado, DEFAULT_ORDER_CANCELLED_TEMPLATE);
     // 'aguardandoConfirmacao' é o status inicial (coberto pelo recibo de criação, REQ-1, não por

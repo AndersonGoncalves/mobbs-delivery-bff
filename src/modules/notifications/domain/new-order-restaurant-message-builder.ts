@@ -29,6 +29,7 @@ export const DEFAULT_NEW_ORDER_RESTAURANT_TEMPLATE = [
   '{enderecoEntrega}',
   '*Total: {total}*',
   'Pagamento: {formaPagamento}',
+  'Observação: {observacao}',
   '',
   'Acompanhar: {linkAcompanhamento}',
 ].join('\n');

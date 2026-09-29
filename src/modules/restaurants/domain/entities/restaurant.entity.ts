@@ -188,6 +188,12 @@ export interface IRestaurant {
   notifyCustomerOnOrderCancelled: boolean;
   /** specs/0071 — template; `undefined` usa `DEFAULT_ORDER_CANCELLED_TEMPLATE`. */
   orderCancelledWhatsAppTemplate?: string;
+  /** specs/0086-mensagens-whatsapp-pedido-entregue-pagamento-confirmado — liga/desliga a mensagem
+   * automática de WhatsApp quando o pedido é entregue (`status: 'entregue'`); antes desta spec
+   * essa mensagem sempre saía com texto fixo, sem toggle nenhum. */
+  notifyCustomerOnOrderDelivered: boolean;
+  /** specs/0086 — template; `undefined` usa `DEFAULT_ORDER_DELIVERED_TEMPLATE`. */
+  orderDeliveredWhatsAppTemplate?: string;
 }
 
 export type DeliveryFeeMode = 'fixed' | 'byNeighborhood' | 'free';

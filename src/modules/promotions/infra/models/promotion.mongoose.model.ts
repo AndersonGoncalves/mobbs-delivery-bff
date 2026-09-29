@@ -10,7 +10,7 @@ const promotionSchema = new Schema(
     productIds: { type: [String], required: true, default: [] },
     isActive: { type: Boolean, required: true, default: true },
     startDate: { type: Date, required: true },
-    endDate: { type: Date, required: true },
+    endDate: { type: Date },
   },
   { _id: false, timestamps: true },
 );

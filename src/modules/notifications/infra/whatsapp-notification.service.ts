@@ -9,12 +9,13 @@ import { buildPaymentConfirmedMessage } from '../domain/payment-confirmed-messag
 import { buildOrderStatusMessage } from '../domain/order-status-message-templates';
 import { IWhatsAppNotificationService } from '../domain/services/i-whatsapp-notification.service';
 
-/** Qual toggle de `Restaurant` liga/desliga a mensagem de cada status (`entregue` não tem toggle). */
+/** Qual toggle de `Restaurant` liga/desliga a mensagem de cada status. */
 const STATUS_TOGGLES: Partial<Record<IOrder['status'], keyof IRestaurant>> = {
   confirmado: 'notifyCustomerOnOrderConfirmed',
   emPreparo: 'notifyCustomerOnOrderPreparing',
   saiuParaEntrega: 'notifyCustomerOnOrderOutForDelivery',
   cancelado: 'notifyCustomerOnOrderCancelled',
+  entregue: 'notifyCustomerOnOrderDelivered',
 };
 
 /**
@@ -116,6 +117,7 @@ export class WhatsAppNotificationService implements IWhatsAppNotificationService
           saiuParaEntrega: restaurant.orderOutForDeliveryWhatsAppTemplate,
           emPreparo: restaurant.orderPreparingWhatsAppTemplate,
           cancelado: restaurant.orderCancelledWhatsAppTemplate,
+          entregue: restaurant.orderDeliveredWhatsAppTemplate,
         },
       });
       if (!message) return;

@@ -160,4 +160,14 @@ describe('buildOrderStatusMessage', () => {
     expect(buildOrderStatusMessage(buildInput({ order: buildOrder({ status: 'emPreparo' }), templates }))).toBe('P');
     expect(buildOrderStatusMessage(buildInput({ order: buildOrder({ status: 'cancelado' }), templates }))).toBe('X');
   });
+
+  // specs/0086-mensagens-whatsapp-pedido-entregue-pagamento-confirmado — "entregue" passa a ser
+  // parametrizável igual aos outros status (antes desta spec era o único com texto fixo cravado).
+  it('specs/0086: "entregue" com template configurado substitui os placeholders', () => {
+    const message = buildOrderStatusMessage(
+      buildInput({ order: buildOrder({ status: 'entregue' }), templates: { entregue: 'Chegou, {nomeCliente}! Pedido #{numeroPedido} entregue.' } }),
+    );
+
+    expect(message).toBe('Chegou, Ana! Pedido #123 entregue.');
+  });
 });

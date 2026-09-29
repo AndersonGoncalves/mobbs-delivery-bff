@@ -95,6 +95,19 @@ describe('PromotionsController (specs/0044-promocoes-produtos)', () => {
     expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ id: 'promo-1' }));
   });
 
+  // specs/0084-promocao-sem-data-fim
+  it('POST sem endDate cria a promoção com data final indeterminada', async () => {
+    const { promotionRepository, routes } = setup();
+    const json = jest.fn();
+    const body = { name: 'Promoção contínua', discountPercentage: 15, productIds: ['p-1'], isActive: true, startDate: '2026-09-01' };
+
+    await runOperatorChain(routes['POST /restaurants/me/promotions'], { restaurantId: 'r-1', body }, { json });
+
+    expect(promotionRepository.create).toHaveBeenCalledWith('r-1', expect.objectContaining({ startDate: '2026-09-01' }));
+    expect((promotionRepository.create as jest.Mock).mock.calls[0][1].endDate).toBeUndefined();
+    expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ id: 'promo-1' }));
+  });
+
   it('AC-5: POST rejeita (409) quando um produto já está em outra promoção ativa', async () => {
     const { promotionRepository, routes } = setup({
       promotionRepository: {

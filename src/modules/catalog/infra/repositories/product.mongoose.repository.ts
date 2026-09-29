@@ -35,6 +35,9 @@ interface LinkedProductLeanDocument {
   // o desconto é aplicado por cima deste valor. Sem `imageUrl` aqui — specs/0056: essa foto NÃO
   // é mais forçada na leitura (ver comentário de `resolveOptionLinkedProduct`).
   price: number;
+  // specs/0087-descricao-adicional-vinculado — mesmo raciocínio de `name`/`priceDelta`: sempre o
+  // valor ATUAL do produto vinculado, nunca um snapshot persistido na opção.
+  description?: string;
 }
 
 function toEntity(doc: ProductLeanDocument): IProduct {
@@ -136,7 +139,7 @@ export function resolveOptionLinkedProduct(
   const promotion = option.linkedProductId ? promotionsByProductId.get(option.linkedProductId) : undefined;
   const priceDelta = promotion ? computePromotionalPrice(linked.price, promotion.discountPercentage) : linked.price;
 
-  return { ...option, name: linked.name, priceDelta, nestedAdditionalGroups };
+  return { ...option, name: linked.name, description: linked.description, priceDelta, nestedAdditionalGroups };
 }
 
 function resolveGroupLinkedProducts(
@@ -212,7 +215,7 @@ async function resolveLinkedProducts(docs: ProductLeanDocument[], promotionsByPr
   if (linkedProductIds.size === 0) return;
 
   const linkedProducts = await ProductModel.find({ _id: { $in: [...linkedProductIds] } })
-    .select('_id name price')
+    .select('_id name price description')
     .lean<LinkedProductLeanDocument[]>();
   const productsById = new Map(linkedProducts.map((product) => [product._id, product]));
 

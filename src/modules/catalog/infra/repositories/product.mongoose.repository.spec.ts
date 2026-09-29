@@ -2,7 +2,7 @@ import { IProductAdditionalGroup, IProductAdditionalOption } from '../../domain/
 import { IPromotion } from '../../../promotions/domain/entities/promotion.entity';
 import { AdditionalGroupTemplateLeanDocument, resolveGroup, resolveOptionLinkedProduct } from './product.mongoose.repository';
 
-function buildLinkedProduct(overrides: Partial<{ _id: string; name: string; imageUrl?: string; price: number }> = {}) {
+function buildLinkedProduct(overrides: Partial<{ _id: string; name: string; imageUrl?: string; price: number; description?: string }> = {}) {
   return { _id: 'prod-coca', name: 'Coca-Cola 1L', price: 10, ...overrides };
 }
 
@@ -206,6 +206,22 @@ describe('resolveOptionLinkedProduct (specs/0041-item-adicional-vinculado-produt
     const resolved = resolveOptionLinkedProduct(option, productsById, promotionsByProductId);
 
     expect(resolved.nestedAdditionalGroups?.[0].options[0].priceDelta).toBe(8);
+  });
+
+  // specs/0087-descricao-adicional-vinculado — mesmo raciocínio de name/priceDelta: description é
+  // sempre a ATUAL do produto vinculado, nunca digitada/persistida na opção.
+  it('specs/0087: description é resolvida a partir do produto vinculado ATUAL', () => {
+    const option = buildOption({ linkedProductId: 'prod-coca' });
+    const productsById = new Map([['prod-coca', buildLinkedProduct({ description: 'Lata 350ml, gelada' })]]);
+
+    expect(resolveOptionLinkedProduct(option, productsById).description).toBe('Lata 350ml, gelada');
+  });
+
+  it('specs/0087: produto vinculado sem description resolve undefined (nunca herda a description antiga da opção)', () => {
+    const option = buildOption({ linkedProductId: 'prod-coca' });
+    const productsById = new Map([['prod-coca', buildLinkedProduct({ description: undefined })]]);
+
+    expect(resolveOptionLinkedProduct(option, productsById).description).toBeUndefined();
   });
 
   it('produto vinculado apagado/não encontrado mantém o último snapshot conhecido, sem quebrar', () => {

@@ -4,6 +4,9 @@
  * dela — os dois precisam valer ao mesmo tempo pra promoção estar "efetivamente ativa"
  * (`isPromotionCurrentlyActive`, `promotion-pricing.ts`). `startDate`/`endDate` como `string`
  * (ISO), mesmo padrão de `ICoupon.validFrom`/`validUntil`.
+ *
+ * `endDate` opcional (`specs/0084`) — `undefined` = promoção sem data de fim determinada, só
+ * termina quando o operador desligar `isActive` manualmente ou apagar a promoção.
  */
 export interface IPromotion {
   id: string;
@@ -13,6 +16,6 @@ export interface IPromotion {
   productIds: string[];
   isActive: boolean;
   startDate: string;
-  endDate: string;
+  endDate?: string;
   createdAt: string;
 }

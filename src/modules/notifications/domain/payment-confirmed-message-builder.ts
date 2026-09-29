@@ -4,7 +4,9 @@ import { renderTemplate, resolveTemplate } from './whatsapp-message-helpers';
 
 // specs/0064-notificacao-whatsapp-pix-confirmado REQ-2/AC-4 — texto padrão quando o restaurante
 // não configurou um template próprio.
-export const DEFAULT_PIX_CONFIRMED_TEMPLATE = 'Pagamento confirmado!';
+// specs/0086-mensagens-whatsapp-pedido-entregue-pagamento-confirmado — inclui o número do pedido
+// (mesmo padrão dos outros templates padrão, todos com `{numeroPedido}`).
+export const DEFAULT_PIX_CONFIRMED_TEMPLATE = 'Pagamento confirmado do pedido #{numeroPedido}';
 
 export function buildPaymentConfirmedMessage(input: {
   template?: string;

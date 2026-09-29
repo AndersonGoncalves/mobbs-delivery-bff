@@ -66,6 +66,8 @@ interface RestaurantLeanDocument {
   orderPreparingWhatsAppTemplate?: string;
   notifyCustomerOnOrderCancelled?: boolean;
   orderCancelledWhatsAppTemplate?: string;
+  notifyCustomerOnOrderDelivered?: boolean;
+  orderDeliveredWhatsAppTemplate?: string;
 }
 
 const ALL_PAYMENT_METHODS: PaymentMethod[] = ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'];
@@ -122,6 +124,8 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     orderPreparingWhatsAppTemplate: doc.orderPreparingWhatsAppTemplate,
     notifyCustomerOnOrderCancelled: doc.notifyCustomerOnOrderCancelled ?? true,
     orderCancelledWhatsAppTemplate: doc.orderCancelledWhatsAppTemplate,
+    notifyCustomerOnOrderDelivered: doc.notifyCustomerOnOrderDelivered ?? true,
+    orderDeliveredWhatsAppTemplate: doc.orderDeliveredWhatsAppTemplate,
   };
 }
 
