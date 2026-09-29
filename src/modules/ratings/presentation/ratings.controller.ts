@@ -1,13 +1,16 @@
 import type { Request, Response, Server } from 'restify';
-import { ConflictError } from 'restify-errors';
+import { ConflictError, NotFoundError } from 'restify-errors';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
+import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IRatingRepository } from '../domain/repositories/rating.repository.interface';
-import { listRatingsQuerySchema, submitRatingSchema } from './ratings.schemas';
+import { listRatingsQuerySchema, replyToRatingSchema, submitRatingSchema } from './ratings.schemas';
+
+type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
 /**
  * specs/0032-ajustes-diversos-rating-taxa-entrega REQ-6 — avaliação do restaurante pelo cliente
@@ -15,12 +18,16 @@ import { listRatingsQuerySchema, submitRatingSchema } from './ratings.schemas';
  * raciocínio de `OrdersController.create` — não é rota de retaguarda, sem
  * `restaurantOperatorMiddleware`) e pelo menos um pedido `entregue` nesse restaurante; `GET` é
  * pública (qualquer cliente pode ver as avaliações de um restaurante antes de decidir pedir).
+ *
+ * specs/0078-resposta-restaurante-avaliacoes — `PATCH .../reply` é rota de retaguarda
+ * (`restaurantOperatorMiddleware` + `dono`/`gerente`, mesmo escopo de `PromotionsController`).
  */
 export class RatingsController extends BaseRouter {
   constructor(
     private readonly ratingRepository: IRatingRepository,
     private readonly orderRepository: IOrderRepository,
     private readonly restaurantRepository: IRestaurantRepository,
+    private readonly restaurantOperatorMiddleware: AsyncHandler,
   ) {
     super();
   }
@@ -70,5 +77,19 @@ export class RatingsController extends BaseRouter {
       const canRate = await this.orderRepository.hasDeliveredOrder(customerId, req.params.id);
       res.json(200, { canRate });
     });
+
+    // specs/0078-resposta-restaurante-avaliacoes REQ-2/REQ-3/AC-1/AC-2/AC-3.
+    application.patch(
+      '/restaurants/me/ratings/:id/reply',
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('dono', 'gerente'),
+      async (req: Request, res: Response) => {
+        const payload = parseBody(replyToRatingSchema, req.body);
+        const rating = await this.ratingRepository.reply(req.params.id, req.restaurantId!, payload.text);
+        if (!rating) throw new NotFoundError('Avaliação não encontrada');
+        res.json(200, rating);
+      },
+    );
   }
 }

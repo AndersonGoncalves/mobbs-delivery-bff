@@ -55,5 +55,8 @@ export function buildMessagePlaceholders(input: MessagePlaceholdersInput): Recor
     // specs/0089-observacao-pedido-whatsapp-historico — observação livre do cliente no checkout
     // (`Order.notes`, distinto de `OrderItem.notes` por item); ausente = linha some sozinha.
     observacao: order.notes ?? '',
+    // specs/0080-troco-pagamento-dinheiro-checkout REQ-3 — só existe com pagamento em dinheiro
+    // e valor informado; ausente = linha some sozinha (mesmo mecanismo de `{observacao}`).
+    trocoPara: order.cashChangeFor ? formatCurrency(order.cashChangeFor) : '',
   };
 }

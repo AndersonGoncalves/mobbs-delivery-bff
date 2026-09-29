@@ -402,6 +402,33 @@ describe('OrdersController', () => {
     expect(orderRepository.create).toHaveBeenCalledWith(expect.objectContaining({ cardBrand: 'Visa' }));
   });
 
+  // specs/0080-troco-pagamento-dinheiro-checkout
+  describe('specs/0080-troco-pagamento-dinheiro-checkout', () => {
+    it('AC-2: POST /orders com cashChangeFor preenchido repassa o valor pro repositório', async () => {
+      const { orderRepository, routes } = setup();
+
+      await runAuthenticatedChain(
+        routes['POST /orders'],
+        { body: buildValidBody({ paymentMethod: 'cash', cashChangeFor: '50' }), user: { uid: 'customer-1' } },
+        { json: jest.fn() },
+      );
+
+      expect(orderRepository.create).toHaveBeenCalledWith(expect.objectContaining({ cashChangeFor: 50 }));
+    });
+
+    it('AC-3: POST /orders sem cashChangeFor não envia o campo (não é obrigatório)', async () => {
+      const { orderRepository, routes } = setup();
+
+      await runAuthenticatedChain(
+        routes['POST /orders'],
+        { body: buildValidBody({ paymentMethod: 'cash' }), user: { uid: 'customer-1' } },
+        { json: jest.fn() },
+      );
+
+      expect(orderRepository.create).toHaveBeenCalledWith(expect.objectContaining({ cashChangeFor: undefined }));
+    });
+  });
+
   it('lança 404 quando o restaurante não existe', async () => {
     const { routes } = setup({ restaurantRepository: { findById: jest.fn().mockResolvedValue(null) } });
 

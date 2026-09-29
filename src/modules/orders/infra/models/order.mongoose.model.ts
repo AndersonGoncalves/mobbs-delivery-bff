@@ -68,6 +68,8 @@ const orderSchema = new Schema(
     // specs/0022-cupons-desconto REQ-2/REQ-4 — código do cupom aplicado, se algum (ver `IOrder.couponCode`).
     couponCode: { type: String },
     paymentMethod: { type: String, enum: ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'], required: true },
+    // specs/0080-troco-pagamento-dinheiro-checkout REQ-2 (ver `IOrder.cashChangeFor`).
+    cashChangeFor: { type: Number },
     estimatedDeliveryAt: { type: Date },
   },
   { _id: false, timestamps: { createdAt: true, updatedAt: false } },

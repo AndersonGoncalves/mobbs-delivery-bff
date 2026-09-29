@@ -117,6 +117,7 @@ export class OrdersController extends BaseRouter {
         couponCode,
         paymentMethod: payload.paymentMethod,
         cardBrand: payload.cardBrand,
+        cashChangeFor: payload.cashChangeFor,
       });
 
       // specs/0013-notificacoes-whatsapp REQ-1/REQ-4 — fire-and-forget: nunca bloqueia a
