@@ -177,4 +177,17 @@ describe('buildOrderReceiptMessage — template editável (specs/0069)', () => {
 
     expect(message).toContain('Previsão:');
   });
+
+  // specs/0089-observacao-pedido-whatsapp-historico
+  it('specs/0089: com observação, a linha "Observação" aparece', () => {
+    const message = buildOrderReceiptMessage(buildInput({ order: buildOrder({ notes: 'Sem cebola, por favor' }) }));
+
+    expect(message).toContain('Observação: Sem cebola, por favor');
+  });
+
+  it('specs/0089: sem observação, a linha "Observação" some', () => {
+    const message = buildOrderReceiptMessage(buildInput());
+
+    expect(message).not.toContain('Observação');
+  });
 });

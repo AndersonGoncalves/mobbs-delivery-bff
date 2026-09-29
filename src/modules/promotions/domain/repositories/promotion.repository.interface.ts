@@ -7,7 +7,8 @@ export interface PromotionInput {
   productIds: string[];
   isActive: boolean;
   startDate: string;
-  endDate: string;
+  /** specs/0084-promocao-sem-data-fim — ausente/undefined = promoção sem data de fim. */
+  endDate?: string;
 }
 
 export interface IPromotionRepository {

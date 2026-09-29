@@ -36,6 +36,18 @@ describe('isPromotionCurrentlyActive (specs/0044-promocoes-produtos REQ-7)', () 
     const promotion = buildPromotion();
     expect(isPromotionCurrentlyActive(promotion, new Date('2026-10-01T00:00:00.000Z'))).toBe(false);
   });
+
+  // specs/0084-promocao-sem-data-fim
+  it('sem endDate: continua ativa indefinidamente após startDate (nunca expira sozinha)', () => {
+    const promotion = buildPromotion({ endDate: undefined });
+    expect(isPromotionCurrentlyActive(promotion, new Date('2026-09-15T12:00:00.000Z'))).toBe(true);
+    expect(isPromotionCurrentlyActive(promotion, new Date('2030-01-01T00:00:00.000Z'))).toBe(true);
+  });
+
+  it('sem endDate: ainda respeita startDate (inativa antes de começar)', () => {
+    const promotion = buildPromotion({ endDate: undefined });
+    expect(isPromotionCurrentlyActive(promotion, new Date('2026-08-30T00:00:00.000Z'))).toBe(false);
+  });
 });
 
 describe('computePromotionalPrice (specs/0044-promocoes-produtos REQ-2)', () => {

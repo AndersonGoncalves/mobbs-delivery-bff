@@ -131,6 +131,9 @@ const restaurantSchema = new Schema(
     orderPreparingWhatsAppTemplate: { type: String },
     notifyCustomerOnOrderCancelled: { type: Boolean, required: true, default: true },
     orderCancelledWhatsAppTemplate: { type: String },
+    // specs/0086-mensagens-whatsapp-pedido-entregue-pagamento-confirmado.
+    notifyCustomerOnOrderDelivered: { type: Boolean, required: true, default: true },
+    orderDeliveredWhatsAppTemplate: { type: String },
   },
   { _id: false, timestamps: true },
 );

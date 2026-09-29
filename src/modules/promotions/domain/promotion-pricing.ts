@@ -9,8 +9,10 @@ import { IPromotion } from './entities/promotion.entity';
 export function isPromotionCurrentlyActive(promotion: IPromotion, now: Date): boolean {
   if (!promotion.isActive) return false;
   const start = new Date(promotion.startDate);
-  const end = new Date(promotion.endDate);
-  return now >= start && now <= end;
+  if (now < start) return false;
+  // specs/0084 — sem endDate, a promoção nunca expira sozinha (só via isActive: false).
+  if (!promotion.endDate) return true;
+  return now <= new Date(promotion.endDate);
 }
 
 /**

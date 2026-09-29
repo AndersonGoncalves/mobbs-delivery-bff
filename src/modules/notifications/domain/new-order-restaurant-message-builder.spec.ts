@@ -89,4 +89,17 @@ describe('buildNewOrderRestaurantMessage', () => {
 
     expect(message).toBe('Pedido 123');
   });
+
+  // specs/0089-observacao-pedido-whatsapp-historico
+  it('specs/0089: com observação, o restaurante vê a linha "Observação" no aviso de pedido novo', () => {
+    const message = buildNewOrderRestaurantMessage(buildInput({ order: buildOrder({ notes: 'Sem cebola, por favor' }) }));
+
+    expect(message).toContain('Observação: Sem cebola, por favor');
+  });
+
+  it('specs/0089: sem observação, a linha "Observação" some do aviso de pedido novo', () => {
+    const message = buildNewOrderRestaurantMessage(buildInput());
+
+    expect(message).not.toContain('Observação');
+  });
 });

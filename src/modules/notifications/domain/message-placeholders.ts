@@ -52,5 +52,8 @@ export function buildMessagePlaceholders(input: MessagePlaceholdersInput): Recor
     pixCopiaECola: pixCode ?? '',
     linkAcompanhamento: buildTrackingLink(restaurantSlug, order.trackingToken),
     motivoCancelamento: cancellationReason ?? '',
+    // specs/0089-observacao-pedido-whatsapp-historico — observação livre do cliente no checkout
+    // (`Order.notes`, distinto de `OrderItem.notes` por item); ausente = linha some sozinha.
+    observacao: order.notes ?? '',
   };
 }

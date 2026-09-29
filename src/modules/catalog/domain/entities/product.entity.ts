@@ -40,6 +40,13 @@ export interface IProductAdditionalOption {
    * specs/0056: sobrescrever sempre descartava silenciosamente uma foto própria enviada).
    */
   imageUrl?: string;
+  /**
+   * specs/0087-descricao-adicional-vinculado — só se aplica a uma opção com `linkedProductId`:
+   * resolvida "ao vivo" a partir da `description` ATUAL do produto vinculado, mesmo mecanismo de
+   * `name`/`priceDelta` (nunca digitada nem persistida na opção). `undefined`/vazio numa opção
+   * sem vínculo, ou num produto vinculado sem descrição cadastrada.
+   */
+  description?: string;
 }
 
 /**

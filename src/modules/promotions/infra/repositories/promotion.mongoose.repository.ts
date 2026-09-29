@@ -10,7 +10,7 @@ interface PromotionLeanDocument {
   productIds: string[];
   isActive: boolean;
   startDate: Date;
-  endDate: Date;
+  endDate?: Date;
   createdAt: Date;
 }
 
@@ -23,7 +23,7 @@ function toEntity(doc: PromotionLeanDocument): IPromotion {
     productIds: doc.productIds,
     isActive: doc.isActive,
     startDate: doc.startDate.toISOString(),
-    endDate: doc.endDate.toISOString(),
+    endDate: doc.endDate?.toISOString(),
     createdAt: doc.createdAt.toISOString(),
   };
 }
@@ -35,7 +35,7 @@ function toSetPayload(input: PromotionInput) {
     productIds: input.productIds,
     isActive: input.isActive,
     startDate: new Date(input.startDate),
-    endDate: new Date(input.endDate),
+    endDate: input.endDate ? new Date(input.endDate) : undefined,
   };
 }
 

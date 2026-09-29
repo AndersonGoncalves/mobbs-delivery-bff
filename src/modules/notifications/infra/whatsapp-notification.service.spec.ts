@@ -31,7 +31,7 @@ describe('WhatsAppNotificationService', () => {
     overrides: {
       customer?: { id: string; name: string; phone?: string } | null;
       restaurant?:
-        | { id: string; name: string; slug: string; whatsappConnected: boolean; notifyCustomerOnOrderConfirmed?: boolean; orderConfirmedWhatsAppTemplate?: string; notifyCustomerOnPixConfirmed?: boolean; pixConfirmedWhatsAppTemplate?: string; notifyCustomerOnOrderCreated?: boolean; orderReceiptWhatsAppTemplate?: string; notifyCustomerOnOrderOutForDelivery?: boolean; orderOutForDeliveryWhatsAppTemplate?: string; notifyCustomerOnOrderPreparing?: boolean; orderPreparingWhatsAppTemplate?: string; notifyCustomerOnOrderCancelled?: boolean; orderCancelledWhatsAppTemplate?: string; pixKey?: string }
+        | { id: string; name: string; slug: string; whatsappConnected: boolean; notifyCustomerOnOrderConfirmed?: boolean; orderConfirmedWhatsAppTemplate?: string; notifyCustomerOnPixConfirmed?: boolean; pixConfirmedWhatsAppTemplate?: string; notifyCustomerOnOrderCreated?: boolean; orderReceiptWhatsAppTemplate?: string; notifyCustomerOnOrderOutForDelivery?: boolean; orderOutForDeliveryWhatsAppTemplate?: string; notifyCustomerOnOrderPreparing?: boolean; orderPreparingWhatsAppTemplate?: string; notifyCustomerOnOrderCancelled?: boolean; orderCancelledWhatsAppTemplate?: string; notifyCustomerOnOrderDelivered?: boolean; orderDeliveredWhatsAppTemplate?: string; pixKey?: string }
         | null;
     } = {},
   ) {
@@ -379,6 +379,36 @@ describe('WhatsAppNotificationService', () => {
       expect(whatsAppConnectionService.sendMessage).toHaveBeenCalledWith('r-1', '11999999999', 'Cancelado #123: sem estoque');
     });
 
+    // specs/0086-mensagens-whatsapp-pedido-entregue-pagamento-confirmado — "entregue" ganha
+    // toggle/template próprios, mesmo padrão dos outros status (antes desta spec sempre enviava).
+    it('specs/0086: notifyCustomerOnOrderDelivered false não envia em "entregue", mas os outros status seguem', async () => {
+      const { service, whatsAppConnectionService } = setup({
+        restaurant: { id: 'r-1', name: 'Prime Pizza', slug: 'primepizza', whatsappConnected: true, notifyCustomerOnOrderDelivered: false },
+      });
+
+      await service.sendOrderStatusUpdate(buildOrder({ status: 'entregue' }));
+      expect(whatsAppConnectionService.sendMessage).not.toHaveBeenCalled();
+
+      await service.sendOrderStatusUpdate(buildOrder({ status: 'emPreparo' }));
+      expect(whatsAppConnectionService.sendMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('specs/0086: "entregue" usa orderDeliveredWhatsAppTemplate do restaurante quando configurado', async () => {
+      const { service, whatsAppConnectionService } = setup({
+        restaurant: {
+          id: 'r-1',
+          name: 'Prime Pizza',
+          slug: 'primepizza',
+          whatsappConnected: true,
+          orderDeliveredWhatsAppTemplate: 'Chegou, {nomeCliente}! #{numeroPedido}',
+        },
+      });
+
+      await service.sendOrderStatusUpdate(buildOrder({ status: 'entregue' }));
+
+      expect(whatsAppConnectionService.sendMessage).toHaveBeenCalledWith('r-1', '11999999999', 'Chegou, Ana! #123');
+    });
+
     it('AC-2: usa orderConfirmedWhatsAppTemplate do restaurante quando configurado', async () => {
       const { service, whatsAppConnectionService } = setup({
         restaurant: {
@@ -397,12 +427,12 @@ describe('WhatsAppNotificationService', () => {
   });
 
   describe('sendPaymentConfirmedMessage (specs/0064)', () => {
-    it('AC-4: sem template configurado envia exatamente "Pagamento confirmado!"', async () => {
+    it('AC-4: sem template configurado envia "Pagamento confirmado do pedido #<numeroPedido>"', async () => {
       const { service, whatsAppConnectionService } = setup();
 
       await service.sendPaymentConfirmedMessage(buildOrder());
 
-      expect(whatsAppConnectionService.sendMessage).toHaveBeenCalledWith('r-1', '11999999999', 'Pagamento confirmado!');
+      expect(whatsAppConnectionService.sendMessage).toHaveBeenCalledWith('r-1', '11999999999', 'Pagamento confirmado do pedido #123');
     });
 
     it('AC-2: usa pixConfirmedWhatsAppTemplate do restaurante, com placeholders substituídos', async () => {

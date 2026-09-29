@@ -10,10 +10,11 @@ export const savePromotionSchema = z
     productIds: z.array(z.string().min(1)).min(1, 'Selecione ao menos um produto'),
     isActive: z.boolean().optional().default(true),
     startDate: isoDateString,
-    endDate: isoDateString,
+    // specs/0084 — vazio/ausente = sem data de fim determinada (promoção "aberta").
+    endDate: isoDateString.optional(),
   })
   .superRefine((data, ctx) => {
-    if (Date.parse(data.endDate) < Date.parse(data.startDate)) {
+    if (data.endDate && Date.parse(data.endDate) < Date.parse(data.startDate)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['endDate'], message: 'Data de fim não pode ser antes da data de início' });
     }
   });
