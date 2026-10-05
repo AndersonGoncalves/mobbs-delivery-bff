@@ -62,6 +62,7 @@ async function runOperatorChain(handlers: RouteHandler[], req: FakeRequest, res:
 function buildRestaurant(
   overrides: Partial<{
     isActive: boolean;
+    orderTypes: ('delivery' | 'pickup')[];
     deliveryFeeCents: number;
     deliveryFeeMode: string;
     pixKey: string;
@@ -79,6 +80,7 @@ function buildRestaurant(
     slug: 'primepizza',
     isActive: true,
     phone: '11912345678',
+    orderTypes: ['delivery', 'pickup'],
     notifyRestaurantOnNewOrder: true,
     // specs/0055-checkout-revalida-restaurante-aberto — aberto o dia inteiro, todo dia, por
     // padrão (não é o foco da maioria dos testes deste arquivo); os testes específicos de
@@ -361,6 +363,23 @@ describe('OrdersController', () => {
     await runAuthenticatedChain(routes['POST /orders'], { body: buildValidBody(), user: { uid: 'customer-1' } }, { json: jest.fn() });
 
     expect(orderRepository.create).toHaveBeenCalledWith(expect.objectContaining({ deliveryFee: 0, total: 25 }));
+  });
+
+  // specs/0083-modalidade-entrega-retirada-restaurante REQ-5/AC-4.
+  it('specs/0083: rejeita (400) pedido de retirada num restaurante que só aceita entrega', async () => {
+    const { orderRepository, routes } = setup({
+      restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ orderTypes: ['delivery'] })) },
+    });
+
+    await expect(
+      runAuthenticatedChain(
+        routes['POST /orders'],
+        { body: buildValidBody({ orderType: 'pickup', deliveryAddress: undefined }), user: { uid: 'customer-1' } },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+
+    expect(orderRepository.create).not.toHaveBeenCalled();
   });
 
   it('rejeita Delivery sem deliveryAddress', async () => {

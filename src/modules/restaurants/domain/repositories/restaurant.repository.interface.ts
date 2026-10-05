@@ -30,6 +30,7 @@ export type RestaurantProfileUpdate = Partial<
     | 'showHighlightsInMultipleRows'
     | 'cartSuggestionsCount'
     | 'acceptedPaymentMethods'
+    | 'orderTypes'
     | 'notifyRestaurantOnNewOrder'
     | 'newOrderRestaurantWhatsAppTemplate'
     | 'notifyCustomerOnOrderConfirmed'

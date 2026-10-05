@@ -111,6 +111,12 @@ const restaurantSchema = new Schema(
       enum: ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'],
       default: ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'],
     },
+    // specs/0083-modalidade-entrega-retirada-restaurante REQ-1 — default "ambos" (retrocompatível).
+    orderTypes: {
+      type: [String],
+      enum: ['delivery', 'pickup'],
+      default: ['delivery', 'pickup'],
+    },
     // specs/0062-confirmar-pedido-whatsapp-restaurante.
     notifyRestaurantOnNewOrder: { type: Boolean, required: true, default: true },
     newOrderRestaurantWhatsAppTemplate: { type: String },

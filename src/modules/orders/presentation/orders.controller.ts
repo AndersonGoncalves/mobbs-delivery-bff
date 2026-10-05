@@ -75,6 +75,12 @@ export class OrdersController extends BaseRouter {
         throw new ConflictError('Restaurante fechado no momento');
       }
 
+      // specs/0083-modalidade-entrega-retirada-restaurante REQ-5 — defesa em profundidade: o app já
+      // só oferece as modalidades permitidas, mas nunca confia só no client.
+      if (!restaurant.orderTypes.includes(payload.orderType)) {
+        throw new BadRequestError('Este restaurante não aceita esta modalidade de pedido');
+      }
+
       // specs/0020-pix-no-app REQ-3 — Pix só é uma opção válida quando o restaurante tem chave
       // cadastrada; o app já esconde a opção nesse caso (defesa em profundidade, nunca confiar só
       // no client — mesmo raciocínio de `cardBrand` obrigatório pra cartão, no schema acima).

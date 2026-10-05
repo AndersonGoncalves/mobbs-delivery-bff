@@ -108,6 +108,8 @@ export const restaurantProfileSchema = z
     cartSuggestionsCount: z.number().int().positive().optional(),
     // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-10.
     acceptedPaymentMethods: z.array(paymentMethodSchema),
+    // specs/0083-modalidade-entrega-retirada-restaurante REQ-2/REQ-3 — pelo menos uma modalidade.
+    orderTypes: z.array(z.enum(['delivery', 'pickup'])).min(1, 'Escolha pelo menos uma modalidade (entrega ou retirada)'),
     // specs/0062-confirmar-pedido-whatsapp-restaurante.
     notifyRestaurantOnNewOrder: z.boolean(),
     newOrderRestaurantWhatsAppTemplate: z.string(),

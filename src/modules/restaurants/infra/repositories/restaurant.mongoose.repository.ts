@@ -1,5 +1,5 @@
 import { buildDefaultShareMessage } from '../../domain/default-share-message';
-import { PaymentMethod } from '../../../orders/domain/entities/order.entity';
+import { OrderType, PaymentMethod } from '../../../orders/domain/entities/order.entity';
 import {
   DeliveryFeeMode,
   IBusinessHours,
@@ -52,6 +52,7 @@ interface RestaurantLeanDocument {
   category?: string;
   businessHoursReviewedAt?: Date;
   acceptedPaymentMethods?: PaymentMethod[];
+  orderTypes?: OrderType[];
   notifyRestaurantOnNewOrder?: boolean;
   newOrderRestaurantWhatsAppTemplate?: string;
   notifyCustomerOnOrderConfirmed?: boolean;
@@ -110,6 +111,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     category: doc.category,
     businessHoursReviewedAt: doc.businessHoursReviewedAt,
     acceptedPaymentMethods: doc.acceptedPaymentMethods ?? ALL_PAYMENT_METHODS,
+    orderTypes: doc.orderTypes?.length ? doc.orderTypes : ['delivery', 'pickup'],
     notifyRestaurantOnNewOrder: doc.notifyRestaurantOnNewOrder ?? true,
     newOrderRestaurantWhatsAppTemplate: doc.newOrderRestaurantWhatsAppTemplate,
     notifyCustomerOnOrderConfirmed: doc.notifyCustomerOnOrderConfirmed ?? true,

@@ -184,6 +184,15 @@ describe('RestaurantsController', () => {
       expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ slug: 'primepizza' }));
     });
 
+    // specs/0083-modalidade-entrega-retirada-restaurante REQ-2/REQ-3/AC-2.
+    it('specs/0083: PUT /restaurants/me rejeita (400) salvar sem nenhuma modalidade marcada', async () => {
+      const { routes } = setup();
+
+      await expect(
+        runAuthenticatedChain(routes['PUT /restaurants/me'], { body: { orderTypes: [] } }, { json: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
     it('AC-1/AC-7: PUT /restaurants/me valida o payload e persiste só os campos enviados', async () => {
       const { repository, routes } = setup();
       const json = jest.fn();

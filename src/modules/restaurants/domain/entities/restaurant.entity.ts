@@ -1,4 +1,4 @@
-import { PaymentMethod } from '../../../orders/domain/entities/order.entity';
+import { OrderType, PaymentMethod } from '../../../orders/domain/entities/order.entity';
 
 export interface IBusinessHours {
   dayOfWeek: 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
@@ -150,6 +150,9 @@ export interface IRestaurant {
    * este restaurante aceita hoje (reaproveita o mesmo `PaymentMethod` de `Order.paymentMethod`,
    * não um enum próprio) — nasce com as 5 ativas no autocadastro (`RestaurantSignupController`). */
   acceptedPaymentMethods: PaymentMethod[];
+  /** specs/0083-modalidade-entrega-retirada-restaurante REQ-1 — modalidades que este restaurante
+   * aceita (`delivery`/`pickup`, pelo menos uma). Default: ambas (documento antigo = "ambos"). */
+  orderTypes: OrderType[];
   /** specs/0062-confirmar-pedido-whatsapp-restaurante — liga/desliga o botão "WhatsApp" (já
    * existente, `ContactRestaurantActions`) buscando e pré-preenchendo a mensagem do pedido, na
    * tela de detalhe do pedido do app cliente. Desligado = o mesmo botão continua abrindo o chat
