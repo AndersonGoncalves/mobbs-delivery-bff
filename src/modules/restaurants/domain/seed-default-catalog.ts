@@ -51,12 +51,22 @@ export async function seedDefaultCatalog(restaurantId: string, businessType: Bus
   }
 
   const productIdsByName = new Map<string, string>();
+  // Categoria com o mesmo nome aproveita a já criada (ex.: "Lanches" próprio do tipo lanches_gerais + "Lanches"
+  // padrão), em vez de duplicar a categoria no cardápio.
+  const categoryIdByName = new Map<string, string>();
   for (const { categoryName, products } of catalog.categories) {
-    const category = await deps.menuCategoryRepository.create(restaurantId, categoryName);
+    let categoryId = categoryIdByName.get(categoryName);
+    if (!categoryId) {
+      const category = await deps.menuCategoryRepository.create(restaurantId, categoryName);
+      categoryId = category.id;
+      categoryIdByName.set(categoryName, categoryId);
+    }
 
     for (const product of products) {
+      // Produto de mesmo nome já criado (ex.: "Coxinha" em "Lanches" próprio e padrão) não é duplicado.
+      if (productIdsByName.has(product.name)) continue;
       const created = await deps.productRepository.create(restaurantId, {
-        menuCategoryId: category.id,
+        menuCategoryId: categoryId,
         name: product.name,
         description: product.description,
         price: product.price,

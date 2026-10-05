@@ -83,12 +83,27 @@ describe('seedDefaultCatalog', () => {
   // tipo específico fica com 2 categorias de nome igual (achado real, sinalizado à parte). Por
   // posição continua correto: `extraCategories()` sempre entra em [1]="Lanches" (extra, vazia),
   // [2]="Bebidas" (com produtos, REQ-17), [3]="Sobremesas" (vazia) — não depende do nome bater.
-  it('AC-11: as categorias extras "Lanches" (posição 2) e "Sobremesas" (posição 4) continuam sem produto nenhum', () => {
+  it('AC-11: as categorias extras "Lanches" e "Sobremesas" trazem os produtos básicos, em todos os tipos', () => {
     for (const businessType of BUSINESS_TYPES) {
       const categories = DEFAULT_CATALOGS_BY_BUSINESS_TYPE[businessType].categories;
-      expect(categories[1].products).toEqual([]);
-      expect(categories[3].products).toEqual([]);
+      // `lanches_gerais` tem uma categoria "Lanches" própria além da padrão; as duas somam os produtos.
+      const productsOf = (categoryName: string) =>
+        categories.filter((category) => category.categoryName === categoryName).flatMap((category) => category.products.map((product) => product.name));
+      expect(productsOf('Lanches')).toEqual(expect.arrayContaining(['Coxinha de frango', 'Risole de carne']));
+      expect(productsOf('Sobremesas')).toEqual(expect.arrayContaining(['Pudim de leite']));
     }
+  });
+
+  it('AC-20: ao cadastrar "lanches_gerais" não cria duas categorias "Lanches" nem duplica a "Coxinha" já existente', async () => {
+    const deps = buildDeps();
+
+    await seedDefaultCatalog('r-1', 'lanches_gerais', deps);
+
+    const categoryNames = (deps.menuCategoryRepository.create as jest.Mock).mock.calls.map((call) => call[1]);
+    expect(categoryNames.filter((name) => name === 'Lanches')).toHaveLength(1);
+    const productNames = (deps.productRepository.create as jest.Mock).mock.calls.map((call) => call[1].name);
+    expect(productNames.filter((name) => name === 'Coxinha')).toHaveLength(1);
+    expect(productNames.filter((name) => name === 'Coxinha de frango')).toHaveLength(1);
   });
 
   // specs/0049-catalogo-padrao-bebidas-reais REQ-17.

@@ -138,14 +138,30 @@ function bebidasProducts(): DefaultCatalogProduct[] {
 }
 
 // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-11 — mesmas 3 categorias, sempre
-// nesta ordem, depois da categoria própria do tipo de negócio, pra todos os 6 tipos. "Lanche" e
-// "Sobremesas" continuam vazias (usuário não pediu produtos padrão pra elas); "Bebidas" ganhou os
-// 12 produtos reais de `bebidasProducts()` em specs/0049-catalogo-padrao-bebidas-reais.
+// nesta ordem, depois da categoria própria do tipo de negócio, pra todos os 6 tipos. "Bebidas" tem os
+// 12 produtos reais de `bebidasProducts()` (specs/0049-catalogo-padrao-bebidas-reais). "Lanches" e
+// "Sobremesas" ganharam os produtos básicos abaixo (pedido do usuário: principais lanches e sobremesas no
+// cadastro, pra todo ramo de atividade). Preços são padrão de partida, editáveis na retaguarda.
+const LANCHES_PADRAO: DefaultCatalogProduct[] = [
+  { name: 'Coxinha de frango', description: 'Massa crocante recheada com frango desfiado.', price: 6 },
+  { name: 'Risole de carne', description: 'Massa de batata recheada com carne moída temperada.', price: 6 },
+  { name: 'Kibe', description: 'Kibe frito, crocante por fora e macio por dentro.', price: 6 },
+  { name: 'Pão de queijo', description: 'Porção com 3 unidades.', price: 6 },
+  { name: 'Empada de frango', description: 'Massa amanteigada com recheio de frango.', price: 7 },
+];
+
+const SOBREMESAS_PADRAO: DefaultCatalogProduct[] = [
+  { name: 'Pudim de leite', description: 'Pudim de leite condensado com calda de caramelo.', price: 9 },
+  { name: 'Brigadeiro', description: 'Unidade de brigadeiro gourmet.', price: 3 },
+  { name: 'Mousse de maracujá', description: 'Mousse cremoso de maracujá.', price: 8 },
+  { name: 'Torta de limão', description: 'Fatia de torta de limão com merengue.', price: 10 },
+];
+
 function extraCategories(): DefaultCatalogCategory[] {
   return [
-    { categoryName: 'Lanches', products: [] },
+    { categoryName: 'Lanches', products: LANCHES_PADRAO },
     { categoryName: 'Bebidas', products: bebidasProducts() },
-    { categoryName: 'Sobremesas', products: [] },
+    { categoryName: 'Sobremesas', products: SOBREMESAS_PADRAO },
   ];
 }
 
