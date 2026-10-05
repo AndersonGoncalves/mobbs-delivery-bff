@@ -99,6 +99,8 @@ export class WhatsAppNotificationService implements IWhatsAppNotificationService
       ]);
 
       if (this.skipReason(order, customer, restaurant)) return;
+      // specs/0096-status-pedido-retirada-sem-saiu-entrega REQ-2 — retirada nunca manda "saiu para entrega".
+      if (order.orderType === 'pickup' && order.status === 'saiuParaEntrega') return;
 
       // specs/0063/0065/0071 — toggle independente por status; `=== false` (não `!`) pra tratar um
       // documento antigo sem o campo (`undefined`) como ligado, mesmo default do schema.

@@ -1,4 +1,4 @@
-import { OrderStatus } from './entities/order.entity';
+import { OrderStatus, OrderType } from './entities/order.entity';
 
 /**
  * docs/architecture/data-model.md §"Regra de transição de OrderStatus" — avanço de status é
@@ -15,8 +15,17 @@ const NEXT_STATUS: Record<OrderStatus, OrderStatus | null> = {
   cancelado: null,
 };
 
-export function isValidOrderStatusTransition(current: OrderStatus, next: OrderStatus): boolean {
-  return NEXT_STATUS[current] === next;
+/**
+ * specs/0096-status-pedido-retirada-sem-saiu-entrega REQ-1 — retirada não passa por
+ * "saiu para entrega": de "emPreparo" vai direto pra "entregue". Entrega segue a sequência inteira.
+ */
+export function nextOrderStatus(current: OrderStatus, orderType: OrderType): OrderStatus | null {
+  if (orderType === 'pickup' && current === 'emPreparo') return 'entregue';
+  return NEXT_STATUS[current];
+}
+
+export function isValidOrderStatusTransition(current: OrderStatus, next: OrderStatus, orderType: OrderType): boolean {
+  return nextOrderStatus(current, orderType) === next;
 }
 
 /**

@@ -223,7 +223,7 @@ export class OrdersController extends BaseRouter {
         const { status } = parseBody(updateOrderStatusSchema, req.body);
         const order = await this.findOwnedOrderForRestaurant(req.params.id, req.restaurantId!);
 
-        if (!isValidOrderStatusTransition(order.status, status)) {
+        if (!isValidOrderStatusTransition(order.status, status, order.orderType)) {
           throw new BadRequestError(`Não é possível mudar de "${order.status}" para "${status}"`);
         }
 
