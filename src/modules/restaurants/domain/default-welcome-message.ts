@@ -12,5 +12,5 @@ const RAMO_BY_BUSINESS_TYPE: Record<BusinessType, string> = {
 /** specs/0094-mensagem-boas-vindas-home REQ-2 — texto inicial da mensagem de boas-vindas, nascido
  * no autocadastro a partir do tipo de negócio escolhido. Editável depois na retaguarda. */
 export function buildDefaultWelcomeMessage(businessType: BusinessType): string {
-  return `Olá! Seja bem-vindo(a) à nossa ${RAMO_BY_BUSINESS_TYPE[businessType]}! Aqui você encontra nossos produtos preparados com muito carinho e ingredientes selecionados. Esperamos que você se sinta em casa.`;
+  return `Seja bem-vindo(a) à nossa ${RAMO_BY_BUSINESS_TYPE[businessType]}! Preparamos cada pedido com ingredientes selecionados e muito cuidado, do primeiro ao último detalhe. Escolha seus favoritos, faça seu pedido pelo app e aproveite no conforto da sua casa. Obrigado pela preferência!`;
 }
