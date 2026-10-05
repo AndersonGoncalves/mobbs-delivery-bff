@@ -50,6 +50,12 @@ export class RestaurantOperatorsController extends BaseRouter {
 
     application.post('/restaurants/me/operators', ...ownerAuthenticated, async (req: Request, res: Response) => {
       const { email, role } = parseBody(addOperatorSchema, req.body);
+      // specs/0095-isolamento-cadastro-operadores REQ-1 — um e-mail com vínculo ativo em outro
+      // restaurante não pode ser adicionado aqui também (mesma regra do autocadastro, specs/0038).
+      const activeElsewhere = await this.operatorRepository.findActiveByEmailInOtherRestaurant(email, req.restaurantId!);
+      if (activeElsewhere) {
+        throw new ConflictError('Este e-mail já está associado a outro restaurante');
+      }
       const operator = await this.operatorRepository.create(req.restaurantId!, email, role);
       res.json(201, operator);
     });

@@ -53,6 +53,7 @@ describe('RestaurantOperatorsController', () => {
       listByRestaurant: jest.fn().mockResolvedValue([buildOperator()]),
       create: jest.fn().mockResolvedValue(buildOperator({ email: 'novo@example.com', role: 'gerente' })),
       findById: jest.fn().mockResolvedValue(buildOperator()),
+      findActiveByEmailInOtherRestaurant: jest.fn().mockResolvedValue(null),
       countActiveByRestaurant: jest.fn().mockResolvedValue(2),
       countActiveByRestaurantAndRole: jest.fn().mockResolvedValue(2),
       deactivate: jest.fn().mockResolvedValue(undefined),
@@ -89,6 +90,29 @@ describe('RestaurantOperatorsController', () => {
 
     expect(repository.create).toHaveBeenCalledWith('r-1', 'novo@example.com', 'gerente');
     expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ email: 'novo@example.com', role: 'gerente' }));
+  });
+
+  // specs/0095-isolamento-cadastro-operadores REQ-1/REQ-2.
+  it('AC-1 (specs/0095): POST /restaurants/me/operators rejeita (409) e-mail com vínculo ativo em outro restaurante', async () => {
+    const { repository, routes } = setup({
+      findActiveByEmailInOtherRestaurant: jest.fn().mockResolvedValue(buildOperator({ restaurantId: 'r-OUTRO' })),
+    });
+
+    await expect(
+      runChain(routes['POST /restaurants/me/operators'], { body: { email: 'ana@example.com', role: 'gerente' } }, { json: jest.fn(), send: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 409 });
+
+    expect(repository.findActiveByEmailInOtherRestaurant).toHaveBeenCalledWith('ana@example.com', 'r-1');
+    expect(repository.create).not.toHaveBeenCalled();
+  });
+
+  it('AC-2 (specs/0095): POST /restaurants/me/operators adiciona e-mail sem vínculo ativo em outro restaurante', async () => {
+    const { repository, routes } = setup();
+    const json = jest.fn();
+
+    await runChain(routes['POST /restaurants/me/operators'], { body: { email: 'novo@example.com', role: 'gerente' } }, { json, send: jest.fn() });
+
+    expect(repository.create).toHaveBeenCalledWith('r-1', 'novo@example.com', 'gerente');
   });
 
   it('rejeita POST /restaurants/me/operators com e-mail inválido', async () => {

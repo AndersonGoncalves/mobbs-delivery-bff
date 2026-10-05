@@ -13,6 +13,9 @@ export interface IRestaurantOperatorRepository {
    * diferente de `findActiveOperatorByEmail`: olha **todo** vínculo (ativo ou não), pra não
    * permitir reabrir cadastro reativando um e-mail já usado num restaurante diferente. */
   findByEmail(email: string): Promise<IRestaurantOperator | null>;
+  /** specs/0095-isolamento-cadastro-operadores REQ-1/REQ-2 — vínculo ATIVO do e-mail em outro
+   * restaurante (inativos não contam, diferente de `findByEmail`). */
+  findActiveByEmailInOtherRestaurant(email: string, restaurantId: string): Promise<IRestaurantOperator | null>;
   listByRestaurant(restaurantId: string): Promise<IRestaurantOperator[]>;
   countActiveByRestaurant(restaurantId: string): Promise<number>;
   /**
