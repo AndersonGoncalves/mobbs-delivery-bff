@@ -80,6 +80,8 @@ export const restaurantProfileSchema = z
     deliveryFeeCents: z.number().nonnegative(),
     // specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-2.
     shareMessage: z.string(),
+    // specs/0094-mensagem-boas-vindas-home REQ-1 — opcional; string vazia limpa o card.
+    welcomeMessage: z.string().max(500).optional(),
     pixKey: z.string(),
     pixKeyType: z.enum(['telefone', 'cpf', 'cnpj', 'email', 'aleatoria']),
     pixBeneficiaryName: z.string(),

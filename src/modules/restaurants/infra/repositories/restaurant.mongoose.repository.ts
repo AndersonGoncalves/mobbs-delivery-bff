@@ -31,6 +31,7 @@ interface RestaurantLeanDocument {
   minimumOrderValue?: number;
   deliveryFeeCents?: number;
   shareMessage?: string;
+  welcomeMessage?: string;
   pixKey?: string;
   pixKeyType?: PixKeyType;
   pixBeneficiaryName?: string;
@@ -90,6 +91,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     minimumOrderValue: doc.minimumOrderValue ?? 0,
     deliveryFeeCents: doc.deliveryFeeCents ?? 0,
     shareMessage: doc.shareMessage ?? buildDefaultShareMessage(doc.name),
+    welcomeMessage: doc.welcomeMessage,
     pixKey: doc.pixKey,
     pixKeyType: doc.pixKeyType,
     pixBeneficiaryName: doc.pixBeneficiaryName,
@@ -145,6 +147,7 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
     newOrderRestaurantWhatsAppTemplate?: string;
     deliveryFeeMode?: DeliveryFeeMode;
     deliveryFeeCents?: number;
+    welcomeMessage?: string;
   }): Promise<IRestaurant> {
     const doc = await RestaurantModel.create(input);
     return toEntity(doc.toObject());

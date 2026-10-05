@@ -6,6 +6,7 @@ import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
 import { IRestaurantRepository } from '../domain/repositories/restaurant.repository.interface';
 import { IRestaurantOperatorRepository } from '../../restaurant-operators/domain/repositories/restaurant-operator.repository.interface';
+import { buildDefaultWelcomeMessage } from '../domain/default-welcome-message';
 import { IMenuCategoryRepository } from '../../catalog/domain/repositories/menu-category.repository.interface';
 import { IProductRepository } from '../../catalog/domain/repositories/product.repository.interface';
 import { IAdditionalGroupTemplateRepository } from '../../additional-group-templates/domain/repositories/additional-group-template.repository.interface';
@@ -75,6 +76,7 @@ export class RestaurantSignupController extends BaseRouter {
         newOrderRestaurantWhatsAppTemplate: DEFAULT_NEW_ORDER_RESTAURANT_TEMPLATE,
         deliveryFeeMode: 'free',
         deliveryFeeCents: 0,
+        welcomeMessage: buildDefaultWelcomeMessage(businessType),
       });
       await this.restaurantOperatorRepository.create(restaurant.id, email, 'dono');
       // REQ-9 — catálogo inicial típico do tipo de negócio, sem imagem, pronto pro dono editar.

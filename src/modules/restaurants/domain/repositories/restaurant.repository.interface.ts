@@ -31,6 +31,7 @@ export type RestaurantProfileUpdate = Partial<
     | 'cartSuggestionsCount'
     | 'acceptedPaymentMethods'
     | 'orderTypes'
+    | 'welcomeMessage'
     | 'notifyRestaurantOnNewOrder'
     | 'newOrderRestaurantWhatsAppTemplate'
     | 'notifyCustomerOnOrderConfirmed'
@@ -72,6 +73,8 @@ export interface IRestaurantRepository {
      * schema (mantido pros demais caminhos de criação). */
     deliveryFeeMode?: DeliveryFeeMode;
     deliveryFeeCents?: number;
+    /** specs/0094-mensagem-boas-vindas-home REQ-2 — texto padrão gerado a partir do tipo de negócio. */
+    welcomeMessage?: string;
   }): Promise<IRestaurant>;
   findBySlug(slug: string): Promise<IRestaurant | null>;
   findById(id: string): Promise<IRestaurant | null>;

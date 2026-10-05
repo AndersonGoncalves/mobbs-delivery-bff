@@ -114,6 +114,19 @@ describe('RestaurantSignupController', () => {
   });
 
   // specs/0039-onboarding-primeiro-acesso REQ-1/REQ-2/REQ-10/AC-1/AC-2/AC-8.
+  // specs/0094-mensagem-boas-vindas-home REQ-2/AC-2.
+  it('specs/0094: restaurante novo nasce com a mensagem de boas-vindas do tipo de negócio', async () => {
+    const { restaurantRepository, routes } = setup();
+
+    await runAuthenticatedChain(
+      routes['POST /restaurants/signup'],
+      { body: { name: 'Pastelaria do João', whatsapp: '11999999999', businessType: 'pastelaria' }, user: { email: 'joao@exemplo.com' } },
+      { json: jest.fn() },
+    );
+
+    expect(restaurantRepository.create).toHaveBeenCalledWith(expect.objectContaining({ welcomeMessage: expect.stringContaining('à nossa pastelaria!') }));
+  });
+
   it('AC-1/AC-2/AC-8 (specs/0039): restaurante nasce com horário 08:00-23:00 todo dia, destaques/banners/cancelar pedido/imagem à direita desligados e taxa de entrega grátis', async () => {
     const { restaurantRepository, routes } = setup();
     const json = jest.fn();

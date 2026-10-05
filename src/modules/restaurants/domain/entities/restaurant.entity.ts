@@ -74,6 +74,8 @@ export interface IRestaurant {
    * propósito faz o app compartilhar apenas o link.
    */
   shareMessage?: string;
+  /** specs/0094-mensagem-boas-vindas-home — texto do card de boas-vindas na home do app; vazio = sem card. */
+  welcomeMessage?: string;
   pixKey?: string;
   pixKeyType?: PixKeyType;
   pixBeneficiaryName?: string;

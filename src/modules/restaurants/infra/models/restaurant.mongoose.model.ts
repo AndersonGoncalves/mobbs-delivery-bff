@@ -68,6 +68,8 @@ const restaurantSchema = new Schema(
     minimumOrderValue: { type: Number, required: true, default: 0 },
     deliveryFeeCents: { type: Number, required: true, default: 0 },
     shareMessage: { type: String },
+    // specs/0094-mensagem-boas-vindas-home — sem default: ausente/vazio = nenhum card na home.
+    welcomeMessage: { type: String },
     pixKey: { type: String },
     pixKeyType: { type: String, enum: ['telefone', 'cpf', 'cnpj', 'email', 'aleatoria'] },
     pixBeneficiaryName: { type: String },
