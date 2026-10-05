@@ -5,11 +5,14 @@ import { IProductRepository } from '../../catalog/domain/repositories/product.re
 import { IAdditionalGroupTemplateRepository } from '../../additional-group-templates/domain/repositories/additional-group-template.repository.interface';
 import { BusinessType } from './business-type';
 import { DEFAULT_CATALOGS_BY_BUSINESS_TYPE } from './default-catalogs-by-business-type';
+import { DEFAULT_RAW_MATERIALS } from './default-raw-materials';
+import { IRawMaterialRepository } from '../../raw-materials/domain/repositories/raw-material.repository.interface';
 
 export interface SeedDefaultCatalogDeps {
   menuCategoryRepository: IMenuCategoryRepository;
   productRepository: IProductRepository;
   additionalGroupTemplateRepository: IAdditionalGroupTemplateRepository;
+  rawMaterialRepository: IRawMaterialRepository;
 }
 
 /** specs/0039-onboarding-primeiro-acesso REQ-9 — chamado uma vez, logo após o autocadastro
@@ -90,6 +93,11 @@ export async function seedDefaultCatalog(restaurantId: string, businessType: Bus
           .map((templateId) => ({ id: randomUUID(), productId: created.id, templateId })),
       });
     }
+  }
+
+  // Matérias-primas padrão (queijo, ovos, etc.), iguais pra todo ramo; nascem sem preço de adicional.
+  for (const material of DEFAULT_RAW_MATERIALS) {
+    await deps.rawMaterialRepository.create(restaurantId, material.name, 0, material.unit);
   }
 
   // specs/0049-catalogo-padrao-bebidas-reais REQ-18 — 3ª passada: só reenvia os templates que

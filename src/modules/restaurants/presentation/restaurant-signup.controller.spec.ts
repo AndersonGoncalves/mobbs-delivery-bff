@@ -5,6 +5,7 @@ import { IRestaurantOperatorRepository } from '../../restaurant-operators/domain
 import { IMenuCategoryRepository } from '../../catalog/domain/repositories/menu-category.repository.interface';
 import { IProductRepository } from '../../catalog/domain/repositories/product.repository.interface';
 import { IAdditionalGroupTemplateRepository } from '../../additional-group-templates/domain/repositories/additional-group-template.repository.interface';
+import { IRawMaterialRepository } from '../../raw-materials/domain/repositories/raw-material.repository.interface';
 import { RestaurantSignupController } from './restaurant-signup.controller';
 
 type FakeRequest = Partial<Pick<Request, 'body'>> & { user?: { email?: string }; query?: Record<string, string> };
@@ -86,6 +87,7 @@ describe('RestaurantSignupController', () => {
     const productRepository = buildProductRepository();
     const additionalGroupTemplateRepository = buildAdditionalGroupTemplateRepository();
     const { application, routes } = buildFakeApplication();
+    const rawMaterialRepository = { create: jest.fn().mockResolvedValue({ id: 'rm-1' }) };
     new RestaurantSignupController(
       restaurantRepository,
       operatorRepository,
@@ -93,6 +95,7 @@ describe('RestaurantSignupController', () => {
       productRepository,
       additionalGroupTemplateRepository,
       referralRepository,
+      rawMaterialRepository as unknown as IRawMaterialRepository,
     ).initializeRoutes(application);
     return {
       restaurantRepository,

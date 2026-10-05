@@ -4,6 +4,8 @@ import { IAdditionalGroupTemplateRepository } from '../../additional-group-templ
 import { BUSINESS_TYPES } from './business-type';
 import { DEFAULT_CATALOGS_BY_BUSINESS_TYPE } from './default-catalogs-by-business-type';
 import { seedDefaultCatalog } from './seed-default-catalog';
+import { IRawMaterialRepository } from '../../raw-materials/domain/repositories/raw-material.repository.interface';
+import { DEFAULT_RAW_MATERIALS } from './default-raw-materials';
 
 function allProducts(businessType: (typeof BUSINESS_TYPES)[number]) {
   return DEFAULT_CATALOGS_BY_BUSINESS_TYPE[businessType].categories.flatMap((category) => category.products);
@@ -24,7 +26,15 @@ function buildDeps() {
     // specs/0049-catalogo-padrao-bebidas-reais REQ-18 — 3ª passada de seedDefaultCatalog.
     update: jest.fn().mockResolvedValue({}),
   } as unknown as IAdditionalGroupTemplateRepository;
-  return { menuCategoryRepository, productRepository, additionalGroupTemplateRepository };
+  const rawMaterialRepository = {
+    create: jest.fn().mockImplementation(async (_restaurantId: string, name: string, priceDelta: number, unit: string) => ({
+      id: `rm-${name}`,
+      name,
+      priceDelta,
+      unit,
+    })),
+  } as unknown as IRawMaterialRepository;
+  return { menuCategoryRepository, productRepository, additionalGroupTemplateRepository, rawMaterialRepository };
 }
 
 describe('seedDefaultCatalog', () => {
@@ -226,5 +236,17 @@ describe('seedDefaultCatalog', () => {
     await seedDefaultCatalog('r-1', 'hamburgueria', deps);
 
     expect(deps.productRepository.update).not.toHaveBeenCalled();
+  });
+
+  it('AC-21: todo ramo ganha as matérias-primas padrão (queijo, ovos, etc.) no cadastro', async () => {
+    for (const businessType of BUSINESS_TYPES) {
+      const deps = buildDeps();
+
+      await seedDefaultCatalog('r-1', businessType, deps);
+
+      const created = (deps.rawMaterialRepository.create as jest.Mock).mock.calls.map((call) => call[1]);
+      expect(created).toEqual(DEFAULT_RAW_MATERIALS.map((material) => material.name));
+      expect(created).toEqual(expect.arrayContaining(['Queijo mussarela', 'Ovo']));
+    }
   });
 });

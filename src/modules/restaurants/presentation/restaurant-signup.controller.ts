@@ -18,6 +18,7 @@ import { IReferralRepository } from '../../referrals/domain/repositories/referra
 import { REFERRAL_REWARD_CENTS } from '../../referrals/domain/entities/referral.entity';
 import { generateUniqueReferralCode } from '../../referrals/domain/generate-referral-code';
 import { signupSchema } from './restaurants.schemas';
+import { IRawMaterialRepository } from '../../raw-materials/domain/repositories/raw-material.repository.interface';
 
 /** specs/0039-onboarding-primeiro-acesso REQ-1 — horário padrão "aberto todo dia, 08:00-23:00",
  * em vez de nascer vazio (o que faz o app mostrar "loja fechada" até o dono configurar). */
@@ -40,6 +41,8 @@ export class RestaurantSignupController extends BaseRouter {
     private readonly additionalGroupTemplateRepository: IAdditionalGroupTemplateRepository,
     // specs/0043-programa-indicacao REQ-4 — vínculo de indicação, só quando o `?ref=` é válido.
     private readonly referralRepository: IReferralRepository,
+    // Matérias-primas padrão do autocadastro (`DEFAULT_RAW_MATERIALS`).
+    private readonly rawMaterialRepository: IRawMaterialRepository,
   ) {
     super();
   }
@@ -101,6 +104,7 @@ export class RestaurantSignupController extends BaseRouter {
         menuCategoryRepository: this.menuCategoryRepository,
         productRepository: this.productRepository,
         additionalGroupTemplateRepository: this.additionalGroupTemplateRepository,
+        rawMaterialRepository: this.rawMaterialRepository,
       });
 
       res.json(201, { restaurantId: restaurant.id, slug: restaurant.slug });

@@ -126,6 +126,7 @@ server
       productRepository,
       new AdditionalGroupTemplateMongooseRepository(),
       new ReferralMongooseRepository(),
+      new RawMaterialMongooseRepository(),
     ),
     new OnboardingChecklistController(
       restaurantRepository,

@@ -505,5 +505,6 @@ function resolveDeliveryFee(
   if (restaurant.deliveryFeeMode !== 'byNeighborhood') return restaurant.deliveryFeeCents;
   const zone = findDeliveryFeeZone(restaurant.deliveryFeeZones, payload.deliveryNeighborhood);
   if (!zone) throw new BadRequestError('Não há taxa de entrega cadastrada para este bairro');
-  return zone.feeCents;
+  // A zona guarda a taxa em centavos (o web grava R$ x 100); o pedido e o app trabalham em reais.
+  return zone.feeCents / 100;
 }

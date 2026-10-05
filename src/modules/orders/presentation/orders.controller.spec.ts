@@ -410,7 +410,8 @@ describe('OrdersController', () => {
       { json: jest.fn() },
     );
 
-    expect(orderRepository.create).toHaveBeenCalledWith(expect.objectContaining({ deliveryFee: 800, total: 825 }));
+    // Zona de 800 centavos = R$ 8,00; subtotal 25 + taxa 8 = 33.
+    expect(orderRepository.create).toHaveBeenCalledWith(expect.objectContaining({ deliveryFee: 8, total: 33 }));
   });
 
   it('taxa por bairro: bairro sem zona cadastrada não fecha o pedido (400)', async () => {
