@@ -32,6 +32,7 @@ interface RestaurantLeanDocument {
   deliveryFeeCents?: number;
   shareMessage?: string;
   welcomeMessage?: string;
+  referralCode?: string;
   pixKey?: string;
   pixKeyType?: PixKeyType;
   pixBeneficiaryName?: string;
@@ -92,6 +93,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     deliveryFeeCents: doc.deliveryFeeCents ?? 0,
     shareMessage: doc.shareMessage ?? buildDefaultShareMessage(doc.name),
     welcomeMessage: doc.welcomeMessage,
+    referralCode: doc.referralCode,
     pixKey: doc.pixKey,
     pixKeyType: doc.pixKeyType,
     pixBeneficiaryName: doc.pixBeneficiaryName,
@@ -148,6 +150,7 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
     deliveryFeeMode?: DeliveryFeeMode;
     deliveryFeeCents?: number;
     welcomeMessage?: string;
+    referralCode?: string;
   }): Promise<IRestaurant> {
     const doc = await RestaurantModel.create(input);
     return toEntity(doc.toObject());
@@ -155,6 +158,11 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
 
   async findBySlug(slug: string): Promise<IRestaurant | null> {
     const doc = await RestaurantModel.findOne({ slug }).lean<RestaurantLeanDocument>();
+    return doc ? toEntity(doc) : null;
+  }
+
+  async findByReferralCode(code: string): Promise<IRestaurant | null> {
+    const doc = await RestaurantModel.findOne({ referralCode: code }).lean<RestaurantLeanDocument>();
     return doc ? toEntity(doc) : null;
   }
 

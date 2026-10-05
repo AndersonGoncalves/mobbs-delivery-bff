@@ -76,6 +76,8 @@ export interface IRestaurant {
   shareMessage?: string;
   /** specs/0094-mensagem-boas-vindas-home — texto do card de boas-vindas na home do app; vazio = sem card. */
   welcomeMessage?: string;
+  /** specs/0043-programa-indicacao REQ-1 — código de indicação permanente e único (link `?ref=`). */
+  referralCode?: string;
   pixKey?: string;
   pixKeyType?: PixKeyType;
   pixBeneficiaryName?: string;

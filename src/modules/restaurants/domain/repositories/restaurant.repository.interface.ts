@@ -75,8 +75,11 @@ export interface IRestaurantRepository {
     deliveryFeeCents?: number;
     /** specs/0094-mensagem-boas-vindas-home REQ-2 — texto padrão gerado a partir do tipo de negócio. */
     welcomeMessage?: string;
+    referralCode?: string;
   }): Promise<IRestaurant>;
   findBySlug(slug: string): Promise<IRestaurant | null>;
+  /** specs/0043-programa-indicacao REQ-3 — resolve o restaurante indicador pelo código do link `?ref=`. */
+  findByReferralCode(code: string): Promise<IRestaurant | null>;
   findById(id: string): Promise<IRestaurant | null>;
   updateProfile(id: string, patch: RestaurantProfileUpdate): Promise<IRestaurant>;
   updateBusinessHours(id: string, businessHours: IBusinessHours[]): Promise<IRestaurant>;

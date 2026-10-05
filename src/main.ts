@@ -6,6 +6,9 @@ import { RestaurantSignupController } from './modules/restaurants/presentation/r
 import { OnboardingChecklistController } from './modules/restaurants/presentation/onboarding-checklist.controller';
 import { RestaurantOperatorMongooseRepository } from './modules/restaurant-operators/infra/repositories/restaurant-operator.mongoose.repository';
 import { migrateOperatorRolesToDono } from './modules/restaurant-operators/infra/migrations/migrate-operator-roles-to-dono';
+import { backfillReferralCodes } from './modules/referrals/infra/migrations/backfill-referral-codes';
+import { ReferralMongooseRepository } from './modules/referrals/infra/repositories/referral.mongoose.repository';
+import { ReferralsController } from './modules/referrals/presentation/referrals.controller';
 import { RestaurantOperatorsController } from './modules/restaurant-operators/presentation/restaurant-operators.controller';
 import { MenuCategoryMongooseRepository } from './modules/catalog/infra/repositories/menu-category.mongoose.repository';
 import { ProductMongooseRepository } from './modules/catalog/infra/repositories/product.mongoose.repository';
@@ -122,6 +125,7 @@ server
       new MenuCategoryMongooseRepository(promotionRepository),
       productRepository,
       new AdditionalGroupTemplateMongooseRepository(),
+      new ReferralMongooseRepository(),
     ),
     new OnboardingChecklistController(
       restaurantRepository,
@@ -176,7 +180,8 @@ server
     new RatingsController(new RatingMongooseRepository(), orderRepository, restaurantRepository, restaurantOperatorMiddleware),
     new PresenceController(new PresenceMongooseRepository(), restaurantRepository, restaurantOperatorMiddleware),
     new UploadsController(restaurantOperatorMiddleware),
-  ], [migrateOperatorRolesToDono])
+    new ReferralsController(new ReferralMongooseRepository(), restaurantRepository, restaurantOperatorMiddleware),
+  ], [migrateOperatorRolesToDono, backfillReferralCodes])
   // specs/0066 REQ-1 — sessões do Baileys vivem em memória; sem isto todo restart do container
   // derruba o envio de WhatsApp em silêncio. Fire-and-forget: nunca atrasa nem derruba o boot.
   .then(() => whatsAppConnectionService.restoreConnectedSessions())

@@ -70,6 +70,8 @@ const restaurantSchema = new Schema(
     shareMessage: { type: String },
     // specs/0094-mensagem-boas-vindas-home — sem default: ausente/vazio = nenhum card na home.
     welcomeMessage: { type: String },
+    // specs/0043-programa-indicacao REQ-1 — sparse: restaurantes antigos ficam sem código até o backfill.
+    referralCode: { type: String, unique: true, sparse: true },
     pixKey: { type: String },
     pixKeyType: { type: String, enum: ['telefone', 'cpf', 'cnpj', 'email', 'aleatoria'] },
     pixBeneficiaryName: { type: String },

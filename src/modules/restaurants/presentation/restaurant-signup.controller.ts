@@ -14,6 +14,9 @@ import { generateUniqueSlug } from '../domain/generate-unique-slug';
 import { seedDefaultCatalog } from '../domain/seed-default-catalog';
 import { DEFAULT_NEW_ORDER_RESTAURANT_TEMPLATE } from '../../notifications/domain/new-order-restaurant-message-builder';
 import { IBusinessHours } from '../domain/entities/restaurant.entity';
+import { IReferralRepository } from '../../referrals/domain/repositories/referral.repository.interface';
+import { REFERRAL_REWARD_CENTS } from '../../referrals/domain/entities/referral.entity';
+import { generateUniqueReferralCode } from '../../referrals/domain/generate-referral-code';
 import { signupSchema } from './restaurants.schemas';
 
 /** specs/0039-onboarding-primeiro-acesso REQ-1 — horário padrão "aberto todo dia, 08:00-23:00",
@@ -35,6 +38,8 @@ export class RestaurantSignupController extends BaseRouter {
     private readonly menuCategoryRepository: IMenuCategoryRepository,
     private readonly productRepository: IProductRepository,
     private readonly additionalGroupTemplateRepository: IAdditionalGroupTemplateRepository,
+    // specs/0043-programa-indicacao REQ-4 — vínculo de indicação, só quando o `?ref=` é válido.
+    private readonly referralRepository: IReferralRepository,
   ) {
     super();
   }
@@ -55,6 +60,10 @@ export class RestaurantSignupController extends BaseRouter {
       }
 
       const slug = await generateUniqueSlug(name, this.restaurantRepository);
+      // specs/0043-programa-indicacao REQ-3/REQ-6 — `?ref=` opcional. Código inválido/inexistente
+      // não bloqueia o cadastro: só não cria vínculo nenhum.
+      const refCode = typeof req.query?.ref === 'string' ? req.query.ref.trim().toUpperCase() : '';
+      const referrer = refCode ? await this.restaurantRepository.findByReferralCode(refCode) : null;
       // specs/0039-onboarding-primeiro-acesso REQ-1/REQ-2 — destaques/banners/cancelar pedido/
       // imagem à direita nascem desligados (o default do schema é ligado) porque uma loja recém-
       // criada, sem produto/foto nenhum, fica com essas seções vazias/quebradas até o dono
@@ -77,8 +86,16 @@ export class RestaurantSignupController extends BaseRouter {
         deliveryFeeMode: 'free',
         deliveryFeeCents: 0,
         welcomeMessage: buildDefaultWelcomeMessage(businessType),
+        referralCode: await generateUniqueReferralCode(this.restaurantRepository),
       });
       await this.restaurantOperatorRepository.create(restaurant.id, email, 'dono');
+      if (referrer) {
+        await this.referralRepository.create({
+          referrerRestaurantId: referrer.id,
+          referredRestaurantId: restaurant.id,
+          rewardCents: REFERRAL_REWARD_CENTS,
+        });
+      }
       // REQ-9 — catálogo inicial típico do tipo de negócio, sem imagem, pronto pro dono editar.
       await seedDefaultCatalog(restaurant.id, businessType, {
         menuCategoryRepository: this.menuCategoryRepository,
