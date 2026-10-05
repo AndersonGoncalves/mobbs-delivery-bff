@@ -147,6 +147,19 @@ describe('CustomersController', () => {
     return { customerRepository, addressRepository, favoriteRepository, orderRepository, emailService, routes };
   }
 
+  // Cadastro de visitante grava nome vazio; o nome do Google (token) completa quando ele entra.
+  it('GET /customers/me completa nome vazio com o nome do token do Google', async () => {
+    const { routes, customerRepository } = setup({
+      customerRepository: { findById: jest.fn().mockResolvedValue(buildCustomer({ name: '', email: '' })) },
+    });
+    const json = jest.fn();
+
+    await runAuthenticatedChain(routes['GET /customers/me'], { user: { uid: 'c-1', name: 'Anderson Gonçalves', email: 'a@x.com' } }, { json });
+
+    expect(customerRepository.findById).toHaveBeenCalledWith('c-1');
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ name: 'Anderson Gonçalves', email: 'a@x.com' }));
+  });
+
   it('AC-1: GET /customers/me devolve o Customer persistido quando já existe', async () => {
     const { routes } = setup();
     const json = jest.fn();

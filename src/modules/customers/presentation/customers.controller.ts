@@ -46,9 +46,13 @@ export class CustomersController extends BaseRouter {
     application.get('/customers/me', firebaseAuthMiddleware, async (req: Request, res: Response) => {
       const existing = await this.customerRepository.findById(req.user!.uid);
       if (existing) {
-        // Conta criada como visitante grava `email` vazio; ao logar com Google depois, o documento
-        // continua sem e-mail, mas o token já traz um — o do token vale quando o gravado é vazio.
-        res.json(200, { ...existing, email: existing.email || req.user!.email || '' });
+        // Conta criada como visitante grava `email`/`name` vazios; ao logar com Google depois, o documento
+        // continua assim, mas o token já traz os dados do Google — o do token vale quando o gravado é vazio.
+        res.json(200, {
+          ...existing,
+          name: existing.name || req.user!.name || '',
+          email: existing.email || req.user!.email || '',
+        });
         return;
       }
       res.json(200, {
@@ -183,7 +187,7 @@ export class CustomersController extends BaseRouter {
         const uid = req.user!.uid;
         const existing = await this.customerRepository.findById(uid);
         const customer = existing
-          ? { ...existing, email: existing.email || req.user!.email || '' }
+          ? { ...existing, name: existing.name || req.user!.name || '', email: existing.email || req.user!.email || '' }
           : {
               id: uid,
               name: req.user!.name ?? '',
