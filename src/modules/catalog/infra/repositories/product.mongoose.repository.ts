@@ -12,6 +12,7 @@ import { IPromotion } from '../../../promotions/domain/entities/promotion.entity
 import { computePromotionalPrice, isPromotionCurrentlyActive } from '../../../promotions/domain/promotion-pricing';
 import { IPromotionRepository } from '../../../promotions/domain/repositories/promotion.repository.interface';
 import { ProductModel } from '../models/product.mongoose.model';
+import { RawMaterialModel } from '../../../raw-materials/infra/models/raw-material.mongoose.model';
 
 interface ProductLeanDocument extends Omit<IProduct, 'id'> {
   _id: string;
@@ -91,6 +92,63 @@ function referencesLinkedProduct(groups: IProductAdditionalGroup[], linkedProduc
         (option.nestedAdditionalGroups && referencesLinkedProduct(option.nestedAdditionalGroups, linkedProductId)),
     ),
   );
+}
+
+interface LinkedRawMaterialLeanDocument {
+  _id: string;
+  name: string;
+  priceDelta: number;
+}
+
+// specs/0079-adicional-materia-prima-some-sem-estoque REQ-4/REQ-6 — "vínculo vivo" igual
+// `resolveOptionLinkedProduct`, mas pra `rawMaterialId`: `name`/`priceDelta` sempre refletem a
+// `RawMaterial` atual, nunca o snapshot digitado na opção. Matéria-prima removida mantém o último
+// snapshot conhecido (mesmo comportamento de produto vinculado removido). Não aplica desconto de
+// promoção — matéria-prima não entra em promoção (só `Product` entra).
+export function resolveOptionLinkedRawMaterial(
+  option: IProductAdditionalOption,
+  rawMaterialsById: Map<string, LinkedRawMaterialLeanDocument>,
+): IProductAdditionalOption {
+  const nestedAdditionalGroups = option.nestedAdditionalGroups?.map((group) => resolveGroupLinkedRawMaterials(group, rawMaterialsById));
+  const linked = option.rawMaterialId ? rawMaterialsById.get(option.rawMaterialId) : undefined;
+  if (!linked) return nestedAdditionalGroups ? { ...option, nestedAdditionalGroups } : option;
+
+  return { ...option, name: linked.name, priceDelta: linked.priceDelta, nestedAdditionalGroups };
+}
+
+function resolveGroupLinkedRawMaterials(
+  group: IProductAdditionalGroup,
+  rawMaterialsById: Map<string, LinkedRawMaterialLeanDocument>,
+): IProductAdditionalGroup {
+  return { ...group, options: group.options.map((option) => resolveOptionLinkedRawMaterial(option, rawMaterialsById)) };
+}
+
+function collectRawMaterialIds(groups: IProductAdditionalGroup[], acc: Set<string>): void {
+  for (const group of groups) {
+    for (const option of group.options) {
+      if (option.rawMaterialId) acc.add(option.rawMaterialId);
+      if (option.nestedAdditionalGroups) collectRawMaterialIds(option.nestedAdditionalGroups, acc);
+    }
+  }
+}
+
+// Mesma ordem de `resolveLinkedProducts`: depois de `resolveTemplates`, pra cobrir opções vindas de
+// template reutilizável também.
+async function resolveLinkedRawMaterials(docs: ProductLeanDocument[]): Promise<void> {
+  const rawMaterialIds = new Set<string>();
+  for (const doc of docs) {
+    collectRawMaterialIds(doc.additionalGroups ?? [], rawMaterialIds);
+  }
+  if (rawMaterialIds.size === 0) return;
+
+  const rawMaterials = await RawMaterialModel.find({ _id: { $in: [...rawMaterialIds] } })
+    .select('_id name priceDelta')
+    .lean<LinkedRawMaterialLeanDocument[]>();
+  const rawMaterialsById = new Map(rawMaterials.map((rawMaterial) => [rawMaterial._id, rawMaterial]));
+
+  for (const doc of docs) {
+    doc.additionalGroups = (doc.additionalGroups ?? []).map((group) => resolveGroupLinkedRawMaterials(group, rawMaterialsById));
+  }
 }
 
 function templateToOptions(template: AdditionalGroupTemplateLeanDocument, groupId: string): IProductAdditionalOption[] {
@@ -266,6 +324,7 @@ export class ProductMongooseRepository implements IProductRepository {
     const promotionsByProductId = await resolvePromotions([doc], this.promotionRepository);
     await resolveTemplates([doc]);
     await resolveLinkedProducts([doc], promotionsByProductId);
+    await resolveLinkedRawMaterials([doc]);
     return toEntity(doc);
   }
 
@@ -277,6 +336,7 @@ export class ProductMongooseRepository implements IProductRepository {
     const promotionsByProductId = await resolvePromotions(docs, this.promotionRepository);
     await resolveTemplates(docs);
     await resolveLinkedProducts(docs, promotionsByProductId);
+    await resolveLinkedRawMaterials(docs);
     return docs.map(toEntity);
   }
 
@@ -352,6 +412,7 @@ export class ProductMongooseRepository implements IProductRepository {
     const promotionsByProductId = await resolvePromotions(docs, this.promotionRepository);
     await resolveTemplates(docs);
     await resolveLinkedProducts(docs, promotionsByProductId);
+    await resolveLinkedRawMaterials(docs);
     return docs.map(toEntity);
   }
 
@@ -367,6 +428,7 @@ export class ProductMongooseRepository implements IProductRepository {
     const promotionsByProductId = await resolvePromotions(docs, this.promotionRepository);
     await resolveTemplates(docs);
     await resolveLinkedProducts(docs, promotionsByProductId);
+    await resolveLinkedRawMaterials(docs);
     return docs.map(toEntity);
   }
 

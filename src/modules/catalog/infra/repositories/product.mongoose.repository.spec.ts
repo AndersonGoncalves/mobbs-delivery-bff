@@ -1,6 +1,6 @@
 import { IProductAdditionalGroup, IProductAdditionalOption } from '../../domain/entities/product.entity';
 import { IPromotion } from '../../../promotions/domain/entities/promotion.entity';
-import { AdditionalGroupTemplateLeanDocument, resolveGroup, resolveOptionLinkedProduct } from './product.mongoose.repository';
+import { AdditionalGroupTemplateLeanDocument, resolveGroup, resolveOptionLinkedProduct, resolveOptionLinkedRawMaterial } from './product.mongoose.repository';
 
 function buildLinkedProduct(overrides: Partial<{ _id: string; name: string; imageUrl?: string; price: number; description?: string }> = {}) {
   return { _id: 'prod-coca', name: 'Coca-Cola 1L', price: 10, ...overrides };
@@ -253,5 +253,54 @@ describe('resolveOptionLinkedProduct (specs/0041-item-adicional-vinculado-produt
     const resolved = resolveOptionLinkedProduct(option, productsById);
 
     expect(resolved.nestedAdditionalGroups?.[0].options[0].name).toBe('Coca-Cola 1L');
+  });
+});
+
+// specs/0079-adicional-materia-prima-some-sem-estoque REQ-4/REQ-6 — mesmo raciocínio de
+// `resolveOptionLinkedProduct`, pra opções com `rawMaterialId`.
+describe('resolveOptionLinkedRawMaterial (specs/0079-adicional-materia-prima-some-sem-estoque REQ-4)', () => {
+  it('opção sem rawMaterialId volta inalterada', () => {
+    const option = buildOption({ rawMaterialId: undefined });
+
+    expect(resolveOptionLinkedRawMaterial(option, new Map())).toBe(option);
+  });
+
+  it('AC-4: opção com rawMaterialId resolve name e priceDelta da matéria-prima ATUAL, não do snapshot salvo', () => {
+    const option = buildOption({ rawMaterialId: 'rm-queijo', name: 'antigo', priceDelta: 1 });
+    const rawMaterialsById = new Map([['rm-queijo', { _id: 'rm-queijo', name: 'Catupiry', priceDelta: 8 }]]);
+
+    const resolved = resolveOptionLinkedRawMaterial(option, rawMaterialsById);
+
+    expect(resolved.name).toBe('Catupiry');
+    expect(resolved.priceDelta).toBe(8);
+  });
+
+  it('AC-6 (REQ-6): matéria-prima apagada mantém o último snapshot conhecido, sem quebrar', () => {
+    const option = buildOption({ rawMaterialId: 'rm-apagada', name: 'Catupiry', priceDelta: 8 });
+
+    expect(resolveOptionLinkedRawMaterial(option, new Map())).toBe(option);
+  });
+
+  it('resolve recursivamente dentro de nestedAdditionalGroups (produto composto)', () => {
+    const option = buildOption({
+      rawMaterialId: undefined,
+      nestedAdditionalGroups: [
+        {
+          id: 'g-nested',
+          productId: 'p-1',
+          name: 'Recheios',
+          type: 'adicionar',
+          required: false,
+          minSelections: 0,
+          maxSelections: 1,
+          options: [buildOption({ id: 'o-nested', rawMaterialId: 'rm-queijo', name: 'antigo' })],
+        },
+      ],
+    });
+    const rawMaterialsById = new Map([['rm-queijo', { _id: 'rm-queijo', name: 'Catupiry', priceDelta: 8 }]]);
+
+    const resolved = resolveOptionLinkedRawMaterial(option, rawMaterialsById);
+
+    expect(resolved.nestedAdditionalGroups?.[0].options[0]).toMatchObject({ name: 'Catupiry', priceDelta: 8 });
   });
 });

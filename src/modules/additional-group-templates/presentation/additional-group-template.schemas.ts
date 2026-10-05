@@ -19,12 +19,12 @@ const additionalGroupTemplateOptionSchema = z
     message: 'Uma opção não pode ter rawMaterialId e linkedProductId ao mesmo tempo',
     path: ['linkedProductId'],
   })
-  .refine((data) => data.linkedProductId || data.priceDelta !== undefined, {
-    message: 'priceDelta é obrigatório quando a opção não tem linkedProductId',
+  .refine((data) => data.linkedProductId || data.rawMaterialId || data.priceDelta !== undefined, {
+    message: 'priceDelta é obrigatório quando a opção não tem linkedProductId nem rawMaterialId',
     path: ['priceDelta'],
   })
-  .refine((data) => !data.linkedProductId || data.priceDelta === undefined, {
-    message: 'priceDelta não deve ser enviado quando a opção tem linkedProductId (preço é resolvido do produto vinculado)',
+  .refine((data) => (!data.linkedProductId && !data.rawMaterialId) || data.priceDelta === undefined, {
+    message: 'priceDelta não deve ser enviado quando a opção tem linkedProductId ou rawMaterialId (preço é resolvido do vínculo)',
     path: ['priceDelta'],
   });
 

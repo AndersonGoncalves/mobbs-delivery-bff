@@ -368,6 +368,56 @@ describe('CatalogController', () => {
     );
   });
 
+  // specs/0079-adicional-materia-prima-some-sem-estoque REQ-3/REQ-4 — preço de matéria-prima é
+  // resolvido do vínculo, nunca digitado (mesma regra de linkedProductId).
+  it('specs/0079: aceita opção com rawMaterialId sem priceDelta', async () => {
+    const { productRepository, routes } = setup();
+    const body = {
+      menuCategoryId: 'c-1',
+      name: 'Pizza',
+      price: 60,
+      additionalGroups: [
+        {
+          id: 'g-1',
+          productId: 'p-2',
+          name: 'Queijos',
+          required: false,
+          minSelections: 0,
+          maxSelections: 1,
+          options: [{ id: 'o-1', groupId: 'g-1', name: 'Catupiry', rawMaterialId: 'rm-1' }],
+        },
+      ],
+    };
+
+    await runOperatorChain(routes['POST /restaurants/me/products'], { restaurantId: 'r-1', body }, { json: jest.fn() });
+
+    expect(productRepository.create).toHaveBeenCalled();
+  });
+
+  it('specs/0079: rejeita opção com rawMaterialId e priceDelta ao mesmo tempo (400)', async () => {
+    const { routes } = setup();
+    const body = {
+      menuCategoryId: 'c-1',
+      name: 'Pizza',
+      price: 60,
+      additionalGroups: [
+        {
+          id: 'g-1',
+          productId: 'p-2',
+          name: 'Queijos',
+          required: false,
+          minSelections: 0,
+          maxSelections: 1,
+          options: [{ id: 'o-1', groupId: 'g-1', name: 'Catupiry', priceDelta: 8, rawMaterialId: 'rm-1' }],
+        },
+      ],
+    };
+
+    await expect(
+      runOperatorChain(routes['POST /restaurants/me/products'], { restaurantId: 'r-1', body }, { json: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
   it('rejeita opção de adicional com rawMaterialId e linkedProductId ao mesmo tempo (400)', async () => {
     const { routes } = setup();
     const body = {
