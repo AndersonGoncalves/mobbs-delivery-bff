@@ -8,6 +8,7 @@ interface RawMaterialLeanDocument {
   restaurantId: string;
   name: string;
   priceDelta: number;
+  description?: string;
   isActive: boolean;
   unit: string;
   currentStock: number;
@@ -20,6 +21,7 @@ function toEntity(doc: RawMaterialLeanDocument): IRawMaterial {
     restaurantId: doc.restaurantId,
     name: doc.name,
     priceDelta: doc.priceDelta,
+    description: doc.description,
     isActive: doc.isActive,
     unit: doc.unit,
     currentStock: doc.currentStock,
@@ -42,6 +44,7 @@ export class RawMaterialMongooseRepository implements IRawMaterialRepository {
     priceDelta: number,
     unit: string,
     minimumStockAlert?: number,
+    description?: string,
   ): Promise<IRawMaterial> {
     const doc = await RawMaterialModel.create({
       restaurantId,
@@ -49,6 +52,7 @@ export class RawMaterialMongooseRepository implements IRawMaterialRepository {
       priceDelta,
       unit,
       minimumStockAlert,
+      description,
       isActive: true,
       currentStock: 0,
     });
@@ -61,10 +65,11 @@ export class RawMaterialMongooseRepository implements IRawMaterialRepository {
     priceDelta: number,
     unit: string,
     minimumStockAlert?: number,
+    description?: string,
   ): Promise<IRawMaterial> {
     const doc = await RawMaterialModel.findByIdAndUpdate(
       id,
-      { $set: { name, priceDelta, unit, minimumStockAlert } },
+      { $set: { name, priceDelta, unit, minimumStockAlert, description } },
       { new: true },
     ).lean<RawMaterialLeanDocument>();
     return toEntity(doc as RawMaterialLeanDocument);

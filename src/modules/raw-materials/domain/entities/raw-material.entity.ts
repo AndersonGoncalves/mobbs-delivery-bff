@@ -12,6 +12,8 @@ export interface IRawMaterial {
   restaurantId: string;
   name: string;
   priceDelta: number;
+  /** Descrição usada quando a matéria-prima vira opção de adicional (copiada ao vincular, editável). */
+  description?: string;
   isActive: boolean;
   /** specs/0015-estoque-compras — unidade de medida, texto livre nesta v1 (ex.: "kg", "un"). */
   unit: string;

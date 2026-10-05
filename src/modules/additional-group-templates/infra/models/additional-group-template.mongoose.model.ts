@@ -14,6 +14,7 @@ const additionalGroupTemplateOptionSchema = new Schema(
     linkedProductId: { type: String },
     // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-3.
     imageUrl: { type: String },
+    description: { type: String },
   },
   { _id: false },
 );

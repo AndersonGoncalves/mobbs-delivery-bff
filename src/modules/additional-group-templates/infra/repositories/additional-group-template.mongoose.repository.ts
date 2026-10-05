@@ -18,6 +18,7 @@ interface LinkedProductLeanDocument {
   _id: string;
   name: string;
   imageUrl?: string;
+  description?: string;
 }
 
 function toEntity(doc: AdditionalGroupTemplateLeanDocument): IAdditionalGroupTemplate {
@@ -52,14 +53,14 @@ async function resolveLinkedProducts(docs: AdditionalGroupTemplateLeanDocument[]
   if (linkedProductIds.size === 0) return;
 
   const linkedProducts = await ProductModel.find({ _id: { $in: [...linkedProductIds] } })
-    .select('_id name imageUrl')
+    .select('_id name imageUrl description')
     .lean<LinkedProductLeanDocument[]>();
   const productsById = new Map(linkedProducts.map((product) => [product._id, product]));
 
   for (const doc of docs) {
     doc.options = (doc.options ?? []).map((option) => {
       const linked = option.linkedProductId ? productsById.get(option.linkedProductId) : undefined;
-      return linked ? { ...option, name: linked.name, imageUrl: linked.imageUrl } : option;
+      return linked ? { ...option, name: linked.name, imageUrl: linked.imageUrl, description: option.description ?? linked.description } : option;
     });
   }
 }

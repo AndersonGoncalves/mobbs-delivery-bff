@@ -36,6 +36,7 @@ const productAdditionalOptionSchema: z.ZodType<IProductAdditionalOption> = z.laz
       // `specs/0029` REQ-3: a foto é da opção, não do grupo (`productAdditionalGroupInlineSchema`
       // abaixo perdeu o campo).
       imageUrl: z.string().url().optional(),
+      description: z.string().max(300).optional(),
     })
     .refine((data) => !(data.rawMaterialId && data.linkedProductId), {
       message: 'Uma opção não pode ter rawMaterialId e linkedProductId ao mesmo tempo',

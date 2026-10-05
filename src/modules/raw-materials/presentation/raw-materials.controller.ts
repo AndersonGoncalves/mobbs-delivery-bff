@@ -56,15 +56,15 @@ export class RawMaterialsController extends BaseRouter {
     });
 
     application.post('/restaurants/me/raw-materials', ...authenticated, async (req: Request, res: Response) => {
-      const { name, priceDelta, unit, minimumStockAlert } = parseBody(saveRawMaterialSchema, req.body);
-      const material = await this.rawMaterialRepository.create(req.restaurantId!, name, priceDelta, unit, minimumStockAlert);
+      const { name, priceDelta, unit, minimumStockAlert, description } = parseBody(saveRawMaterialSchema, req.body);
+      const material = await this.rawMaterialRepository.create(req.restaurantId!, name, priceDelta, unit, minimumStockAlert, description);
       res.json(201, material);
     });
 
     application.put('/restaurants/me/raw-materials/:id', ...authenticated, async (req: Request, res: Response) => {
-      const { name, priceDelta, unit, minimumStockAlert } = parseBody(saveRawMaterialSchema, req.body);
+      const { name, priceDelta, unit, minimumStockAlert, description } = parseBody(saveRawMaterialSchema, req.body);
       await this.findOwnedRawMaterial(req.params.id, req.restaurantId!);
-      const material = await this.rawMaterialRepository.update(req.params.id, name, priceDelta, unit, minimumStockAlert);
+      const material = await this.rawMaterialRepository.update(req.params.id, name, priceDelta, unit, minimumStockAlert, description);
       res.json(200, material);
     });
 

@@ -31,6 +31,8 @@ export interface IAdditionalGroupTemplateOption {
    * (client-side); depois disso é um campo normal, editável e persistido —
    * `resolveOptionLinkedProduct` (specs/0041/0056) nunca sobrescreve na leitura.
    */
+  /** Descrição da opção (copiada do produto/matéria-prima ao vincular; editável). */
+  description?: string;
   imageUrl?: string;
 }
 

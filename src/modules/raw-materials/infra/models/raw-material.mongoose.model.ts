@@ -7,6 +7,7 @@ const rawMaterialSchema = new Schema(
     restaurantId: { type: String, required: true },
     name: { type: String, required: true },
     priceDelta: { type: Number, required: true },
+    description: { type: String },
     isActive: { type: Boolean, required: true, default: true },
     // specs/0015-estoque-compras — texto livre nesta v1 (decisão confirmada, spec.md).
     unit: { type: String, required: true },

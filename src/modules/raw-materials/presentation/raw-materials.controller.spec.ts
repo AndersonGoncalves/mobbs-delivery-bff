@@ -122,7 +122,7 @@ describe('RawMaterialsController', () => {
       { json },
     );
 
-    expect(rawMaterialRepository.create).toHaveBeenCalledWith('r-1', 'Catupiry', 4, 'kg', undefined);
+    expect(rawMaterialRepository.create).toHaveBeenCalledWith('r-1', 'Catupiry', 4, 'kg', undefined, undefined);
     expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ name: 'Catupiry' }));
   });
 

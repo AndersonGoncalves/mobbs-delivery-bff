@@ -14,6 +14,7 @@ const additionalGroupTemplateOptionSchema = z
     // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-3 — corrige
     // `specs/0029` REQ-3: a foto é da opção, não do template/grupo inteiro.
     imageUrl: z.string().url().optional(),
+    description: z.string().max(300).optional(),
   })
   .refine((data) => !(data.rawMaterialId && data.linkedProductId), {
     message: 'Uma opção não pode ter rawMaterialId e linkedProductId ao mesmo tempo',

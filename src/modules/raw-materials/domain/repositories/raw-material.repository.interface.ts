@@ -14,6 +14,7 @@ export interface IRawMaterialRepository {
     priceDelta: number,
     unit: string,
     minimumStockAlert?: number,
+    description?: string,
   ): Promise<IRawMaterial>;
   update(
     id: string,
@@ -21,6 +22,7 @@ export interface IRawMaterialRepository {
     priceDelta: number,
     unit: string,
     minimumStockAlert?: number,
+    description?: string,
   ): Promise<IRawMaterial>;
   setActive(id: string, isActive: boolean): Promise<IRawMaterial>;
   findById(id: string): Promise<IRawMaterial | null>;

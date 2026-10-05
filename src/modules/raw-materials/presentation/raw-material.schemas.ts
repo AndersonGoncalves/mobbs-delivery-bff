@@ -5,6 +5,7 @@ import { z } from 'zod';
 export const saveRawMaterialSchema = z.object({
   name: z.string().min(1),
   priceDelta: z.number().nonnegative(),
+  description: z.string().max(300).optional(),
   unit: z.string().min(1, 'Unidade de medida é obrigatória'),
   minimumStockAlert: z.number().nonnegative().optional(),
 });

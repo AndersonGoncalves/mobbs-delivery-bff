@@ -25,7 +25,7 @@ export interface AdditionalGroupTemplateLeanDocument {
   required: boolean;
   minSelections: number;
   maxSelections: number;
-  options: { id: string; name: string; priceDelta?: number; rawMaterialId?: string; linkedProductId?: string; imageUrl?: string }[];
+  options: { id: string; name: string; priceDelta?: number; rawMaterialId?: string; linkedProductId?: string; imageUrl?: string; description?: string }[];
 }
 
 interface LinkedProductLeanDocument {
@@ -98,6 +98,7 @@ interface LinkedRawMaterialLeanDocument {
   _id: string;
   name: string;
   priceDelta: number;
+  description?: string;
 }
 
 // specs/0079-adicional-materia-prima-some-sem-estoque REQ-4/REQ-6 — "vínculo vivo" igual
@@ -113,7 +114,7 @@ export function resolveOptionLinkedRawMaterial(
   const linked = option.rawMaterialId ? rawMaterialsById.get(option.rawMaterialId) : undefined;
   if (!linked) return nestedAdditionalGroups ? { ...option, nestedAdditionalGroups } : option;
 
-  return { ...option, name: linked.name, priceDelta: linked.priceDelta, nestedAdditionalGroups };
+  return { ...option, name: linked.name, priceDelta: linked.priceDelta, description: option.description ?? linked.description, nestedAdditionalGroups };
 }
 
 function resolveGroupLinkedRawMaterials(
@@ -142,7 +143,7 @@ async function resolveLinkedRawMaterials(docs: ProductLeanDocument[]): Promise<v
   if (rawMaterialIds.size === 0) return;
 
   const rawMaterials = await RawMaterialModel.find({ _id: { $in: [...rawMaterialIds] } })
-    .select('_id name priceDelta')
+    .select('_id name priceDelta description')
     .lean<LinkedRawMaterialLeanDocument[]>();
   const rawMaterialsById = new Map(rawMaterials.map((rawMaterial) => [rawMaterial._id, rawMaterial]));
 
@@ -160,6 +161,7 @@ function templateToOptions(template: AdditionalGroupTemplateLeanDocument, groupI
     rawMaterialId: option.rawMaterialId,
     linkedProductId: option.linkedProductId,
     imageUrl: option.imageUrl,
+    description: option.description,
   }));
 }
 
@@ -197,7 +199,7 @@ export function resolveOptionLinkedProduct(
   const promotion = option.linkedProductId ? promotionsByProductId.get(option.linkedProductId) : undefined;
   const priceDelta = promotion ? computePromotionalPrice(linked.price, promotion.discountPercentage) : linked.price;
 
-  return { ...option, name: linked.name, description: linked.description, priceDelta, nestedAdditionalGroups };
+  return { ...option, name: linked.name, description: option.description ?? linked.description, priceDelta, nestedAdditionalGroups };
 }
 
 function resolveGroupLinkedProducts(

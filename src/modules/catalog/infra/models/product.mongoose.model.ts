@@ -22,6 +22,7 @@ const productAdditionalOptionSchema = new Schema(
     // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-3 — corrige a foto que
     // estava no grupo (spec 0029): opção vinda de grupo vinculado sobrescreve na leitura, então
     // nunca `required` aqui (mesmo raciocínio já usado pros campos do grupo abaixo).
+    description: { type: String },
     imageUrl: { type: String },
   },
   { _id: false },

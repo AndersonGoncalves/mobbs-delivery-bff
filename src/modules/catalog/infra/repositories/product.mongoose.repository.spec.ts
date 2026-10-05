@@ -210,6 +210,14 @@ describe('resolveOptionLinkedProduct (specs/0041-item-adicional-vinculado-produt
 
   // specs/0087-descricao-adicional-vinculado — mesmo raciocínio de name/priceDelta: description é
   // sempre a ATUAL do produto vinculado, nunca digitada/persistida na opção.
+  // Descrição copiada/editada no próprio item do grupo tem prioridade sobre a do produto vinculado.
+  it('descrição própria da opção vence a do produto vinculado', () => {
+    const option = buildOption({ linkedProductId: 'prod-coca', description: 'Refri gelado, sem gelo' });
+    const productsById = new Map([['prod-coca', buildLinkedProduct({ description: 'Lata 350ml, gelada' })]]);
+
+    expect(resolveOptionLinkedProduct(option, productsById).description).toBe('Refri gelado, sem gelo');
+  });
+
   it('specs/0087: description é resolvida a partir do produto vinculado ATUAL', () => {
     const option = buildOption({ linkedProductId: 'prod-coca' });
     const productsById = new Map([['prod-coca', buildLinkedProduct({ description: 'Lata 350ml, gelada' })]]);
@@ -279,6 +287,21 @@ describe('resolveOptionLinkedRawMaterial (specs/0079-adicional-materia-prima-som
     const option = buildOption({ rawMaterialId: 'rm-apagada', name: 'Catupiry', priceDelta: 8 });
 
     expect(resolveOptionLinkedRawMaterial(option, new Map())).toBe(option);
+  });
+
+  // specs/0100-descricao-item-grupo-adicionais — descrição copiada da matéria-prima, editável no item.
+  it('descrição: matéria-prima vinculada resolve a descrição da matéria-prima quando o item não tem a sua', () => {
+    const option = buildOption({ rawMaterialId: 'rm-queijo', name: 'antigo' });
+    const rawMaterialsById = new Map([['rm-queijo', { _id: 'rm-queijo', name: 'Catupiry', priceDelta: 8, description: 'Cremoso, da casa' }]]);
+
+    expect(resolveOptionLinkedRawMaterial(option, rawMaterialsById).description).toBe('Cremoso, da casa');
+  });
+
+  it('descrição: a descrição própria do item vence a da matéria-prima', () => {
+    const option = buildOption({ rawMaterialId: 'rm-queijo', description: 'Só 2 colheres' });
+    const rawMaterialsById = new Map([['rm-queijo', { _id: 'rm-queijo', name: 'Catupiry', priceDelta: 8, description: 'Cremoso, da casa' }]]);
+
+    expect(resolveOptionLinkedRawMaterial(option, rawMaterialsById).description).toBe('Só 2 colheres');
   });
 
   it('resolve recursivamente dentro de nestedAdditionalGroups (produto composto)', () => {
