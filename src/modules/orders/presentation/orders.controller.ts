@@ -22,6 +22,7 @@ import { buildOrderPixCode } from '../domain/build-order-pix-code';
 import { resolveOrderItemLinkedProducts } from '../domain/resolve-order-item-linked-products';
 import { IOrderRepository } from '../domain/repositories/order.repository.interface';
 import { IPaymentRepository } from '../domain/repositories/payment.repository.interface';
+import { isValidCellphone } from '../../../shared/utils/is-valid-cellphone';
 import { cancelOrderWithReasonSchema, createOrderSchema, salesSummaryQuerySchema, updateOrderStatusSchema } from './orders.schemas';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
@@ -66,6 +67,13 @@ export class OrdersController extends BaseRouter {
 
       const restaurant = await this.restaurantRepository.findById(payload.restaurantId);
       if (!restaurant) throw new NotFoundError('Restaurante não encontrado');
+
+      // Pedido precisa de nome e WhatsApp válido do cliente: sem WhatsApp o restaurante não recebe a
+      // confirmação. O app já bloqueia no checkout, mas nunca confia só no client.
+      const customer = await this.customerRepository.findById(req.user!.uid);
+      if (!customer?.name?.trim() || !isValidCellphone(customer.phone)) {
+        throw new BadRequestError('Informe seu nome e WhatsApp antes de fazer o pedido');
+      }
 
       // specs/0055-checkout-revalida-restaurante-aberto (reabre 0046/0033-REQ-7) — nunca confia
       // só no client achar que a loja está aberta: a tela de checkout pode ter sido aberta antes

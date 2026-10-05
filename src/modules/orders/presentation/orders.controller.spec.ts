@@ -248,7 +248,7 @@ describe('OrdersController', () => {
       ...overrides.stockMovementRepository,
     };
     const customerRepository: Partial<ICustomerRepository> = {
-      findById: jest.fn().mockResolvedValue({ id: 'customer-1', name: 'Ana', email: 'ana@exemplo.com' }),
+      findById: jest.fn().mockResolvedValue({ id: 'customer-1', name: 'Ana', email: 'ana@exemplo.com', phone: '85984224877' }),
       ...overrides.customerRepository,
     };
     const { application, routes } = buildFakeApplication();
@@ -292,6 +292,29 @@ describe('OrdersController', () => {
       expect.objectContaining({ customerId: 'customer-1', subtotal: 50, deliveryFee: 5, discount: 0, total: 55 }),
     );
     expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ id: 'o-1', orderNumber: 1 }));
+  });
+
+  // Nome e WhatsApp válido são obrigatórios no pedido (o restaurante precisa do WhatsApp pra confirmar).
+  it('rejeita (400) pedido de cliente sem nome', async () => {
+    const { orderRepository, routes } = setup({
+      customerRepository: { findById: jest.fn().mockResolvedValue({ id: 'customer-1', name: '  ', email: 'a@x.com', phone: '85984224877' }) },
+    });
+
+    await expect(
+      runAuthenticatedChain(routes['POST /orders'], { body: buildValidBody(), user: { uid: 'customer-1' } }, { json: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(orderRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('rejeita (400) pedido de cliente sem WhatsApp válido', async () => {
+    const { orderRepository, routes } = setup({
+      customerRepository: { findById: jest.fn().mockResolvedValue({ id: 'customer-1', name: 'Ana', email: 'a@x.com', phone: '119999' }) },
+    });
+
+    await expect(
+      runAuthenticatedChain(routes['POST /orders'], { body: buildValidBody(), user: { uid: 'customer-1' } }, { json: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(orderRepository.create).not.toHaveBeenCalled();
   });
 
   // specs/0055-checkout-revalida-restaurante-aberto (reabre 0046/0033-REQ-7) — nunca confia só no
