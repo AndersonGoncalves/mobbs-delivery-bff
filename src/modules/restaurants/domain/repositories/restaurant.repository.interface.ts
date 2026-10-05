@@ -1,4 +1,4 @@
-import { DeliveryFeeMode, IBusinessHours, IRestaurant } from '../entities/restaurant.entity';
+import { DeliveryFeeMode, IBusinessHours, IRestaurant, IRestaurantBilling } from '../entities/restaurant.entity';
 
 export type RestaurantProfileUpdate = Partial<
   Pick<
@@ -82,12 +82,16 @@ export interface IRestaurantRepository {
     referralCode?: string;
   }): Promise<IRestaurant>;
   findBySlug(slug: string): Promise<IRestaurant | null>;
+  /** specs/0106 REQ-2 — todos os restaurantes (painel da plataforma). */
+  listAll(): Promise<IRestaurant[]>;
   /** specs/0043-programa-indicacao REQ-3 — resolve o restaurante indicador pelo código do link `?ref=`. */
   findByReferralCode(code: string): Promise<IRestaurant | null>;
   findById(id: string): Promise<IRestaurant | null>;
   updateProfile(id: string, patch: RestaurantProfileUpdate): Promise<IRestaurant>;
   updateBusinessHours(id: string, businessHours: IBusinessHours[]): Promise<IRestaurant>;
   setActive(id: string, isActive: boolean): Promise<IRestaurant>;
+  /** specs/0042 — grava o estado de cobrança inteiro do restaurante (faixa, avisos, status, ciclo). */
+  updateBilling(id: string, billing: IRestaurantBilling): Promise<IRestaurant>;
   updateSlug(id: string, slug: string): Promise<IRestaurant>;
 
   /** specs/0013-notificacoes-whatsapp REQ-11/REQ-12 — atualizado pelo `WhatsAppConnectionService`

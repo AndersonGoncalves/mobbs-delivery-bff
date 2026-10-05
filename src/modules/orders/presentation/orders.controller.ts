@@ -1,3 +1,5 @@
+import { isBillingBlocked } from '../../billing/domain/billing';
+import { BillingBlockedError } from '../../../shared/http/billing-blocked.error';
 import { findDeliveryFeeZone } from '../../restaurants/domain/find-delivery-fee-zone';
 import type { Request, Response, Server } from 'restify';
 import { BadRequestError, ConflictError, NotFoundError } from 'restify-errors';
@@ -57,6 +59,8 @@ export class OrdersController extends BaseRouter {
     // specs/0062-confirmar-pedido-whatsapp-restaurante — só pro `customerName` da mensagem de
     // aviso; `IOrder` não guarda o nome do cliente.
     private readonly customerRepository: ICustomerRepository,
+    // specs/0042 REQ-2/REQ-3/REQ-4 — recalcula a faixa de faturamento quando um pedido vira `entregue`.
+    private readonly recomputeRestaurantBilling?: { call(restaurantId: string): Promise<void> },
   ) {
     super();
     this.deductStockUseCase = new DeductStockForDeliveredOrderUseCase(productRepository, stockMovementRepository);
@@ -68,6 +72,8 @@ export class OrdersController extends BaseRouter {
 
       const restaurant = await this.restaurantRepository.findById(payload.restaurantId);
       if (!restaurant) throw new NotFoundError('Restaurante não encontrado');
+      // specs/0042 REQ-7 — restaurante inadimplente não recebe pedido novo, mesmo chamando a API direto.
+      if (isBillingBlocked(restaurant.billing)) throw new BillingBlockedError();
 
       // Pedido precisa de nome e WhatsApp válido do cliente: sem WhatsApp o restaurante não recebe a
       // confirmação. O app já bloqueia no checkout, mas nunca confia só no client.
@@ -248,6 +254,11 @@ export class OrdersController extends BaseRouter {
         // (`CashRegisterService`), não aqui. `await`ado (não fire-and-forget como o WhatsApp
         // acima) mas protegido por try/catch: uma falha na contabilização automática nunca
         // reverte nem falha a resposta da mudança de status, que já foi persistida.
+        if (status === 'entregue' && this.recomputeRestaurantBilling) {
+          void this.recomputeRestaurantBilling.call(updated.restaurantId).catch((error) => {
+            console.error(`[billing] falha ao recalcular faturamento do restaurante ${updated.restaurantId}:`, error);
+          });
+        }
         if (status === 'entregue') {
           try {
             await this.cashRegisterService.addAutomaticEntry({

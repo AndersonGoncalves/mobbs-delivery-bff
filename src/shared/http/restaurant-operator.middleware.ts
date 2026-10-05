@@ -3,6 +3,9 @@ import { ForbiddenError } from 'restify-errors';
 
 import { OperatorRole } from '../../modules/restaurant-operators/domain/entities/restaurant-operator.entity';
 import { IRestaurantOperatorRepository } from '../../modules/restaurant-operators/domain/repositories/restaurant-operator.repository.interface';
+import { isBillingBlocked } from '../../modules/billing/domain/billing';
+import { IRestaurant } from '../../modules/restaurants/domain/entities/restaurant.entity';
+import { BillingBlockedError } from './billing-blocked.error';
 
 declare module 'restify' {
   interface Request {
@@ -29,7 +32,11 @@ declare module 'restify' {
  * Assinatura `async (req)`, sem `res`/`next` — mesma regra de arity do Restify que
  * `firebaseAuthMiddleware` (ver comentário lá).
  */
-export function buildRestaurantOperatorMiddleware(repository: IRestaurantOperatorRepository) {
+export function buildRestaurantOperatorMiddleware(
+  repository: IRestaurantOperatorRepository,
+  // specs/0042 REQ-7 — quando informado, bloqueia a retaguarda inteira de um restaurante inadimplente.
+  restaurantRepository?: { findById(id: string): Promise<IRestaurant | null> },
+) {
   return async function restaurantOperatorMiddleware(req: Request): Promise<void> {
     const email = req.user?.email;
     if (!email) {
@@ -38,6 +45,10 @@ export function buildRestaurantOperatorMiddleware(repository: IRestaurantOperato
     const operator = await repository.findActiveOperatorByEmail(email);
     if (!operator) {
       throw new ForbiddenError('E-mail sem acesso a nenhuma retaguarda');
+    }
+    if (restaurantRepository) {
+      const restaurant = await restaurantRepository.findById(operator.restaurantId);
+      if (restaurant && isBillingBlocked(restaurant.billing)) throw new BillingBlockedError();
     }
     req.restaurantId = operator.restaurantId;
     req.operatorRole = operator.role;

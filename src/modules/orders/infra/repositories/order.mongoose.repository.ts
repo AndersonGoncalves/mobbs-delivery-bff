@@ -147,6 +147,18 @@ export class OrderMongooseRepository implements IOrderRepository {
    * specs/0008-acompanhamento-vendas REQ-1 — mais antigo primeiro (fila de atendimento).
    * `$nin` exclui `entregue`/`cancelado`, que já saíram do fluxo de acompanhamento ativo.
    */
+  async findLastDeliveredAt(restaurantId: string): Promise<Date | null> {
+    const doc = await OrderModel.findOne({ restaurantId, status: 'entregue' }, { createdAt: 1 }).sort({ createdAt: -1 }).lean<{ createdAt: Date }>();
+    return doc ? doc.createdAt : null;
+  }
+
+  async findDeliveredByRestaurantBetween(restaurantId: string, start: Date, end: Date): Promise<IOrder[]> {
+    const docs = await OrderModel.find({ restaurantId, status: 'entregue', createdAt: { $gte: start, $lt: end } })
+      .sort({ createdAt: 1 })
+      .lean<OrderLeanDocument[]>();
+    return docs.map(toEntity);
+  }
+
   async findActiveByRestaurant(restaurantId: string): Promise<IOrder[]> {
     const docs = await OrderModel.find({ restaurantId, status: { $nin: ['entregue', 'cancelado'] } })
       .sort({ createdAt: 1 })

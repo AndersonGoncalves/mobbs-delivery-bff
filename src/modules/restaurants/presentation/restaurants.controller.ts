@@ -1,3 +1,4 @@
+import { isBillingBlocked } from '../../billing/domain/billing';
 import { findDeliveryFeeZone } from '../domain/find-delivery-fee-zone';
 import type { Request, Response, Server } from 'restify';
 
@@ -43,6 +44,11 @@ export class RestaurantsController extends BaseRouter {
     // de fechado (`Restaurant.isOpenNow`) — não uma tela de "restaurante não encontrado".
     application.get('/restaurants/resolve/:slug', async (req: Request, res: Response) => {
       const restaurant = await this.restaurantRepository.findBySlug(req.params.slug);
+      // specs/0042 REQ-7 — restaurante inadimplente: o app mostra a tela de bloqueio em vez do cardápio.
+      if (restaurant && isBillingBlocked(restaurant.billing)) {
+        res.json(200, { blocked: true });
+        return;
+      }
       const resolved = this.render(restaurant);
       res.json(200, resolved);
     });

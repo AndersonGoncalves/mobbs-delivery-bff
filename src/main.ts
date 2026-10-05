@@ -55,12 +55,17 @@ import { RatingsController } from './modules/ratings/presentation/ratings.contro
 import { PresenceMongooseRepository } from './modules/presence/infra/repositories/presence.mongoose.repository';
 import { PresenceController } from './modules/presence/presentation/presence.controller';
 import { UploadsController } from './modules/uploads/presentation/uploads.controller';
+import { RecomputeRestaurantBillingUseCase } from './modules/billing/domain/recompute-restaurant-billing.use-case';
+import { BillingNotifier } from './modules/billing/infra/billing-notifier.service';
+import { BillingController } from './modules/billing/presentation/billing.controller';
+import { PlatformController } from './modules/platform/presentation/platform.controller';
+import { buildPlatformAdminMiddleware, parsePlatformAdminEmails } from './shared/http/platform-admin.middleware';
 
 const server = new Server();
 
 const restaurantOperatorRepository = new RestaurantOperatorMongooseRepository();
-const restaurantOperatorMiddleware = buildRestaurantOperatorMiddleware(restaurantOperatorRepository);
 const restaurantRepository = new RestaurantMongooseRepository();
+const restaurantOperatorMiddleware = buildRestaurantOperatorMiddleware(restaurantOperatorRepository, restaurantRepository);
 // specs/0044-promocoes-produtos — instância única, compartilhada por ProductMongooseRepository
 // (preço/percentual promocional + desconto em opção vinculada) e MenuCategoryMongooseRepository
 // (versão leve do cardápio por categoria), além do PromotionsController (CRUD da retaguarda).
@@ -155,6 +160,19 @@ server
       productRepository,
       stockMovementRepository,
       customerRepository,
+      // specs/0042 — faixa de faturamento recalculada a cada pedido entregue.
+      new RecomputeRestaurantBillingUseCase({
+        restaurantRepository,
+        orderRepository,
+        notifier: new BillingNotifier(whatsAppConnectionService),
+      }),
+    ),
+    new BillingController(restaurantRepository, orderRepository, restaurantOperatorMiddleware),
+    // specs/0106 — painel da plataforma, restrito à lista PLATFORM_ADMIN_EMAILS.
+    new PlatformController(
+      restaurantRepository,
+      orderRepository,
+      buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
     ),
     new RawMaterialsController(rawMaterialRepository, productRepository, restaurantOperatorMiddleware, stockMovementRepository),
     new AdditionalGroupTemplatesController(

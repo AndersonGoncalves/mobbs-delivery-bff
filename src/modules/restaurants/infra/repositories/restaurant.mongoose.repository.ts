@@ -6,6 +6,7 @@ import {
   IDeliveryFeeZone,
   IRestaurant,
   IRestaurantAddress,
+  IRestaurantBilling,
   IRestaurantBanner,
   PixKeyType,
 } from '../../domain/entities/restaurant.entity';
@@ -47,6 +48,7 @@ interface RestaurantLeanDocument {
   allowCustomerCancelOrder?: boolean;
   deliveryFeeMode?: DeliveryFeeMode;
   deliveryFeeZones?: IDeliveryFeeZone[];
+  billing?: IRestaurantBilling;
   instagramUrl?: string;
   rating?: number;
   ratingCount?: number;
@@ -111,6 +113,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     allowCustomerCancelOrder: doc.allowCustomerCancelOrder ?? true,
     deliveryFeeMode: doc.deliveryFeeMode ?? 'fixed',
     deliveryFeeZones: doc.deliveryFeeZones ?? [],
+    billing: doc.billing ?? undefined,
     instagramUrl: doc.instagramUrl,
     rating: doc.rating ?? 0,
     ratingCount: doc.ratingCount ?? 0,
@@ -162,6 +165,11 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
     return toEntity(doc.toObject());
   }
 
+  async listAll(): Promise<IRestaurant[]> {
+    const docs = await RestaurantModel.find({}).sort({ name: 1 }).lean<RestaurantLeanDocument[]>();
+    return docs.map(toEntity);
+  }
+
   async findBySlug(slug: string): Promise<IRestaurant | null> {
     const doc = await RestaurantModel.findOne({ slug }).lean<RestaurantLeanDocument>();
     return doc ? toEntity(doc) : null;
@@ -191,6 +199,11 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
       { $set: { businessHours, businessHoursReviewedAt: new Date() } },
       { new: true },
     ).lean<RestaurantLeanDocument>();
+    return toEntity(doc as RestaurantLeanDocument);
+  }
+
+  async updateBilling(id: string, billing: IRestaurantBilling): Promise<IRestaurant> {
+    const doc = await RestaurantModel.findByIdAndUpdate(id, { $set: { billing } }, { new: true }).lean<RestaurantLeanDocument>();
     return toEntity(doc as RestaurantLeanDocument);
   }
 

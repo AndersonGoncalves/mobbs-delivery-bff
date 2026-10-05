@@ -66,6 +66,7 @@ function buildRestaurant(
     deliveryFeeCents: number;
     deliveryFeeMode: string;
     deliveryFeeZones: { id: string; neighborhood: string; feeCents: number }[];
+    billing: { referenceMonth: string; currentTier: 'free' | 'pro' | 'premium'; notified75Percent: boolean; notifiedTierUpgrade: boolean; status: 'ok' | 'blocked'; cycle: 'monthly' | 'annual' };
     pixKey: string;
     pixKeyType: string;
     pixBeneficiaryName: string;
@@ -294,6 +295,24 @@ describe('OrdersController', () => {
       expect.objectContaining({ customerId: 'customer-1', subtotal: 50, deliveryFee: 5, discount: 0, total: 55 }),
     );
     expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ id: 'o-1', orderNumber: 1 }));
+  });
+
+  // specs/0042 REQ-7 — restaurante bloqueado por inadimplência não aceita pedido novo, nem pela API direto.
+  it('specs/0042: rejeita (403) pedido em restaurante bloqueado por inadimplência', async () => {
+    const { orderRepository, routes } = setup({
+      restaurantRepository: {
+        findById: jest.fn().mockResolvedValue(
+          buildRestaurant({
+            billing: { referenceMonth: '2026-10', currentTier: 'pro', notified75Percent: false, notifiedTierUpgrade: false, status: 'blocked', cycle: 'monthly' },
+          }),
+        ),
+      },
+    });
+
+    await expect(
+      runAuthenticatedChain(routes['POST /orders'], { body: buildValidBody(), user: { uid: 'customer-1' } }, { json: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(orderRepository.create).not.toHaveBeenCalled();
   });
 
   // Nome e WhatsApp válido são obrigatórios no pedido (o restaurante precisa do WhatsApp pra confirmar).

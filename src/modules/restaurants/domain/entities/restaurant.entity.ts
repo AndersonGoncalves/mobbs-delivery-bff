@@ -31,6 +31,18 @@ export interface IRestaurantAddress {
  * description, bannerUrl, rating, deliveryFeeCents, estimatedDeliveryMinutes, whatsappConnected)
  * ficam de fora até a spec que os usa (0003/0006/0013) chegar.
  */
+/** specs/0042 — estado de cobrança do restaurante (subdocumento). */
+export interface IRestaurantBilling {
+  /** Mês de referência `YYYY-MM` em que os campos abaixo foram calculados. */
+  referenceMonth: string;
+  currentTier: 'free' | 'pro' | 'premium';
+  notified75Percent: boolean;
+  notifiedTierUpgrade: boolean;
+  /** Marcado manualmente (script `set-billing-status`) até existir gateway de pagamento. */
+  status: 'ok' | 'blocked';
+  cycle: 'monthly' | 'annual';
+}
+
 export interface IRestaurant {
   id: string;
   name: string;
@@ -106,6 +118,8 @@ export interface IRestaurant {
   showBanners: boolean;
   /** Tag "Peça novamente" no app (cardápio e detalhe do produto). Nasce ligada. */
   showReorderTag: boolean;
+  /** specs/0042 — cobrança por faixa de faturamento (opcional: restaurante antigo não tem até ser calculado). */
+  billing?: IRestaurantBilling;
   /** specs/0028-destaques-vendidos-banners REQ-5 — banners do carrossel, na ordem de
    * exibição. */
   banners: IRestaurantBanner[];

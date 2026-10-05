@@ -52,6 +52,12 @@ export interface IOrderRepository {
    */
   findActiveByRestaurant(restaurantId: string): Promise<IOrder[]>;
 
+  /** specs/0042 REQ-1/REQ-6 — pedidos `entregue` do restaurante criados no intervalo `[start, end)`. */
+  findDeliveredByRestaurantBetween(restaurantId: string, start: Date, end: Date): Promise<IOrder[]>;
+
+  /** specs/0106 REQ-2 — data do pedido entregue mais recente do restaurante (ou `null`). */
+  findLastDeliveredAt(restaurantId: string): Promise<Date | null>;
+
   /** REQ-4 — agregado por período, calculado on demand, nunca persistido. */
   getSalesSummary(restaurantId: string, periodStart: Date, periodEnd: Date): Promise<ISalesSummary>;
 

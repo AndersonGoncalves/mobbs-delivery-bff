@@ -83,6 +83,21 @@ const restaurantSchema = new Schema(
     showHighlights: { type: Boolean, required: true, default: true },
     showBanners: { type: Boolean, required: true, default: true },
     showReorderTag: { type: Boolean, default: true },
+    // specs/0042 — cobrança por faixa de faturamento; ausente até o primeiro cálculo.
+    billing: {
+      type: new Schema(
+        {
+          referenceMonth: { type: String, required: true },
+          currentTier: { type: String, enum: ['free', 'pro', 'premium'], required: true },
+          notified75Percent: { type: Boolean, default: false },
+          notifiedTierUpgrade: { type: Boolean, default: false },
+          status: { type: String, enum: ['ok', 'blocked'], default: 'ok' },
+          cycle: { type: String, enum: ['monthly', 'annual'], default: 'monthly' },
+        },
+        { _id: false },
+      ),
+      default: undefined,
+    },
     banners: { type: [bannerSchema], default: [] },
     // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-2.
     allowCustomerCancelOrder: { type: Boolean, required: true, default: true },

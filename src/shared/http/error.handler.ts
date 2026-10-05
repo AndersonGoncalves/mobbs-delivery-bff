@@ -39,6 +39,9 @@ export const handleError = (
       err.statusCode = 400;
       defineToJSON(err, { message: 'ID inválido' });
       break;
+    case 'BillingBlockedError':
+      defineToJSON(err, { message: err.message, code: 'billing_blocked' });
+      break;
     default:
       defineToJSON(err, { message: err.message });
   }
