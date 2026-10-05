@@ -71,13 +71,6 @@ export const createOrderSchema = z
         message: 'Endereço de entrega é obrigatório para pedidos de Delivery',
       });
     }
-    if ((data.paymentMethod === 'creditCard' || data.paymentMethod === 'debitCard') && !data.cardBrand) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['cardBrand'],
-        message: 'Operadora do cartão é obrigatória para Cartão de Crédito/Débito',
-      });
-    }
   });
 
 export type CreateOrderPayload = z.infer<typeof createOrderSchema>;

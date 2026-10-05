@@ -458,16 +458,17 @@ describe('OrdersController', () => {
     ).rejects.toMatchObject({ statusCode: 400 });
   });
 
-  it('rejeita Cartão de Crédito sem cardBrand', async () => {
-    const { routes } = setup();
+  // Cartão é pago na maquina do estabelecimento: a operadora não é mais obrigatória.
+  it('aceita Cartão de Crédito sem cardBrand (pagamento na maquina)', async () => {
+    const { orderRepository, routes } = setup();
 
-    await expect(
-      runAuthenticatedChain(
-        routes['POST /orders'],
-        { body: buildValidBody({ paymentMethod: 'creditCard' }), user: { uid: 'customer-1' } },
-        { json: jest.fn() },
-      ),
-    ).rejects.toMatchObject({ statusCode: 400 });
+    await runAuthenticatedChain(
+      routes['POST /orders'],
+      { body: buildValidBody({ paymentMethod: 'creditCard' }), user: { uid: 'customer-1' } },
+      { json: jest.fn() },
+    );
+
+    expect(orderRepository.create).toHaveBeenCalledTimes(1);
   });
 
   it('aceita Cartão de Crédito com cardBrand informado', async () => {
