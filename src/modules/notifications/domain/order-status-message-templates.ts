@@ -8,7 +8,7 @@ export const DEFAULT_ORDER_CONFIRMED_TEMPLATE = 'Seu pedido #{numeroPedido} foi 
 
 // specs/0065 REQ-2/AC-4 — texto fixo já usado hoje, agora como fallback quando o restaurante não
 // configurou um template próprio (retrocompatibilidade).
-export const DEFAULT_OUT_FOR_DELIVERY_TEMPLATE = 'Seu pedido #{numeroPedido} saiu para entrega!';
+export const DEFAULT_OUT_FOR_DELIVERY_TEMPLATE = '🛵 {nomeCliente}, seu pedido #{numeroPedido} saiu para entrega!\n\nMuito Obrigado Pela Preferência 😄';
 
 // specs/0071 — textos padrão (equivalentes aos fixos de antes; o de cancelamento agora omite a
 // linha "Motivo" sozinho quando não há motivo, via `renderTemplate`).

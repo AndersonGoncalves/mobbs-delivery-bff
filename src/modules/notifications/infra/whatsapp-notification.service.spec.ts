@@ -328,7 +328,7 @@ describe('WhatsAppNotificationService', () => {
 
       await service.sendOrderStatusUpdate(buildOrder({ status: 'saiuParaEntrega' }));
 
-      expect(whatsAppConnectionService.sendMessage).toHaveBeenCalledWith('r-1', '11999999999', 'Seu pedido #123 saiu para entrega!');
+      expect(whatsAppConnectionService.sendMessage).toHaveBeenCalledWith('r-1', '11999999999', '🛵 Ana, seu pedido #123 saiu para entrega!\n\nMuito Obrigado Pela Preferência 😄');
     });
 
     it('specs/0071: notifyCustomerOnOrderPreparing false não envia em "emPreparo"', async () => {

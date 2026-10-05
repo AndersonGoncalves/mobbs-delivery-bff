@@ -77,8 +77,8 @@ describe('buildOrderStatusMessage', () => {
 
   // specs/0065 AC-4 — sem template configurado, o texto é idêntico ao fixo de antes.
   it('specs/0065 AC-4: sem template configurado, "saiu para entrega" usa o texto fixo atual', () => {
-    expect(buildOrderStatusMessage(buildInput({ order: buildOrder({ status: 'saiuParaEntrega' }) }))).toBe('Seu pedido #123 saiu para entrega!');
-    expect(DEFAULT_OUT_FOR_DELIVERY_TEMPLATE).toBe('Seu pedido #{numeroPedido} saiu para entrega!');
+    expect(buildOrderStatusMessage(buildInput({ order: buildOrder({ status: 'saiuParaEntrega' }) }))).toBe('🛵 Ana, seu pedido #123 saiu para entrega!\n\nMuito Obrigado Pela Preferência 😄');
+    expect(DEFAULT_OUT_FOR_DELIVERY_TEMPLATE).toBe('🛵 {nomeCliente}, seu pedido #{numeroPedido} saiu para entrega!\n\nMuito Obrigado Pela Preferência 😄');
   });
 
   // specs/0065 AC-2.
@@ -101,7 +101,7 @@ describe('buildOrderStatusMessage', () => {
   });
 
   it('texto de "saiu para entrega" antigo segue valendo (compat.)', () => {
-    expect(buildOrderStatusMessage(buildInput({ order: buildOrder({ status: 'saiuParaEntrega' }) }))).toBe('Seu pedido #123 saiu para entrega!');
+    expect(buildOrderStatusMessage(buildInput({ order: buildOrder({ status: 'saiuParaEntrega' }) }))).toBe('🛵 Ana, seu pedido #123 saiu para entrega!\n\nMuito Obrigado Pela Preferência 😄');
   });
 
   it('texto de "em preparo"', () => {
@@ -192,6 +192,6 @@ describe('buildOrderStatusMessage', () => {
   it('entrega continua usando o texto de "saiu para entrega"', () => {
     const message = buildOrderStatusMessage(buildInput({ order: buildOrder({ orderType: 'delivery', status: 'saiuParaEntrega' }) }));
 
-    expect(message).toBe('Seu pedido #123 saiu para entrega!');
+    expect(message).toBe('🛵 Ana, seu pedido #123 saiu para entrega!\n\nMuito Obrigado Pela Preferência 😄');
   });
 });
