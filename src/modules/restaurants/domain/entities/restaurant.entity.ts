@@ -104,6 +104,8 @@ export interface IRestaurant {
    * cardápio do cliente, independente de haver banners cadastrados (REQ-8 trata da lista
    * vazia, que já esconde o carrossel por conta própria). */
   showBanners: boolean;
+  /** Tag "Peça novamente" no app (cardápio e detalhe do produto). Nasce ligada. */
+  showReorderTag: boolean;
   /** specs/0028-destaques-vendidos-banners REQ-5 — banners do carrossel, na ordem de
    * exibição. */
   banners: IRestaurantBanner[];
@@ -185,8 +187,11 @@ export interface IRestaurant {
   orderReceiptWhatsAppTemplate?: string;
   /** specs/0065 — liga/desliga a mensagem automática de WhatsApp quando o pedido sai pra entrega. */
   notifyCustomerOnOrderOutForDelivery: boolean;
+  /** Retirada: liga/desliga a mensagem avisando que o pedido já pode ser retirado (no lugar de "saiu para entrega"). */
+  notifyCustomerOnOrderReadyForPickup: boolean;
   /** specs/0065 — template; `undefined` usa `DEFAULT_OUT_FOR_DELIVERY_TEMPLATE` (texto de sempre). */
   orderOutForDeliveryWhatsAppTemplate?: string;
+  orderReadyForPickupWhatsAppTemplate?: string;
   /** specs/0071 — liga/desliga a mensagem automática de WhatsApp quando o pedido entra em preparo. */
   notifyCustomerOnOrderPreparing: boolean;
   /** specs/0071 — template; `undefined` usa `DEFAULT_ORDER_PREPARING_TEMPLATE`. */

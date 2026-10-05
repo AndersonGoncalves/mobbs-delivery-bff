@@ -49,6 +49,8 @@ export const createOrderSchema = z
     items: z.array(orderItemSchema).min(1),
     orderType: z.enum(['delivery', 'pickup']),
     deliveryAddress: optionalString(z.string().min(1)),
+    // Bairro do endereço escolhido: no modo de taxa por bairro, é a chave da zona que define a taxa cobrada.
+    deliveryNeighborhood: optionalString(z.string().min(1)),
     notes: optionalString(z.string()),
     paymentMethod: z.enum(['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer']),
     cardBrand: optionalString(z.string().min(1)),

@@ -42,6 +42,7 @@ interface RestaurantLeanDocument {
   bestSellersCount?: number;
   showHighlights?: boolean;
   showBanners?: boolean;
+  showReorderTag?: boolean;
   banners?: IRestaurantBanner[];
   allowCustomerCancelOrder?: boolean;
   deliveryFeeMode?: DeliveryFeeMode;
@@ -64,7 +65,9 @@ interface RestaurantLeanDocument {
   notifyCustomerOnOrderCreated?: boolean;
   orderReceiptWhatsAppTemplate?: string;
   notifyCustomerOnOrderOutForDelivery?: boolean;
+  notifyCustomerOnOrderReadyForPickup?: boolean;
   orderOutForDeliveryWhatsAppTemplate?: string;
+  orderReadyForPickupWhatsAppTemplate?: string;
   notifyCustomerOnOrderPreparing?: boolean;
   orderPreparingWhatsAppTemplate?: string;
   notifyCustomerOnOrderCancelled?: boolean;
@@ -103,6 +106,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     bestSellersCount: doc.bestSellersCount ?? 6,
     showHighlights: doc.showHighlights ?? true,
     showBanners: doc.showBanners ?? true,
+    showReorderTag: doc.showReorderTag ?? true,
     banners: doc.banners ?? [],
     allowCustomerCancelOrder: doc.allowCustomerCancelOrder ?? true,
     deliveryFeeMode: doc.deliveryFeeMode ?? 'fixed',
@@ -125,7 +129,9 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     notifyCustomerOnOrderCreated: doc.notifyCustomerOnOrderCreated ?? true,
     orderReceiptWhatsAppTemplate: doc.orderReceiptWhatsAppTemplate,
     notifyCustomerOnOrderOutForDelivery: doc.notifyCustomerOnOrderOutForDelivery ?? true,
+    notifyCustomerOnOrderReadyForPickup: doc.notifyCustomerOnOrderReadyForPickup ?? true,
     orderOutForDeliveryWhatsAppTemplate: doc.orderOutForDeliveryWhatsAppTemplate,
+    orderReadyForPickupWhatsAppTemplate: doc.orderReadyForPickupWhatsAppTemplate,
     notifyCustomerOnOrderPreparing: doc.notifyCustomerOnOrderPreparing ?? true,
     orderPreparingWhatsAppTemplate: doc.orderPreparingWhatsAppTemplate,
     notifyCustomerOnOrderCancelled: doc.notifyCustomerOnOrderCancelled ?? true,

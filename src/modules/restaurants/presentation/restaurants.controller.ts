@@ -1,3 +1,4 @@
+import { findDeliveryFeeZone } from '../domain/find-delivery-fee-zone';
 import type { Request, Response, Server } from 'restify';
 
 import { BaseRouter } from '../../../shared/router/base.router';
@@ -53,8 +54,7 @@ export class RestaurantsController extends BaseRouter {
     application.get('/restaurants/:id/delivery-fee', async (req: Request, res: Response) => {
       const restaurant = await this.restaurantRepository.findById(req.params.id);
       this.render(restaurant);
-      const neighborhood = String(req.query.neighborhood ?? '');
-      const zone = restaurant!.deliveryFeeZones.find((z) => z.neighborhood.toLowerCase() === neighborhood.toLowerCase());
+      const zone = findDeliveryFeeZone(restaurant!.deliveryFeeZones, String(req.query.neighborhood ?? ''));
       res.json(200, { feeCents: zone?.feeCents ?? null });
     });
 

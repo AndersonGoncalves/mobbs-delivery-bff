@@ -22,6 +22,7 @@ export type RestaurantProfileUpdate = Partial<
     | 'bestSellersCount'
     | 'showHighlights'
     | 'showBanners'
+    | 'showReorderTag'
     | 'banners'
     | 'allowCustomerCancelOrder'
     | 'deliveryFeeMode'
@@ -41,7 +42,9 @@ export type RestaurantProfileUpdate = Partial<
     | 'notifyCustomerOnOrderCreated'
     | 'orderReceiptWhatsAppTemplate'
     | 'notifyCustomerOnOrderOutForDelivery'
+    | 'notifyCustomerOnOrderReadyForPickup'
     | 'orderOutForDeliveryWhatsAppTemplate'
+    | 'orderReadyForPickupWhatsAppTemplate'
     | 'notifyCustomerOnOrderPreparing'
     | 'orderPreparingWhatsAppTemplate'
     | 'notifyCustomerOnOrderCancelled'
@@ -62,6 +65,7 @@ export interface IRestaurantRepository {
     businessHours?: IBusinessHours[];
     showHighlights?: boolean;
     showBanners?: boolean;
+    showReorderTag?: boolean;
     allowCustomerCancelOrder?: boolean;
     productImageOnRight?: boolean;
     category?: string;

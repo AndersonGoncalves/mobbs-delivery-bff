@@ -92,6 +92,7 @@ export const restaurantProfileSchema = z
     bestSellersCount: z.number().int().positive(),
     showHighlights: z.boolean(),
     showBanners: z.boolean(),
+    showReorderTag: z.boolean().optional(),
     banners: z.array(bannerSchema),
     // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-2.
     allowCustomerCancelOrder: z.boolean(),
@@ -126,7 +127,9 @@ export const restaurantProfileSchema = z
     orderReceiptWhatsAppTemplate: z.string(),
     // specs/0065.
     notifyCustomerOnOrderOutForDelivery: z.boolean(),
+    notifyCustomerOnOrderReadyForPickup: z.boolean(),
     orderOutForDeliveryWhatsAppTemplate: z.string(),
+    orderReadyForPickupWhatsAppTemplate: z.string(),
     // specs/0071.
     notifyCustomerOnOrderPreparing: z.boolean(),
     orderPreparingWhatsAppTemplate: z.string(),

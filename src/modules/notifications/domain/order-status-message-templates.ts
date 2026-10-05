@@ -20,6 +20,9 @@ export const DEFAULT_ORDER_CANCELLED_TEMPLATE = 'Pedido #{numeroPedido} foi canc
 // dos outros status; antes desta spec `entregue` não era parametrizável nem tinha toggle).
 export const DEFAULT_ORDER_DELIVERED_TEMPLATE = 'Seu pedido #{numeroPedido} foi entregue. Bom apetite!';
 
+// Retirada: no lugar de "saiu para entrega", o pedido pronto avisa que já pode ser retirado no restaurante.
+export const DEFAULT_READY_FOR_PICKUP_TEMPLATE = 'Seu pedido #{numeroPedido} já está pronto! Você já pode retirar no restaurante.';
+
 export interface OrderStatusMessageInput {
   order: IOrder;
   customerName: string;
@@ -30,6 +33,7 @@ export interface OrderStatusMessageInput {
   templates: {
     confirmado?: string;
     saiuParaEntrega?: string;
+    readyForPickup?: string;
     emPreparo?: string;
     cancelado?: string;
     entregue?: string;
@@ -56,6 +60,7 @@ export function buildOrderStatusMessage(input: OrderStatusMessageInput): string 
     case 'emPreparo':
       return render(templates.emPreparo, DEFAULT_ORDER_PREPARING_TEMPLATE);
     case 'saiuParaEntrega':
+      if (order.orderType === 'pickup') return render(templates.readyForPickup, DEFAULT_READY_FOR_PICKUP_TEMPLATE);
       return render(templates.saiuParaEntrega, DEFAULT_OUT_FOR_DELIVERY_TEMPLATE);
     case 'entregue':
       return render(templates.entregue, DEFAULT_ORDER_DELIVERED_TEMPLATE);

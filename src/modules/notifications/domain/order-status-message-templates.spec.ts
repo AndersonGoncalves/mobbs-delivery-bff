@@ -170,4 +170,28 @@ describe('buildOrderStatusMessage', () => {
 
     expect(message).toBe('Chegou, Ana! Pedido #123 entregue.');
   });
+
+  // Retirada: o passo "saiuParaEntrega" avisa que o pedido já pode ser retirado, nunca que saiu para entrega.
+  it('retirada: no passo pronto, usa o texto de retirada (e não o de entrega)', () => {
+    const message = buildOrderStatusMessage(buildInput({ order: buildOrder({ orderType: 'pickup', status: 'saiuParaEntrega' }) }));
+
+    expect(message).toBe('Seu pedido #123 já está pronto! Você já pode retirar no restaurante.');
+  });
+
+  it('retirada: o template de retirada do restaurante, quando configurado, tem prioridade', () => {
+    const message = buildOrderStatusMessage(
+      buildInput({
+        order: buildOrder({ orderType: 'pickup', status: 'saiuParaEntrega' }),
+        templates: { readyForPickup: 'Pedido #{numeroPedido} pronto na balcão!' },
+      }),
+    );
+
+    expect(message).toBe('Pedido #123 pronto na balcão!');
+  });
+
+  it('entrega continua usando o texto de "saiu para entrega"', () => {
+    const message = buildOrderStatusMessage(buildInput({ order: buildOrder({ orderType: 'delivery', status: 'saiuParaEntrega' }) }));
+
+    expect(message).toBe('Seu pedido #123 saiu para entrega!');
+  });
 });

@@ -1,4 +1,4 @@
-import { OrderStatus, OrderType } from './entities/order.entity';
+import { OrderStatus } from './entities/order.entity';
 
 /**
  * docs/architecture/data-model.md §"Regra de transição de OrderStatus" — avanço de status é
@@ -16,16 +16,15 @@ const NEXT_STATUS: Record<OrderStatus, OrderStatus | null> = {
 };
 
 /**
- * specs/0096-status-pedido-retirada-sem-saiu-entrega REQ-1 — retirada não passa por
- * "saiu para entrega": de "emPreparo" vai direto pra "entregue". Entrega segue a sequência inteira.
+ * Retirada usa a mesma sequência; no lugar de "saiu para entrega", o passo "saiuParaEntrega" de um pedido de
+ * retirada significa "pronto para retirar" (ver `orderStatusLabel` no app/retaguarda e a mensagem de retirada).
  */
-export function nextOrderStatus(current: OrderStatus, orderType: OrderType): OrderStatus | null {
-  if (orderType === 'pickup' && current === 'emPreparo') return 'entregue';
+export function nextOrderStatus(current: OrderStatus): OrderStatus | null {
   return NEXT_STATUS[current];
 }
 
-export function isValidOrderStatusTransition(current: OrderStatus, next: OrderStatus, orderType: OrderType): boolean {
-  return nextOrderStatus(current, orderType) === next;
+export function isValidOrderStatusTransition(current: OrderStatus, next: OrderStatus): boolean {
+  return nextOrderStatus(current) === next;
 }
 
 /**

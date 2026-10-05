@@ -1,3 +1,4 @@
+import { findDeliveryFeeZone } from '../../restaurants/domain/find-delivery-fee-zone';
 import type { Request, Response, Server } from 'restify';
 import { BadRequestError, ConflictError, NotFoundError } from 'restify-errors';
 
@@ -99,10 +100,9 @@ export class OrdersController extends BaseRouter {
       const subtotal = payload.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
       // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-1 — 'free' nunca cobra,
       // independente do que estiver em `deliveryFeeCents` (o restaurante pode ter mudado de modo
-      // sem zerar o valor antigo). Nota: `byNeighborhood` também cai em `deliveryFeeCents` aqui —
-      // gap pré-existente (a esta rota não chega o bairro do endereço, só uma string livre — ver
-      // `createOrderSchema`), fora do escopo desta mudança.
-      const deliveryFee = payload.orderType === 'delivery' && restaurant.deliveryFeeMode !== 'free' ? restaurant.deliveryFeeCents : 0;
+      // sem zerar o valor antigo). Por bairro, a taxa é a da zona do bairro escolhido — mesma regra que
+      // o app mostra no checkout (`GET /restaurants/:id/delivery-fee`) — e sem zona o pedido não fecha.
+      const deliveryFee = resolveDeliveryFee(restaurant, payload);
 
       // specs/0022-cupons-desconto REQ-2/REQ-4 — primeiro consumidor real de `Order.discount`
       // (antes hardcoded em `0`). **Nunca confia no desconto calculado pelo app**: revalida tudo
@@ -231,7 +231,7 @@ export class OrdersController extends BaseRouter {
         const { status } = parseBody(updateOrderStatusSchema, req.body);
         const order = await this.findOwnedOrderForRestaurant(req.params.id, req.restaurantId!);
 
-        if (!isValidOrderStatusTransition(order.status, status, order.orderType)) {
+        if (!isValidOrderStatusTransition(order.status, status)) {
           throw new BadRequestError(`Não é possível mudar de "${order.status}" para "${status}"`);
         }
 
@@ -494,4 +494,16 @@ export class OrdersController extends BaseRouter {
       estimatedDeliveryAt: order.estimatedDeliveryAt,
     };
   }
+}
+
+/** Taxa de entrega do pedido, decidida no BFF (nunca aceita do app). */
+function resolveDeliveryFee(
+  restaurant: { deliveryFeeMode: string; deliveryFeeCents: number; deliveryFeeZones: { neighborhood: string; feeCents: number }[] },
+  payload: { orderType: string; deliveryNeighborhood?: string },
+): number {
+  if (payload.orderType !== 'delivery' || restaurant.deliveryFeeMode === 'free') return 0;
+  if (restaurant.deliveryFeeMode !== 'byNeighborhood') return restaurant.deliveryFeeCents;
+  const zone = findDeliveryFeeZone(restaurant.deliveryFeeZones, payload.deliveryNeighborhood);
+  if (!zone) throw new BadRequestError('Não há taxa de entrega cadastrada para este bairro');
+  return zone.feeCents;
 }

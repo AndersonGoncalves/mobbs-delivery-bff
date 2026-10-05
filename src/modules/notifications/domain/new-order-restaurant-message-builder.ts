@@ -43,5 +43,10 @@ export const DEFAULT_NEW_ORDER_RESTAURANT_TEMPLATE = [
 export function buildNewOrderRestaurantMessage(input: NewOrderRestaurantMessageInput): string {
   const { template, order, customerName, customerPhone, restaurantSlug, pixCode } = input;
 
-  return renderTemplate(resolveTemplate(template, DEFAULT_NEW_ORDER_RESTAURANT_TEMPLATE), buildMessagePlaceholders({ order, customerName, customerPhone, restaurantSlug, pixCode }));
+  const resolved = resolveTemplate(template, DEFAULT_NEW_ORDER_RESTAURANT_TEMPLATE);
+  const placeholders = buildMessagePlaceholders({ order, customerName, customerPhone, restaurantSlug, pixCode });
+  const text = renderTemplate(resolved, placeholders);
+  // Template salvo antes da linha de troco existir não tem {trocoPara}: o troco não pode sumir do pedido enviado.
+  if (!order.cashChangeFor || resolved.includes('{trocoPara}')) return text;
+  return `${text}\nTroco para: ${placeholders.trocoPara}`;
 }

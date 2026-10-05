@@ -115,4 +115,22 @@ describe('buildNewOrderRestaurantMessage', () => {
 
     expect(message).not.toContain('Troco para');
   });
+
+  // Template salvo antes da linha de troco existir não tem {trocoPara}: o troco entra no fim mesmo assim.
+  it('troco informado aparece mesmo quando o template salvo não tem a linha {trocoPara}', () => {
+    const legacyTemplate = '*Pedido #{numeroPedido}*\nTotal: {total}';
+
+    const message = buildNewOrderRestaurantMessage(
+      buildInput({ template: legacyTemplate, order: buildOrder({ paymentMethod: 'cash', cashChangeFor: 100 }) }),
+    );
+
+    expect(message).toContain('Total: R$ 63,00');
+    expect(message).toContain('Troco para: R$ 100,00');
+  });
+
+  it('template que já tem {trocoPara} não duplica a linha de troco', () => {
+    const message = buildNewOrderRestaurantMessage(buildInput({ order: buildOrder({ paymentMethod: 'cash', cashChangeFor: 100 }) }));
+
+    expect(message.match(/Troco para/g)).toHaveLength(1);
+  });
 });

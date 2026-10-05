@@ -82,6 +82,7 @@ const restaurantSchema = new Schema(
     bestSellersCount: { type: Number, required: true, default: 6 },
     showHighlights: { type: Boolean, required: true, default: true },
     showBanners: { type: Boolean, required: true, default: true },
+    showReorderTag: { type: Boolean, default: true },
     banners: { type: [bannerSchema], default: [] },
     // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-2.
     allowCustomerCancelOrder: { type: Boolean, required: true, default: true },
@@ -135,7 +136,9 @@ const restaurantSchema = new Schema(
     orderReceiptWhatsAppTemplate: { type: String },
     // specs/0065.
     notifyCustomerOnOrderOutForDelivery: { type: Boolean, required: true, default: true },
+    notifyCustomerOnOrderReadyForPickup: { type: Boolean, required: true, default: true },
     orderOutForDeliveryWhatsAppTemplate: { type: String },
+    orderReadyForPickupWhatsAppTemplate: { type: String },
     // specs/0071.
     notifyCustomerOnOrderPreparing: { type: Boolean, required: true, default: true },
     orderPreparingWhatsAppTemplate: { type: String },

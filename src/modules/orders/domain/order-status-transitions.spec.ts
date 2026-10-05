@@ -1,14 +1,17 @@
 import { isValidOrderStatusTransition } from './order-status-transitions';
 
-describe('isValidOrderStatusTransition (specs/0096-status-pedido-retirada-sem-saiu-entrega)', () => {
-  it('AC-1: retirada vai de emPreparo direto pra entregue, sem passar por saiuParaEntrega', () => {
-    expect(isValidOrderStatusTransition('emPreparo', 'entregue', 'pickup')).toBe(true);
-    expect(isValidOrderStatusTransition('emPreparo', 'saiuParaEntrega', 'pickup')).toBe(false);
+describe('isValidOrderStatusTransition', () => {
+  // Retirada passa pelo passo "saiuParaEntrega" (que, em pedido de retirada, é "pronto para retirar") e depois
+  // "entregue". A mensagem e o rótulo mudam; a sequência é a mesma.
+  it('retirada: emPreparo -> saiuParaEntrega (pronto pra retirar) -> entregue', () => {
+    expect(isValidOrderStatusTransition('emPreparo', 'saiuParaEntrega')).toBe(true);
+    expect(isValidOrderStatusTransition('saiuParaEntrega', 'entregue')).toBe(true);
+    expect(isValidOrderStatusTransition('emPreparo', 'entregue')).toBe(false);
   });
 
   it('AC-4: entrega mantém a sequência com saiuParaEntrega', () => {
-    expect(isValidOrderStatusTransition('emPreparo', 'saiuParaEntrega', 'delivery')).toBe(true);
-    expect(isValidOrderStatusTransition('emPreparo', 'entregue', 'delivery')).toBe(false);
-    expect(isValidOrderStatusTransition('saiuParaEntrega', 'entregue', 'delivery')).toBe(true);
+    expect(isValidOrderStatusTransition('emPreparo', 'saiuParaEntrega')).toBe(true);
+    expect(isValidOrderStatusTransition('emPreparo', 'entregue')).toBe(false);
+    expect(isValidOrderStatusTransition('saiuParaEntrega', 'entregue')).toBe(true);
   });
 });

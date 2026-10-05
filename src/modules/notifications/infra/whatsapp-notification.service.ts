@@ -99,12 +99,10 @@ export class WhatsAppNotificationService implements IWhatsAppNotificationService
       ]);
 
       if (this.skipReason(order, customer, restaurant)) return;
-      // specs/0096-status-pedido-retirada-sem-saiu-entrega REQ-2 — retirada nunca manda "saiu para entrega".
-      if (order.orderType === 'pickup' && order.status === 'saiuParaEntrega') return;
-
       // specs/0063/0065/0071 — toggle independente por status; `=== false` (não `!`) pra tratar um
-      // documento antigo sem o campo (`undefined`) como ligado, mesmo default do schema.
-      const toggle = STATUS_TOGGLES[order.status];
+      // documento antigo sem o campo (`undefined`) como ligado, mesmo default do schema. Retirada usa
+      // o próprio toggle no status "saiuParaEntrega" (pedido pronto pra retirar).
+      const toggle = order.orderType === 'pickup' && order.status === 'saiuParaEntrega' ? 'notifyCustomerOnOrderReadyForPickup' : STATUS_TOGGLES[order.status];
       if (toggle && restaurant![toggle] === false) return;
 
       const message = buildOrderStatusMessage({
@@ -117,6 +115,7 @@ export class WhatsAppNotificationService implements IWhatsAppNotificationService
         templates: {
           confirmado: restaurant.orderConfirmedWhatsAppTemplate,
           saiuParaEntrega: restaurant.orderOutForDeliveryWhatsAppTemplate,
+          readyForPickup: restaurant.orderReadyForPickupWhatsAppTemplate,
           emPreparo: restaurant.orderPreparingWhatsAppTemplate,
           cancelado: restaurant.orderCancelledWhatsAppTemplate,
           entregue: restaurant.orderDeliveredWhatsAppTemplate,

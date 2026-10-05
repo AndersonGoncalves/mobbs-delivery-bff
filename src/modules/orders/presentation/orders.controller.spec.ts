@@ -65,6 +65,7 @@ function buildRestaurant(
     orderTypes: ('delivery' | 'pickup')[];
     deliveryFeeCents: number;
     deliveryFeeMode: string;
+    deliveryFeeZones: { id: string; neighborhood: string; feeCents: number }[];
     pixKey: string;
     pixKeyType: string;
     pixBeneficiaryName: string;
@@ -94,6 +95,7 @@ function buildRestaurant(
     minimumOrderValue: 0,
     deliveryFeeCents: 5,
     deliveryFeeMode: 'fixed',
+    deliveryFeeZones: [],
     ...overrides,
   };
 }
@@ -386,6 +388,44 @@ describe('OrdersController', () => {
     await runAuthenticatedChain(routes['POST /orders'], { body: buildValidBody(), user: { uid: 'customer-1' } }, { json: jest.fn() });
 
     expect(orderRepository.create).toHaveBeenCalledWith(expect.objectContaining({ deliveryFee: 0, total: 25 }));
+  });
+
+  // Taxa por bairro: quem define a taxa é a zona do bairro do endereço escolhido, nunca o valor fixo.
+  it('taxa por bairro: cobra a taxa da zona do bairro informado', async () => {
+    const { orderRepository, routes } = setup({
+      restaurantRepository: {
+        findById: jest.fn().mockResolvedValue(
+          buildRestaurant({
+            deliveryFeeMode: 'byNeighborhood',
+            deliveryFeeCents: 5,
+            deliveryFeeZones: [{ id: 'z-1', neighborhood: 'Presidente Kennedy', feeCents: 800 }],
+          }),
+        ),
+      },
+    });
+
+    await runAuthenticatedChain(
+      routes['POST /orders'],
+      { body: buildValidBody({ deliveryNeighborhood: 'presidente kennedy' }), user: { uid: 'customer-1' } },
+      { json: jest.fn() },
+    );
+
+    expect(orderRepository.create).toHaveBeenCalledWith(expect.objectContaining({ deliveryFee: 800, total: 825 }));
+  });
+
+  it('taxa por bairro: bairro sem zona cadastrada não fecha o pedido (400)', async () => {
+    const { orderRepository, routes } = setup({
+      restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ deliveryFeeMode: 'byNeighborhood', deliveryFeeZones: [] })) },
+    });
+
+    await expect(
+      runAuthenticatedChain(
+        routes['POST /orders'],
+        { body: buildValidBody({ deliveryNeighborhood: 'Aldeota' }), user: { uid: 'customer-1' } },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(orderRepository.create).not.toHaveBeenCalled();
   });
 
   // specs/0083-modalidade-entrega-retirada-restaurante REQ-5/AC-4.
