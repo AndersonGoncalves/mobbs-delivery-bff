@@ -527,6 +527,20 @@ describe('CustomersController', () => {
       expect(emailService.send).not.toHaveBeenCalled();
     });
 
+    it('cliente que começou como visitante (e-mail gravado vazio) mas logou com Google usa o e-mail do token', async () => {
+      const { emailService, routes } = setup({
+        customerRepository: { findById: jest.fn().mockResolvedValue(buildCustomer({ email: '' })) },
+      });
+
+      await runAuthenticatedChain(
+        routes['POST /customers/me/data-export'],
+        { user: { uid: 'c-1', email: 'google@example.com' } },
+        { json: jest.fn() },
+      );
+
+      expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'google@example.com' }));
+    });
+
     it('AC-2: cliente sem Customer persistido e sem e-mail no token também recebe 400', async () => {
       const { emailService, routes } = setup({
         customerRepository: { findById: jest.fn().mockResolvedValue(null) },

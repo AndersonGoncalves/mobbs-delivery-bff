@@ -46,7 +46,9 @@ export class CustomersController extends BaseRouter {
     application.get('/customers/me', firebaseAuthMiddleware, async (req: Request, res: Response) => {
       const existing = await this.customerRepository.findById(req.user!.uid);
       if (existing) {
-        res.json(200, existing);
+        // Conta criada como visitante grava `email` vazio; ao logar com Google depois, o documento
+        // continua sem e-mail, mas o token já traz um — o do token vale quando o gravado é vazio.
+        res.json(200, { ...existing, email: existing.email || req.user!.email || '' });
         return;
       }
       res.json(200, {
@@ -180,12 +182,14 @@ export class CustomersController extends BaseRouter {
       async (req: Request, res: Response) => {
         const uid = req.user!.uid;
         const existing = await this.customerRepository.findById(uid);
-        const customer = existing ?? {
-          id: uid,
-          name: req.user!.name ?? '',
-          email: req.user!.email ?? '',
-          photoUrl: req.user!.picture,
-        };
+        const customer = existing
+          ? { ...existing, email: existing.email || req.user!.email || '' }
+          : {
+              id: uid,
+              name: req.user!.name ?? '',
+              email: req.user!.email ?? '',
+              photoUrl: req.user!.picture,
+            };
 
         // REQ-3 — sessão de visitante (specs/0019-checkout-visitante) nunca tem e-mail; orienta
         // a cadastrar um antes, em vez de tentar enviar pra um endereço vazio.
