@@ -1,3 +1,5 @@
+import { PutObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { Request, Response, Server } from 'restify';
 import { BadRequestError, NotFoundError } from 'restify-errors';
 import * as admin from 'firebase-admin';
@@ -5,9 +7,12 @@ import * as admin from 'firebase-admin';
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { ensureFirebaseAdminInitialized } from '../../../shared/config/firebase-admin';
+import { environment } from '../../../shared/config/environment';
+import { s3Client } from '../../../shared/storage/s3-client';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
 import { IEmailService } from '../../../shared/email/i-email-service';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
+import { buildAvatarKey } from '../domain/build-avatar-key';
 import { buildCustomerDataExport } from '../domain/build-data-export';
 import { IAddress } from '../domain/entities/customer.entity';
 import { IAddressRepository } from '../domain/repositories/address.repository.interface';
@@ -18,6 +23,7 @@ import {
   addFavoriteSchema,
   listFavoritesQuerySchema,
   saveAddressSchema,
+  avatarPresignSchema,
   updateCustomerProfileSchema,
 } from './customers.schemas';
 
@@ -52,6 +58,7 @@ export class CustomersController extends BaseRouter {
           ...existing,
           name: existing.name || req.user!.name || '',
           email: existing.email || req.user!.email || '',
+          photoUrl: existing.photoUrl || req.user!.picture,
         });
         return;
       }
@@ -61,6 +68,16 @@ export class CustomersController extends BaseRouter {
         email: req.user!.email ?? '',
         photoUrl: req.user!.picture,
       });
+    });
+
+    // Foto de perfil: o BFF só assina a URL de envio (o arquivo vai direto pro bucket, como nas
+    // fotos da retaguarda — specs/0036). O app grava a URL pública depois, via `PUT /customers/me`.
+    application.post('/customers/me/avatar/presign', firebaseAuthMiddleware, async (req: Request, res: Response) => {
+      const { extension } = parseBody(avatarPresignSchema, req.body);
+      const key = buildAvatarKey(req.user!.uid, extension);
+      const uploadUrl = await getSignedUrl(s3Client, new PutObjectCommand({ Bucket: environment.s3.bucket, Key: key }), { expiresIn: 300 });
+      const publicUrl = `https://${environment.s3.bucket}.s3.${environment.s3.region}.amazonaws.com/${key}`;
+      res.json(200, { uploadUrl, publicUrl });
     });
 
     // REQ-1/REQ-11: upsert — cria no primeiro PUT (mesma regra de "sem Customer persistido"
@@ -76,7 +93,7 @@ export class CustomersController extends BaseRouter {
         // nunca tem e-mail no token Firebase; `patch.email` é o único jeito de gravar um pra
         // esse caso ("Entrar com e-mail").
         email: patch.email ?? existing?.email ?? req.user!.email ?? '',
-        photoUrl: existing?.photoUrl ?? req.user!.picture,
+        photoUrl: patch.photoUrl ?? existing?.photoUrl ?? req.user!.picture,
         phone: patch.phone ?? existing?.phone,
         document: patch.document ?? existing?.document,
       });

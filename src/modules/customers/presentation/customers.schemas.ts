@@ -20,6 +20,8 @@ export const updateCustomerProfileSchema = z
     // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-6 — sessão anônima
     // (convidado) sem e-mail vindo do token Firebase; "Entrar com e-mail" manda esse campo.
     email: z.preprocess(blankToUndefined, z.string().email().optional()),
+    // Foto enviada pelo app (`POST /customers/me/avatar/presign`) ou a do Google, nunca texto livre.
+    photoUrl: z.preprocess(blankToUndefined, z.string().url().optional()),
   })
   .refine((data) => !data.document || isValidCpf(data.document), {
     message: 'CPF inválido',
@@ -52,4 +54,8 @@ export const saveAddressSchema = z.object({
   city: z.string().min(1),
   state: z.string().min(1),
   zipCode: z.string().min(1),
+});
+
+export const avatarPresignSchema = z.object({
+  extension: z.enum(['jpg', 'jpeg', 'png', 'webp']),
 });

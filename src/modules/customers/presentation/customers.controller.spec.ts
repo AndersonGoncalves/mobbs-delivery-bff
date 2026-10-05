@@ -160,6 +160,17 @@ describe('CustomersController', () => {
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ name: 'Anderson Gonçalves', email: 'a@x.com' }));
   });
 
+  it('GET /customers/me sem foto gravada usa a foto do Google (token)', async () => {
+    const { routes } = setup({
+      customerRepository: { findById: jest.fn().mockResolvedValue(buildCustomer({ photoUrl: undefined })) },
+    });
+    const json = jest.fn();
+
+    await runAuthenticatedChain(routes['GET /customers/me'], { user: { uid: 'c-1', name: 'A', picture: 'https://lh3.google.com/foto.jpg' } }, { json });
+
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ photoUrl: 'https://lh3.google.com/foto.jpg' }));
+  });
+
   it('AC-1: GET /customers/me devolve o Customer persistido quando já existe', async () => {
     const { routes } = setup();
     const json = jest.fn();
