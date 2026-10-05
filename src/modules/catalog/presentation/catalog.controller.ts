@@ -11,6 +11,7 @@ import { IRestaurantRepository } from '../../restaurants/domain/repositories/res
 import { IMenuCategory } from '../domain/entities/menu-category.entity';
 import { IProduct } from '../domain/entities/product.entity';
 import { IMenuCategoryRepository } from '../domain/repositories/menu-category.repository.interface';
+import { IProductImageStorage } from '../domain/product-image-storage';
 import { IProductRepository } from '../domain/repositories/product.repository.interface';
 import {
   listProductsQuerySchema,
@@ -53,6 +54,9 @@ export class CatalogController extends BaseRouter {
     // `productRepository`, se o produto está vinculado (`linkedProductId`) em algum template
     // reutilizável antes de permitir a exclusão real.
     private readonly additionalGroupTemplateRepository: IAdditionalGroupTemplateRepository,
+    // specs/0099-preserva-imagem-compartilhada-s3-exclusao-produto — apaga do bucket só a foto
+    // enviada pelo próprio restaurante, depois do registro removido.
+    private readonly productImageStorage: IProductImageStorage,
   ) {
     super();
   }
@@ -248,6 +252,7 @@ export class CatalogController extends BaseRouter {
         throw new ConflictError(`Produto usado como adicional em: ${names} — não pode ser excluído`);
       }
       await this.productRepository.remove(product.id);
+      await this.productImageStorage.deleteProductImageIfOwned(product.imageUrl, req.restaurantId!);
       res.send(204);
     });
 

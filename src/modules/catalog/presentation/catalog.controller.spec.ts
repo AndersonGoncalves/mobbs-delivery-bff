@@ -112,6 +112,7 @@ describe('CatalogController', () => {
       findAnyByLinkedProductId: jest.fn().mockResolvedValue([]),
       ...overrides.additionalGroupTemplateRepository,
     };
+    const productImageStorage = { deleteProductImageIfOwned: jest.fn().mockResolvedValue(undefined) };
     const restaurantOperatorMiddleware = jest.fn(async () => {});
     const { application, routes } = buildFakeApplication();
     new CatalogController(
@@ -121,8 +122,9 @@ describe('CatalogController', () => {
       orderRepository as IOrderRepository,
       restaurantRepository as IRestaurantRepository,
       additionalGroupTemplateRepository as IAdditionalGroupTemplateRepository,
+      productImageStorage,
     ).initializeRoutes(application);
-    return { menuCategoryRepository, productRepository, orderRepository, restaurantRepository, additionalGroupTemplateRepository, routes };
+    return { menuCategoryRepository, productRepository, orderRepository, restaurantRepository, additionalGroupTemplateRepository, productImageStorage, routes };
   }
 
   it('AC-1: GET /restaurants/:id/menu-categories retorna as categorias do restaurante', async () => {
@@ -676,6 +678,25 @@ describe('CatalogController', () => {
 
     expect(productRepository.remove).toHaveBeenCalledWith('p-1');
     expect(send).toHaveBeenCalledWith(204);
+  });
+
+  // specs/0099-preserva-imagem-compartilhada-s3-exclusao-produto REQ-1/REQ-2/REQ-3.
+  it('AC-1/AC-2/AC-3 (specs/0099): DELETE /restaurants/me/products/:id passa a imagem do produto pro storage, depois de remover o registro', async () => {
+    const { productRepository, productImageStorage, routes } = setup({
+      productRepository: { findById: jest.fn().mockResolvedValue(buildProduct({ imageUrl: 'https://b.s3.us-east-1.amazonaws.com/restaurants/r-1/products/x.jpg' })) },
+    });
+
+    await runOperatorChain(
+      routes['DELETE /restaurants/me/products/:id'],
+      { restaurantId: 'r-1', params: { id: 'p-1' } },
+      { json: jest.fn(), send: jest.fn() },
+    );
+
+    expect(productRepository.remove).toHaveBeenCalledWith('p-1');
+    expect(productImageStorage.deleteProductImageIfOwned).toHaveBeenCalledWith(
+      'https://b.s3.us-east-1.amazonaws.com/restaurants/r-1/products/x.jpg',
+      'r-1',
+    );
   });
 
   it('AC-4: DELETE /restaurants/me/products/:id bloqueia (409) se já apareceu em algum pedido', async () => {

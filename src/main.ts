@@ -9,7 +9,10 @@ import { migrateOperatorRolesToDono } from './modules/restaurant-operators/infra
 import { RestaurantOperatorsController } from './modules/restaurant-operators/presentation/restaurant-operators.controller';
 import { MenuCategoryMongooseRepository } from './modules/catalog/infra/repositories/menu-category.mongoose.repository';
 import { ProductMongooseRepository } from './modules/catalog/infra/repositories/product.mongoose.repository';
+import { S3ProductImageStorage } from './modules/catalog/infra/storage/s3-product-image-storage';
 import { CatalogController } from './modules/catalog/presentation/catalog.controller';
+import { environment } from './shared/config/environment';
+import { s3Client } from './shared/storage/s3-client';
 import { OrderMongooseRepository } from './modules/orders/infra/repositories/order.mongoose.repository';
 import { PaymentMongooseRepository } from './modules/orders/infra/repositories/payment.mongoose.repository';
 import { OrdersController } from './modules/orders/presentation/orders.controller';
@@ -134,6 +137,7 @@ server
       orderRepository,
       restaurantRepository,
       new AdditionalGroupTemplateMongooseRepository(),
+      new S3ProductImageStorage(s3Client, environment.s3.bucket, environment.s3.region),
     ),
     new OrdersController(
       orderRepository,
