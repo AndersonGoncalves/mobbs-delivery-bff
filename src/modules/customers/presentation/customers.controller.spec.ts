@@ -6,7 +6,11 @@ import { IOrderRepository } from '../../orders/domain/repositories/order.reposit
 import { IAddressRepository } from '../domain/repositories/address.repository.interface';
 import { ICustomerRepository } from '../domain/repositories/customer.repository.interface';
 import { IFavoriteRepository } from '../domain/repositories/favorite.repository.interface';
+import { environment } from '../../../shared/config/environment';
+import { s3Client } from '../../../shared/storage/s3-client';
 import { CustomersController } from './customers.controller';
+
+jest.mock('../../../shared/storage/s3-client', () => ({ s3Client: { send: jest.fn() } }));
 
 jest.mock('firebase-admin', () => ({
   apps: [],
@@ -169,6 +173,54 @@ describe('CustomersController', () => {
     await runAuthenticatedChain(routes['GET /customers/me'], { user: { uid: 'c-1', name: 'A', picture: 'https://lh3.google.com/foto.jpg' } }, { json });
 
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ photoUrl: 'https://lh3.google.com/foto.jpg' }));
+  });
+
+  describe('DELETE /customers/me/avatar', () => {
+    const ownPhotoUrl = `https://${environment.s3.bucket}.s3.${environment.s3.region}.amazonaws.com/customers/c-1/avatar-abc.jpg`;
+
+    beforeEach(() => {
+      jest.mocked(s3Client.send).mockClear();
+    });
+
+    it('apaga a foto enviada pelo cliente no bucket e tira a referência do cadastro', async () => {
+      const removePhoto = jest.fn().mockResolvedValue(buildCustomer({ photoUrl: undefined }));
+      const { routes } = setup({
+        customerRepository: { findById: jest.fn().mockResolvedValue(buildCustomer({ photoUrl: ownPhotoUrl })), removePhoto },
+      });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['DEL /customers/me/avatar'], { user: { uid: 'c-1', picture: 'https://lh3.google.com/foto.jpg' } }, { json });
+
+      expect(removePhoto).toHaveBeenCalledWith('c-1');
+      expect(s3Client.send).toHaveBeenCalledTimes(1);
+      expect(jest.mocked(s3Client.send).mock.calls[0][0].input).toEqual({
+        Bucket: environment.s3.bucket,
+        Key: 'customers/c-1/avatar-abc.jpg',
+      });
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ photoUrl: 'https://lh3.google.com/foto.jpg' }));
+    });
+
+    it('não apaga arquivo de outro cliente nem foto que não é nossa (Google)', async () => {
+      const otherClientUrl = `https://${environment.s3.bucket}.s3.${environment.s3.region}.amazonaws.com/customers/c-2/avatar-abc.jpg`;
+      const { routes } = setup({
+        customerRepository: { findById: jest.fn().mockResolvedValue(buildCustomer({ photoUrl: otherClientUrl })), removePhoto: jest.fn().mockResolvedValue(buildCustomer()) },
+      });
+
+      await runAuthenticatedChain(routes['DEL /customers/me/avatar'], { user: { uid: 'c-1' } }, { json: jest.fn() });
+
+      expect(s3Client.send).not.toHaveBeenCalled();
+    });
+
+    it('cliente que não existe recebe 404 e nada é apagado', async () => {
+      const removePhoto = jest.fn();
+      const { routes } = setup({ customerRepository: { findById: jest.fn().mockResolvedValue(null), removePhoto } });
+
+      await expect(
+        runAuthenticatedChain(routes['DEL /customers/me/avatar'], { user: { uid: 'c-1' } }, { json: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 404 });
+      expect(removePhoto).not.toHaveBeenCalled();
+      expect(s3Client.send).not.toHaveBeenCalled();
+    });
   });
 
   it('AC-1: GET /customers/me devolve o Customer persistido quando já existe', async () => {

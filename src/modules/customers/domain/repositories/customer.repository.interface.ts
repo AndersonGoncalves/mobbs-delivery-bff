@@ -11,6 +11,9 @@ export type CustomerProfileUpsert = Pick<ICustomer, 'name' | 'email'> &
 export interface ICustomerRepository {
   findById(id: string): Promise<ICustomer | null>;
 
+  /** Foto própria removida pelo cliente: tira `photoUrl` do documento (volta a valer a foto da conta). */
+  removePhoto(id: string): Promise<ICustomer | null>;
+
   /** REQ-1 (`specs/0011-perfil-cliente`) — cria se ainda não existir, atualiza se existir. */
   upsertProfile(id: string, patch: CustomerProfileUpsert): Promise<ICustomer>;
 

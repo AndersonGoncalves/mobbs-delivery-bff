@@ -1,4 +1,4 @@
-import { PutObjectCommand } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { Request, Response, Server } from 'restify';
 import { BadRequestError, NotFoundError } from 'restify-errors';
@@ -12,7 +12,7 @@ import { s3Client } from '../../../shared/storage/s3-client';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
 import { IEmailService } from '../../../shared/email/i-email-service';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
-import { buildAvatarKey } from '../domain/build-avatar-key';
+import { avatarKeyFromPublicUrl, buildAvatarKey, isOwnAvatarKey } from '../domain/build-avatar-key';
 import { buildCustomerDataExport } from '../domain/build-data-export';
 import { IAddress } from '../domain/entities/customer.entity';
 import { IAddressRepository } from '../domain/repositories/address.repository.interface';
@@ -72,6 +72,26 @@ export class CustomersController extends BaseRouter {
 
     // Foto de perfil: o BFF só assina a URL de envio (o arquivo vai direto pro bucket, como nas
     // fotos da retaguarda — specs/0036). O app grava a URL pública depois, via `PUT /customers/me`.
+    // Remove a foto que o próprio cliente enviou: tira a referência do cadastro e apaga o arquivo no bucket.
+    // Sem foto própria, a resposta volta a mostrar a foto da conta (Google), como no GET.
+    application.del('/customers/me/avatar', firebaseAuthMiddleware, async (req: Request, res: Response) => {
+      const uid = req.user!.uid;
+      const existing = await this.customerRepository.findById(uid);
+      if (!existing) throw new NotFoundError('Cliente não encontrado');
+      const customer = await this.customerRepository.removePhoto(uid);
+      if (!customer) throw new NotFoundError('Cliente não encontrado');
+      const key = avatarKeyFromPublicUrl(existing.photoUrl, environment.s3.bucket, environment.s3.region);
+      if (key && isOwnAvatarKey(key, uid)) {
+        await s3Client.send(new DeleteObjectCommand({ Bucket: environment.s3.bucket, Key: key }));
+      }
+      res.json(200, {
+        ...customer,
+        name: customer.name || req.user!.name || '',
+        email: customer.email || req.user!.email || '',
+        photoUrl: customer.photoUrl || req.user!.picture,
+      });
+    });
+
     application.post('/customers/me/avatar/presign', firebaseAuthMiddleware, async (req: Request, res: Response) => {
       const { extension } = parseBody(avatarPresignSchema, req.body);
       const key = buildAvatarKey(req.user!.uid, extension);
