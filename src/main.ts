@@ -6,9 +6,10 @@ import { RestaurantSignupController } from './modules/restaurants/presentation/r
 import { OnboardingChecklistController } from './modules/restaurants/presentation/onboarding-checklist.controller';
 import { RestaurantOperatorMongooseRepository } from './modules/restaurant-operators/infra/repositories/restaurant-operator.mongoose.repository';
 import { migrateOperatorRolesToDono } from './modules/restaurant-operators/infra/migrations/migrate-operator-roles-to-dono';
-import { backfillReferralCodes } from './modules/referrals/infra/migrations/backfill-referral-codes';
 import { ReferralMongooseRepository } from './modules/referrals/infra/repositories/referral.mongoose.repository';
-import { ReferralsController } from './modules/referrals/presentation/referrals.controller';
+import { ReferralCodeMongooseRepository } from './modules/referrals/infra/repositories/referral-code.mongoose.repository';
+import { CustomerReferralsController } from './modules/referrals/presentation/customer-referrals.controller';
+import { PlatformReferralsController } from './modules/referrals/presentation/platform-referrals.controller';
 import { RestaurantOperatorsController } from './modules/restaurant-operators/presentation/restaurant-operators.controller';
 import { MenuCategoryMongooseRepository } from './modules/catalog/infra/repositories/menu-category.mongoose.repository';
 import { ProductMongooseRepository } from './modules/catalog/infra/repositories/product.mongoose.repository';
@@ -131,6 +132,7 @@ server
       productRepository,
       new AdditionalGroupTemplateMongooseRepository(),
       new ReferralMongooseRepository(),
+      new ReferralCodeMongooseRepository(),
       new RawMaterialMongooseRepository(),
     ),
     new OnboardingChecklistController(
@@ -199,8 +201,14 @@ server
     new RatingsController(new RatingMongooseRepository(), orderRepository, restaurantRepository, restaurantOperatorMiddleware),
     new PresenceController(new PresenceMongooseRepository(), restaurantRepository, restaurantOperatorMiddleware),
     new UploadsController(restaurantOperatorMiddleware),
-    new ReferralsController(new ReferralMongooseRepository(), restaurantRepository, restaurantOperatorMiddleware),
-  ], [migrateOperatorRolesToDono, backfillReferralCodes])
+    new CustomerReferralsController(new ReferralCodeMongooseRepository(), new ReferralMongooseRepository(), restaurantRepository),
+    new PlatformReferralsController(
+      new ReferralMongooseRepository(),
+      customerRepository,
+      restaurantRepository,
+      buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
+    ),
+  ], [migrateOperatorRolesToDono])
   // specs/0066 REQ-1 — sessões do Baileys vivem em memória; sem isto todo restart do container
   // derruba o envio de WhatsApp em silêncio. Fire-and-forget: nunca atrasa nem derruba o boot.
   .then(() => whatsAppConnectionService.restoreConnectedSessions())

@@ -1,3 +1,4 @@
+import { IReferralRepository } from '../../referrals/domain/repositories/referral.repository.interface';
 import type { Request, Response, Server } from 'restify';
 
 import { IRestaurantRepository } from '../domain/repositories/restaurant.repository.interface';
@@ -34,7 +35,6 @@ async function runAuthenticatedChain(handlers: RouteHandler[], req: FakeRequest,
 function buildRestaurantRepository(overrides: Partial<IRestaurantRepository> = {}): IRestaurantRepository {
   return {
     findBySlug: jest.fn().mockResolvedValue(null),
-    findByReferralCode: jest.fn().mockResolvedValue(null),
     create: jest.fn().mockResolvedValue({ id: 'r-1', name: 'Pizzaria do João', slug: 'pizzaria-do-joao' }),
     ...overrides,
   } as IRestaurantRepository;
@@ -80,7 +80,8 @@ describe('RestaurantSignupController', () => {
     restaurantOverrides: Partial<IRestaurantRepository> = {},
     operatorOverrides: Partial<IRestaurantOperatorRepository> = {},
   ) {
-    const referralRepository = { create: jest.fn().mockResolvedValue({ id: 'ref-1' }), findByReferrerRestaurantId: jest.fn(), getBalanceCents: jest.fn() };
+    const referralRepository = { create: jest.fn().mockResolvedValue({ id: 'ref-1' }) } as unknown as IReferralRepository;
+    const referralCodeRepository = { findCustomerIdByCode: jest.fn().mockResolvedValue(null), findByCustomerId: jest.fn(), save: jest.fn() };
     const restaurantRepository = buildRestaurantRepository(restaurantOverrides);
     const operatorRepository = buildOperatorRepository(operatorOverrides);
     const menuCategoryRepository = buildMenuCategoryRepository();
@@ -95,6 +96,7 @@ describe('RestaurantSignupController', () => {
       productRepository,
       additionalGroupTemplateRepository,
       referralRepository,
+      referralCodeRepository,
       rawMaterialRepository as unknown as IRawMaterialRepository,
     ).initializeRoutes(application);
     return {
@@ -104,15 +106,15 @@ describe('RestaurantSignupController', () => {
       productRepository,
       additionalGroupTemplateRepository,
       referralRepository,
+      referralCodeRepository,
       routes,
     };
   }
 
-  // specs/0043-programa-indicacao AC-2/AC-3/AC-5.
-  it('AC-2/AC-3 (specs/0043): cadastro com ?ref= de código válido cria o vínculo apontando pro indicador e credita R$ 100,00', async () => {
-    const { restaurantRepository, referralRepository, routes } = setup({
-      findByReferralCode: jest.fn().mockImplementation(async (code: string) => (code === 'ABC123' ? { id: 'r-indicador' } : null)),
-    });
+  // specs/0110 REQ-4/REQ-5 — indicação de cliente do app.
+  it('specs/0110 REQ-4: cadastro com ?ref= de código de cliente cria indicação pendente de R$ 100,00 pro cliente', async () => {
+    const { referralCodeRepository, referralRepository, routes } = setup();
+    referralCodeRepository.findCustomerIdByCode.mockImplementation(async (code: string) => (code === 'ABC123' ? 'cu-indicador' : null));
 
     await runAuthenticatedChain(
       routes['POST /restaurants/signup'],
@@ -124,15 +126,15 @@ describe('RestaurantSignupController', () => {
       { json: jest.fn() },
     );
 
-    expect(restaurantRepository.findByReferralCode).toHaveBeenCalledWith('ABC123');
+    expect(referralCodeRepository.findCustomerIdByCode).toHaveBeenCalledWith('ABC123');
     expect(referralRepository.create).toHaveBeenCalledWith({
-      referrerRestaurantId: 'r-indicador',
+      referrerCustomerId: 'cu-indicador',
       referredRestaurantId: 'r-1',
       rewardCents: 10000,
     });
   });
 
-  it('AC-5 (specs/0043): cadastro sem ?ref= ou com código inexistente completa normalmente, sem criar vínculo', async () => {
+  it('specs/0110 REQ-5: cadastro com código inexistente completa normalmente, sem criar indicação', async () => {
     const { referralRepository, routes } = setup();
 
     await runAuthenticatedChain(
