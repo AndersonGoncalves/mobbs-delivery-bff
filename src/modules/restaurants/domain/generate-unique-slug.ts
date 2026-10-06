@@ -5,7 +5,12 @@ import { IRestaurantRepository } from './repositories/restaurant.repository.inte
  * plan.md — primeiros segmentos de path que o Nginx trata como algo diferente de slug de
  * restaurante; nenhum cadastro pode gerar um destes.
  */
-const RESERVED_SLUGS: ReadonlySet<string> = new Set(['painel', 'signup', 'login', 'api', 'assets', 'r', 'www']);
+// specs/0111 — `gratis` e `images` (página de cadastro e fotos do site); `help`/`ajuda` (ajuda do app, futuro);
+// `plataforma`/`bloqueado`/`indicacoes` (rotas do web). Mudar esta lista exige ajuste no Nginx do site também.
+const RESERVED_SLUGS: ReadonlySet<string> = new Set([
+  'painel', 'signup', 'login', 'api', 'assets', 'r', 'www',
+  'gratis', 'images', 'help', 'ajuda', 'plataforma', 'bloqueado', 'indicacoes',
+]);
 
 function slugify(name: string): string {
   const base = name

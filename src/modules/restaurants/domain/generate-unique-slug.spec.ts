@@ -47,4 +47,11 @@ describe('generateUniqueSlug', () => {
 
     expect(await generateUniqueSlug('!!!', repository)).toBe('restaurante');
   });
+
+  // specs/0111 — caminhos reservados do site e do app (help/ajuda para a ajuda futura do app).
+  it.each(['Ajuda', 'Help', 'Gratis', 'Images'])('nome "%s" não vira slug reservado (ganha sufixo)', async (name) => {
+    const repository = buildRepository();
+
+    expect(await generateUniqueSlug(name, repository)).toMatch(/-2$/);
+  });
 });
