@@ -7,6 +7,13 @@ services:
       - DB_URL=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongo:27017/mobbs-delivery?authSource=admin
       # specs/0106 — e-mails (separados por vírgula) com acesso ao painel da plataforma (/plataforma).
       - PLATFORM_ADMIN_EMAILS=${PLATFORM_ADMIN_EMAILS}
+      # specs/0023-portabilidade-dados — SMTP para o e-mail de exportação de dados (LGPD). Sem estas
+      # variáveis o envio falha em silêncio (só aparece no log) e o cliente recebe a confirmação mesmo assim.
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - SMTP_FROM=${SMTP_FROM}
       # Firebase Admin SDK (verificação dos tokens do app) — chave de service account baixada no
       # Console (Configurações do projeto > Contas de serviço > Gerar nova chave privada), salva
       # como ./firebase-service-account.json (mesma pasta deste arquivo, já no .gitignore).
