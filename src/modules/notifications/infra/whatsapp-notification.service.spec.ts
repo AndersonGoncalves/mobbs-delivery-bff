@@ -297,6 +297,24 @@ describe('WhatsAppNotificationService', () => {
       expect(whatsAppConnectionService.sendMessage).not.toHaveBeenCalled();
     });
 
+    // specs/0096 AC-2/T008 — o guard é defensivo: mesmo que um pedido de retirada chegue em
+    // "saiuParaEntrega", a mensagem nunca é a de entrega, e sim a de pronto para retirada.
+    it('specs/0096 AC-2: pedido de retirada em "saiuParaEntrega" manda a mensagem de pronto para retirada, nunca a de entrega', async () => {
+      const { service, whatsAppConnectionService } = setup({
+        restaurant: { id: 'r-1', name: 'Prime Pizza', slug: 'primepizza', whatsappConnected: true, notifyCustomerOnOrderOutForDelivery: true },
+      });
+
+      await service.sendOrderStatusUpdate(buildOrder({ status: 'saiuParaEntrega', orderType: 'pickup' }));
+
+      expect(whatsAppConnectionService.sendMessage).toHaveBeenCalledWith(
+        'r-1',
+        '11999999999',
+        'Seu pedido #123 já está pronto! Você já pode retirar no restaurante.',
+      );
+      const message = (whatsAppConnectionService.sendMessage as jest.Mock).mock.calls[0][2] as string;
+      expect(message).not.toContain('saiu para entrega');
+    });
+
     it('specs/0065: desligar "saiu para entrega" não afeta "confirmado" (toggles independentes)', async () => {
       const { service, whatsAppConnectionService } = setup({
         restaurant: { id: 'r-1', name: 'Prime Pizza', slug: 'primepizza', whatsappConnected: true, notifyCustomerOnOrderOutForDelivery: false },
