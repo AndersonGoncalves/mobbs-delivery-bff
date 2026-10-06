@@ -7,7 +7,7 @@ import { generateUniqueReferralCode } from '../domain/generate-referral-code';
 import { IReferralCodeRepository } from '../domain/repositories/referral-code.repository.interface';
 import { IReferralRepository } from '../domain/repositories/referral.repository.interface';
 
-const REFERRAL_LINK_BASE = 'https://bsdelivery.com.br/?ref=';
+const REFERRAL_LINK_BASE = 'https://bsdelivery.com.br/gratis?ref=';
 
 /**
  * specs/0110 REQ-1/REQ-2 — "Indique e ganhe" do cliente do app: código e link próprios (criados na

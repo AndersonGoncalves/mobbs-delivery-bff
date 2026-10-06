@@ -63,7 +63,7 @@ describe('CustomerReferralsController (specs/0110 REQ-1/REQ-2)', () => {
     const code = (referralCodeRepository.save as jest.Mock).mock.calls[0][1] as string;
     expect((referralCodeRepository.save as jest.Mock).mock.calls[0][0]).toBe('cu-1');
     expect(code).toMatch(/^[A-HJ-NP-Z2-9]{6}$/);
-    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ referralCode: code, referralLink: `https://bsdelivery.com.br/?ref=${code}` }));
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ referralCode: code, referralLink: `https://bsdelivery.com.br/gratis?ref=${code}` }));
   });
 
   it('REQ-1: depois da primeira vez reutiliza o código já salvo, sem gerar outro', async () => {
