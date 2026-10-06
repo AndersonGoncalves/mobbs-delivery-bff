@@ -7,6 +7,8 @@ import { ICustomerRepository } from '../../customers/domain/repositories/custome
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IReferral, ReferralStatus } from '../domain/entities/referral.entity';
 import { IReferralRepository } from '../domain/repositories/referral.repository.interface';
+import { ICustomerPixKeyRepository } from '../domain/repositories/customer-pix-key.repository.interface';
+import { decryptField } from '../../../shared/crypto/field-encryption';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
@@ -20,6 +22,7 @@ export class PlatformReferralsController extends BaseRouter {
     private readonly referralRepository: IReferralRepository,
     private readonly customerRepository: ICustomerRepository,
     private readonly restaurantRepository: IRestaurantRepository,
+    private readonly pixKeyRepository: ICustomerPixKeyRepository,
     private readonly platformAdminMiddleware: AsyncHandler,
   ) {
     super();
@@ -48,9 +51,10 @@ export class PlatformReferralsController extends BaseRouter {
   }
 
   private async buildRow(referral: IReferral) {
-    const [customer, restaurant] = await Promise.all([
+    const [customer, restaurant, pixRecord] = await Promise.all([
       this.customerRepository.findById(referral.referrerCustomerId),
       this.restaurantRepository.findById(referral.referredRestaurantId),
+      this.pixKeyRepository.findByCustomerId(referral.referrerCustomerId),
     ]);
     return {
       id: referral.id,
@@ -64,6 +68,8 @@ export class PlatformReferralsController extends BaseRouter {
         name: customer?.name ?? null,
         email: customer?.email ?? null,
         phone: customer?.phone ?? null,
+        // specs/0112 REQ-5/REQ-6 — chave completa para o dono pagar; null = "sem chave Pix".
+        pixKey: pixRecord ? { type: pixRecord.type, key: decryptField(pixRecord.encryptedValue) } : null,
       },
       referredRestaurant: { id: referral.referredRestaurantId, name: restaurant?.name ?? null },
     };

@@ -8,6 +8,7 @@ import { RestaurantOperatorMongooseRepository } from './modules/restaurant-opera
 import { migrateOperatorRolesToDono } from './modules/restaurant-operators/infra/migrations/migrate-operator-roles-to-dono';
 import { ReferralMongooseRepository } from './modules/referrals/infra/repositories/referral.mongoose.repository';
 import { ReferralCodeMongooseRepository } from './modules/referrals/infra/repositories/referral-code.mongoose.repository';
+import { CustomerPixKeyMongooseRepository } from './modules/referrals/infra/repositories/customer-pix-key.mongoose.repository';
 import { CustomerReferralsController } from './modules/referrals/presentation/customer-referrals.controller';
 import { PlatformReferralsController } from './modules/referrals/presentation/platform-referrals.controller';
 import { RestaurantOperatorsController } from './modules/restaurant-operators/presentation/restaurant-operators.controller';
@@ -73,6 +74,8 @@ const restaurantOperatorMiddleware = buildRestaurantOperatorMiddleware(restauran
 const promotionRepository = new PromotionMongooseRepository();
 const productRepository = new ProductMongooseRepository(promotionRepository);
 const customerRepository = new CustomerMongooseRepository();
+// specs/0112 — chave Pix do cliente, compartilhada entre o cliente, o painel e a exclusão de conta.
+const customerPixKeyRepository = new CustomerPixKeyMongooseRepository();
 
 // specs/0013-notificacoes-whatsapp — uma única instância de `WhatsAppConnectionService`
 // compartilhada entre `OrdersController` (envia mensagens) e `WhatsAppConnectionController`
@@ -188,6 +191,7 @@ server
       new FavoriteMongooseRepository(),
       orderRepository,
       emailService,
+      customerPixKeyRepository,
     ),
     new CustomersSummaryController(new CustomerSummaryMongooseRepository(), orderRepository, restaurantOperatorMiddleware),
     new WhatsAppConnectionController(whatsAppConnectionService, restaurantOperatorMiddleware),
@@ -201,11 +205,12 @@ server
     new RatingsController(new RatingMongooseRepository(), orderRepository, restaurantRepository, restaurantOperatorMiddleware),
     new PresenceController(new PresenceMongooseRepository(), restaurantRepository, restaurantOperatorMiddleware),
     new UploadsController(restaurantOperatorMiddleware),
-    new CustomerReferralsController(new ReferralCodeMongooseRepository(), new ReferralMongooseRepository(), restaurantRepository),
+    new CustomerReferralsController(new ReferralCodeMongooseRepository(), new ReferralMongooseRepository(), restaurantRepository, customerPixKeyRepository),
     new PlatformReferralsController(
       new ReferralMongooseRepository(),
       customerRepository,
       restaurantRepository,
+      customerPixKeyRepository,
       buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
     ),
   ], [migrateOperatorRolesToDono])

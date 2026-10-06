@@ -1,3 +1,4 @@
+import { ICustomerPixKeyRepository } from '../../referrals/domain/repositories/customer-pix-key.repository.interface';
 import { DeleteObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { Request, Response, Server } from 'restify';
@@ -42,6 +43,8 @@ export class CustomersController extends BaseRouter {
     /** specs/0023-portabilidade-dados REQ-2 — agregação da exportação de dados. */
     private readonly orderRepository: IOrderRepository,
     private readonly emailService: IEmailService,
+    /** specs/0112 REQ-7 — a chave Pix é apagada junto com a conta (opcional só nos testes que não exercitam isso). */
+    private readonly pixKeyRepository?: ICustomerPixKeyRepository,
   ) {
     super();
   }
@@ -280,6 +283,7 @@ export class CustomersController extends BaseRouter {
       const uid = req.user!.uid;
       await this.customerRepository.anonymize(uid);
       await this.addressRepository.removeAllByCustomer(uid);
+      await this.pixKeyRepository?.deleteByCustomerId(uid);
 
       ensureFirebaseAdminInitialized();
       await admin.auth().deleteUser(uid);
