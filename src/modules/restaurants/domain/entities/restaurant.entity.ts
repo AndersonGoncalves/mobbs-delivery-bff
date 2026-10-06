@@ -118,6 +118,7 @@ export interface IRestaurant {
   showBanners: boolean;
   /** Tag "Peça novamente" no app (cardápio e detalhe do produto). Nasce ligada. */
   showReorderTag: boolean;
+  showMostPurchasedTag: boolean;
   /** specs/0042 — cobrança por faixa de faturamento (opcional: restaurante antigo não tem até ser calculado). */
   billing?: IRestaurantBilling;
   /** specs/0028-destaques-vendidos-banners REQ-5 — banners do carrossel, na ordem de

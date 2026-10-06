@@ -44,6 +44,7 @@ interface RestaurantLeanDocument {
   showHighlights?: boolean;
   showBanners?: boolean;
   showReorderTag?: boolean;
+  showMostPurchasedTag?: boolean;
   banners?: IRestaurantBanner[];
   allowCustomerCancelOrder?: boolean;
   deliveryFeeMode?: DeliveryFeeMode;
@@ -109,6 +110,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     showHighlights: doc.showHighlights ?? true,
     showBanners: doc.showBanners ?? true,
     showReorderTag: doc.showReorderTag ?? true,
+    showMostPurchasedTag: doc.showMostPurchasedTag ?? true,
     banners: doc.banners ?? [],
     allowCustomerCancelOrder: doc.allowCustomerCancelOrder ?? true,
     deliveryFeeMode: doc.deliveryFeeMode ?? 'fixed',

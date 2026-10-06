@@ -93,6 +93,7 @@ export const restaurantProfileSchema = z
     showHighlights: z.boolean(),
     showBanners: z.boolean(),
     showReorderTag: z.boolean().optional(),
+    showMostPurchasedTag: z.boolean().optional(),
     banners: z.array(bannerSchema),
     // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-2.
     allowCustomerCancelOrder: z.boolean(),

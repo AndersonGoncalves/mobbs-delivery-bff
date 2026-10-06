@@ -83,6 +83,7 @@ const restaurantSchema = new Schema(
     showHighlights: { type: Boolean, required: true, default: true },
     showBanners: { type: Boolean, required: true, default: true },
     showReorderTag: { type: Boolean, default: true },
+    showMostPurchasedTag: { type: Boolean, default: true },
     // specs/0042 — cobrança por faixa de faturamento; ausente até o primeiro cálculo.
     billing: {
       type: new Schema(

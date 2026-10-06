@@ -23,6 +23,7 @@ export type RestaurantProfileUpdate = Partial<
     | 'showHighlights'
     | 'showBanners'
     | 'showReorderTag'
+    | 'showMostPurchasedTag'
     | 'banners'
     | 'allowCustomerCancelOrder'
     | 'deliveryFeeMode'
@@ -66,6 +67,7 @@ export interface IRestaurantRepository {
     showHighlights?: boolean;
     showBanners?: boolean;
     showReorderTag?: boolean;
+    showMostPurchasedTag?: boolean;
     allowCustomerCancelOrder?: boolean;
     productImageOnRight?: boolean;
     category?: string;
