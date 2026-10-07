@@ -1,6 +1,7 @@
 import { PlatformController } from './platform.controller';
 import { IRestaurant } from '../../restaurants/domain/entities/restaurant.entity';
 import { IOrder } from '../../orders/domain/entities/order.entity';
+import { DEFAULT_BILLING_SETTINGS } from '../../billing/domain/billing';
 
 type Handler = (req: unknown, res: unknown) => Promise<void>;
 
@@ -38,8 +39,12 @@ function setup(options: { restaurants: IRestaurant[]; ordersByRestaurant?: Recor
     findDeliveredByRestaurantBetween: jest.fn().mockImplementation(async (id: string) => options.ordersByRestaurant?.[id] ?? []),
     findLastDeliveredAt: jest.fn().mockImplementation(async (id: string) => options.lastDelivered?.[id] ?? null),
   };
+  // specs/0113-parametrizacao-faixas-cobranca — sem configuração salva nestes testes: usa o default.
+  const billingSettingsRepository = { get: jest.fn().mockResolvedValue(DEFAULT_BILLING_SETTINGS), update: jest.fn() };
   const { application, routes } = buildFakeApplication();
-  new PlatformController(restaurantRepository as never, orderRepository as never, (async () => undefined) as never).initializeRoutes(application);
+  new PlatformController(restaurantRepository as never, orderRepository as never, (async () => undefined) as never, billingSettingsRepository as never).initializeRoutes(
+    application,
+  );
   return { restaurantRepository, orderRepository, routes };
 }
 

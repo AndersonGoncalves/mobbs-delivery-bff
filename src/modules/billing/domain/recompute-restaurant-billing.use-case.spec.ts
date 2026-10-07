@@ -1,5 +1,6 @@
 import type { IRestaurant, IRestaurantBilling } from '../../restaurants/domain/entities/restaurant.entity';
 import type { IOrder } from '../../orders/domain/entities/order.entity';
+import { DEFAULT_BILLING_SETTINGS } from './billing';
 import { RecomputeRestaurantBillingUseCase } from './recompute-restaurant-billing.use-case';
 
 function buildRestaurant(overrides: Partial<IRestaurant> = {}): IRestaurant {
@@ -25,7 +26,9 @@ function setup(options: { orders: IOrder[]; restaurant?: IRestaurant }) {
   };
   const orderRepository = { findDeliveredByRestaurantBetween: jest.fn().mockResolvedValue(options.orders) };
   const notifier = { notifyRestaurant: jest.fn().mockResolvedValue(undefined) };
-  const useCase = new RecomputeRestaurantBillingUseCase({ restaurantRepository, orderRepository, notifier });
+  // specs/0113-parametrizacao-faixas-cobranca — sem configuração salva nestes testes: usa o default.
+  const billingSettingsRepository = { get: jest.fn().mockResolvedValue(DEFAULT_BILLING_SETTINGS), update: jest.fn() };
+  const useCase = new RecomputeRestaurantBillingUseCase({ restaurantRepository, orderRepository, notifier, billingSettingsRepository });
   return { useCase, restaurantRepository, notifier, stored: () => stored };
 }
 
@@ -44,7 +47,7 @@ describe('RecomputeRestaurantBillingUseCase (specs/0042 REQ-1/REQ-2/REQ-3/REQ-4)
     await useCase.call('r-1', NOW);
 
     expect(stored()?.currentTier).toBe('pro');
-    expect(notifier.notifyRestaurant).toHaveBeenCalledWith(expect.anything(), expect.stringContaining('R$ 69,90/mês'));
+    expect(notifier.notifyRestaurant).toHaveBeenCalledWith(expect.anything(), expect.stringContaining('R$ 79,90/mês'));
   });
 
   it('AC-3: o aviso de 75% dispara uma única vez por mês', async () => {

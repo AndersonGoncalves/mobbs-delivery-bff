@@ -6,15 +6,8 @@ import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middl
 import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
-import {
-  TIER_LIMIT_CENTS,
-  computeBillingTier,
-  defaultBilling,
-  monthKeyOf,
-  monthRange,
-  priceCents,
-  sumRevenueCents,
-} from '../domain/billing';
+import { computeBillingTier, defaultBilling, monthKeyOf, monthRange, priceCents, sumRevenueCents, tierLimitCents } from '../domain/billing';
+import type { IBillingSettingsRepository } from '../domain/repositories/billing-settings.repository.interface';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
@@ -27,6 +20,8 @@ export class BillingController extends BaseRouter {
     private readonly restaurantRepository: IRestaurantRepository,
     private readonly orderRepository: IOrderRepository,
     private readonly restaurantOperatorMiddleware: AsyncHandler,
+    // specs/0113-parametrizacao-faixas-cobranca.
+    private readonly billingSettingsRepository: IBillingSettingsRepository,
   ) {
     super();
   }
@@ -37,13 +32,14 @@ export class BillingController extends BaseRouter {
     application.get('/restaurants/me/billing', ...operatorAuthenticated, async (req: Request, res: Response) => {
       const restaurant = await this.restaurantRepository.findById(req.restaurantId!);
       if (!restaurant) throw new NotFoundError('Restaurante não encontrado');
+      const settings = await this.billingSettingsRepository.get();
       const month = monthKeyOf(new Date());
       const { start, end } = monthRange(month);
       const orders = await this.orderRepository.findDeliveredByRestaurantBetween(restaurant.id, start, end);
       const revenueCents = sumRevenueCents(orders);
-      const tier = computeBillingTier(revenueCents);
+      const tier = computeBillingTier(revenueCents, settings);
       const billing = restaurant.billing ?? defaultBilling(month);
-      const limitCents = tier === 'premium' ? null : TIER_LIMIT_CENTS[tier];
+      const limitCents = tier === 'premium' ? null : tierLimitCents(tier, settings);
       const percent = limitCents ? Math.min(100, Math.round((revenueCents / limitCents) * 1000) / 10) : null;
       res.json(200, {
         referenceMonth: month,
@@ -53,8 +49,8 @@ export class BillingController extends BaseRouter {
         revenueCents,
         limitCents,
         percent,
-        monthlyPriceCents: priceCents(tier, 'monthly'),
-        annualPriceCents: priceCents(tier, 'annual'),
+        monthlyPriceCents: priceCents(tier, 'monthly', settings),
+        annualPriceCents: priceCents(tier, 'annual', settings),
       });
     });
 

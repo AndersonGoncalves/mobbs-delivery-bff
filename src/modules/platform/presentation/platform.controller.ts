@@ -8,7 +8,8 @@ import { parseBody } from '../../../shared/http/validate';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IRestaurant, IRestaurantBilling } from '../../restaurants/domain/entities/restaurant.entity';
-import { computeBillingTier, defaultBilling, isBillingBlocked, monthKeyOf, monthRange, sumRevenueCents } from '../../billing/domain/billing';
+import { BillingSettings, computeBillingTier, defaultBilling, isBillingBlocked, monthKeyOf, monthRange, sumRevenueCents } from '../../billing/domain/billing';
+import type { IBillingSettingsRepository } from '../../billing/domain/repositories/billing-settings.repository.interface';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
@@ -41,11 +42,13 @@ export class PlatformController extends BaseRouter {
     private readonly restaurantRepository: IRestaurantRepository,
     private readonly orderRepository: IOrderRepository,
     private readonly platformAdminMiddleware: AsyncHandler,
+    // specs/0113-parametrizacao-faixas-cobranca.
+    private readonly billingSettingsRepository: IBillingSettingsRepository,
   ) {
     super();
   }
 
-  private async buildRow(restaurant: IRestaurant, month: string): Promise<PlatformRestaurantRow> {
+  private async buildRow(restaurant: IRestaurant, month: string, settings: BillingSettings): Promise<PlatformRestaurantRow> {
     const { start, end } = monthRange(month);
     const orders = await this.orderRepository.findDeliveredByRestaurantBetween(restaurant.id, start, end);
     const revenueCents = sumRevenueCents(orders);
@@ -55,7 +58,7 @@ export class PlatformController extends BaseRouter {
       id: restaurant.id,
       name: restaurant.name,
       slug: restaurant.slug,
-      tier: computeBillingTier(revenueCents),
+      tier: computeBillingTier(revenueCents, settings),
       status: billing.status,
       cycle: billing.cycle,
       revenueCents,
@@ -73,8 +76,9 @@ export class PlatformController extends BaseRouter {
 
     application.get('/platform/restaurants', ...adminAuthenticated, async (_req: Request, res: Response) => {
       const month = monthKeyOf(new Date());
+      const settings = await this.billingSettingsRepository.get();
       const restaurants = await this.restaurantRepository.listAll();
-      const rows = await Promise.all(restaurants.map((restaurant) => this.buildRow(restaurant, month)));
+      const rows = await Promise.all(restaurants.map((restaurant) => this.buildRow(restaurant, month, settings)));
       res.json(200, rows);
     });
 
@@ -90,7 +94,8 @@ export class PlatformController extends BaseRouter {
         ...(change.cycle !== undefined ? { cycle: change.cycle } : {}),
       };
       const updated = await this.restaurantRepository.updateBilling(restaurant.id, next);
-      res.json(200, await this.buildRow(updated, month));
+      const settings = await this.billingSettingsRepository.get();
+      res.json(200, await this.buildRow(updated, month, settings));
     });
   }
 }

@@ -8,15 +8,23 @@ import {
   sumRevenueCents,
 } from './billing';
 
+// specs/0113-parametrizacao-faixas-cobranca — valores padrão (sem configuração salva ainda, AC-1).
 describe('computeBillingTier (specs/0042 REQ-1/REQ-2)', () => {
   it('AC-2: passar de R$ 2.000,00 sobe pra Pro; até o limite continua gratuito', () => {
     expect(computeBillingTier(200000)).toBe('free');
     expect(computeBillingTier(200001)).toBe('pro');
   });
 
-  it('acima de R$ 8.000,00 vira Premium', () => {
-    expect(computeBillingTier(800000)).toBe('pro');
-    expect(computeBillingTier(800001)).toBe('premium');
+  it('acima de R$ 7.000,00 vira Premium', () => {
+    expect(computeBillingTier(700000)).toBe('pro');
+    expect(computeBillingTier(700001)).toBe('premium');
+  });
+
+  it('respeita limites customizados quando informados', () => {
+    const settings = { freeLimitCents: 100000, proLimitCents: 300000, proMonthlyPriceCents: 5000, premiumMonthlyPriceCents: 9000, annualMultiplier: 10 };
+    expect(computeBillingTier(100000, settings)).toBe('free');
+    expect(computeBillingTier(100001, settings)).toBe('pro');
+    expect(computeBillingTier(300001, settings)).toBe('premium');
   });
 });
 
@@ -54,12 +62,12 @@ describe('mês de referência em Brasília (UTC-3)', () => {
 
 describe('preços por ciclo (REQ-9)', () => {
   it('anual é 10× a mensal (2 meses grátis)', () => {
-    expect(priceCents('pro', 'monthly')).toBe(6990);
-    expect(priceCents('pro', 'annual')).toBe(69900);
+    expect(priceCents('pro', 'monthly')).toBe(7990);
+    expect(priceCents('pro', 'annual')).toBe(79900);
     expect(priceCents('premium', 'annual')).toBe(119900);
   });
 
   it('AC-4: o comemorativo informa a mensalidade do plano novo', () => {
-    expect(buildUpgradeMessage('pro')).toContain('R$ 69,90/mês');
+    expect(buildUpgradeMessage('pro')).toContain('R$ 79,90/mês');
   });
 });

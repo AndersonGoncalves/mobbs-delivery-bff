@@ -59,7 +59,9 @@ import { PresenceController } from './modules/presence/presentation/presence.con
 import { UploadsController } from './modules/uploads/presentation/uploads.controller';
 import { RecomputeRestaurantBillingUseCase } from './modules/billing/domain/recompute-restaurant-billing.use-case';
 import { BillingNotifier } from './modules/billing/infra/billing-notifier.service';
+import { BillingSettingsMongooseRepository } from './modules/billing/infra/repositories/billing-settings.mongoose.repository';
 import { BillingController } from './modules/billing/presentation/billing.controller';
+import { BillingSettingsController } from './modules/billing/presentation/billing-settings.controller';
 import { PlatformController } from './modules/platform/presentation/platform.controller';
 import { buildPlatformAdminMiddleware, parsePlatformAdminEmails } from './shared/http/platform-admin.middleware';
 
@@ -109,6 +111,11 @@ const receivePurchaseOrderService = new ReceivePurchaseOrderService(
 // entre `OrdersController` e `CustomersSummaryController` (REQ-3, histórico de pedidos do
 // cliente escopado ao restaurante), sem duplicar instância.
 const orderRepository = new OrderMongooseRepository();
+
+// specs/0113-parametrizacao-faixas-cobranca — documento único de limites/mensalidades, compartilhado
+// entre o recálculo por pedido entregue, o card de faturamento do restaurante, o painel da
+// plataforma e a rota pública consumida pela landing.
+const billingSettingsRepository = new BillingSettingsMongooseRepository();
 
 // specs/0020-pix-no-app — primeiro consumidor real de `Payment` (coleção já existia, sem
 // repository próprio até aqui); mesma instância usada pra ler status e confirmar recebimento.
@@ -170,13 +177,20 @@ server
         restaurantRepository,
         orderRepository,
         notifier: new BillingNotifier(whatsAppConnectionService),
+        billingSettingsRepository,
       }),
     ),
-    new BillingController(restaurantRepository, orderRepository, restaurantOperatorMiddleware),
+    new BillingController(restaurantRepository, orderRepository, restaurantOperatorMiddleware, billingSettingsRepository),
     // specs/0106 — painel da plataforma, restrito à lista PLATFORM_ADMIN_EMAILS.
     new PlatformController(
       restaurantRepository,
       orderRepository,
+      buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
+      billingSettingsRepository,
+    ),
+    // specs/0113-parametrizacao-faixas-cobranca.
+    new BillingSettingsController(
+      billingSettingsRepository,
       buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
     ),
     new RawMaterialsController(rawMaterialRepository, productRepository, restaurantOperatorMiddleware, stockMovementRepository),

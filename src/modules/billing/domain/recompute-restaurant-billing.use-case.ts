@@ -1,7 +1,6 @@
 import type { IRestaurant, IRestaurantBilling } from '../../restaurants/domain/entities/restaurant.entity';
 import type { IOrder } from '../../orders/domain/entities/order.entity';
 import {
-  WARNING_AT_CENTS,
   buildUpgradeMessage,
   buildWarningMessage,
   computeBillingTier,
@@ -10,7 +9,9 @@ import {
   monthRange,
   sumRevenueCents,
   tierRank,
+  warningAtCents,
 } from './billing';
+import type { IBillingSettingsRepository } from './repositories/billing-settings.repository.interface';
 
 export interface RecomputeBillingRestaurantRepository {
   findById(id: string): Promise<IRestaurant | null>;
@@ -30,6 +31,8 @@ export interface RecomputeRestaurantBillingDeps {
   restaurantRepository: RecomputeBillingRestaurantRepository;
   orderRepository: RecomputeBillingOrderRepository;
   notifier: IBillingNotifier;
+  // specs/0113-parametrizacao-faixas-cobranca.
+  billingSettingsRepository: IBillingSettingsRepository;
 }
 
 /**
@@ -44,6 +47,7 @@ export class RecomputeRestaurantBillingUseCase {
     const restaurant = await this.deps.restaurantRepository.findById(restaurantId);
     if (!restaurant) return;
 
+    const settings = await this.deps.billingSettingsRepository.get();
     const month = monthKeyOf(now);
     const { start, end } = monthRange(month);
     const orders = await this.deps.orderRepository.findDeliveredByRestaurantBetween(restaurantId, start, end);
@@ -55,15 +59,15 @@ export class RecomputeRestaurantBillingUseCase {
     let notified75Percent = sameMonth && current ? current.notified75Percent : false;
     let notifiedTierUpgrade = sameMonth && current ? current.notifiedTierUpgrade : false;
 
-    const tier = computeBillingTier(revenueCents);
+    const tier = computeBillingTier(revenueCents, settings);
 
-    if (tier !== 'premium' && !notified75Percent && revenueCents >= WARNING_AT_CENTS[tier]) {
-      await this.deps.notifier.notifyRestaurant(restaurant, buildWarningMessage(tier, revenueCents));
+    if (tier !== 'premium' && !notified75Percent && revenueCents >= warningAtCents(tier, settings)) {
+      await this.deps.notifier.notifyRestaurant(restaurant, buildWarningMessage(tier, revenueCents, settings));
       notified75Percent = true;
     }
 
     if (tierRank(tier) > tierRank(previousTier) && !notifiedTierUpgrade) {
-      await this.deps.notifier.notifyRestaurant(restaurant, buildUpgradeMessage(tier));
+      await this.deps.notifier.notifyRestaurant(restaurant, buildUpgradeMessage(tier, settings));
       notifiedTierUpgrade = true;
     }
 
