@@ -16,6 +16,11 @@ export interface IWhatsAppConnectionService {
    * implementação não confia cegamente nisso). */
   sendMessage(restaurantId: string, phone: string, text: string): Promise<void>;
 
+  /** specs/0092-campanha-whatsapp-clientes — imagem com legenda (payload do Baileys é
+   * estruturalmente diferente de `sendMessage`, ver `plan.md` ADR); mesma regra de erro (lança se
+   * não conectado). */
+  sendImageMessage(restaurantId: string, phone: string, imageUrl: string, caption: string): Promise<void>;
+
   /** specs/0066 REQ-1/REQ-2 — reabre a sessão de todo restaurante marcado como conectado, com as
    * credenciais já persistidas (sem QR novo). Nunca lança: falha de um restaurante não afeta os
    * demais nem o boot. */

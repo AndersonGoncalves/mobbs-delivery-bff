@@ -197,4 +197,17 @@ describe('WhatsAppConnectionService.sendMessage — resolve o JID real (specs/00
 
     expect(socket.sendMessage).toHaveBeenCalledWith('5585984224877@s.whatsapp.net', { text: 'oi' });
   });
+
+  // specs/0092-campanha-whatsapp-clientes — mesma resolução de JID, payload de mídia em vez de texto.
+  it('sendImageMessage monta o payload { image, caption } certo', async () => {
+    const onWhatsApp = jest.fn().mockResolvedValue([{ jid: '5585984224877@s.whatsapp.net', exists: true }]);
+    const { service, socket } = await setupConnected(onWhatsApp);
+
+    await service.sendImageMessage('r-1', '85984224877', 'https://s3.example.com/campaign.jpg', 'Promoção especial!');
+
+    expect(socket.sendMessage).toHaveBeenCalledWith('5585984224877@s.whatsapp.net', {
+      image: { url: 'https://s3.example.com/campaign.jpg' },
+      caption: 'Promoção especial!',
+    });
+  });
 });

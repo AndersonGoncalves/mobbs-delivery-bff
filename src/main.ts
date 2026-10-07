@@ -57,6 +57,10 @@ import { RatingsController } from './modules/ratings/presentation/ratings.contro
 import { PresenceMongooseRepository } from './modules/presence/infra/repositories/presence.mongoose.repository';
 import { PresenceController } from './modules/presence/presentation/presence.controller';
 import { UploadsController } from './modules/uploads/presentation/uploads.controller';
+import { CampaignMongooseRepository } from './modules/campaigns/infra/repositories/campaign.mongoose.repository';
+import { CampaignOptOutMongooseRepository } from './modules/campaigns/infra/repositories/campaign-opt-out.mongoose.repository';
+import { CampaignDispatchService } from './modules/campaigns/infra/services/campaign-dispatch.service';
+import { CampaignsController } from './modules/campaigns/presentation/campaigns.controller';
 import { RecomputeRestaurantBillingUseCase } from './modules/billing/domain/recompute-restaurant-billing.use-case';
 import { BillingNotifier } from './modules/billing/infra/billing-notifier.service';
 import { BillingSettingsMongooseRepository } from './modules/billing/infra/repositories/billing-settings.mongoose.repository';
@@ -131,6 +135,20 @@ const emailService = new NodemailerEmailService();
 // na retaguarda + validação de UX pelo cliente) e `OrdersController` (revalidação server-side +
 // `incrementUsageIfWithinLimit` na criação do pedido, REQ-4), sem duplicar instância.
 const couponRepository = new CouponMongooseRepository();
+
+// specs/0092-campanha-whatsapp-clientes — `CampaignDispatchService` roda fora do ciclo
+// request/response (fire-and-forget, chamado por `CampaignsController.POST .../campaigns`), por
+// isso é montado aqui fora, com as mesmas instâncias compartilhadas de `restaurantRepository`/
+// `whatsAppConnectionService` do resto do BFF.
+const campaignRepository = new CampaignMongooseRepository();
+const campaignOptOutRepository = new CampaignOptOutMongooseRepository();
+const campaignDispatchService = new CampaignDispatchService(
+  campaignRepository,
+  new CustomerSummaryMongooseRepository(),
+  campaignOptOutRepository,
+  restaurantRepository,
+  whatsAppConnectionService,
+);
 
 server
   .bootstrap([
@@ -215,6 +233,7 @@ server
     new SuppliersController(new SupplierMongooseRepository(), restaurantOperatorMiddleware),
     new PurchaseOrdersController(purchaseOrderRepository, receivePurchaseOrderService, restaurantOperatorMiddleware),
     new CouponsController(couponRepository, orderRepository, restaurantOperatorMiddleware),
+    new CampaignsController(campaignRepository, campaignOptOutRepository, campaignDispatchService, restaurantOperatorMiddleware),
     new PromotionsController(promotionRepository, restaurantOperatorMiddleware),
     new RatingsController(new RatingMongooseRepository(), orderRepository, restaurantRepository, restaurantOperatorMiddleware),
     new PresenceController(new PresenceMongooseRepository(), restaurantRepository, restaurantOperatorMiddleware),

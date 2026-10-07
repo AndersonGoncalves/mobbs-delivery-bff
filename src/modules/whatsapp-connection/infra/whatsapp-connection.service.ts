@@ -68,6 +68,18 @@ export class WhatsAppConnectionService implements IWhatsAppConnectionService {
     console.log(`[whatsapp] mensagem enviada pelo restaurante ${restaurantId} para ${jid}`);
   }
 
+  /** specs/0092-campanha-whatsapp-clientes — mesma resolução de JID de `sendMessage`, payload de
+   * mídia do Baileys (`{ image: { url }, caption }`) em vez de `{ text }`. */
+  async sendImageMessage(restaurantId: string, phone: string, imageUrl: string, caption: string): Promise<void> {
+    const entry = this.sessions.get(restaurantId);
+    if (!entry?.connected) {
+      throw new Error(`WhatsApp não conectado para o restaurante ${restaurantId}`);
+    }
+    const jid = await this.resolveRecipientJid(entry.socket, phone);
+    await entry.socket.sendMessage(jid, { image: { url: imageUrl }, caption });
+    console.log(`[whatsapp] imagem enviada pelo restaurante ${restaurantId} para ${jid}`);
+  }
+
   /** specs/0068 — o `sendMessage` do Baileys não falha pra um número que não existe no WhatsApp
    * (some sem entrega e sem erro). Pergunta ao WhatsApp qual JID candidato (com/sem o nono dígito)
    * é real; se a consulta em si falhar, cai no JID padrão em vez de travar o envio. */
