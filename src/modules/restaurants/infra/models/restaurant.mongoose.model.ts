@@ -124,13 +124,15 @@ const restaurantSchema = new Schema(
     // verdade a tela de horário de funcionamento (não só o default automático do autocadastro).
     // `null`/ausente = nunca revisado desde a criação.
     businessHoursReviewedAt: { type: Date },
-    // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-10 — default as 5 formas
-    // (mesmo raciocínio de `RestaurantSignupController` passar explicitamente no create, mas
-    // como default de schema cobre também qualquer outro caminho de criação).
+    // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-10 — default (mesmo raciocínio
+    // de `RestaurantSignupController` passar explicitamente no create, mas como default de schema
+    // cobre também qualquer outro caminho de criação). Pedido explícito do usuário (follow-up):
+    // "Transferência bancária" não deve vir marcada por padrão — continua no `enum` pra o operador
+    // ligar manualmente em `PaymentMethodsForm`, só sai do `default`.
     acceptedPaymentMethods: {
       type: [String],
       enum: ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'],
-      default: ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'],
+      default: ['creditCard', 'debitCard', 'pix', 'cash'],
     },
     // specs/0083-modalidade-entrega-retirada-restaurante REQ-1 — default "ambos" (retrocompatível).
     orderTypes: {
