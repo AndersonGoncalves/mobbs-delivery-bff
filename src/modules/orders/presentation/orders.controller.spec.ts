@@ -696,6 +696,18 @@ describe('OrdersController', () => {
     expect(payload).not.toHaveProperty('deliveryAddress');
   });
 
+  // Pedido explícito do usuário (follow-up) — a página pública de acompanhamento passa a mostrar
+  // a observação do pedido (não identifica o cliente, diferente de `deliveryAddress`/`customerId`).
+  it('GET /orders/track/:token inclui a observação do pedido (notes)', async () => {
+    const { routes } = setup({ orderRepository: { findByTrackingToken: jest.fn().mockResolvedValue(buildOrder({ notes: 'Sem cebola' })) } });
+    const json = jest.fn();
+
+    await runPublicChain(routes['GET /orders/track/:token'], { params: { token: 'token-1' } }, { json });
+
+    const [, payload] = json.mock.calls[0] as [number, Record<string, unknown>];
+    expect(payload).toMatchObject({ notes: 'Sem cebola' });
+  });
+
   it('GET /orders/track/:token lança 404 quando o token não existe', async () => {
     const { routes } = setup({ orderRepository: { findByTrackingToken: jest.fn().mockResolvedValue(null) } });
 

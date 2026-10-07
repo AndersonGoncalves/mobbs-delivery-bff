@@ -108,6 +108,12 @@ const restaurantSchema = new Schema(
     deliveryFeeZones: { type: [deliveryFeeZoneSchema], default: [] },
     // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-9.
     instagramUrl: { type: String },
+    // Pedido explícito do usuário — tempo médio de atendimento mostrado no app do cliente, por
+    // modalidade; defaults vindos do exemplo mostrado (40-60min delivery, 20-40min balcão).
+    deliveryTimeMinMinutes: { type: Number, required: true, default: 40 },
+    deliveryTimeMaxMinutes: { type: Number, required: true, default: 60 },
+    pickupTimeMinMinutes: { type: Number, required: true, default: 20 },
+    pickupTimeMaxMinutes: { type: Number, required: true, default: 40 },
     // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-6.
     rating: { type: Number, required: true, default: 0 },
     ratingCount: { type: Number, required: true, default: 0 },

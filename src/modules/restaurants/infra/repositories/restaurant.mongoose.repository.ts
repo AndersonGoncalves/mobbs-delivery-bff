@@ -51,6 +51,10 @@ interface RestaurantLeanDocument {
   deliveryFeeZones?: IDeliveryFeeZone[];
   billing?: IRestaurantBilling;
   instagramUrl?: string;
+  deliveryTimeMinMinutes?: number;
+  deliveryTimeMaxMinutes?: number;
+  pickupTimeMinMinutes?: number;
+  pickupTimeMaxMinutes?: number;
   rating?: number;
   ratingCount?: number;
   showHighlightsInMultipleRows?: boolean;
@@ -117,6 +121,10 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     deliveryFeeZones: doc.deliveryFeeZones ?? [],
     billing: doc.billing ?? undefined,
     instagramUrl: doc.instagramUrl,
+    deliveryTimeMinMinutes: doc.deliveryTimeMinMinutes ?? 40,
+    deliveryTimeMaxMinutes: doc.deliveryTimeMaxMinutes ?? 60,
+    pickupTimeMinMinutes: doc.pickupTimeMinMinutes ?? 20,
+    pickupTimeMaxMinutes: doc.pickupTimeMaxMinutes ?? 40,
     rating: doc.rating ?? 0,
     ratingCount: doc.ratingCount ?? 0,
     showHighlightsInMultipleRows: doc.showHighlightsInMultipleRows ?? false,

@@ -142,6 +142,14 @@ export interface IRestaurant {
    * no perfil do restaurante e usado como destino de exemplo de banner `externalUrl` no seed.
    * Mesmo padrão opcional de `defaultProductImageUrl`. */
   instagramUrl?: string;
+  /** Pedido explícito do usuário — tempo médio de atendimento estimado, mostrado no app do
+   * cliente (perfil do restaurante); faixa min-max em minutos, uma pra cada modalidade. Defaults
+   * (40-60 delivery, 20-40 balcão) aplicados no schema do Mongoose e espelhados aqui como
+   * fallback pra documentos antigos sem o campo ainda. */
+  deliveryTimeMinMinutes: number;
+  deliveryTimeMaxMinutes: number;
+  pickupTimeMinMinutes: number;
+  pickupTimeMaxMinutes: number;
   /** specs/0032-ajustes-diversos-rating-taxa-entrega REQ-6 — média (1 casa decimal) e contagem
    * de `IRating`s deste restaurante; recalculados a cada novo rating (`RatingsController`), nunca
    * editados diretamente pelo operador — por isso **fora** de `RestaurantProfileUpdate`. */

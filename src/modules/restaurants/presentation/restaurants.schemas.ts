@@ -104,6 +104,11 @@ export const restaurantProfileSchema = z
     // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-9 — mesmo padrão `.optional()` de
     // `defaultProductImageUrl` (a maioria não configura, form manda `undefined`, não string vazia).
     instagramUrl: z.string().url().optional(),
+    // Pedido explícito do usuário — tempo médio de atendimento, por modalidade (minutos).
+    deliveryTimeMinMinutes: z.number().int().positive(),
+    deliveryTimeMaxMinutes: z.number().int().positive(),
+    pickupTimeMinMinutes: z.number().int().positive(),
+    pickupTimeMaxMinutes: z.number().int().positive(),
     // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-1.
     showHighlightsInMultipleRows: z.boolean(),
     // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-1 — mesmo padrão

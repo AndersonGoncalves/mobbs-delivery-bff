@@ -503,6 +503,11 @@ export class OrdersController extends BaseRouter {
       total: order.total,
       createdAt: order.createdAt,
       estimatedDeliveryAt: order.estimatedDeliveryAt,
+      // Pedido explícito do usuário (follow-up) — a página pública de acompanhamento passa a
+      // mostrar itens/fotos/observação iguais ao detalhe autenticado; observação do pedido não
+      // identifica o cliente, segura de expor aqui (diferente de `deliveryAddress`, que continua
+      // omitido de propósito).
+      notes: order.notes,
     };
   }
 }
