@@ -1,6 +1,7 @@
+import { DayOfWeek } from '../../../../shared/utils/day-of-week';
 import { IMenuCategory, IMenuCategoryWithProducts } from '../../domain/entities/menu-category.entity';
 import { IProduct } from '../../domain/entities/product.entity';
-import { IMenuCategoryRepository } from '../../domain/repositories/menu-category.repository.interface';
+import { IMenuCategoryRepository, MenuCategoryUpdateInput } from '../../domain/repositories/menu-category.repository.interface';
 import { computePromotionalPrice, isPromotionCurrentlyActive } from '../../../promotions/domain/promotion-pricing';
 import { IPromotionRepository } from '../../../promotions/domain/repositories/promotion.repository.interface';
 import { MenuCategoryModel } from '../models/menu-category.mongoose.model';
@@ -12,6 +13,8 @@ interface MenuCategoryLeanDocument {
   name: string;
   sortOrder: number;
   isActive?: boolean;
+  imageUrl?: string;
+  activeDays?: DayOfWeek[];
 }
 
 type ProductLightLeanDocument = Omit<IProduct, 'id' | 'additionalGroups'> & {
@@ -44,6 +47,14 @@ function toProductLight(doc: ProductLightLeanDocument, promotionPercentageByProd
     availableAsAdditional: doc.availableAsAdditional ?? false,
     activePromotionPercentage,
     promotionalPrice: activePromotionPercentage !== undefined ? computePromotionalPrice(doc.price, activePromotionPercentage) : undefined,
+    // specs/0116-ajustes-cadastro-produto REQ-7/REQ-9/REQ-11 — o app filtra/exibe a partir desta
+    // mesma listagem leve (TabBar e busca), por isso precisam vir aqui também, não só no detalhe
+    // completo (`ProductMongooseRepository.toEntity`). `posId`/`cost`/`ncmCode` ficam de fora do
+    // `.select()` abaixo de propósito — são só de retaguarda, não precisam trafegar pro app.
+    activeDays: doc.activeDays,
+    isAlcoholic: doc.isAlcoholic ?? false,
+    scheduleStartTime: doc.scheduleStartTime,
+    scheduleEndTime: doc.scheduleEndTime,
   };
 }
 
@@ -60,7 +71,10 @@ export class MenuCategoryMongooseRepository implements IMenuCategoryRepository {
       // pequeno; `additionalGroups.id` é a exceção (specs/0032 REQ-1: só o suficiente pra
       // computar `hasAdditionalGroups` sem o resto da árvore).
       ProductModel.find({ restaurantId })
-        .select('restaurantId menuCategoryId name description imageUrl price isAvailable isFeatured featuredOrder additionalGroups.id')
+        .select(
+          'restaurantId menuCategoryId name description imageUrl price isAvailable isFeatured featuredOrder additionalGroups.id ' +
+            'activeDays isAlcoholic scheduleStartTime scheduleEndTime',
+        )
         .lean<ProductLightLeanDocument[]>(),
       this.promotionRepository.findActiveByRestaurantId(restaurantId),
     ]);
@@ -80,6 +94,8 @@ export class MenuCategoryMongooseRepository implements IMenuCategoryRepository {
       name: category.name,
       sortOrder: category.sortOrder,
       isActive: category.isActive ?? true,
+      imageUrl: category.imageUrl,
+      activeDays: category.activeDays,
       products: products
         .filter((product) => product.menuCategoryId === category._id)
         .map((product) => toProductLight(product, promotionPercentageByProductId)),
@@ -92,8 +108,17 @@ export class MenuCategoryMongooseRepository implements IMenuCategoryRepository {
     return toMenuCategoryEntity(doc.toObject() as MenuCategoryLeanDocument);
   }
 
-  async update(id: string, name: string): Promise<IMenuCategory> {
-    const doc = await MenuCategoryModel.findByIdAndUpdate(id, { $set: { name } }, { new: true }).lean<MenuCategoryLeanDocument>();
+  async update(id: string, input: MenuCategoryUpdateInput): Promise<IMenuCategory> {
+    // `$set` com valor `undefined` é descartado pelo driver (o campo ficaria do jeito que
+    // estava) — `imageUrl` ausente precisa de `$unset` de verdade pra remover a imagem já salva
+    // (REQ-2: "com opção de removê-la depois de enviada").
+    const doc = await MenuCategoryModel.findByIdAndUpdate(
+      id,
+      input.imageUrl
+        ? { $set: { name: input.name, imageUrl: input.imageUrl, activeDays: input.activeDays ?? [] } }
+        : { $set: { name: input.name, activeDays: input.activeDays ?? [] }, $unset: { imageUrl: '' } },
+      { new: true },
+    ).lean<MenuCategoryLeanDocument>();
     return toMenuCategoryEntity(doc as MenuCategoryLeanDocument);
   }
 
@@ -132,5 +157,13 @@ export class MenuCategoryMongooseRepository implements IMenuCategoryRepository {
 }
 
 function toMenuCategoryEntity(doc: MenuCategoryLeanDocument): IMenuCategory {
-  return { id: doc._id, restaurantId: doc.restaurantId, name: doc.name, sortOrder: doc.sortOrder, isActive: doc.isActive ?? true };
+  return {
+    id: doc._id,
+    restaurantId: doc.restaurantId,
+    name: doc.name,
+    sortOrder: doc.sortOrder,
+    isActive: doc.isActive ?? true,
+    imageUrl: doc.imageUrl,
+    activeDays: doc.activeDays,
+  };
 }

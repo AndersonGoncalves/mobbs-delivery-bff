@@ -1,3 +1,5 @@
+import { DayOfWeek } from '../../../../shared/utils/day-of-week';
+
 /**
  * docs/architecture/data-model.md §Product/§ProductAdditionalGroup/§ProductAdditionalOption —
  * os 4 arquétipos de produto (sem variação, sabor único obrigatório, adicionais opcionais,
@@ -129,4 +131,27 @@ export interface IProduct {
    */
   activePromotionPercentage?: number;
   promotionalPrice?: number;
+  /** specs/0116-ajustes-cadastro-produto REQ-3 — "ID do item no PDV"; texto livre, só guardado e
+   * devolvido (sem validação de formato nem unicidade), pra facilitar busca externa. */
+  posId?: string;
+  /** specs/0116-ajustes-cadastro-produto REQ-4 — custo do item, pra um futuro relatório de
+   * lucratividade (ainda não existe); nunca aparece em nenhuma tela do app cliente. */
+  cost?: number;
+  /** specs/0116-ajustes-cadastro-produto REQ-5 — código NCM (classificação fiscal); texto livre
+   * nesta v1, sem validação contra a tabela oficial — uso fiscal de verdade fica pra quando
+   * `specs/0091-integracao-fiscal-focusnfe` for implementada. */
+  ncmCode?: string;
+  /** specs/0116-ajustes-cadastro-produto REQ-6/REQ-7 — mesma mecânica de
+   * `MenuCategory.activeDays` (`specs/0115`): ausente/vazio = todos os dias; filtro roda
+   * client-side (`MenuPageController.load()`, app). */
+  activeDays?: DayOfWeek[];
+  /** specs/0116-ajustes-cadastro-produto REQ-8/REQ-9 — "este item é bebida alcoólica"; quando
+   * `true`, o app cliente mostra a etiqueta "+18" no card do cardápio e no detalhe do produto. */
+  isAlcoholic: boolean;
+  /** specs/0116-ajustes-cadastro-produto REQ-10/REQ-11/REQ-12 — janela de horário do dia em que
+   * o produto fica visível (`HH:mm`, mesmo formato de `IBusinessHours.openTime`/`closeTime`);
+   * só vale quando os DOIS estão presentes (REQ-12: um só preenchido = sem restrição). Sem
+   * suporte a virar a meia-noite nesta v1 (mesma simplificação de `isRestaurantOpenNow`). */
+  scheduleStartTime?: string;
+  scheduleEndTime?: string;
 }

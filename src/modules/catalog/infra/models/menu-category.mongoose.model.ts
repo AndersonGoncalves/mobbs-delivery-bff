@@ -9,6 +9,9 @@ const menuCategorySchema = new Schema(
     sortOrder: { type: Number, required: true },
     // specs/0061-categoria-ativa-inativa.
     isActive: { type: Boolean, required: true, default: true },
+    // specs/0115-categoria-foto-dias-ativos.
+    imageUrl: { type: String },
+    activeDays: { type: [String], default: [] },
   },
   { _id: false, timestamps: true },
 );

@@ -2,8 +2,19 @@ import { z } from 'zod';
 
 import { IProductAdditionalGroup, IProductAdditionalOption } from '../domain/entities/product.entity';
 
+// specs/0115-categoria-foto-dias-ativos/specs/0116-ajustes-cadastro-produto — mesmo conjunto de
+// valores de `restaurants.schemas.ts` (`dayOfWeek`), reaproveitado aqui.
+const dayOfWeekSchema = z.enum(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']);
+
 // specs/0007-cadastro-produtos REQ-1.
 export const menuCategoryNameSchema = z.object({ name: z.string().min(1) });
+
+// specs/0115-categoria-foto-dias-ativos REQ-1/REQ-4 — PUT .../menu-categories/:id.
+export const menuCategoryUpdateSchema = z.object({
+  name: z.string().min(1),
+  imageUrl: z.string().url().optional(),
+  activeDays: z.array(dayOfWeekSchema).optional(),
+});
 
 // specs/0061-categoria-ativa-inativa — mesmo padrão de `setProductAvailableSchema`.
 export const setMenuCategoryActiveSchema = z.object({ isActive: z.boolean() });
@@ -129,7 +140,11 @@ const productAdditionalGroupSchema = z.union([productAdditionalGroupReferenceSch
 
 // REQ-4: preço e categoria válida são obrigatórios pra salvar — validados aqui, nunca só no
 // formulário do lado do cliente (mesma regra de "nunca confiar só no client" de outras specs).
-export const saveProductSchema = z.object({
+//
+// Base sem `.refine()` (`ZodEffects` não tem `.partial()`) — `saveProductSchema`/
+// `updateProductSchema` abaixo aplicam a validação de horário cada um por cima da sua própria
+// versão (completa/parcial) do objeto base.
+const productSchemaShape = {
   menuCategoryId: z.string().min(1),
   name: z.string().min(1),
   description: z.string().optional(),
@@ -144,9 +159,28 @@ export const saveProductSchema = z.object({
   // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16 — `.optional()` de propósito
   // (mesmo padrão de `defaultProductImageUrl`): ausente = feito sob demanda, sem controle.
   stockQuantity: z.number().int().nonnegative().optional(),
-});
+  // specs/0116-ajustes-cadastro-produto.
+  posId: z.string().optional(),
+  cost: z.number().nonnegative().optional(),
+  ncmCode: z.string().optional(),
+  activeDays: z.array(dayOfWeekSchema).optional(),
+  isAlcoholic: z.boolean().default(false),
+  scheduleStartTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  scheduleEndTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+};
 
-export const updateProductSchema = saveProductSchema.partial();
+// REQ-12/mesmo espírito de `restaurants.schemas.ts` (businessHours) — evita salvar uma janela
+// invertida que nunca bateria com nenhum horário (produto ficaria sempre escondido por engano).
+function refineSchedule<T extends { scheduleStartTime?: string; scheduleEndTime?: string }>(schema: z.ZodType<T>) {
+  return schema.refine((product) => !product.scheduleStartTime || !product.scheduleEndTime || product.scheduleEndTime > product.scheduleStartTime, {
+    message: 'Horário fim deve ser depois do horário início',
+    path: ['scheduleEndTime'],
+  });
+}
+
+export const saveProductSchema = refineSchedule(z.object(productSchemaShape));
+
+export const updateProductSchema = refineSchedule(z.object(productSchemaShape).partial());
 
 export const setProductAvailableSchema = z.object({ isAvailable: z.boolean() });
 

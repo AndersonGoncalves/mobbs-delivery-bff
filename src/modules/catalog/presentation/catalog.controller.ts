@@ -16,6 +16,7 @@ import { IProductRepository } from '../domain/repositories/product.repository.in
 import {
   listProductsQuerySchema,
   menuCategoryNameSchema,
+  menuCategoryUpdateSchema,
   reorderFeaturedProductsSchema,
   reorderMenuCategoriesSchema,
   saveProductSchema,
@@ -150,9 +151,9 @@ export class CatalogController extends BaseRouter {
       '/restaurants/me/menu-categories/:id',
       ...authenticated,
       async (req: Request, res: Response) => {
-        const { name } = parseBody(menuCategoryNameSchema, req.body);
+        const input = parseBody(menuCategoryUpdateSchema, req.body);
         await this.findOwnedMenuCategory(req.params.id, req.restaurantId!);
-        const category = await this.menuCategoryRepository.update(req.params.id, name);
+        const category = await this.menuCategoryRepository.update(req.params.id, input);
         res.json(200, category);
       },
     );

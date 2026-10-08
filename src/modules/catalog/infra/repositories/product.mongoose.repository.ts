@@ -58,6 +58,14 @@ function toEntity(doc: ProductLeanDocument): IProduct {
     stockQuantity: doc.stockQuantity,
     activePromotionPercentage: doc.activePromotionPercentage,
     promotionalPrice: doc.promotionalPrice,
+    // specs/0116-ajustes-cadastro-produto.
+    posId: doc.posId,
+    cost: doc.cost,
+    ncmCode: doc.ncmCode,
+    activeDays: doc.activeDays,
+    isAlcoholic: doc.isAlcoholic ?? false,
+    scheduleStartTime: doc.scheduleStartTime,
+    scheduleEndTime: doc.scheduleEndTime,
   };
 }
 

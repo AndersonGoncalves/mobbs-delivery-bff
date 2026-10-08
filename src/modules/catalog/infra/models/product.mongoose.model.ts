@@ -71,6 +71,14 @@ const productSchema = new Schema(
     // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16 — ausente = feito sob
     // demanda, sem controle de estoque (nunca `default`, propositalmente).
     stockQuantity: { type: Number },
+    // specs/0116-ajustes-cadastro-produto.
+    posId: { type: String },
+    cost: { type: Number },
+    ncmCode: { type: String },
+    activeDays: { type: [String], default: [] },
+    isAlcoholic: { type: Boolean, required: true, default: false },
+    scheduleStartTime: { type: String },
+    scheduleEndTime: { type: String },
   },
   { _id: false, timestamps: true },
 );

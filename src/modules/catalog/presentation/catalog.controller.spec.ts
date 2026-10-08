@@ -66,6 +66,7 @@ function buildProduct(overrides: Record<string, unknown> = {}) {
     isFeatured: false,
     featuredOrder: 0,
     availableAsAdditional: false,
+    isAlcoholic: false,
     ...overrides,
   };
 }
@@ -191,6 +192,28 @@ describe('CatalogController', () => {
         { json: jest.fn() },
       ),
     ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  // specs/0115-categoria-foto-dias-ativos REQ-1/REQ-4.
+  it('PUT /restaurants/me/menu-categories/:id repassa imageUrl/activeDays pro repositório', async () => {
+    const { menuCategoryRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['PUT /restaurants/me/menu-categories/:id'],
+      {
+        restaurantId: 'r-1',
+        params: { id: 'c-1' },
+        body: { name: 'Lanches', imageUrl: 'https://s3.example.com/categoria.jpg', activeDays: ['monday', 'tuesday'] },
+      },
+      { json },
+    );
+
+    expect(menuCategoryRepository.update).toHaveBeenCalledWith('c-1', {
+      name: 'Lanches',
+      imageUrl: 'https://s3.example.com/categoria.jpg',
+      activeDays: ['monday', 'tuesday'],
+    });
   });
 
   // specs/0061-categoria-ativa-inativa.
@@ -336,6 +359,49 @@ describe('CatalogController', () => {
     await runOperatorChain(routes['POST /restaurants/me/products'], { restaurantId: 'r-1', body }, { json });
 
     expect(productRepository.create).toHaveBeenCalledWith('r-1', expect.objectContaining({ availableAsAdditional: true }));
+  });
+
+  // specs/0116-ajustes-cadastro-produto.
+  it('POST /restaurants/me/products persiste posId/cost/ncmCode/activeDays/isAlcoholic/horário', async () => {
+    const { productRepository, routes } = setup();
+    const json = jest.fn();
+    const body = {
+      menuCategoryId: 'c-1',
+      name: 'Cerveja Artesanal 600ml',
+      price: 22,
+      posId: 'SKU-123',
+      cost: 9.5,
+      ncmCode: '2203.00.00',
+      activeDays: ['friday', 'saturday'],
+      isAlcoholic: true,
+      scheduleStartTime: '18:00',
+      scheduleEndTime: '23:00',
+    };
+
+    await runOperatorChain(routes['POST /restaurants/me/products'], { restaurantId: 'r-1', body }, { json });
+
+    expect(productRepository.create).toHaveBeenCalledWith(
+      'r-1',
+      expect.objectContaining({
+        posId: 'SKU-123',
+        cost: 9.5,
+        ncmCode: '2203.00.00',
+        activeDays: ['friday', 'saturday'],
+        isAlcoholic: true,
+        scheduleStartTime: '18:00',
+        scheduleEndTime: '23:00',
+      }),
+    );
+  });
+
+  // specs/0116-ajustes-cadastro-produto REQ-12 — horário invertido (fim antes do início) é rejeitado.
+  it('POST /restaurants/me/products rejeita scheduleEndTime antes de scheduleStartTime', async () => {
+    const { routes } = setup();
+    const body = { menuCategoryId: 'c-1', name: 'Pizza', price: 50, scheduleStartTime: '23:00', scheduleEndTime: '18:00' };
+
+    await expect(
+      runOperatorChain(routes['POST /restaurants/me/products'], { restaurantId: 'r-1', body }, { json: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 400 });
   });
 
   it('AC-2: POST /restaurants/me/products aceita opção de adicional com linkedProductId (sem rawMaterialId)', async () => {

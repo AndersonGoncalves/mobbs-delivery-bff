@@ -1,3 +1,4 @@
+import { DayOfWeek } from '../../../../shared/utils/day-of-week';
 import { IProduct, IProductAdditionalGroupInput } from '../entities/product.entity';
 
 export type NewProductInput = {
@@ -13,6 +14,14 @@ export type NewProductInput = {
   /** specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16 — ausente/`undefined` =
    * feito sob demanda, sem controle de estoque (ver `IProduct.stockQuantity`). */
   stockQuantity?: number;
+  /** specs/0116-ajustes-cadastro-produto — ver comentários dos mesmos campos em `IProduct`. */
+  posId?: string;
+  cost?: number;
+  ncmCode?: string;
+  activeDays?: DayOfWeek[];
+  isAlcoholic?: boolean;
+  scheduleStartTime?: string;
+  scheduleEndTime?: string;
 };
 
 export type ProductUpdateInput = Partial<NewProductInput>;
