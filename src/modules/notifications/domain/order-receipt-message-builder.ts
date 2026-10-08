@@ -52,6 +52,9 @@ export const DEFAULT_ORDER_RECEIPT_TEMPLATE = [
   'Observação: {observacao}',
   '',
   '{pagamento}',
+  '',
+  // Pedido explícito do usuário (follow-up) — link de "repetir pedido" no recibo.
+  'Peça de novo: {linkRepetirPedido}',
 ].join('\n');
 
 /**

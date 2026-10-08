@@ -49,7 +49,8 @@ describe('generateUniqueSlug', () => {
   });
 
   // specs/0111 — caminhos reservados do site e do app (help/ajuda para a ajuda futura do app).
-  it.each(['Ajuda', 'Help', 'Gratis', 'Images'])('nome "%s" não vira slug reservado (ganha sufixo)', async (name) => {
+  // "RepetirPedido" — pedido explícito do usuário (follow-up), link de repetir pedido no recibo.
+  it.each(['Ajuda', 'Help', 'Gratis', 'Images', 'RepetirPedido'])('nome "%s" não vira slug reservado (ganha sufixo)', async (name) => {
     const repository = buildRepository();
 
     expect(await generateUniqueSlug(name, repository)).toMatch(/-2$/);

@@ -57,6 +57,17 @@ export function buildTrackingLink(slug: string, trackingToken: string, baseUrl: 
   return `${baseUrl.replace(/\/+$/, '')}/${slug}/track?token=${trackingToken}`;
 }
 
+/**
+ * Pedido explícito do usuário (follow-up) — link de "repetir pedido" no recibo, pra abrir o app
+ * já com aquele pedido pronto pra pedir de novo. Diferente de [buildTrackingLink] (que vive sob o
+ * `<slug>` do restaurante), este é um caminho de nível raiz (`repetirpedido`, reservado em
+ * `generate-unique-slug.ts` pra nenhum restaurante poder usá-lo como slug) — quem recebe o
+ * `trackingToken` já sabe resolver o pedido e o restaurante dele sem precisar do slug no path.
+ */
+export function buildRepeatOrderLink(trackingToken: string, baseUrl: string = environment.publicApp.baseUrl): string {
+  return `${baseUrl.replace(/\/+$/, '')}/repetirpedido/${trackingToken}`;
+}
+
 export function renderSelections(selections: IOrderItemSelection[] | undefined, indent: string): string {
   if (!selections || selections.length === 0) return '';
   return selections

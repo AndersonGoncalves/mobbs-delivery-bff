@@ -61,6 +61,12 @@ describe('buildOrderReceiptMessage', () => {
     expect(message).toContain('https://bsdelivery.com.br/primepizza/track?token=abc123');
   });
 
+  // Pedido explícito do usuário (follow-up) — link de "repetir pedido", nível raiz (sem o slug).
+  it('inclui o link de repetir pedido com o trackingToken', () => {
+    const message = buildOrderReceiptMessage(buildInput());
+    expect(message).toContain('https://bsdelivery.com.br/repetirpedido/abc123');
+  });
+
   it('AC-1: lista os itens com quantidade/preço e as seleções aninhadas', () => {
     const message = buildOrderReceiptMessage(buildInput());
     expect(message).toContain('2x X-Burger — R$ 50,00');

@@ -6,10 +6,12 @@ import { IRestaurantRepository } from './repositories/restaurant.repository.inte
  * restaurante; nenhum cadastro pode gerar um destes.
  */
 // specs/0111 — `gratis` e `images` (página de cadastro e fotos do site); `help`/`ajuda` (ajuda do app, futuro);
-// `plataforma`/`bloqueado`/`indicacoes` (rotas do web). Mudar esta lista exige ajuste no Nginx do site também.
+// `plataforma`/`bloqueado`/`indicacoes` (rotas do web). `repetirpedido` — pedido explícito do
+// usuário (follow-up): link de "repetir pedido" no recibo (`buildRepeatOrderLink`), caminho de
+// nível raiz, não sob o slug do restaurante. Mudar esta lista exige ajuste no Nginx do site também.
 const RESERVED_SLUGS: ReadonlySet<string> = new Set([
   'painel', 'signup', 'login', 'api', 'assets', 'r', 'www',
-  'gratis', 'images', 'help', 'ajuda', 'plataforma', 'bloqueado', 'indicacoes',
+  'gratis', 'images', 'help', 'ajuda', 'plataforma', 'bloqueado', 'indicacoes', 'repetirpedido',
 ]);
 
 function slugify(name: string): string {

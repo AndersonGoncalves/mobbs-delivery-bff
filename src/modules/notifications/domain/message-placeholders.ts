@@ -1,5 +1,5 @@
 import { IOrder } from '../../orders/domain/entities/order.entity';
-import { buildPaymentBlock, buildTrackingLink, formatCurrency, paymentMethodLabel, renderItem } from './whatsapp-message-helpers';
+import { buildPaymentBlock, buildRepeatOrderLink, buildTrackingLink, formatCurrency, paymentMethodLabel, renderItem } from './whatsapp-message-helpers';
 
 const ORDER_TYPE_LABELS: Record<IOrder['orderType'], string> = {
   delivery: 'Entrega',
@@ -51,6 +51,8 @@ export function buildMessagePlaceholders(input: MessagePlaceholdersInput): Recor
     pagamento: buildPaymentBlock({ order, cardBrand, pixCode, pixCodeSentSeparately }),
     pixCopiaECola: pixCode ?? '',
     linkAcompanhamento: buildTrackingLink(restaurantSlug, order.trackingToken),
+    // Pedido explícito do usuário (follow-up) — link de "repetir pedido" no recibo.
+    linkRepetirPedido: buildRepeatOrderLink(order.trackingToken),
     motivoCancelamento: cancellationReason ?? '',
     // specs/0089-observacao-pedido-whatsapp-historico — observação livre do cliente no checkout
     // (`Order.notes`, distinto de `OrderItem.notes` por item); ausente = linha some sozinha.

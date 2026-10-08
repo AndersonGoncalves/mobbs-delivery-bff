@@ -1,4 +1,4 @@
-import { buildPaymentBlock, buildTrackingLink, renderTemplate, resolveTemplate } from './whatsapp-message-helpers';
+import { buildPaymentBlock, buildRepeatOrderLink, buildTrackingLink, renderTemplate, resolveTemplate } from './whatsapp-message-helpers';
 
 describe('renderTemplate (specs/0069)', () => {
   it('substitui as chaves conhecidas e mantém as desconhecidas literais', () => {
@@ -35,6 +35,21 @@ describe('buildTrackingLink (specs/0069)', () => {
 
   it('usa https://bsdelivery.com.br quando PUBLIC_APP_BASE_URL não está definida', () => {
     expect(buildTrackingLink('r', 't')).toBe('https://bsdelivery.com.br/r/track?token=t');
+  });
+});
+
+// Pedido explícito do usuário (follow-up) — link de "repetir pedido" no recibo.
+describe('buildRepeatOrderLink', () => {
+  it('monta <origem>/repetirpedido/<token> (caminho de nível raiz, sem o slug do restaurante)', () => {
+    expect(buildRepeatOrderLink('tok123', 'https://bsdelivery.com.br')).toBe('https://bsdelivery.com.br/repetirpedido/tok123');
+  });
+
+  it('ignora barra final na origem configurada', () => {
+    expect(buildRepeatOrderLink('t', 'https://exemplo.com.br/')).toBe('https://exemplo.com.br/repetirpedido/t');
+  });
+
+  it('usa https://bsdelivery.com.br quando PUBLIC_APP_BASE_URL não está definida', () => {
+    expect(buildRepeatOrderLink('t')).toBe('https://bsdelivery.com.br/repetirpedido/t');
   });
 });
 
