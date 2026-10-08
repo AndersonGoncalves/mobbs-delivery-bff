@@ -1,6 +1,12 @@
 import { IProductAdditionalGroup, IProductAdditionalOption } from '../../domain/entities/product.entity';
 import { IPromotion } from '../../../promotions/domain/entities/promotion.entity';
-import { AdditionalGroupTemplateLeanDocument, resolveGroup, resolveOptionLinkedProduct, resolveOptionLinkedRawMaterial } from './product.mongoose.repository';
+import {
+  AdditionalGroupTemplateLeanDocument,
+  resolveGroup,
+  resolveOptionLinkedProduct,
+  resolveOptionLinkedRawMaterial,
+  syncPrimaryImage,
+} from './product.mongoose.repository';
 
 function buildLinkedProduct(overrides: Partial<{ _id: string; name: string; imageUrl?: string; price: number; description?: string }> = {}) {
   return { _id: 'prod-coca', name: 'Coca-Cola 1L', price: 10, ...overrides };
@@ -325,5 +331,26 @@ describe('resolveOptionLinkedRawMaterial (specs/0079-adicional-materia-prima-som
     const resolved = resolveOptionLinkedRawMaterial(option, rawMaterialsById);
 
     expect(resolved.nestedAdditionalGroups?.[0].options[0]).toMatchObject({ name: 'Catupiry', priceDelta: 8 });
+  });
+});
+
+// specs/0109-galeria-fotos-produto REQ-12.
+describe('syncPrimaryImage (specs/0109-galeria-fotos-produto REQ-12)', () => {
+  it('sem `images` no input, devolve inalterado (não mexe em imageUrl)', () => {
+    const input = { name: 'Pizza', imageUrl: 'https://antiga.jpg' };
+
+    expect(syncPrimaryImage(input)).toBe(input);
+  });
+
+  it('`images` com fotos: imageUrl vira images[0]', () => {
+    const input = { images: ['https://nova.jpg', 'https://segunda.jpg'], imageUrl: 'https://antiga.jpg' };
+
+    expect(syncPrimaryImage(input).imageUrl).toBe('https://nova.jpg');
+  });
+
+  it('`images` vazio: imageUrl vira undefined (galeria esvaziada)', () => {
+    const input = { images: [] as string[], imageUrl: 'https://antiga.jpg' };
+
+    expect(syncPrimaryImage(input).imageUrl).toBeUndefined();
   });
 });

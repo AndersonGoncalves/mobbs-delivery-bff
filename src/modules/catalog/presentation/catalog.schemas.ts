@@ -149,6 +149,8 @@ const productSchemaShape = {
   name: z.string().min(1),
   description: z.string().optional(),
   imageUrl: z.string().url().optional(),
+  // specs/0109-galeria-fotos-produto REQ-1/REQ-5 — até 5 fotos; images[0] é a principal.
+  images: z.array(z.string().url()).max(5).optional(),
   price: z.number().positive(),
   isAvailable: z.boolean().default(true),
   additionalGroups: z.array(productAdditionalGroupSchema).default([]),
@@ -167,6 +169,9 @@ const productSchemaShape = {
   isAlcoholic: z.boolean().default(false),
   scheduleStartTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
   scheduleEndTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  // specs/0117-vitrine-manual-e-ajustes-formularios REQ-1/REQ-2.
+  isBestSeller: z.boolean().default(false),
+  isSuggestedInCart: z.boolean().default(false),
 };
 
 // REQ-12/mesmo espírito de `restaurants.schemas.ts` (businessHours) — evita salvar uma janela
@@ -186,6 +191,11 @@ export const setProductAvailableSchema = z.object({ isAvailable: z.boolean() });
 
 // specs/0028-destaques-vendidos-banners REQ-3 — mesmo padrão de `reorderMenuCategoriesSchema`.
 export const reorderFeaturedProductsSchema = z.object({ orderedIds: z.array(z.string().min(1)).min(1) });
+
+// specs/0117-vitrine-manual-e-ajustes-formularios REQ-1/REQ-2/REQ-9 — mesmo padrão de
+// `reorderFeaturedProductsSchema`.
+export const reorderBestSellersSchema = z.object({ orderedIds: z.array(z.string().min(1)).min(1) });
+export const reorderCartSuggestionsSchema = z.object({ orderedIds: z.array(z.string().min(1)).min(1) });
 
 // specs/0026-selecao-clonar-excluir-busca-web REQ-7 — query params chegam sempre como string.
 export const listProductsQuerySchema = z.object({

@@ -55,6 +55,14 @@ function toProductLight(doc: ProductLightLeanDocument, promotionPercentageByProd
     isAlcoholic: doc.isAlcoholic ?? false,
     scheduleStartTime: doc.scheduleStartTime,
     scheduleEndTime: doc.scheduleEndTime,
+    // specs/0117-vitrine-manual-e-ajustes-formularios — "Mais pedido"/"Peça também" não dependem
+    // desta listagem leve (vêm de `GET /restaurants/:id/best-sellers`/`.../cart-suggestions`,
+    // endpoints próprios), por isso fora do `.select()` abaixo; defaults aqui só pra satisfazer
+    // `IProduct` (campos obrigatórios, mesmo padrão de `isFeatured`).
+    isBestSeller: doc.isBestSeller ?? false,
+    bestSellerOrder: doc.bestSellerOrder ?? 0,
+    isSuggestedInCart: doc.isSuggestedInCart ?? false,
+    cartSuggestionOrder: doc.cartSuggestionOrder ?? 0,
   };
 }
 

@@ -60,6 +60,8 @@ const productSchema = new Schema(
     name: { type: String, required: true },
     description: { type: String },
     imageUrl: { type: String },
+    // specs/0109-galeria-fotos-produto REQ-1 — até 5 fotos; images[0] é sempre a principal.
+    images: { type: [String], default: [] },
     price: { type: Number, required: true },
     isAvailable: { type: Boolean, required: true, default: true },
     additionalGroups: { type: [productAdditionalGroupSchema], default: [] },
@@ -79,6 +81,11 @@ const productSchema = new Schema(
     isAlcoholic: { type: Boolean, required: true, default: false },
     scheduleStartTime: { type: String },
     scheduleEndTime: { type: String },
+    // specs/0117-vitrine-manual-e-ajustes-formularios — mesmo padrão de isFeatured/featuredOrder.
+    isBestSeller: { type: Boolean, required: true, default: false },
+    bestSellerOrder: { type: Number, required: true, default: 0 },
+    isSuggestedInCart: { type: Boolean, required: true, default: false },
+    cartSuggestionOrder: { type: Number, required: true, default: 0 },
   },
   { _id: false, timestamps: true },
 );

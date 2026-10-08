@@ -49,6 +49,7 @@ function toEntity(doc: ProductLeanDocument): IProduct {
     name: doc.name,
     description: doc.description,
     imageUrl: doc.imageUrl,
+    images: doc.images,
     price: doc.price,
     isAvailable: doc.isAvailable,
     additionalGroups: doc.additionalGroups ?? [],
@@ -66,7 +67,19 @@ function toEntity(doc: ProductLeanDocument): IProduct {
     isAlcoholic: doc.isAlcoholic ?? false,
     scheduleStartTime: doc.scheduleStartTime,
     scheduleEndTime: doc.scheduleEndTime,
+    // specs/0117-vitrine-manual-e-ajustes-formularios.
+    isBestSeller: doc.isBestSeller ?? false,
+    bestSellerOrder: doc.bestSellerOrder ?? 0,
+    isSuggestedInCart: doc.isSuggestedInCart ?? false,
+    cartSuggestionOrder: doc.cartSuggestionOrder ?? 0,
   };
+}
+
+/** specs/0109-galeria-fotos-produto REQ-12 — `imageUrl` sempre sincronizado com `images[0]`
+ * quando `images` vem no payload de escrita (array vazio = produto sem foto nenhuma). */
+export function syncPrimaryImage<T extends { images?: string[]; imageUrl?: string }>(input: T): T {
+  if (input.images === undefined) return input;
+  return { ...input, imageUrl: input.images[0] };
 }
 
 // REQ-7 (`specs/0007-cadastro-produtos`) — desce a árvore recursiva de `additionalGroups`
@@ -351,12 +364,21 @@ export class ProductMongooseRepository implements IProductRepository {
   }
 
   async create(restaurantId: string, input: NewProductInput): Promise<IProduct> {
-    const doc = await ProductModel.create({ restaurantId, ...input });
+    const doc = await ProductModel.create({ restaurantId, ...syncPrimaryImage(input) });
     return toEntity(doc.toObject() as ProductLeanDocument);
   }
 
   async update(id: string, input: ProductUpdateInput): Promise<IProduct> {
-    const doc = await ProductModel.findByIdAndUpdate(id, { $set: input }, { new: true }).lean<ProductLeanDocument>();
+    // `$set` com `imageUrl: undefined` é silenciosamente ignorado pelo driver do Mongo (não
+    // remove o campo) — mesmo cuidado já tomado em `MenuCategoryMongooseRepository.update`:
+    // galeria esvaziada (`images: []`) precisa de `$unset` explícito pra tirar a foto principal
+    // de verdade, não só deixar o valor antigo intacto.
+    const { imageUrl, ...rest } = syncPrimaryImage(input);
+    const doc = await ProductModel.findByIdAndUpdate(
+      id,
+      imageUrl === undefined && input.images !== undefined ? { $set: rest, $unset: { imageUrl: '' } } : { $set: { ...rest, imageUrl } },
+      { new: true },
+    ).lean<ProductLeanDocument>();
     return toEntity(doc as ProductLeanDocument);
   }
 
@@ -440,6 +462,99 @@ export class ProductMongooseRepository implements IProductRepository {
     await resolveLinkedProducts(docs, promotionsByProductId);
     await resolveLinkedRawMaterials(docs);
     return docs.map(toEntity);
+  }
+
+  /**
+   * specs/0117-vitrine-manual-e-ajustes-formularios REQ-1/REQ-9 — cópia de `reorderFeatured`
+   * pro par `isBestSeller`/`bestSellerOrder`.
+   */
+  async reorderBestSellers(restaurantId: string, orderedIds: string[]): Promise<IProduct[]> {
+    const owned = await ProductModel.find({ restaurantId }).select('_id').lean<{ _id: string }[]>();
+    const ownedIds = new Set(owned.map((doc) => doc._id));
+
+    await Promise.all(
+      orderedIds
+        .filter((id) => ownedIds.has(id))
+        .map((id, index) => ProductModel.updateOne({ _id: id }, { $set: { bestSellerOrder: index } })),
+    );
+
+    const docs = await ProductModel.find({ restaurantId, isBestSeller: true })
+      .sort({ bestSellerOrder: 1 })
+      .lean<ProductLeanDocument[]>();
+    const promotionsByProductId = await resolvePromotions(docs, this.promotionRepository);
+    await resolveTemplates(docs);
+    await resolveLinkedProducts(docs, promotionsByProductId);
+    await resolveLinkedRawMaterials(docs);
+    return docs.map(toEntity);
+  }
+
+  /**
+   * specs/0117-vitrine-manual-e-ajustes-formularios REQ-1/REQ-3 — cópia de `getFeatured` pro par
+   * `isBestSeller`/`bestSellerOrder` (substitui o cálculo por volume de pedidos que existia
+   * antes desta spec — mesma URL de endpoint, implementação trocada).
+   */
+  async getBestSellers(restaurantId: string): Promise<IProduct[]> {
+    const docs = await ProductModel.find({ restaurantId, isBestSeller: true, isAvailable: true })
+      .sort({ bestSellerOrder: 1 })
+      .lean<ProductLeanDocument[]>();
+    const promotionsByProductId = await resolvePromotions(docs, this.promotionRepository);
+    await resolveTemplates(docs);
+    await resolveLinkedProducts(docs, promotionsByProductId);
+    await resolveLinkedRawMaterials(docs);
+    return docs.map(toEntity);
+  }
+
+  /**
+   * specs/0117-vitrine-manual-e-ajustes-formularios REQ-2/REQ-9 — cópia de `reorderFeatured` pro
+   * par `isSuggestedInCart`/`cartSuggestionOrder`.
+   */
+  async reorderCartSuggestions(restaurantId: string, orderedIds: string[]): Promise<IProduct[]> {
+    const owned = await ProductModel.find({ restaurantId }).select('_id').lean<{ _id: string }[]>();
+    const ownedIds = new Set(owned.map((doc) => doc._id));
+
+    await Promise.all(
+      orderedIds
+        .filter((id) => ownedIds.has(id))
+        .map((id, index) => ProductModel.updateOne({ _id: id }, { $set: { cartSuggestionOrder: index } })),
+    );
+
+    const docs = await ProductModel.find({ restaurantId, isSuggestedInCart: true })
+      .sort({ cartSuggestionOrder: 1 })
+      .lean<ProductLeanDocument[]>();
+    const promotionsByProductId = await resolvePromotions(docs, this.promotionRepository);
+    await resolveTemplates(docs);
+    await resolveLinkedProducts(docs, promotionsByProductId);
+    await resolveLinkedRawMaterials(docs);
+    return docs.map(toEntity);
+  }
+
+  /**
+   * specs/0117-vitrine-manual-e-ajustes-formularios REQ-2/REQ-4 — cópia de `getFeatured` pro par
+   * `isSuggestedInCart`/`cartSuggestionOrder`.
+   */
+  async getCartSuggestions(restaurantId: string): Promise<IProduct[]> {
+    const docs = await ProductModel.find({ restaurantId, isSuggestedInCart: true, isAvailable: true })
+      .sort({ cartSuggestionOrder: 1 })
+      .lean<ProductLeanDocument[]>();
+    const promotionsByProductId = await resolvePromotions(docs, this.promotionRepository);
+    await resolveTemplates(docs);
+    await resolveLinkedProducts(docs, promotionsByProductId);
+    await resolveLinkedRawMaterials(docs);
+    return docs.map(toEntity);
+  }
+
+  /**
+   * specs/0109-galeria-fotos-produto REQ-13 — usada antes de apagar uma foto removida da galeria
+   * do S3 (edição ou exclusão do produto), pra não apagar uma URL que outro produto do mesmo
+   * restaurante ainda referencia.
+   */
+  async existsProductWithImageUrl(restaurantId: string, url: string, excludingProductId: string): Promise<boolean> {
+    const count = await ProductModel.countDocuments({
+      restaurantId,
+      _id: { $ne: excludingProductId },
+      $or: [{ imageUrl: url }, { images: url }],
+    });
+    return count > 0;
   }
 
   async countByMenuCategory(restaurantId: string, menuCategoryId: string): Promise<number> {

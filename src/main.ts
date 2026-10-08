@@ -6,6 +6,7 @@ import { RestaurantSignupController } from './modules/restaurants/presentation/r
 import { OnboardingChecklistController } from './modules/restaurants/presentation/onboarding-checklist.controller';
 import { RestaurantOperatorMongooseRepository } from './modules/restaurant-operators/infra/repositories/restaurant-operator.mongoose.repository';
 import { migrateOperatorRolesToDono } from './modules/restaurant-operators/infra/migrations/migrate-operator-roles-to-dono';
+import { backfillManualBestSellers } from './modules/catalog/infra/migrations/backfill-manual-best-sellers';
 import { ReferralMongooseRepository } from './modules/referrals/infra/repositories/referral.mongoose.repository';
 import { ReferralCodeMongooseRepository } from './modules/referrals/infra/repositories/referral-code.mongoose.repository';
 import { CustomerPixKeyMongooseRepository } from './modules/referrals/infra/repositories/customer-pix-key.mongoose.repository';
@@ -175,7 +176,6 @@ server
       productRepository,
       restaurantOperatorMiddleware,
       orderRepository,
-      restaurantRepository,
       new AdditionalGroupTemplateMongooseRepository(),
       new S3ProductImageStorage(s3Client, environment.s3.bucket, environment.s3.region),
     ),
@@ -246,7 +246,7 @@ server
       customerPixKeyRepository,
       buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
     ),
-  ], [migrateOperatorRolesToDono])
+  ], [migrateOperatorRolesToDono, backfillManualBestSellers])
   // specs/0066 REQ-1 — sessões do Baileys vivem em memória; sem isto todo restart do container
   // derruba o envio de WhatsApp em silêncio. Fire-and-forget: nunca atrasa nem derruba o boot.
   .then(() => whatsAppConnectionService.restoreConnectedSessions())

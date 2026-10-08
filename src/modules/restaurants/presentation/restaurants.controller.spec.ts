@@ -296,8 +296,8 @@ describe('RestaurantsController', () => {
     });
 
     // specs/0028-destaques-vendidos-banners REQ-1, REQ-4, REQ-10.
-    it('PUT /restaurants/me aceita e persiste showBestSellers/bestSellersCount/showHighlights/showBanners', async () => {
-      const patch = { showBestSellers: true, bestSellersCount: 8, showHighlights: false, showBanners: false };
+    it('PUT /restaurants/me aceita e persiste showBestSellers/showCartSuggestions/showHighlights/showBanners', async () => {
+      const patch = { showBestSellers: true, showCartSuggestions: true, showHighlights: false, showBanners: false };
       const { repository, routes } = setup({ updateProfile: jest.fn().mockResolvedValue(buildRestaurant(patch)) });
       const json = jest.fn();
 
@@ -441,14 +441,6 @@ describe('RestaurantsController', () => {
 
       await expect(
         runAuthenticatedChain(routes['PUT /restaurants/me'], { body: { instagramUrl: 'não-é-url' } }, { json: jest.fn() }),
-      ).rejects.toMatchObject({ statusCode: 400 });
-    });
-
-    it('rejeita PUT /restaurants/me com bestSellersCount não positivo', async () => {
-      const { routes } = setup();
-
-      await expect(
-        runAuthenticatedChain(routes['PUT /restaurants/me'], { body: { bestSellersCount: 0 } }, { json: jest.fn() }),
       ).rejects.toMatchObject({ statusCode: 400 });
     });
 

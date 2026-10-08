@@ -96,6 +96,13 @@ export interface IProduct {
   name: string;
   description?: string;
   imageUrl?: string;
+  /** specs/0109-galeria-fotos-produto REQ-1 — até 5 fotos, na ordem escolhida pelo operador.
+   * `images[0]` é sempre a foto principal (sem campo de índice separado — "marcar como
+   * principal" é reordenar o array); `imageUrl` acima é mantido sincronizado com `images[0]` em
+   * toda escrita que inclua `images` (REQ-12), continua sendo o único campo que o app
+   * cliente/listagem leve leem. `undefined`/vazio — produto sem galeria, comportamento igual a
+   * antes desta spec. */
+  images?: string[];
   price: number;
   isAvailable: boolean;
   additionalGroups: IProductAdditionalGroup[];
@@ -154,4 +161,19 @@ export interface IProduct {
    * suporte a virar a meia-noite nesta v1 (mesma simplificação de `isRestaurantOpenNow`). */
   scheduleStartTime?: string;
   scheduleEndTime?: string;
+  /** specs/0117-vitrine-manual-e-ajustes-formularios REQ-1/REQ-3/REQ-5 — marca manual de
+   * "aparece na seção Mais pedidos do cardápio do cliente" (e decide a etiqueta "Mais pedido"
+   * nos cards), substituindo o cálculo automático por volume de pedidos que existia antes desta
+   * spec — mesmo padrão de `isFeatured`. Independente de `isAvailable`. */
+  isBestSeller: boolean;
+  /** specs/0117-vitrine-manual-e-ajustes-formularios REQ-1/REQ-9 — ordem dentro de "Mais
+   * pedidos", só relevante quando `isBestSeller === true` (mesmo padrão de `featuredOrder`). */
+  bestSellerOrder: number;
+  /** specs/0117-vitrine-manual-e-ajustes-formularios REQ-2/REQ-4 — marca manual de "aparece na
+   * seção Peça também do carrinho do cliente", substituindo a união de Destaques+Mais vendidos
+   * calculados que existia antes desta spec — mesmo padrão de `isFeatured`. */
+  isSuggestedInCart: boolean;
+  /** specs/0117-vitrine-manual-e-ajustes-formularios REQ-2/REQ-9 — ordem dentro de "Peça
+   * também", só relevante quando `isSuggestedInCart === true` (mesmo padrão de `featuredOrder`). */
+  cartSuggestionOrder: number;
 }

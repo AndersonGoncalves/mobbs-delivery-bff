@@ -6,6 +6,8 @@ export type NewProductInput = {
   name: string;
   description?: string;
   imageUrl?: string;
+  /** specs/0109-galeria-fotos-produto — ver comentário do mesmo campo em `IProduct`. */
+  images?: string[];
   price: number;
   isAvailable: boolean;
   additionalGroups: IProductAdditionalGroupInput[];
@@ -22,6 +24,9 @@ export type NewProductInput = {
   isAlcoholic?: boolean;
   scheduleStartTime?: string;
   scheduleEndTime?: string;
+  /** specs/0117-vitrine-manual-e-ajustes-formularios — ver comentários dos mesmos campos em `IProduct`. */
+  isBestSeller?: boolean;
+  isSuggestedInCart?: boolean;
 };
 
 export type ProductUpdateInput = Partial<NewProductInput>;
@@ -94,6 +99,22 @@ export interface IProductRepository {
    */
   getFeatured(restaurantId: string): Promise<IProduct[]>;
 
+  /** specs/0117-vitrine-manual-e-ajustes-formularios REQ-1/REQ-9 — mesmo padrão de
+   * `reorderFeatured`, pro par `isBestSeller`/`bestSellerOrder`. */
+  reorderBestSellers(restaurantId: string, orderedIds: string[]): Promise<IProduct[]>;
+
+  /** specs/0117-vitrine-manual-e-ajustes-formularios REQ-1/REQ-3 — mesmo padrão de `getFeatured`,
+   * pro par `isBestSeller`/`bestSellerOrder` (substitui o cálculo por volume de pedidos). */
+  getBestSellers(restaurantId: string): Promise<IProduct[]>;
+
+  /** specs/0117-vitrine-manual-e-ajustes-formularios REQ-2/REQ-9 — mesmo padrão de
+   * `reorderFeatured`, pro par `isSuggestedInCart`/`cartSuggestionOrder`. */
+  reorderCartSuggestions(restaurantId: string, orderedIds: string[]): Promise<IProduct[]>;
+
+  /** specs/0117-vitrine-manual-e-ajustes-formularios REQ-2/REQ-4 — mesmo padrão de
+   * `getFeatured`, pro par `isSuggestedInCart`/`cartSuggestionOrder`. */
+  getCartSuggestions(restaurantId: string): Promise<IProduct[]>;
+
   /**
    * specs/0032-ajustes-diversos-rating-taxa-entrega REQ-5 — quantos produtos (ativos ou não)
    * pertencem a essa categoria — usado pra bloquear a exclusão real de uma categoria já usada
@@ -116,4 +137,9 @@ export interface IProductRepository {
    * `stockQuantity` definido (feito sob demanda). Devolve `true` se de fato baixou (produto
    * existe e tem `stockQuantity` definido), `false` caso contrário. */
   decrementStock(id: string, quantity: number): Promise<boolean>;
+
+  /** specs/0109-galeria-fotos-produto REQ-13 — se algum OUTRO produto do restaurante (exceto
+   * `excludingProductId`) ainda tem `url` em `images`/`imageUrl`, não deve ser apagada do S3 ao
+   * ser removida da galeria do produto atual (ou do produto sendo excluído). */
+  existsProductWithImageUrl(restaurantId: string, url: string, excludingProductId: string): Promise<boolean>;
 }

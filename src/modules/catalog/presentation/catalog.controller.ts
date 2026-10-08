@@ -7,7 +7,6 @@ import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middl
 import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { IAdditionalGroupTemplateRepository } from '../../additional-group-templates/domain/repositories/additional-group-template.repository.interface';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
-import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IMenuCategory } from '../domain/entities/menu-category.entity';
 import { IProduct } from '../domain/entities/product.entity';
 import { IMenuCategoryRepository } from '../domain/repositories/menu-category.repository.interface';
@@ -17,6 +16,8 @@ import {
   listProductsQuerySchema,
   menuCategoryNameSchema,
   menuCategoryUpdateSchema,
+  reorderBestSellersSchema,
+  reorderCartSuggestionsSchema,
   reorderFeaturedProductsSchema,
   reorderMenuCategoriesSchema,
   saveProductSchema,
@@ -49,8 +50,6 @@ export class CatalogController extends BaseRouter {
     // specs/0026-selecao-clonar-excluir-busca-web REQ-5 — checa se o produto já apareceu em
     // algum pedido (qualquer status) antes de permitir a exclusão real.
     private readonly orderRepository: IOrderRepository,
-    // specs/0028-destaques-vendidos-banners REQ-2 — lê `bestSellersCount` do restaurante.
-    private readonly restaurantRepository: IRestaurantRepository,
     // specs/0041-item-adicional-vinculado-produto REQ-4 — checa, junto do próprio
     // `productRepository`, se o produto está vinculado (`linkedProductId`) em algum template
     // reutilizável antes de permitir a exclusão real.
@@ -78,29 +77,31 @@ export class CatalogController extends BaseRouter {
     });
 
     // specs/0028-destaques-vendidos-banners REQ-2 — pública (mesmo padrão de
-    // `/restaurants/:id/menu-categories`): qualquer `Customer` logado pode ver o ranking de
-    // "mais vendidos" de qualquer restaurante.
+    // `/restaurants/:id/menu-categories`): qualquer `Customer` logado pode ver "Mais pedidos".
+    //
+    // specs/0117-vitrine-manual-e-ajustes-formularios REQ-3/REQ-5 — mesma URL/formato de
+    // resposta de antes desta spec, só troca a origem dos dados: de um cálculo por volume de
+    // pedidos (`orderRepository.getBestSellingProductIds`) para o flag manual `isBestSeller`
+    // (mesmo mecanismo de Destaques) — transparente pra quem consome este endpoint.
     application.get(
       '/restaurants/:id/best-sellers',
       firebaseAuthMiddleware,
       async (req: Request, res: Response) => {
-        const restaurant = await this.restaurantRepository.findById(req.params.id);
-        // `bestSellersCount` é o limite da seção "Mais vendidos" do cardápio (controlada por
-        // `showBestSellers`), mas este endpoint também alimenta a tag "Mais pedido" em Destaques/
-        // Favoritos/"Peça também" — usos independentes do toggle. Um restaurante que nunca abriu
-        // essa configuração (`bestSellersCount` zerado/ausente) ainda assim tem produtos com
-        // vendas reais, então cai num teto padrão de 10 em vez de not_configured => sem ranking
-        // nenhum.
-        const limit = restaurant?.bestSellersCount || 10;
-        const bestSellingIds = restaurant ? await this.orderRepository.getBestSellingProductIds(req.params.id, limit) : [];
-        const products = await Promise.all(bestSellingIds.map((id) => this.productRepository.findById(id)));
-        // specs/0031-imagem-padrao-disponibilidade-checkout-ajustes REQ-5 — produto indisponível
-        // não aparece em "Mais vendidos", mesmo tendo vendas passadas.
-        const available = products.filter((product): product is IProduct => product !== null && product.isAvailable);
-        // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-1 — aqui a leitura já é completa
-        // (`findById`), então `hasAdditionalGroups` é só derivado do array já carregado, sem
-        // nenhuma query extra.
-        res.json(200, available.map((product) => ({ ...product, hasAdditionalGroups: product.additionalGroups.length > 0 })));
+        const products = await this.productRepository.getBestSellers(req.params.id);
+        res.json(200, products.map((product) => ({ ...product, hasAdditionalGroups: product.additionalGroups.length > 0 })));
+      },
+    );
+
+    // specs/0117-vitrine-manual-e-ajustes-formularios REQ-2/REQ-4 — mesmo padrão de
+    // `/restaurants/:id/best-sellers`/`/restaurants/:id/featured-products`, pro flag manual
+    // `isSuggestedInCart` ("Peça também" do carrinho do app, antes uma união de Destaques+Mais
+    // vendidos calculados, agora sua própria lista curada).
+    application.get(
+      '/restaurants/:id/cart-suggestions',
+      firebaseAuthMiddleware,
+      async (req: Request, res: Response) => {
+        const products = await this.productRepository.getCartSuggestions(req.params.id);
+        res.json(200, products.map((product) => ({ ...product, hasAdditionalGroups: product.additionalGroups.length > 0 })));
       },
     );
 
@@ -199,8 +200,14 @@ export class CatalogController extends BaseRouter {
 
     application.put('/restaurants/me/products/:id', ...authenticated, async (req: Request, res: Response) => {
       const payload = parseBody(updateProductSchema, req.body);
-      await this.findOwnedProduct(req.params.id, req.restaurantId!);
+      const existing = await this.findOwnedProduct(req.params.id, req.restaurantId!);
       const product = await this.productRepository.update(req.params.id, payload);
+      // specs/0109-galeria-fotos-produto REQ-13 — foto removida da galeria só é apagada do S3 se
+      // nenhum outro produto do restaurante ainda a referencia (checado antes de cada exclusão).
+      if (payload.images !== undefined) {
+        const removedUrls = (existing.images ?? (existing.imageUrl ? [existing.imageUrl] : [])).filter((url) => !payload.images!.includes(url));
+        await Promise.all(removedUrls.map((url) => this.deleteProductImageIfUnused(url, req.restaurantId!, product.id)));
+      }
       res.json(200, product);
     });
 
@@ -212,6 +219,30 @@ export class CatalogController extends BaseRouter {
       async (req: Request, res: Response) => {
         const { orderedIds } = parseBody(reorderFeaturedProductsSchema, req.body);
         const products = await this.productRepository.reorderFeatured(req.restaurantId!, orderedIds);
+        res.json(200, products);
+      },
+    );
+
+    // specs/0117-vitrine-manual-e-ajustes-formularios REQ-1/REQ-9 — mesmo padrão de
+    // `.../products/featured/reorder`.
+    application.put(
+      '/restaurants/me/products/best-sellers/reorder',
+      ...authenticated,
+      async (req: Request, res: Response) => {
+        const { orderedIds } = parseBody(reorderBestSellersSchema, req.body);
+        const products = await this.productRepository.reorderBestSellers(req.restaurantId!, orderedIds);
+        res.json(200, products);
+      },
+    );
+
+    // specs/0117-vitrine-manual-e-ajustes-formularios REQ-2/REQ-9 — mesmo padrão de
+    // `.../products/featured/reorder`.
+    application.put(
+      '/restaurants/me/products/cart-suggestions/reorder',
+      ...authenticated,
+      async (req: Request, res: Response) => {
+        const { orderedIds } = parseBody(reorderCartSuggestionsSchema, req.body);
+        const products = await this.productRepository.reorderCartSuggestions(req.restaurantId!, orderedIds);
         res.json(200, products);
       },
     );
@@ -253,7 +284,10 @@ export class CatalogController extends BaseRouter {
         throw new ConflictError(`Produto usado como adicional em: ${names} — não pode ser excluído`);
       }
       await this.productRepository.remove(product.id);
-      await this.productImageStorage.deleteProductImageIfOwned(product.imageUrl, req.restaurantId!);
+      // specs/0109-galeria-fotos-produto REQ-13 — apaga toda a galeria (não só `imageUrl`),
+      // cada foto checada individualmente contra uso por outro produto antes de apagar do S3.
+      const allImages = product.images ?? (product.imageUrl ? [product.imageUrl] : []);
+      await Promise.all(allImages.map((url) => this.deleteProductImageIfUnused(url, req.restaurantId!, product.id)));
       res.send(204);
     });
 
@@ -284,5 +318,14 @@ export class CatalogController extends BaseRouter {
       throw new NotFoundError('Produto não encontrado');
     }
     return product;
+  }
+
+  /** specs/0109-galeria-fotos-produto REQ-13 — só apaga do S3 (`deleteProductImageIfOwned`, que
+   * já restringe ao prefixo do próprio restaurante) depois de confirmar que nenhum outro produto
+   * do restaurante ainda referencia essa URL. */
+  private async deleteProductImageIfUnused(url: string, restaurantId: string, excludingProductId: string): Promise<void> {
+    const stillUsed = await this.productRepository.existsProductWithImageUrl(restaurantId, url, excludingProductId);
+    if (stillUsed) return;
+    await this.productImageStorage.deleteProductImageIfOwned(url, restaurantId);
   }
 }

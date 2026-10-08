@@ -79,7 +79,6 @@ const restaurantSchema = new Schema(
     productImageOnRight: { type: Boolean, required: true, default: true },
     // specs/0028-destaques-vendidos-banners REQ-1, REQ-4, REQ-5, REQ-10.
     showBestSellers: { type: Boolean, required: true, default: false },
-    bestSellersCount: { type: Number, required: true, default: 6 },
     showHighlights: { type: Boolean, required: true, default: true },
     showBanners: { type: Boolean, required: true, default: true },
     showReorderTag: { type: Boolean, default: true },
@@ -119,9 +118,9 @@ const restaurantSchema = new Schema(
     ratingCount: { type: Number, required: true, default: 0 },
     // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-1.
     showHighlightsInMultipleRows: { type: Boolean, required: true, default: false },
-    // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-1 — sem default de
-    // propósito: ausente = seção "Peça também" não aparece no app (ver comentário na entity).
-    cartSuggestionsCount: { type: Number, required: false },
+    // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-1 — mesmo padrão de
+    // `showBestSellers` desde specs/0117 (ver comentário na entity).
+    showCartSuggestions: { type: Boolean, required: true, default: false },
     // specs/0039-onboarding-primeiro-acesso REQ-8/REQ-9 — tipo de negócio escolhido no
     // autocadastro (ex. "pizzaria"), usado só pra decidir o catálogo inicial na hora da criação;
     // não editável depois pela retaguarda.

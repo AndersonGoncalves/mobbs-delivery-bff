@@ -104,11 +104,10 @@ export interface IRestaurant {
    */
   productImageOnRight: boolean;
   /** specs/0028-destaques-vendidos-banners REQ-1 — liga/desliga a seção "Mais vendidos" no
-   * cardápio do cliente. */
+   * cardápio do cliente. Desde specs/0117-vitrine-manual-e-ajustes-formularios, os produtos
+   * exibidos são curados manualmente (`Product.isBestSeller`) — este campo só decide se a seção
+   * aparece, sem conceito de "quantidade" (substituiu `bestSellersCount`, removido). */
   showBestSellers: boolean;
-  /** specs/0028-destaques-vendidos-banners REQ-1 — quantos produtos aparecem em "Mais
-   * vendidos" quando habilitado. */
-  bestSellersCount: number;
   /** specs/0028-destaques-vendidos-banners REQ-4 — liga/desliga a seção "Destaques" no
    * cardápio do cliente (independente de quais produtos estão marcados como destaque). */
   showHighlights: boolean;
@@ -159,14 +158,11 @@ export interface IRestaurant {
    * atual) = "Destaques" numa linha só (scroll horizontal); `true` = grade em várias linhas. Só
    * afeta "Destaques" — "Mais vendidos" sempre uma linha, independente disso. */
   showHighlightsInMultipleRows: boolean;
-  /** specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-1 — quantos produtos
-   * aparecem em "Peça também" no carrinho do app cliente. Diferente de `bestSellersCount`
-   * (booleano `showBestSellers` companheiro + default 6), este campo não tem toggle: a seção só
-   * aparece quando o operador informa um valor aqui — não informado (`undefined`) desliga a
-   * seção inteira (gate no `CartPage` do app, não no BFF: o `CartController` é global e busca as
-   * sugestões antes de o restaurante estar resolvido, então a chamada HTTP ainda ocorre — só a
-   * renderização/quantidade depende deste campo). */
-  cartSuggestionsCount?: number;
+  /** specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-1 — liga/desliga a seção
+   * "Peça também" no carrinho do app cliente. Desde specs/0117-vitrine-manual-e-ajustes-formularios,
+   * substitui `cartSuggestionsCount` (removido — produtos exibidos são curados manualmente via
+   * `Product.isSuggestedInCart`, sem conceito de "quantidade"); mesmo padrão de `showBestSellers`. */
+  showCartSuggestions: boolean;
   /** specs/0039-onboarding-primeiro-acesso REQ-8/REQ-9 — tipo de negócio escolhido no
    * autocadastro (ex. "pizzaria"), só decide o catálogo inicial na hora da criação; não editável
    * depois pela retaguarda. */

@@ -40,7 +40,6 @@ interface RestaurantLeanDocument {
   whatsappConnected?: boolean;
   productImageOnRight?: boolean;
   showBestSellers?: boolean;
-  bestSellersCount?: number;
   showHighlights?: boolean;
   showBanners?: boolean;
   showReorderTag?: boolean;
@@ -58,7 +57,7 @@ interface RestaurantLeanDocument {
   rating?: number;
   ratingCount?: number;
   showHighlightsInMultipleRows?: boolean;
-  cartSuggestionsCount?: number;
+  showCartSuggestions?: boolean;
   category?: string;
   businessHoursReviewedAt?: Date;
   acceptedPaymentMethods?: PaymentMethod[];
@@ -110,7 +109,6 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     whatsappConnected: doc.whatsappConnected ?? false,
     productImageOnRight: doc.productImageOnRight ?? true,
     showBestSellers: doc.showBestSellers ?? false,
-    bestSellersCount: doc.bestSellersCount ?? 6,
     showHighlights: doc.showHighlights ?? true,
     showBanners: doc.showBanners ?? true,
     showReorderTag: doc.showReorderTag ?? true,
@@ -128,7 +126,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     rating: doc.rating ?? 0,
     ratingCount: doc.ratingCount ?? 0,
     showHighlightsInMultipleRows: doc.showHighlightsInMultipleRows ?? false,
-    cartSuggestionsCount: doc.cartSuggestionsCount,
+    showCartSuggestions: doc.showCartSuggestions ?? false,
     category: doc.category,
     businessHoursReviewedAt: doc.businessHoursReviewedAt,
     acceptedPaymentMethods: doc.acceptedPaymentMethods ?? ALL_PAYMENT_METHODS,

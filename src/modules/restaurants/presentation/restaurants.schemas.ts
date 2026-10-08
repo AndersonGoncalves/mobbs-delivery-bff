@@ -89,7 +89,6 @@ export const restaurantProfileSchema = z
     productImageOnRight: z.boolean(),
     // specs/0028-destaques-vendidos-banners REQ-1, REQ-4, REQ-10.
     showBestSellers: z.boolean(),
-    bestSellersCount: z.number().int().positive(),
     showHighlights: z.boolean(),
     showBanners: z.boolean(),
     showReorderTag: z.boolean().optional(),
@@ -111,10 +110,9 @@ export const restaurantProfileSchema = z
     pickupTimeMaxMinutes: z.number().int().positive(),
     // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-1.
     showHighlightsInMultipleRows: z.boolean(),
-    // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-1 — mesmo padrão
-    // `.optional()` de `defaultProductImageUrl`/`instagramUrl`: ausente = seção desligada, não
-    // "zero produtos".
-    cartSuggestionsCount: z.number().int().positive().optional(),
+    // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-1 — mesmo padrão de
+    // `showBestSellers` desde specs/0117-vitrine-manual-e-ajustes-formularios.
+    showCartSuggestions: z.boolean(),
     // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-10.
     acceptedPaymentMethods: z.array(paymentMethodSchema),
     // specs/0083-modalidade-entrega-retirada-restaurante REQ-2/REQ-3 — pelo menos uma modalidade.
