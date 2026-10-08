@@ -70,6 +70,7 @@ const restaurantSchema = new Schema(
     shareMessage: { type: String },
     // specs/0094-mensagem-boas-vindas-home — sem default: ausente/vazio = nenhum card na home.
     welcomeMessage: { type: String },
+    welcomeCardColor: { type: String },
     // specs/0043-programa-indicacao REQ-1 — sparse: restaurantes antigos ficam sem código até o backfill.
     referralCode: { type: String, unique: true, sparse: true },
     pixKey: { type: String },
@@ -118,6 +119,7 @@ const restaurantSchema = new Schema(
     ratingCount: { type: Number, required: true, default: 0 },
     // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-1.
     showHighlightsInMultipleRows: { type: Boolean, required: true, default: false },
+    showBestSellersInMultipleRows: { type: Boolean, required: true, default: false },
     // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-1 — mesmo padrão de
     // `showBestSellers` desde specs/0117 (ver comentário na entity).
     showCartSuggestions: { type: Boolean, required: true, default: false },

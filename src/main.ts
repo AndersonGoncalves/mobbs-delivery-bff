@@ -31,6 +31,8 @@ import { StockMovementMongooseRepository } from './modules/raw-materials/infra/r
 import { RawMaterialsController } from './modules/raw-materials/presentation/raw-materials.controller';
 import { SupplierMongooseRepository } from './modules/suppliers/infra/repositories/supplier.mongoose.repository';
 import { SuppliersController } from './modules/suppliers/presentation/suppliers.controller';
+import { MotoboyMongooseRepository } from './modules/motoboys/infra/repositories/motoboy.mongoose.repository';
+import { MotoboysController } from './modules/motoboys/presentation/motoboys.controller';
 import { PurchaseOrderMongooseRepository } from './modules/purchase-orders/infra/repositories/purchase-order.mongoose.repository';
 import { ReceivePurchaseOrderService } from './modules/purchase-orders/infra/services/receive-purchase-order.service';
 import { PurchaseOrdersController } from './modules/purchase-orders/presentation/purchase-orders.controller';
@@ -231,6 +233,7 @@ server
     new AccountsReceivableController(new AccountReceivableMongooseRepository(), restaurantOperatorMiddleware),
     new CashRegisterController(cashRegisterRepository, restaurantOperatorMiddleware),
     new SuppliersController(new SupplierMongooseRepository(), restaurantOperatorMiddleware),
+    new MotoboysController(new MotoboyMongooseRepository(), restaurantOperatorMiddleware),
     new PurchaseOrdersController(purchaseOrderRepository, receivePurchaseOrderService, restaurantOperatorMiddleware),
     new CouponsController(couponRepository, orderRepository, restaurantOperatorMiddleware),
     new CampaignsController(campaignRepository, campaignOptOutRepository, campaignDispatchService, restaurantOperatorMiddleware),

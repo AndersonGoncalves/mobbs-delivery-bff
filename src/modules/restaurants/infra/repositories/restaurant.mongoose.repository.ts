@@ -33,6 +33,7 @@ interface RestaurantLeanDocument {
   deliveryFeeCents?: number;
   shareMessage?: string;
   welcomeMessage?: string;
+  welcomeCardColor?: string;
   referralCode?: string;
   pixKey?: string;
   pixKeyType?: PixKeyType;
@@ -57,6 +58,7 @@ interface RestaurantLeanDocument {
   rating?: number;
   ratingCount?: number;
   showHighlightsInMultipleRows?: boolean;
+  showBestSellersInMultipleRows?: boolean;
   showCartSuggestions?: boolean;
   category?: string;
   businessHoursReviewedAt?: Date;
@@ -102,6 +104,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     deliveryFeeCents: doc.deliveryFeeCents ?? 0,
     shareMessage: doc.shareMessage ?? buildDefaultShareMessage(doc.name),
     welcomeMessage: doc.welcomeMessage,
+    welcomeCardColor: doc.welcomeCardColor,
     referralCode: doc.referralCode,
     pixKey: doc.pixKey,
     pixKeyType: doc.pixKeyType,
@@ -126,6 +129,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     rating: doc.rating ?? 0,
     ratingCount: doc.ratingCount ?? 0,
     showHighlightsInMultipleRows: doc.showHighlightsInMultipleRows ?? false,
+    showBestSellersInMultipleRows: doc.showBestSellersInMultipleRows ?? false,
     showCartSuggestions: doc.showCartSuggestions ?? false,
     category: doc.category,
     businessHoursReviewedAt: doc.businessHoursReviewedAt,

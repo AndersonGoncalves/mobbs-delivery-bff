@@ -82,6 +82,7 @@ export const restaurantProfileSchema = z
     shareMessage: z.string(),
     // specs/0094-mensagem-boas-vindas-home REQ-1 — opcional; string vazia limpa o card.
     welcomeMessage: z.string().max(500).optional(),
+    welcomeCardColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Cor deve estar em formato #RRGGBB').optional(),
     pixKey: z.string(),
     pixKeyType: z.enum(['telefone', 'cpf', 'cnpj', 'email', 'aleatoria']),
     pixBeneficiaryName: z.string(),
@@ -110,6 +111,7 @@ export const restaurantProfileSchema = z
     pickupTimeMaxMinutes: z.number().int().positive(),
     // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-1.
     showHighlightsInMultipleRows: z.boolean(),
+    showBestSellersInMultipleRows: z.boolean(),
     // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-1 — mesmo padrão de
     // `showBestSellers` desde specs/0117-vitrine-manual-e-ajustes-formularios.
     showCartSuggestions: z.boolean(),

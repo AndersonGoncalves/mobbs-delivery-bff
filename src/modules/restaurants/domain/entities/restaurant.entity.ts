@@ -88,6 +88,10 @@ export interface IRestaurant {
   shareMessage?: string;
   /** specs/0094-mensagem-boas-vindas-home — texto do card de boas-vindas na home do app; vazio = sem card. */
   welcomeMessage?: string;
+  /** Pedido explícito do usuário — cor de fundo do card de boas-vindas (`#RRGGBB`, mesmo formato
+   * de `primaryColor`). `undefined` = fallback atual (`primaryColor` com opacidade), sem cor
+   * própria configurada. */
+  welcomeCardColor?: string;
   /** specs/0043-programa-indicacao REQ-1 — código de indicação permanente e único (link `?ref=`). */
   referralCode?: string;
   pixKey?: string;
@@ -155,9 +159,11 @@ export interface IRestaurant {
   rating: number;
   ratingCount: number;
   /** specs/0032-ajustes-diversos-rating-taxa-entrega REQ-1 — `false` (default, comportamento
-   * atual) = "Destaques" numa linha só (scroll horizontal); `true` = grade em várias linhas. Só
-   * afeta "Destaques" — "Mais vendidos" sempre uma linha, independente disso. */
+   * atual) = "Destaques" numa linha só (scroll horizontal); `true` = grade em várias linhas. */
   showHighlightsInMultipleRows: boolean;
+  /** Pedido explícito do usuário — mesmo campo que [showHighlightsInMultipleRows], agora pra
+   * "Mais pedidos" (antes sempre uma linha só, independente da config de Destaques). */
+  showBestSellersInMultipleRows: boolean;
   /** specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-1 — liga/desliga a seção
    * "Peça também" no carrinho do app cliente. Desde specs/0117-vitrine-manual-e-ajustes-formularios,
    * substitui `cartSuggestionsCount` (removido — produtos exibidos são curados manualmente via
