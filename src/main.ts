@@ -112,6 +112,7 @@ const receivePurchaseOrderService = new ReceivePurchaseOrderService(
   purchaseOrderRepository,
   rawMaterialRepository,
   stockMovementRepository,
+  productRepository,
 );
 
 // specs/0016-clientes-retaguarda — mesma instância de `OrderMongooseRepository` compartilhada

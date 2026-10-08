@@ -3,7 +3,8 @@ import { Schema, model } from 'mongoose';
 
 const purchaseOrderItemSchema = new Schema(
   {
-    rawMaterialId: { type: String, required: true },
+    rawMaterialId: { type: String },
+    productId: { type: String },
     quantity: { type: Number, required: true },
     unitCost: { type: Number, required: true },
   },

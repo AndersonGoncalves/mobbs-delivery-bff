@@ -25,6 +25,7 @@ function toEntity(doc: PurchaseOrderLeanDocument): IPurchaseOrder {
     status: doc.status,
     items: doc.items.map((item) => ({
       rawMaterialId: item.rawMaterialId,
+      productId: item.productId,
       quantity: item.quantity,
       unitCost: item.unitCost,
     })),

@@ -1,5 +1,6 @@
 import { ConflictError, NotFoundError } from 'restify-errors';
 
+import { IProductRepository } from '../../../catalog/domain/repositories/product.repository.interface';
 import { IRawMaterialRepository } from '../../../raw-materials/domain/repositories/raw-material.repository.interface';
 import { IStockMovementRepository } from '../../../raw-materials/domain/repositories/stock-movement.repository.interface';
 import { IPurchaseOrder } from '../../domain/entities/purchase-order.entity';
@@ -31,6 +32,9 @@ export class ReceivePurchaseOrderService implements IReceivePurchaseOrderService
     private readonly purchaseOrderRepository: IPurchaseOrderRepository,
     private readonly rawMaterialRepository: IRawMaterialRepository,
     private readonly stockMovementRepository: IStockMovementRepository,
+    // Pedido explícito do usuário (follow-up) — item do pedido de compra pode ser um `Product`
+    // pronto pra revenda, não só matéria-prima (ver branch abaixo).
+    private readonly productRepository: IProductRepository,
   ) {}
 
   async receive(purchaseOrderId: string, restaurantId: string): Promise<IPurchaseOrder> {
@@ -48,15 +52,31 @@ export class ReceivePurchaseOrderService implements IReceivePurchaseOrderService
     // REQ-3/AC-3 — sequencial (não Promise.all) pra manter o racional de aplicação item a item
     // documentado acima previsível de auditar.
     for (const item of updated.items) {
-      await this.rawMaterialRepository.incrementStock(item.rawMaterialId, item.quantity);
-      await this.stockMovementRepository.create({
-        restaurantId,
-        rawMaterialId: item.rawMaterialId,
-        type: 'entrada',
-        quantity: item.quantity,
-        reason: `Recebimento — Pedido de compra #${updated.id}`,
-        purchaseOrderId: updated.id,
-      });
+      if (item.productId) {
+        // Pedido explícito do usuário (follow-up) — produto pronto pra revenda: só registra
+        // `StockMovement` se de fato incrementou (produto com `stockQuantity` definido), mesmo
+        // raciocínio de `DeductStockForDeliveredOrderUseCase` do lado da baixa.
+        const incremented = await this.productRepository.incrementStock(item.productId, item.quantity);
+        if (!incremented) continue;
+        await this.stockMovementRepository.create({
+          restaurantId,
+          productId: item.productId,
+          type: 'entrada',
+          quantity: item.quantity,
+          reason: `Recebimento — Pedido de compra #${updated.id}`,
+          purchaseOrderId: updated.id,
+        });
+      } else if (item.rawMaterialId) {
+        await this.rawMaterialRepository.incrementStock(item.rawMaterialId, item.quantity);
+        await this.stockMovementRepository.create({
+          restaurantId,
+          rawMaterialId: item.rawMaterialId,
+          type: 'entrada',
+          quantity: item.quantity,
+          reason: `Recebimento — Pedido de compra #${updated.id}`,
+          purchaseOrderId: updated.id,
+        });
+      }
     }
 
     return updated;

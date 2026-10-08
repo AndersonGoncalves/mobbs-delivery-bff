@@ -138,6 +138,13 @@ export interface IProductRepository {
    * existe e tem `stockQuantity` definido), `false` caso contrário. */
   decrementStock(id: string, quantity: number): Promise<boolean>;
 
+  /** Pedido explícito do usuário (follow-up) — soma `quantity` ao `stockQuantity` do produto, ao
+   * receber um pedido de compra que inclui este produto pronto pra revenda (`ReceivePurchaseOrderService`).
+   * Mesma regra de [decrementStock]: não faz nada se o produto não tiver `stockQuantity` definido
+   * (feito sob demanda nunca passa a ser rastreado só por receber uma compra). Devolve `true` se
+   * de fato incrementou. */
+  incrementStock(id: string, quantity: number): Promise<boolean>;
+
   /** specs/0109-galeria-fotos-produto REQ-13 — se algum OUTRO produto do restaurante (exceto
    * `excludingProductId`) ainda tem `url` em `images`/`imageUrl`, não deve ser apagada do S3 ao
    * ser removida da galeria do produto atual (ou do produto sendo excluído). */

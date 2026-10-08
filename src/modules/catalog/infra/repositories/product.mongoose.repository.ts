@@ -573,6 +573,16 @@ export class ProductMongooseRepository implements IProductRepository {
     return result.matchedCount > 0;
   }
 
+  async incrementStock(id: string, quantity: number): Promise<boolean> {
+    // Pedido explícito do usuário (follow-up) — mesma regra de `decrementStock`: só soma em
+    // produtos com `stockQuantity` já definido (feito sob demanda = `null`/ausente, nunca mexido).
+    const result = await ProductModel.updateOne(
+      { _id: id, stockQuantity: { $ne: null } },
+      { $inc: { stockQuantity: quantity } },
+    );
+    return result.matchedCount > 0;
+  }
+
   async findAnyByLinkedProductId(restaurantId: string, linkedProductId: string): Promise<IAffectedProduct[]> {
     // Sem `isAvailable: true` — REQ-4 bloqueia a exclusão independente do produto que usa o
     // vínculo estar disponível ou não (mesmo espírito de `countAnyByRawMaterialId`).

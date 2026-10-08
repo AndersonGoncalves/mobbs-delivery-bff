@@ -1,13 +1,18 @@
 /**
  * docs/architecture/data-model.md §PurchaseOrder/§PurchaseOrderItem — pedido de compra de
- * matéria-prima junto a um fornecedor (specs/0015-estoque-compras REQ-2). Ao ser marcado como
- * `recebido`, gera `StockMovement` de entrada por item (REQ-3, `ReceivePurchaseOrderService`).
+ * matéria-prima OU produto pronto pra revenda (ex. refrigerante) junto a um fornecedor
+ * (specs/0015-estoque-compras REQ-2; produto pronto — pedido explícito do usuário, follow-up). Ao
+ * ser marcado como `recebido`, gera `StockMovement` de entrada por item (REQ-3,
+ * `ReceivePurchaseOrderService`).
  */
 export type PurchaseOrderStatus = 'aberto' | 'recebido' | 'cancelado';
 
 export interface IPurchaseOrderItem {
-  rawMaterialId: string;
-  /** Na `unit` do `RawMaterial` referenciado. */
+  /** Exatamente um entre `rawMaterialId`/`productId` é preenchido, nunca os dois. */
+  rawMaterialId?: string;
+  /** Pedido explícito do usuário (follow-up) — comprar um `Product` já pronto pra revenda. */
+  productId?: string;
+  /** Na `unit` do `RawMaterial` referenciado, ou unidade do próprio produto quando `productId`. */
   quantity: number;
   /** Custo pago nesta compra — pode diferir de compra pra compra. */
   unitCost: number;
