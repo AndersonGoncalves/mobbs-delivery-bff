@@ -13,6 +13,7 @@ function buildCampaign(overrides: Partial<ICampaign> = {}): ICampaign {
     restaurantId: 'r-1',
     message: 'Promoção especial hoje!',
     campaignCode: 'abc123def0',
+    excludedCustomerIds: [],
     status: 'sending',
     totalRecipients: 0,
     sentCount: 0,
@@ -99,6 +100,27 @@ describe('CampaignDispatchService', () => {
 
     expect(whatsAppConnectionService.sendMessage).toHaveBeenCalledTimes(1);
     expect((whatsAppConnectionService.sendMessage as jest.Mock).mock.calls[0][1]).toBe('11999990001');
+  });
+
+  // Pedido explícito do usuário (follow-up) — cliente excluído deste disparo específico (não é
+  // um descadastro — `optOut` continua sendo outra lista, testada acima).
+  it('não envia pra cliente em excludedCustomerIds, mesmo elegível e sem opt-out', async () => {
+    const { service, whatsAppConnectionService } = setup({
+      campaign: { excludedCustomerIds: ['c-2'] },
+    });
+
+    await service.dispatch('camp-1');
+
+    expect(whatsAppConnectionService.sendMessage).toHaveBeenCalledTimes(1);
+    expect((whatsAppConnectionService.sendMessage as jest.Mock).mock.calls[0][1]).toBe('11999990001');
+  });
+
+  it('excludedCustomerIds vazio (default) manda pra todo mundo elegível, sem excluir ninguém', async () => {
+    const { service, whatsAppConnectionService } = setup();
+
+    await service.dispatch('camp-1');
+
+    expect(whatsAppConnectionService.sendMessage).toHaveBeenCalledTimes(2);
   });
 
   // REQ-4 — campanha com imagem usa `sendImageMessage`, não `sendMessage`.

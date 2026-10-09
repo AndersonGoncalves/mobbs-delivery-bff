@@ -4,6 +4,8 @@ export interface CampaignInput {
   message: string;
   imageUrl?: string;
   campaignCode: string;
+  /** Pedido explícito do usuário (follow-up) — ver `ICampaign.excludedCustomerIds`. */
+  excludedCustomerIds: string[];
 }
 
 export interface ICampaignRepository {

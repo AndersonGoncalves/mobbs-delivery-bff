@@ -12,6 +12,14 @@ export interface ICampaign {
   imageUrl?: string;
   /** 10 caracteres hex, usado no `?campaign=` do link de cardápio (REQ-2). */
   campaignCode: string;
+  /**
+   * Pedido explícito do usuário (follow-up) — "filtrar os clientes, caso não queira enviar para
+   * um determinado grupo": `customerId`s excluídos deste disparo específico. Lista de EXCLUSÃO,
+   * não de inclusão — default `[]` continua mandando pra todo cliente elegível (mesmo
+   * comportamento de sempre), e quem já descadastrou (`ICampaignOptOutRepository`) continua de
+   * fora independente desta lista.
+   */
+  excludedCustomerIds: string[];
   status: 'sending' | 'completed';
   /** Só sabido depois de resolver os destinatários elegíveis (`CampaignDispatchService`) — `0`
    * enquanto a campanha ainda não calculou a lista. */

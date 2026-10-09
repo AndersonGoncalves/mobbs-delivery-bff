@@ -35,12 +35,17 @@ export class CampaignDispatchService implements ICampaignDispatchService {
       if (!restaurant) return;
 
       const summaries = await this.customerSummaryRepository.listByRestaurant(campaign.restaurantId);
+      // Pedido explícito do usuário (follow-up) — clientes escolhidos pelo operador pra ficar de
+      // fora DESTE disparo (filtro por campanha, não um descadastro — ver REQ-5 abaixo, que
+      // continua valendo por cima disso).
+      const excluded = new Set(campaign.excludedCustomerIds);
       const eligible: { customerId: string; phone: string }[] = [];
       for (const summary of summaries) {
         // REQ-6 — sem telefone, nunca entra na lista.
         if (!summary.phone) continue;
         // REQ-5 — descadastrado desse restaurante não recebe mais campanhas.
         if (await this.campaignOptOutRepository.isOptedOut(campaign.restaurantId, summary.customerId)) continue;
+        if (excluded.has(summary.customerId)) continue;
         eligible.push({ customerId: summary.customerId, phone: summary.phone });
       }
 

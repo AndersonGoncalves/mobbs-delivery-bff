@@ -8,6 +8,7 @@ interface CampaignLeanDocument {
   message: string;
   imageUrl?: string;
   campaignCode: string;
+  excludedCustomerIds?: string[];
   status: 'sending' | 'completed';
   totalRecipients: number;
   sentCount: number;
@@ -23,6 +24,7 @@ function toEntity(doc: CampaignLeanDocument): ICampaign {
     message: doc.message,
     imageUrl: doc.imageUrl,
     campaignCode: doc.campaignCode,
+    excludedCustomerIds: doc.excludedCustomerIds ?? [],
     status: doc.status,
     totalRecipients: doc.totalRecipients,
     sentCount: doc.sentCount,
@@ -39,6 +41,7 @@ export class CampaignMongooseRepository implements ICampaignRepository {
       message: input.message,
       imageUrl: input.imageUrl,
       campaignCode: input.campaignCode,
+      excludedCustomerIds: input.excludedCustomerIds,
       status: 'sending',
       totalRecipients: 0,
       sentCount: 0,

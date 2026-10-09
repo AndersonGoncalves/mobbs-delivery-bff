@@ -47,6 +47,7 @@ function buildCampaign(overrides: Partial<ICampaign> = {}): ICampaign {
     restaurantId: 'r-1',
     message: 'Promoção especial!',
     campaignCode: 'abc123def0',
+    excludedCustomerIds: [],
     status: 'sending',
     totalRecipients: 0,
     sentCount: 0,
@@ -101,6 +102,28 @@ describe('CampaignsController', () => {
     );
     expect(campaignDispatchService.dispatch).toHaveBeenCalledWith('camp-1');
     expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ id: 'camp-1' }));
+  });
+
+  // Pedido explícito do usuário (follow-up) — filtrar clientes excluídos deste disparo.
+  it('POST .../campaigns repassa excludedCustomerIds pro repositório; ausente vira []', async () => {
+    const { routes, campaignRepository } = setup();
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/campaigns'],
+      { restaurantId: 'r-1', body: { message: 'Promoção especial!', excludedCustomerIds: ['c-1', 'c-2'] } },
+      { json },
+    );
+
+    expect(campaignRepository.create).toHaveBeenCalledWith('r-1', expect.objectContaining({ excludedCustomerIds: ['c-1', 'c-2'] }));
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/campaigns'],
+      { restaurantId: 'r-1', body: { message: 'Outra campanha' } },
+      { json },
+    );
+
+    expect(campaignRepository.create).toHaveBeenLastCalledWith('r-1', expect.objectContaining({ excludedCustomerIds: [] }));
   });
 
   // dispatch falhando (promise rejeitada) não deve derrubar a resposta HTTP já dada.

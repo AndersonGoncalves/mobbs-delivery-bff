@@ -45,6 +45,7 @@ export class CampaignsController extends BaseRouter {
         message: payload.message,
         imageUrl: payload.imageUrl,
         campaignCode: generateCampaignCode(),
+        excludedCustomerIds: payload.excludedCustomerIds ?? [],
       });
       this.campaignDispatchService.dispatch(campaign.id).catch((error) => {
         console.error(`[campaigns] dispatch da campanha ${campaign.id} falhou:`, error);
