@@ -228,7 +228,12 @@ server
       emailService,
       customerPixKeyRepository,
     ),
-    new CustomersSummaryController(new CustomerSummaryMongooseRepository(), orderRepository, restaurantOperatorMiddleware),
+    new CustomersSummaryController(
+      new CustomerSummaryMongooseRepository(),
+      orderRepository,
+      restaurantOperatorMiddleware,
+      new AddressMongooseRepository(),
+    ),
     new WhatsAppConnectionController(whatsAppConnectionService, restaurantOperatorMiddleware),
     new AccountsPayableController(new AccountPayableMongooseRepository(), restaurantOperatorMiddleware),
     new AccountsReceivableController(new AccountReceivableMongooseRepository(), restaurantOperatorMiddleware),

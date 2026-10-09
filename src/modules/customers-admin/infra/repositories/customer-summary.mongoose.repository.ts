@@ -27,14 +27,22 @@ function escapeRegex(value: string): string {
  * pra trazer `name`/`phone` num único round-trip ao banco.
  */
 export class CustomerSummaryMongooseRepository implements ICustomerSummaryRepository {
-  async listByRestaurant(restaurantId: string, search?: string): Promise<ICustomerSummary[]> {
+  async listByRestaurant(restaurantId: string, search?: string, fromDate?: Date, toDate?: Date): Promise<ICustomerSummary[]> {
+    // Pedido explícito do usuário (follow-up) — `$match` continua sobre TODO o histórico (decide
+    // quem aparece na lista); o período só entra como condição dentro do `$sum` condicional, pra
+    // um cliente sem pedido no período ficar com os totais zerados em vez de sumir da lista.
+    const isInPeriod =
+      fromDate || toDate
+        ? { $and: [{ $gte: ['$createdAt', fromDate ?? new Date(0)] }, { $lte: ['$createdAt', toDate ?? new Date('9999-12-31')] }] }
+        : { $literal: true };
+
     const pipeline: PipelineStage[] = [
       { $match: { restaurantId } },
       {
         $group: {
           _id: '$customerId',
-          totalOrders: { $sum: 1 },
-          totalSpent: { $sum: '$total' },
+          totalOrders: { $sum: { $cond: [isInPeriod, 1, 0] } },
+          totalSpent: { $sum: { $cond: [isInPeriod, '$total', 0] } },
           lastOrderAt: { $max: '$createdAt' },
         },
       },

@@ -5,6 +5,7 @@ import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
 import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
+import { IAddressRepository } from '../../customers/domain/repositories/address.repository.interface';
 import { ICustomerSummaryRepository } from '../domain/repositories/customer-summary.repository.interface';
 import { customersSummaryQuerySchema } from './customers-summary.schemas';
 
@@ -25,6 +26,9 @@ export class CustomersSummaryController extends BaseRouter {
     private readonly customerSummaryRepository: ICustomerSummaryRepository,
     private readonly orderRepository: IOrderRepository,
     private readonly restaurantOperatorMiddleware: AsyncHandler,
+    // Pedido explícito do usuário (follow-up) — "ver endereços" do cliente (mesmo padrão de "ver
+    // pedidos").
+    private readonly addressRepository: IAddressRepository,
   ) {
     super();
   }
@@ -39,8 +43,15 @@ export class CustomersSummaryController extends BaseRouter {
 
     // AC-1/AC-2/AC-4
     application.get('/restaurants/me/customers-summary', ...authenticated, async (req: Request, res: Response) => {
-      const { search } = parseBody(customersSummaryQuerySchema, req.query);
-      const summaries = await this.customerSummaryRepository.listByRestaurant(req.restaurantId!, search);
+      const { search, fromDate, toDate } = parseBody(customersSummaryQuerySchema, req.query);
+      // `toDate` inclusive até o fim do dia (23:59:59.999) — um pedido feito às 22h no último dia
+      // do período não pode ficar de fora por `toDate` ter sido interpretado como meia-noite.
+      const summaries = await this.customerSummaryRepository.listByRestaurant(
+        req.restaurantId!,
+        search,
+        fromDate ? new Date(`${fromDate}T00:00:00.000`) : undefined,
+        toDate ? new Date(`${toDate}T23:59:59.999`) : undefined,
+      );
       res.json(200, summaries);
     });
 
@@ -53,6 +64,26 @@ export class CustomersSummaryController extends BaseRouter {
       async (req: Request, res: Response) => {
         const orders = await this.orderRepository.findManyByCustomerAndRestaurant(req.params.customerId, req.restaurantId!);
         res.json(200, orders);
+      },
+    );
+
+    // Pedido explícito do usuário (follow-up) — "ver endereços" do cliente, mesmo botão de "ver
+    // pedidos". `Address` não é escopada por restaurante (docs/architecture/data-model.md
+    // §Address), então — diferente da rota de pedidos acima, que já isola pela própria query —
+    // aqui é preciso confirmar explicitamente que o cliente pediu NESTE restaurante antes de
+    // devolver o endereço, pra um operador não conseguir ver o endereço de qualquer customerId
+    // só adivinhando o id (a mesma checagem que `findManyByCustomerAndRestaurant` já faz).
+    application.get(
+      '/restaurants/me/customers-summary/:customerId/addresses',
+      ...authenticated,
+      async (req: Request, res: Response) => {
+        const orders = await this.orderRepository.findManyByCustomerAndRestaurant(req.params.customerId, req.restaurantId!);
+        if (orders.length === 0) {
+          res.json(200, []);
+          return;
+        }
+        const addresses = await this.addressRepository.listByCustomer(req.params.customerId);
+        res.json(200, addresses);
       },
     );
   }
