@@ -16,6 +16,9 @@ services:
       - SMTP_FROM=${SMTP_FROM}
       # specs/0112 REQ-9 — chave de criptografia da chave Pix do cliente (32 bytes em base64). Sem ela, a função falha.
       - PIX_KEY_ENCRYPTION_KEY=${PIX_KEY_ENCRYPTION_KEY}
+      # specs/0123-prospeccao-restaurantes-google-maps — chave de SERVIDOR (Places API New). Sem ela,
+      # a busca de prospects lança erro claro (REQ-8), o resto do BFF continua funcionando normalmente.
+      - GOOGLE_PLACES_API_KEY=${GOOGLE_PLACES_API_KEY}
       # Firebase Admin SDK (verificação dos tokens do app) — chave de service account baixada no
       # Console (Configurações do projeto > Contas de serviço > Gerar nova chave privada), salva
       # como ./firebase-service-account.json (mesma pasta deste arquivo, já no .gitignore).
