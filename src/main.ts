@@ -71,6 +71,9 @@ import { BillingController } from './modules/billing/presentation/billing.contro
 import { BillingSettingsController } from './modules/billing/presentation/billing-settings.controller';
 import { PlatformController } from './modules/platform/presentation/platform.controller';
 import { buildPlatformAdminMiddleware, parsePlatformAdminEmails } from './shared/http/platform-admin.middleware';
+import { ProspectsController } from './modules/prospects/presentation/prospects.controller';
+import { ProspectMongooseRepository } from './modules/prospects/infra/repositories/prospect.mongoose.repository';
+import { GooglePlacesService } from './modules/prospects/infra/services/google-places.service';
 
 const server = new Server();
 
@@ -212,6 +215,12 @@ server
     // specs/0113-parametrizacao-faixas-cobranca.
     new BillingSettingsController(
       billingSettingsRepository,
+      buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
+    ),
+    // specs/0123-prospeccao-restaurantes-google-maps — painel da plataforma, mesmo acesso de PlatformController.
+    new ProspectsController(
+      new GooglePlacesService(environment.googleMaps.placesApiKey),
+      new ProspectMongooseRepository(),
       buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
     ),
     new RawMaterialsController(rawMaterialRepository, productRepository, restaurantOperatorMiddleware, stockMovementRepository),

@@ -25,4 +25,9 @@ export const environment = {
     bucket: process.env.S3_BUCKET_NAME || 'mobbs-delivery-images',
     region: process.env.AWS_REGION || 'us-east-1',
   },
+  /** specs/0123-prospeccao-restaurantes-google-maps — sem essa chave, `GooglePlacesService`
+   * lança erro claro em runtime (REQ-8), nunca derruba o resto do painel da plataforma. */
+  googleMaps: {
+    placesApiKey: process.env.GOOGLE_PLACES_API_KEY,
+  },
 };
