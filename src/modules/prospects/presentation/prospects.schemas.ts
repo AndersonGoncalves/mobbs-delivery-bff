@@ -30,3 +30,22 @@ export const saveProspectsSchema = z.object({
 export const listProspectsQuerySchema = z.object({
   category: z.enum(PROSPECT_CATEGORY_VALUES as [string, ...string[]]).optional(),
 });
+
+// specs/0124-campanha-whatsapp-prospects REQ-6.
+export const contactProspectsSchema = z.object({
+  prospectIds: z.array(z.string().min(1)).min(1, 'Selecione ao menos um prospect'),
+  message: z.string().trim().min(1).max(4096),
+  imageUrl: z.string().url().optional(),
+});
+
+// specs/0124-campanha-whatsapp-prospects REQ-11 — número avulso, sem exigir prospect salvo.
+export const contactAdHocSchema = z.object({
+  phone: z.string().trim().min(8, 'Telefone inválido'),
+  message: z.string().trim().min(1).max(4096),
+  imageUrl: z.string().url().optional(),
+});
+
+// specs/0124-campanha-whatsapp-prospects REQ-3 — imagem opcional da mensagem de abordagem.
+export const presignPlatformUploadSchema = z.object({
+  filename: z.string().min(1),
+});

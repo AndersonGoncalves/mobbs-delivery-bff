@@ -13,6 +13,8 @@ const prospectSchema = new Schema(
     longitude: { type: Number, required: true },
     rating: { type: Number },
     contactName: { type: String },
+    // specs/0124-campanha-whatsapp-prospects REQ-4/REQ-7.
+    lastContactedAt: { type: Date },
   },
   { _id: false, timestamps: true },
 );

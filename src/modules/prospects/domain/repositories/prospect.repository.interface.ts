@@ -17,4 +17,10 @@ export interface IProspectRepository {
   /** REQ-9 — chave de deduplicação antes de criar. */
   findByPlaceId(placeId: string): Promise<IProspect | null>;
   create(input: ProspectInput): Promise<IProspect>;
+  /** specs/0124-campanha-whatsapp-prospects — usado por `ProspectOutreachService` pra resolver o
+   * telefone/nome de cada prospect selecionado antes de enviar. */
+  findById(id: string): Promise<IProspect | null>;
+  /** specs/0124-campanha-whatsapp-prospects REQ-7/REQ-9 — grava a data do envio bem-sucedido;
+   * chamado de novo num reenvio, sem criar histórico (sobrescreve). */
+  markContacted(id: string, contactedAt: string): Promise<void>;
 }

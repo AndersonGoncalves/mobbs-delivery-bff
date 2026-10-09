@@ -74,6 +74,9 @@ import { buildPlatformAdminMiddleware, parsePlatformAdminEmails } from './shared
 import { ProspectsController } from './modules/prospects/presentation/prospects.controller';
 import { ProspectMongooseRepository } from './modules/prospects/infra/repositories/prospect.mongoose.repository';
 import { GooglePlacesService } from './modules/prospects/infra/services/google-places.service';
+import { ProspectOutreachService } from './modules/prospects/infra/services/prospect-outreach.service';
+import { PlatformWhatsAppConnectionService } from './modules/whatsapp-connection/infra/platform-whatsapp-connection.service';
+import { PlatformWhatsAppConnectionController } from './modules/whatsapp-connection/presentation/platform-whatsapp-connection.controller';
 
 const server = new Server();
 
@@ -157,6 +160,14 @@ const campaignDispatchService = new CampaignDispatchService(
   whatsAppConnectionService,
 );
 
+// specs/0124-campanha-whatsapp-prospects — sessão de WhatsApp independente da plataforma (não
+// vinculada a nenhum restaurante), reaberta no boot só se já tiver sido pareada antes. Mesma
+// instância de `ProspectMongooseRepository` compartilhada entre `ProspectsController` (busca/
+// salvar/listar) e `ProspectOutreachService` (envio), sem duplicar.
+const prospectRepository = new ProspectMongooseRepository();
+const platformWhatsAppConnectionService = new PlatformWhatsAppConnectionService();
+const prospectOutreachService = new ProspectOutreachService(prospectRepository, platformWhatsAppConnectionService);
+
 server
   .bootstrap([
     new RestaurantsController(restaurantRepository, restaurantOperatorMiddleware),
@@ -217,10 +228,17 @@ server
       billingSettingsRepository,
       buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
     ),
-    // specs/0123-prospeccao-restaurantes-google-maps — painel da plataforma, mesmo acesso de PlatformController.
+    // specs/0123-prospeccao-restaurantes-google-maps / specs/0124-campanha-whatsapp-prospects —
+    // painel da plataforma, mesmo acesso de PlatformController.
     new ProspectsController(
       new GooglePlacesService(environment.googleMaps.placesApiKey),
-      new ProspectMongooseRepository(),
+      prospectRepository,
+      buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
+      prospectOutreachService,
+    ),
+    // specs/0124-campanha-whatsapp-prospects REQ-2 — pareamento da sessão de WhatsApp da plataforma.
+    new PlatformWhatsAppConnectionController(
+      platformWhatsAppConnectionService,
       buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
     ),
     new RawMaterialsController(rawMaterialRepository, productRepository, restaurantOperatorMiddleware, stockMovementRepository),
@@ -266,8 +284,10 @@ server
     ),
   ], [migrateOperatorRolesToDono, backfillManualBestSellers])
   // specs/0066 REQ-1 — sessões do Baileys vivem em memória; sem isto todo restart do container
-  // derruba o envio de WhatsApp em silêncio. Fire-and-forget: nunca atrasa nem derruba o boot.
-  .then(() => whatsAppConnectionService.restoreConnectedSessions())
+  // derruba o envio de WhatsApp em silêncio. specs/0124 — mesma lógica pra sessão da plataforma.
+  .then(() =>
+    Promise.all([whatsAppConnectionService.restoreConnectedSessions(), platformWhatsAppConnectionService.restoreConnectedSession()]),
+  )
   .catch((error) => {
     // eslint-disable-next-line no-console
     console.error('Falha ao iniciar o servidor:', error);

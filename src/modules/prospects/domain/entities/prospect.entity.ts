@@ -19,5 +19,9 @@ export interface IProspect {
    * campo preenchido manualmente depois (edição do prospect salvo), nunca vindo da busca.
    */
   contactName?: string;
+  /** specs/0124-campanha-whatsapp-prospects REQ-4/REQ-7 — data/hora do último envio de mensagem
+   * de abordagem bem-sucedido; ausente = nunca contatado. Reenviar sobrescreve (REQ-9), não
+   * acumula histórico. */
+  lastContactedAt?: string;
   createdAt: string;
 }

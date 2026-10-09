@@ -13,6 +13,7 @@ interface ProspectLeanDocument {
   longitude: number;
   rating?: number;
   contactName?: string;
+  lastContactedAt?: Date;
   createdAt: Date;
 }
 
@@ -28,6 +29,7 @@ function toEntity(doc: ProspectLeanDocument): IProspect {
     longitude: doc.longitude,
     rating: doc.rating,
     contactName: doc.contactName,
+    lastContactedAt: doc.lastContactedAt?.toISOString(),
     createdAt: doc.createdAt.toISOString(),
   };
 }
@@ -47,5 +49,14 @@ export class ProspectMongooseRepository implements IProspectRepository {
   async create(input: ProspectInput): Promise<IProspect> {
     const doc = await ProspectModel.create(input);
     return toEntity(doc.toObject() as ProspectLeanDocument);
+  }
+
+  async findById(id: string): Promise<IProspect | null> {
+    const doc = await ProspectModel.findById(id).lean<ProspectLeanDocument>();
+    return doc ? toEntity(doc) : null;
+  }
+
+  async markContacted(id: string, contactedAt: string): Promise<void> {
+    await ProspectModel.updateOne({ _id: id }, { $set: { lastContactedAt: new Date(contactedAt) } });
   }
 }
