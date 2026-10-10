@@ -4,6 +4,7 @@ import { buildPaymentBlock, buildRepeatOrderLink, buildTrackingLink, formatCurre
 const ORDER_TYPE_LABELS: Record<IOrder['orderType'], string> = {
   delivery: 'Entrega',
   pickup: 'Retirada',
+  table: 'Mesa/Balcão',
 };
 
 export interface MessagePlaceholdersInput {
@@ -33,7 +34,7 @@ export function buildMessagePlaceholders(input: MessagePlaceholdersInput): Recor
   const enderecoEntrega =
     order.orderType === 'delivery'
       ? `Endereço: ${order.deliveryAddress ?? 'não informado'}\nTaxa de entrega: ${formatCurrency(order.deliveryFee)}`
-      : 'Retirada no local.';
+      : order.orderType === 'table' ? 'Mesa/Balcão.' : 'Retirada no local.';
 
   return {
     numeroPedido: String(order.orderNumber),

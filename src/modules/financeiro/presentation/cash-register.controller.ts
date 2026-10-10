@@ -91,14 +91,15 @@ export class CashRegisterController extends BaseRouter {
     application.get('/restaurants/me/cash-register/open', ...authenticated, async (req: Request, res: Response) => {
       const session = await this.cashRegisterRepository.findOpenSessionByRestaurant(req.restaurantId!);
       if (!session) {
-        res.json(200, { session: null, movements: [], calculatedBalance: 0 });
+        res.json(200, { session: null, movements: [], calculatedBalance: 0, tableSales: 0 });
         return;
       }
-      const [movements, calculatedBalance] = await Promise.all([
+      const [movements, calculatedBalance, tableSales] = await Promise.all([
         this.cashRegisterRepository.listMovements(session.id),
         this.cashRegisterRepository.getCalculatedBalance(session.id),
+        this.orderRepository.getTableSalesBetween(req.restaurantId!, new Date(session.openedAt), new Date()),
       ]);
-      res.json(200, { session, movements, calculatedBalance });
+      res.json(200, { session, movements, calculatedBalance, tableSales });
     });
 
     // AC-4/AC-8 — REQ-8: bloqueia se já houver sessão aberta, indicando qual é.
@@ -139,8 +140,10 @@ export class CashRegisterController extends BaseRouter {
         if (session.status !== 'aberto') {
           throw new BadRequestError('Sessão de caixa já está fechada');
         }
+        const closedAt = new Date();
         const result = await this.cashRegisterRepository.close(session.id, countedValue, req.user?.uid);
-        res.json(200, result);
+        const tableSales = await this.orderRepository.getTableSalesBetween(req.restaurantId!, new Date(session.openedAt), closedAt);
+        res.json(200, { ...result, tableSales });
       },
     );
   }

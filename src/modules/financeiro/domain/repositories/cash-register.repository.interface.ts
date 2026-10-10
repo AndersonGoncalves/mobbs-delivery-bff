@@ -14,6 +14,7 @@ export interface CloseCashRegisterResult {
   calculatedBalance: number;
   /** REQ-7 — `countedValue` (contado fisicamente) − `calculatedBalance`. */
   difference: number;
+  tableSales?: number;
 }
 
 export interface ICashRegisterRepository {

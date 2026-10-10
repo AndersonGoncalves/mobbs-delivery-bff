@@ -24,6 +24,17 @@ export interface NewOrderInput {
   couponCode?: string;
   /** specs/0080-troco-pagamento-dinheiro-checkout REQ-2 — ver `IOrder.cashChangeFor`. */
   cashChangeFor?: number;
+  initialStatus?: OrderStatus;
+  tableId?: string;
+  tableName?: string;
+  tableWaiter?: { id: string; name: string };
+  serviceChargePercent?: number;
+  serviceChargeAmount?: number;
+  coverCharge?: number;
+  tableAdjustment?: { type: 'discount' | 'surcharge'; mode: 'fixed' | 'percent'; value: number };
+  tablePeopleCount?: number;
+  tablePayments?: IOrder['tablePayments'];
+  tableClosedAt?: string;
 }
 
 export interface IOrderRepository {
@@ -48,6 +59,11 @@ export interface IOrderRepository {
   /** specs/0125 — atribui ou remove o motoboy responsável por uma entrega. */
   assignDeliveryMotoboy(id: string, motoboy?: { id: string; name: string }): Promise<IOrder>;
 
+  findActiveTableOrder(restaurantId: string, tableId?: string): Promise<IOrder | null>;
+  findClosedTableOrders(restaurantId: string, from: Date, to: Date): Promise<IOrder[]>;
+  updateTableOrder(id: string, restaurantId: string, patch: Partial<IOrder>): Promise<IOrder | null>;
+  addTablePayment(id: string, restaurantId: string, payment: NonNullable<IOrder['tablePayments']>[number]): Promise<IOrder | null>;
+
   /**
    * specs/0008-acompanhamento-vendas REQ-1 — pedidos em andamento (exclui `entregue`/
    * `cancelado`) do restaurante do operador logado, mais antigo primeiro (fila de atendimento —
@@ -69,6 +85,7 @@ export interface IOrderRepository {
 
   /** REQ-4 — agregado por período, calculado on demand, nunca persistido. */
   getSalesSummary(restaurantId: string, periodStart: Date, periodEnd: Date): Promise<ISalesSummary>;
+  getTableSalesBetween(restaurantId: string, from: Date, to: Date): Promise<number>;
 
   /**
    * specs/0016-clientes-retaguarda REQ-3 — histórico de pedidos de um cliente **só neste

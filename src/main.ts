@@ -33,6 +33,10 @@ import { SupplierMongooseRepository } from './modules/suppliers/infra/repositori
 import { SuppliersController } from './modules/suppliers/presentation/suppliers.controller';
 import { MotoboyMongooseRepository } from './modules/motoboys/infra/repositories/motoboy.mongoose.repository';
 import { MotoboysController } from './modules/motoboys/presentation/motoboys.controller';
+import { TableServiceController } from './modules/table-service/presentation/table-service.controller';
+import { RestaurantTableMongooseRepository } from './modules/table-service/infra/repositories/restaurant-table.mongoose.repository';
+import { TableWaiterMongooseRepository } from './modules/table-service/infra/repositories/table-waiter.mongoose.repository';
+import { TableMapLayoutMongooseRepository } from './modules/table-service/infra/repositories/table-map-layout.mongoose.repository';
 import { PurchaseOrderMongooseRepository } from './modules/purchase-orders/infra/repositories/purchase-order.mongoose.repository';
 import { ReceivePurchaseOrderService } from './modules/purchase-orders/infra/services/receive-purchase-order.service';
 import { PurchaseOrdersController } from './modules/purchase-orders/presentation/purchase-orders.controller';
@@ -215,6 +219,7 @@ server
         notifier: new BillingNotifier(whatsAppConnectionService),
         billingSettingsRepository,
       }),
+      new RestaurantTableMongooseRepository(),
     ),
     new BillingController(restaurantRepository, orderRepository, restaurantOperatorMiddleware, billingSettingsRepository),
     // specs/0106 — painel da plataforma, restrito à lista PLATFORM_ADMIN_EMAILS.
@@ -266,6 +271,15 @@ server
     new AccountsPayableController(new AccountPayableMongooseRepository(), restaurantOperatorMiddleware),
     new AccountsReceivableController(new AccountReceivableMongooseRepository(), restaurantOperatorMiddleware),
     new CashRegisterController(cashRegisterRepository, orderRepository, restaurantOperatorMiddleware),
+    new TableServiceController(
+      new RestaurantTableMongooseRepository(),
+      new TableWaiterMongooseRepository(),
+      new TableMapLayoutMongooseRepository(),
+      orderRepository,
+      customerRepository,
+      productRepository,
+      restaurantOperatorMiddleware,
+    ),
     new SuppliersController(new SupplierMongooseRepository(), restaurantOperatorMiddleware),
     new MotoboysController(new MotoboyMongooseRepository(), restaurantOperatorMiddleware),
     new PurchaseOrdersController(purchaseOrderRepository, receivePurchaseOrderService, restaurantOperatorMiddleware),

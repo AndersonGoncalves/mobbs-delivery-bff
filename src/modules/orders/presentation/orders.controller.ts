@@ -25,6 +25,7 @@ import { isOrderCancellable, isValidOrderStatusTransition } from '../domain/orde
 import { buildOrderPixCode } from '../domain/build-order-pix-code';
 import { resolveOrderItemLinkedProducts } from '../domain/resolve-order-item-linked-products';
 import { IOrderRepository } from '../domain/repositories/order.repository.interface';
+import { IRestaurantTableRepository } from '../../table-service/domain/repositories/table.repository.interface';
 import { IPaymentRepository } from '../domain/repositories/payment.repository.interface';
 import { isValidCellphone } from '../../../shared/utils/is-valid-cellphone';
 import { assignOrderMotoboySchema, cancelOrderWithReasonSchema, createOrderSchema, salesSummaryQuerySchema, updateOrderStatusSchema } from './orders.schemas';
@@ -64,6 +65,7 @@ export class OrdersController extends BaseRouter {
     private readonly motoboyRepository: IMotoboyRepository,
     // specs/0042 REQ-2/REQ-3/REQ-4 — recalcula a faixa de faturamento quando um pedido vira `entregue`.
     private readonly recomputeRestaurantBilling?: { call(restaurantId: string): Promise<void> },
+    private readonly tableRepository?: IRestaurantTableRepository,
   ) {
     super();
     this.deductStockUseCase = new DeductStockForDeliveredOrderUseCase(productRepository, stockMovementRepository);
@@ -339,6 +341,9 @@ export class OrdersController extends BaseRouter {
         }
 
         const updated = await this.orderRepository.updateStatus(order.id, 'cancelado', req.restaurantId, reason);
+        if (order.orderType === 'table' && order.tableId) {
+          await this.tableRepository?.releaseFromOrder(order.tableId, req.restaurantId!, order.id);
+        }
 
         void this.whatsAppNotificationService.sendOrderStatusUpdate(updated, reason).catch((error) => {
           console.error(`[whatsapp] erro inesperado enviando atualização de status do pedido ${updated.id}:`, error);

@@ -43,6 +43,26 @@ const orderStatusHistorySchema = new Schema(
   { _id: false },
 );
 
+const tableAdjustmentSchema = new Schema(
+  {
+    type: { type: String, enum: ['discount', 'surcharge'], required: true },
+    mode: { type: String, enum: ['fixed', 'percent'], required: true },
+    value: { type: Number, required: true, min: 0 },
+  },
+  { _id: false },
+);
+
+const tableOrderPaymentSchema = new Schema(
+  {
+    id: { type: String, required: true },
+    method: { type: String, enum: ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'], required: true },
+    amount: { type: Number, required: true, min: 0.01 },
+    paidAt: { type: String, required: true },
+    paidBy: { type: String, required: true },
+  },
+  { _id: false },
+);
+
 const orderSchema = new Schema(
   {
     _id: { type: String, default: () => randomUUID() },
@@ -51,12 +71,26 @@ const orderSchema = new Schema(
     customerId: { type: String, required: true },
     restaurantId: { type: String, required: true },
     items: { type: [orderItemSchema], default: [] },
-    orderType: { type: String, enum: ['delivery', 'pickup'], required: true },
+    orderType: { type: String, enum: ['delivery', 'pickup', 'table'], required: true },
     deliveryAddress: { type: String },
     deliveryMotoboy: {
       id: { type: String, required: true },
       name: { type: String, required: true },
     },
+    tableId: { type: String },
+    tableName: { type: String },
+    tableWaiter: {
+      id: { type: String, required: true },
+      name: { type: String, required: true },
+    },
+    serviceChargePercent: { type: Number, min: 0, max: 100 },
+    serviceChargeAmount: { type: Number, min: 0 },
+    coverCharge: { type: Number, min: 0 },
+    tableAdjustment: { type: tableAdjustmentSchema },
+    tablePeopleCount: { type: Number, min: 1 },
+    tablePayments: { type: [tableOrderPaymentSchema], default: [] },
+    tableClosedAt: { type: String },
+    tableMergedIntoOrderId: { type: String },
     notes: { type: String },
     status: {
       type: String,

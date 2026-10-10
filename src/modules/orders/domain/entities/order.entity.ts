@@ -1,4 +1,4 @@
-export type OrderType = 'delivery' | 'pickup';
+export type OrderType = 'delivery' | 'pickup' | 'table';
 
 export type PaymentMethod = 'creditCard' | 'debitCard' | 'pix' | 'cash' | 'bankTransfer';
 
@@ -52,6 +52,20 @@ export interface IOrderStatusHistory {
   reason?: string;
 }
 
+export interface ITableOrderPayment {
+  id: string;
+  method: PaymentMethod;
+  amount: number;
+  paidAt: string;
+  paidBy: string;
+}
+
+export interface ITableOrderAdjustment {
+  type: 'discount' | 'surcharge';
+  mode: 'fixed' | 'percent';
+  value: number;
+}
+
 /**
  * docs/architecture/data-model.md §Order. `deliveryAddress` aqui é uma **string simplificada**
  * nesta v1 (não o `Address` estruturado de `specs/0011-perfil-cliente`, que ainda não existe —
@@ -69,6 +83,18 @@ export interface IOrder {
   deliveryAddress?: string;
   /** specs/0125 — snapshot do motoboy atribuído pela retaguarda, quando houver. */
   deliveryMotoboy?: { id: string; name: string };
+  /** specs/0120 — snapshot de mesa/balcão e garçom informativo do pedido de salão. */
+  tableId?: string;
+  tableName?: string;
+  tableWaiter?: { id: string; name: string };
+  serviceChargePercent?: number;
+  serviceChargeAmount?: number;
+  coverCharge?: number;
+  tableAdjustment?: ITableOrderAdjustment;
+  tablePeopleCount?: number;
+  tablePayments?: ITableOrderPayment[];
+  tableClosedAt?: string;
+  tableMergedIntoOrderId?: string;
   notes?: string;
   status: OrderStatus;
   statusHistory: IOrderStatusHistory[];
@@ -122,5 +148,6 @@ export interface ISalesSummary {
   periodEnd: string;
   totalOrders: number;
   totalRevenue: number;
+  tableRevenue: number;
   cancelledOrders: number;
 }

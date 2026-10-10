@@ -10,6 +10,7 @@ import { IStockMovementRepository } from '../../raw-materials/domain/repositorie
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IOrderRepository } from '../domain/repositories/order.repository.interface';
 import { IPaymentRepository } from '../domain/repositories/payment.repository.interface';
+import { IRestaurantTableRepository } from '../../table-service/domain/repositories/table.repository.interface';
 import { OrdersController } from './orders.controller';
 
 type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & {
@@ -183,6 +184,7 @@ describe('OrdersController', () => {
       stockMovementRepository?: Partial<IStockMovementRepository>;
       customerRepository?: Partial<ICustomerRepository>;
       motoboyRepository?: Partial<IMotoboyRepository>;
+      tableRepository?: Partial<IRestaurantTableRepository>;
     } = {},
   ) {
     const orderRepository: Partial<IOrderRepository> = {
@@ -215,6 +217,7 @@ describe('OrdersController', () => {
         periodEnd: '2026-09-30T23:59:59.999Z',
         totalOrders: 10,
         totalRevenue: 300,
+        tableRevenue: 90,
         cancelledOrders: 1,
       }),
       countByCustomerAndCoupon: jest.fn().mockResolvedValue(0),
@@ -262,6 +265,10 @@ describe('OrdersController', () => {
       findById: jest.fn().mockResolvedValue({ id: 'm-1', restaurantId: 'r-1', name: 'Carlos', whatsapp: '85999999999', canMarkAsDelivered: true, isActive: true }),
       ...overrides.motoboyRepository,
     };
+    const tableRepository: Partial<IRestaurantTableRepository> = {
+      releaseFromOrder: jest.fn().mockResolvedValue(true),
+      ...overrides.tableRepository,
+    };
     const { application, routes } = buildFakeApplication();
     new OrdersController(
       orderRepository as IOrderRepository,
@@ -275,6 +282,8 @@ describe('OrdersController', () => {
       stockMovementRepository as IStockMovementRepository,
       customerRepository as ICustomerRepository,
       motoboyRepository as IMotoboyRepository,
+      undefined,
+      tableRepository as IRestaurantTableRepository,
     ).initializeRoutes(application);
     return {
       orderRepository,
@@ -287,6 +296,7 @@ describe('OrdersController', () => {
       stockMovementRepository,
       customerRepository,
       motoboyRepository,
+      tableRepository,
       routes,
     };
   }
@@ -976,6 +986,20 @@ describe('OrdersController', () => {
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ status: 'cancelado' }));
   });
 
+  it('specs/0120 REQ-2: cancelar pedido de mesa libera a mesa vinculada', async () => {
+    const { tableRepository, routes } = setup({
+      orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ orderType: 'table', tableId: 't-1' })) },
+    });
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/cancel'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { reason: 'Pedido duplicado' } },
+      { json: jest.fn() },
+    );
+
+    expect(tableRepository.releaseFromOrder).toHaveBeenCalledWith('t-1', 'r-1', 'o-1');
+  });
+
   it('PATCH /restaurants/me/orders/:id/cancel rejeita corpo sem motivo', async () => {
     const { routes } = setup();
 
@@ -1014,7 +1038,7 @@ describe('OrdersController', () => {
     );
 
     expect(orderRepository.getSalesSummary).toHaveBeenCalledWith('r-1', new Date('2026-09-01'), new Date('2026-09-30'));
-    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ totalOrders: 10, totalRevenue: 300, cancelledOrders: 1 }));
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ totalOrders: 10, totalRevenue: 300, tableRevenue: 90, cancelledOrders: 1 }));
   });
 
   it('GET /restaurants/me/sales-summary rejeita datas inválidas', async () => {

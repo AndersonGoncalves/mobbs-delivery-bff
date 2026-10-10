@@ -10,7 +10,7 @@ import { environment } from '../../../shared/config/environment';
 
 export interface PaymentBlockOrderInput {
   paymentMethod: PaymentMethod;
-  orderType: 'delivery' | 'pickup';
+  orderType: 'delivery' | 'pickup' | 'table';
 }
 
 export interface PaymentBlockInput {
