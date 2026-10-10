@@ -63,6 +63,22 @@ const tableOrderPaymentSchema = new Schema(
   { _id: false },
 );
 
+const deliveryMotoboySchema = new Schema(
+  {
+    id: { type: String, required: true },
+    name: { type: String, required: true },
+  },
+  { _id: false },
+);
+
+const tableWaiterSchema = new Schema(
+  {
+    id: { type: String, required: true },
+    name: { type: String, required: true },
+  },
+  { _id: false },
+);
+
 const orderSchema = new Schema(
   {
     _id: { type: String, default: () => randomUUID() },
@@ -73,16 +89,10 @@ const orderSchema = new Schema(
     items: { type: [orderItemSchema], default: [] },
     orderType: { type: String, enum: ['delivery', 'pickup', 'table'], required: true },
     deliveryAddress: { type: String },
-    deliveryMotoboy: {
-      id: { type: String, required: true },
-      name: { type: String, required: true },
-    },
+    deliveryMotoboy: { type: deliveryMotoboySchema, default: undefined },
     tableId: { type: String },
     tableName: { type: String },
-    tableWaiter: {
-      id: { type: String, required: true },
-      name: { type: String, required: true },
-    },
+    tableWaiter: { type: tableWaiterSchema, default: undefined },
     serviceChargePercent: { type: Number, min: 0, max: 100 },
     serviceChargeAmount: { type: Number, min: 0 },
     coverCharge: { type: Number, min: 0 },
