@@ -12,6 +12,7 @@ import { IProductRepository } from '../../catalog/domain/repositories/product.re
 import { ICouponRepository } from '../../coupons/domain/repositories/coupon.repository.interface';
 import { validateCoupon } from '../../coupons/domain/services/coupon-validator';
 import { ICustomerRepository } from '../../customers/domain/repositories/customer.repository.interface';
+import { IMotoboyRepository } from '../../motoboys/domain/repositories/motoboy.repository.interface';
 import { ICashRegisterService } from '../../financeiro/domain/services/i-cash-register.service';
 import { buildNewOrderRestaurantMessage, DEFAULT_NEW_ORDER_RESTAURANT_TEMPLATE } from '../../notifications/domain/new-order-restaurant-message-builder';
 import { IWhatsAppNotificationService } from '../../notifications/domain/services/i-whatsapp-notification.service';
@@ -26,7 +27,7 @@ import { resolveOrderItemLinkedProducts } from '../domain/resolve-order-item-lin
 import { IOrderRepository } from '../domain/repositories/order.repository.interface';
 import { IPaymentRepository } from '../domain/repositories/payment.repository.interface';
 import { isValidCellphone } from '../../../shared/utils/is-valid-cellphone';
-import { cancelOrderWithReasonSchema, createOrderSchema, salesSummaryQuerySchema, updateOrderStatusSchema } from './orders.schemas';
+import { assignOrderMotoboySchema, cancelOrderWithReasonSchema, createOrderSchema, salesSummaryQuerySchema, updateOrderStatusSchema } from './orders.schemas';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
@@ -59,6 +60,8 @@ export class OrdersController extends BaseRouter {
     // specs/0062-confirmar-pedido-whatsapp-restaurante — só pro `customerName` da mensagem de
     // aviso; `IOrder` não guarda o nome do cliente.
     private readonly customerRepository: ICustomerRepository,
+    // specs/0125 — valida a atribuição ao motoboy ativo do restaurante autenticado.
+    private readonly motoboyRepository: IMotoboyRepository,
     // specs/0042 REQ-2/REQ-3/REQ-4 — recalcula a faixa de faturamento quando um pedido vira `entregue`.
     private readonly recomputeRestaurantBilling?: { call(restaurantId: string): Promise<void> },
   ) {
@@ -282,6 +285,33 @@ export class OrdersController extends BaseRouter {
           }
         }
 
+        res.json(200, updated);
+      },
+    );
+
+    // specs/0125 — atribuição opcional antes da saída para entrega; não altera status nem permissão
+    // futura do motoboy de marcar o pedido como entregue.
+    application.patch(
+      '/restaurants/me/orders/:id/delivery-motoboy',
+      ...operatorAuthenticated,
+      async (req: Request, res: Response) => {
+        const { motoboyId } = parseBody(assignOrderMotoboySchema, req.body);
+        const order = await this.findOwnedOrderForRestaurant(req.params.id, req.restaurantId!);
+
+        if (order.orderType !== 'delivery' || order.status !== 'emPreparo') {
+          throw new BadRequestError('Motoboy só pode ser atribuído a pedido de entrega em preparo');
+        }
+
+        let deliveryMotoboy: { id: string; name: string } | undefined;
+        if (motoboyId) {
+          const motoboy = await this.motoboyRepository.findById(motoboyId);
+          if (!motoboy || motoboy.restaurantId !== req.restaurantId || !motoboy.isActive) {
+            throw new NotFoundError('Motoboy ativo não encontrado');
+          }
+          deliveryMotoboy = { id: motoboy.id, name: motoboy.name };
+        }
+
+        const updated = await this.orderRepository.assignDeliveryMotoboy(order.id, deliveryMotoboy);
         res.json(200, updated);
       },
     );

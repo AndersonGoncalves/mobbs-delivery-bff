@@ -45,6 +45,9 @@ export interface IOrderRepository {
    */
   updateStatus(id: string, status: OrderStatus, changedBy?: string, reason?: string): Promise<IOrder>;
 
+  /** specs/0125 — atribui ou remove o motoboy responsável por uma entrega. */
+  assignDeliveryMotoboy(id: string, motoboy?: { id: string; name: string }): Promise<IOrder>;
+
   /**
    * specs/0008-acompanhamento-vendas REQ-1 — pedidos em andamento (exclui `entregue`/
    * `cancelado`) do restaurante do operador logado, mais antigo primeiro (fila de atendimento —

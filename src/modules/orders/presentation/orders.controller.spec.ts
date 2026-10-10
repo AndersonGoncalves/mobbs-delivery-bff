@@ -3,6 +3,7 @@ import type { Request, Response, Server } from 'restify';
 import { IProductRepository } from '../../catalog/domain/repositories/product.repository.interface';
 import { ICouponRepository } from '../../coupons/domain/repositories/coupon.repository.interface';
 import { ICustomerRepository } from '../../customers/domain/repositories/customer.repository.interface';
+import { IMotoboyRepository } from '../../motoboys/domain/repositories/motoboy.repository.interface';
 import { ICashRegisterService } from '../../financeiro/domain/services/i-cash-register.service';
 import { IWhatsAppNotificationService } from '../../notifications/domain/services/i-whatsapp-notification.service';
 import { IStockMovementRepository } from '../../raw-materials/domain/repositories/stock-movement.repository.interface';
@@ -181,6 +182,7 @@ describe('OrdersController', () => {
       productRepository?: Partial<IProductRepository>;
       stockMovementRepository?: Partial<IStockMovementRepository>;
       customerRepository?: Partial<ICustomerRepository>;
+      motoboyRepository?: Partial<IMotoboyRepository>;
     } = {},
   ) {
     const orderRepository: Partial<IOrderRepository> = {
@@ -197,6 +199,7 @@ describe('OrdersController', () => {
       findById: jest.fn().mockResolvedValue(buildOrder()),
       findByTrackingToken: jest.fn().mockResolvedValue(buildOrder()),
       findActiveByRestaurant: jest.fn().mockResolvedValue([buildOrder()]),
+      assignDeliveryMotoboy: jest.fn().mockImplementation(async (_id, deliveryMotoboy) => ({ ...buildOrder(), deliveryMotoboy })),
       updateStatus: jest.fn().mockImplementation(async (id, status, changedBy, reason) => ({
         ...buildOrder(),
         status,
@@ -254,6 +257,10 @@ describe('OrdersController', () => {
       findById: jest.fn().mockResolvedValue({ id: 'customer-1', name: 'Ana', email: 'ana@exemplo.com', phone: '85984224877' }),
       ...overrides.customerRepository,
     };
+    const motoboyRepository: Partial<IMotoboyRepository> = {
+      findById: jest.fn().mockResolvedValue({ id: 'm-1', restaurantId: 'r-1', name: 'Carlos', whatsapp: '85999999999', canMarkAsDelivered: true, isActive: true }),
+      ...overrides.motoboyRepository,
+    };
     const { application, routes } = buildFakeApplication();
     new OrdersController(
       orderRepository as IOrderRepository,
@@ -266,6 +273,7 @@ describe('OrdersController', () => {
       productRepository as IProductRepository,
       stockMovementRepository as IStockMovementRepository,
       customerRepository as ICustomerRepository,
+      motoboyRepository as IMotoboyRepository,
     ).initializeRoutes(application);
     return {
       orderRepository,
@@ -277,6 +285,7 @@ describe('OrdersController', () => {
       productRepository,
       stockMovementRepository,
       customerRepository,
+      motoboyRepository,
       routes,
     };
   }
@@ -737,6 +746,78 @@ describe('OrdersController', () => {
     expect(json).toHaveBeenCalledWith(200, [
       expect.objectContaining({ id: 'o-1', customer: { name: 'Michelle', phone: '85984224877' } }),
     ]);
+  });
+
+  it('specs/0125 AC-2: atribui snapshot de motoboy ativo ao pedido de entrega em preparo', async () => {
+    const motoboy = { id: 'm-1', restaurantId: 'r-1', name: 'Carlos', whatsapp: '85999999999', canMarkAsDelivered: true, isActive: true };
+    const { orderRepository, motoboyRepository, routes } = setup({
+      orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ status: 'emPreparo' })) },
+      motoboyRepository: { findById: jest.fn().mockResolvedValue(motoboy) },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/delivery-motoboy'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { motoboyId: 'm-1' } },
+      { json },
+    );
+
+    expect(motoboyRepository.findById).toHaveBeenCalledWith('m-1');
+    expect(orderRepository.assignDeliveryMotoboy).toHaveBeenCalledWith('o-1', { id: 'm-1', name: 'Carlos' });
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ deliveryMotoboy: { id: 'm-1', name: 'Carlos' } }));
+  });
+
+  it.each([
+    ['inativo', { id: 'm-1', restaurantId: 'r-1', name: 'Carlos', whatsapp: '85999999999', canMarkAsDelivered: true, isActive: false }],
+    ['de outro restaurante', { id: 'm-1', restaurantId: 'r-2', name: 'Carlos', whatsapp: '85999999999', canMarkAsDelivered: true, isActive: true }],
+  ])('specs/0125 AC-3: rejeita motoboy %s', async (_description, motoboy) => {
+    const { orderRepository, routes } = setup({
+      orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ status: 'emPreparo' })) },
+      motoboyRepository: { findById: jest.fn().mockResolvedValue(motoboy) },
+    });
+
+    await expect(
+      runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/delivery-motoboy'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { motoboyId: 'm-1' } },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 404 });
+    expect(orderRepository.assignDeliveryMotoboy).not.toHaveBeenCalled();
+  });
+
+  it('specs/0125 AC-4: limpar a atribuição não exige motoboy nem muda o status', async () => {
+    const { orderRepository, motoboyRepository, routes } = setup({
+      orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ status: 'emPreparo' })) },
+    });
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/delivery-motoboy'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { motoboyId: null } },
+      { json: jest.fn() },
+    );
+
+    expect(motoboyRepository.findById).not.toHaveBeenCalled();
+    expect(orderRepository.assignDeliveryMotoboy).toHaveBeenCalledWith('o-1', undefined);
+  });
+
+  it.each([
+    ['fora de preparo', { status: 'confirmado' }],
+    ['de retirada', { status: 'emPreparo', orderType: 'pickup' }],
+  ])('specs/0125: não permite atribuir motoboy a pedido %s', async (_description, orderOverrides) => {
+    const { orderRepository, motoboyRepository, routes } = setup({
+      orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder(orderOverrides)) },
+    });
+
+    await expect(
+      runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/delivery-motoboy'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { motoboyId: 'm-1' } },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(motoboyRepository.findById).not.toHaveBeenCalled();
+    expect(orderRepository.assignDeliveryMotoboy).not.toHaveBeenCalled();
   });
 
   it('AC-2: PATCH /restaurants/me/orders/:id/status avança um passo (aguardandoConfirmacao -> confirmado)', async () => {

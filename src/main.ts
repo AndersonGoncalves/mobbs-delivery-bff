@@ -207,6 +207,7 @@ server
       productRepository,
       stockMovementRepository,
       customerRepository,
+      new MotoboyMongooseRepository(),
       // specs/0042 — faixa de faturamento recalculada a cada pedido entregue.
       new RecomputeRestaurantBillingUseCase({
         restaurantRepository,

@@ -53,6 +53,10 @@ const orderSchema = new Schema(
     items: { type: [orderItemSchema], default: [] },
     orderType: { type: String, enum: ['delivery', 'pickup'], required: true },
     deliveryAddress: { type: String },
+    deliveryMotoboy: {
+      id: { type: String, required: true },
+      name: { type: String, required: true },
+    },
     notes: { type: String },
     status: {
       type: String,

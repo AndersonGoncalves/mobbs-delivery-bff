@@ -15,6 +15,7 @@ interface OrderLeanDocument {
   items: IOrderItem[];
   orderType: OrderType;
   deliveryAddress?: string;
+  deliveryMotoboy?: { id: string; name: string };
   notes?: string;
   status: IOrder['status'];
   statusHistory: { status: IOrder['status']; changedAt: Date; changedBy?: string; reason?: string }[];
@@ -39,6 +40,7 @@ function toEntity(doc: OrderLeanDocument): IOrder {
     items: doc.items ?? [],
     orderType: doc.orderType,
     deliveryAddress: doc.deliveryAddress,
+    deliveryMotoboy: doc.deliveryMotoboy,
     notes: doc.notes,
     status: doc.status,
     statusHistory: (doc.statusHistory ?? []).map((entry) => ({
@@ -140,6 +142,12 @@ export class OrderMongooseRepository implements IOrderRepository {
       { $set: { status }, $push: { statusHistory: { status, changedAt: new Date(), changedBy, reason } } },
       { new: true },
     ).lean<OrderLeanDocument>();
+    return toEntity(doc as OrderLeanDocument);
+  }
+
+  async assignDeliveryMotoboy(id: string, motoboy?: { id: string; name: string }): Promise<IOrder> {
+    const update = motoboy ? { $set: { deliveryMotoboy: motoboy } } : { $unset: { deliveryMotoboy: 1 } };
+    const doc = await OrderModel.findByIdAndUpdate(id, update, { new: true }).lean<OrderLeanDocument>();
     return toEntity(doc as OrderLeanDocument);
   }
 

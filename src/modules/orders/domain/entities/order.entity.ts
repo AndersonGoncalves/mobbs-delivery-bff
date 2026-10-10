@@ -67,6 +67,8 @@ export interface IOrder {
   items: IOrderItem[];
   orderType: OrderType;
   deliveryAddress?: string;
+  /** specs/0125 — snapshot do motoboy atribuído pela retaguarda, quando houver. */
+  deliveryMotoboy?: { id: string; name: string };
   notes?: string;
   status: OrderStatus;
   statusHistory: IOrderStatusHistory[];

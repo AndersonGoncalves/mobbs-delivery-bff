@@ -82,6 +82,11 @@ export const updateOrderStatusSchema = z.object({
   status: orderStatusEnum,
 });
 
+/** specs/0125 — null remove a atribuição; um id será validado contra o restaurante no controller. */
+export const assignOrderMotoboySchema = z.object({
+  motoboyId: z.string().min(1).nullable(),
+});
+
 /** REQ-3 — motivo é obrigatório pro cancelamento pela retaguarda (diferente do cancelamento do cliente, specs/0006). */
 export const cancelOrderWithReasonSchema = z.object({
   reason: z.string().min(1, 'Motivo do cancelamento é obrigatório'),
