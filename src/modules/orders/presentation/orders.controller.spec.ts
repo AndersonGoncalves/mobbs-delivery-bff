@@ -199,6 +199,7 @@ describe('OrdersController', () => {
       findById: jest.fn().mockResolvedValue(buildOrder()),
       findByTrackingToken: jest.fn().mockResolvedValue(buildOrder()),
       findActiveByRestaurant: jest.fn().mockResolvedValue([buildOrder()]),
+      findByRestaurantBetween: jest.fn().mockResolvedValue([]),
       assignDeliveryMotoboy: jest.fn().mockImplementation(async (_id, deliveryMotoboy) => ({ ...buildOrder(), deliveryMotoboy })),
       updateStatus: jest.fn().mockImplementation(async (id, status, changedBy, reason) => ({
         ...buildOrder(),
@@ -746,6 +747,38 @@ describe('OrdersController', () => {
     expect(json).toHaveBeenCalledWith(200, [
       expect.objectContaining({ id: 'o-1', customer: { name: 'Michelle', phone: '85984224877' } }),
     ]);
+  });
+
+  it('specs/0126 AC-1: GET /restaurants/me/orders/map retorna todos os status no intervalo do restaurante', async () => {
+    const orders = [buildOrder({ id: 'o-delivered', status: 'entregue' }), buildOrder({ id: 'o-cancelled', status: 'cancelado' })];
+    const { orderRepository, routes } = setup({ orderRepository: { findByRestaurantBetween: jest.fn().mockResolvedValue(orders) } });
+    const json = jest.fn();
+    const from = '2026-10-10T07:00:00.000Z';
+    const to = '2026-10-11T07:00:00.000Z';
+
+    await runOperatorChain(
+      routes['GET /restaurants/me/orders/map'],
+      { restaurantId: 'r-1', query: { from, to } },
+      { json },
+    );
+
+    expect(orderRepository.findByRestaurantBetween).toHaveBeenCalledWith('r-1', new Date(from), new Date(to));
+    expect(json).toHaveBeenCalledWith(200, expect.arrayContaining([
+      expect.objectContaining({ id: 'o-delivered', status: 'entregue' }),
+      expect.objectContaining({ id: 'o-cancelled', status: 'cancelado' }),
+    ]));
+  });
+
+  it('specs/0126: GET /restaurants/me/orders/map rejeita intervalo inválido', async () => {
+    const { routes } = setup();
+
+    await expect(
+      runOperatorChain(
+        routes['GET /restaurants/me/orders/map'],
+        { restaurantId: 'r-1', query: { from: 'hoje', to: 'amanhã' } },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
   });
 
   it('specs/0125 AC-2: atribui snapshot de motoboy ativo ao pedido de entrega em preparo', async () => {

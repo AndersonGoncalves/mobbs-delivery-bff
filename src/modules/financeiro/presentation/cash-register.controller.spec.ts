@@ -1,9 +1,10 @@
 import type { Request, Response, Server } from 'restify';
 
 import { ICashRegisterRepository } from '../domain/repositories/cash-register.repository.interface';
+import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { CashRegisterController } from './cash-register.controller';
 
-type FakeRequest = Partial<Pick<Request, 'params' | 'body'>> & { restaurantId?: string; user?: { uid: string } };
+type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & { restaurantId?: string; user?: { uid: string } };
 type FakeResponse = Pick<Response, 'json'>;
 type RouteHandler = (req: FakeRequest, res: FakeResponse) => Promise<void>;
 
@@ -50,8 +51,22 @@ function buildMovement(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function buildDeliveredOrder(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'o-1',
+    orderNumber: 1,
+    restaurantId: 'r-1',
+    orderType: 'delivery',
+    status: 'entregue',
+    deliveryFee: 8,
+    deliveryMotoboy: { id: 'm-1', name: 'Carlos' },
+    statusHistory: [{ status: 'entregue', changedAt: '2026-10-10T12:00:00.000Z' }],
+    ...overrides,
+  };
+}
+
 describe('CashRegisterController', () => {
-  function setup(overrides: { cashRegisterRepository?: Partial<ICashRegisterRepository> } = {}) {
+  function setup(overrides: { cashRegisterRepository?: Partial<ICashRegisterRepository>; orderRepository?: Partial<IOrderRepository> } = {}) {
     const cashRegisterRepository: Partial<ICashRegisterRepository> = {
       findOpenSessionByRestaurant: jest.fn().mockResolvedValue(null),
       findById: jest.fn().mockResolvedValue(buildSession()),
@@ -62,13 +77,57 @@ describe('CashRegisterController', () => {
       close: jest.fn().mockResolvedValue({ session: buildSession({ status: 'fechado', closingBalance: 150 }), calculatedBalance: 150, difference: 0 }),
       ...overrides.cashRegisterRepository,
     };
+    const orderRepository: Partial<IOrderRepository> = {
+      findDeliveredByRestaurantCompletedBetween: jest.fn().mockResolvedValue([]),
+      ...overrides.orderRepository,
+    };
     const restaurantOperatorMiddleware = jest.fn(async () => {});
     const { application, routes } = buildFakeApplication();
-    new CashRegisterController(cashRegisterRepository as ICashRegisterRepository, restaurantOperatorMiddleware).initializeRoutes(
+    new CashRegisterController(cashRegisterRepository as ICashRegisterRepository, orderRepository as IOrderRepository, restaurantOperatorMiddleware).initializeRoutes(
       application,
     );
-    return { cashRegisterRepository, routes };
+    return { cashRegisterRepository, orderRepository, routes };
   }
+
+  it('specs/0127 AC-1/AC-2: agrupa taxa integral por motoboy e separa pedidos sem atribuição', async () => {
+    const from = '2026-10-10T00:00:00.000Z';
+    const to = '2026-10-11T00:00:00.000Z';
+    const orders = [
+      buildDeliveredOrder({ id: 'o-1', orderNumber: 1, deliveryFee: 8 }),
+      buildDeliveredOrder({ id: 'o-2', orderNumber: 2, deliveryFee: 12 }),
+      buildDeliveredOrder({ id: 'o-3', orderNumber: 3, deliveryFee: 5, deliveryMotoboy: undefined }),
+    ];
+    const { orderRepository, routes } = setup({
+      orderRepository: { findDeliveredByRestaurantCompletedBetween: jest.fn().mockResolvedValue(orders) },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['GET /restaurants/me/cash-register/motoboy-payouts'],
+      { restaurantId: 'r-1', query: { from, to } },
+      { json },
+    );
+
+    expect(orderRepository.findDeliveredByRestaurantCompletedBetween).toHaveBeenCalledWith('r-1', new Date(from), new Date(to));
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({
+      totalDue: 20,
+      motoboys: [expect.objectContaining({ motoboyId: 'm-1', motoboyName: 'Carlos', orderCount: 2, totalDue: 20 })],
+      unassignedOrderCount: 1,
+      unassignedDeliveryFees: 5,
+    }));
+  });
+
+  it('specs/0127: rejeita período de repasse inválido', async () => {
+    const { routes } = setup();
+
+    await expect(
+      runOperatorChain(
+        routes['GET /restaurants/me/cash-register/motoboy-payouts'],
+        { restaurantId: 'r-1', query: { from: 'amanhã', to: 'hoje' } },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
 
   it('GET /restaurants/me/cash-register/open devolve session:null quando não há sessão aberta', async () => {
     const { routes } = setup();

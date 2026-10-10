@@ -231,6 +231,14 @@ export class OrdersController extends BaseRouter {
       res.json(200, await this.attachCustomers(await this.attachPaymentSummaries(orders)));
     });
 
+    // specs/0126 REQ-1 — pedidos criados no dia/período pedido pela retaguarda, sem filtrar status.
+    // O restaurante vem sempre do operador autenticado; `to` é limite exclusivo.
+    application.get('/restaurants/me/orders/map', ...operatorAuthenticated, async (req: Request, res: Response) => {
+      const { from, to } = parseBody(salesSummaryQuerySchema, req.query);
+      const orders = await this.orderRepository.findByRestaurantBetween(req.restaurantId!, new Date(from), new Date(to));
+      res.json(200, await this.attachCustomers(orders));
+    });
+
     // REQ-2/REQ-5: só avança um passo por vez (`isValidOrderStatusTransition`) — fonte de
     // verdade da regra é o BFF, a retaguarda só espelha pra feedback imediato (plan.md, ADR).
     application.patch(

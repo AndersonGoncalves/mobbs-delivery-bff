@@ -46,3 +46,8 @@ export const addCashMovementSchema = z.object({
 export const closeCashRegisterSchema = z.object({
   countedValue: z.number().nonnegative('Valor contado não pode ser negativo'),
 });
+
+/** specs/0127 — período ISO com início anterior ao limite final exclusivo. */
+export const motoboyPayoutPeriodSchema = z
+  .object({ from: isoDateString, to: isoDateString })
+  .refine(({ from, to }) => new Date(from).getTime() < new Date(to).getTime(), 'Período inválido');

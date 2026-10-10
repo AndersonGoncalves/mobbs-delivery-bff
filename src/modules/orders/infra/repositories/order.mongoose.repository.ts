@@ -167,8 +167,27 @@ export class OrderMongooseRepository implements IOrderRepository {
     return docs.map(toEntity);
   }
 
+  async findDeliveredByRestaurantCompletedBetween(restaurantId: string, from: Date, to: Date): Promise<IOrder[]> {
+    const docs = await OrderModel.find({
+      restaurantId,
+      orderType: 'delivery',
+      status: 'entregue',
+      statusHistory: { $elemMatch: { status: 'entregue', changedAt: { $gte: from, $lt: to } } },
+    })
+      .sort({ createdAt: 1 })
+      .lean<OrderLeanDocument[]>();
+    return docs.map(toEntity);
+  }
+
   async findActiveByRestaurant(restaurantId: string): Promise<IOrder[]> {
     const docs = await OrderModel.find({ restaurantId, status: { $nin: ['entregue', 'cancelado'] } })
+      .sort({ createdAt: 1 })
+      .lean<OrderLeanDocument[]>();
+    return docs.map(toEntity);
+  }
+
+  async findByRestaurantBetween(restaurantId: string, from: Date, to: Date): Promise<IOrder[]> {
+    const docs = await OrderModel.find({ restaurantId, createdAt: { $gte: from, $lt: to } })
       .sort({ createdAt: 1 })
       .lean<OrderLeanDocument[]>();
     return docs.map(toEntity);

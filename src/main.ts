@@ -265,7 +265,7 @@ server
     new WhatsAppConnectionController(whatsAppConnectionService, restaurantOperatorMiddleware),
     new AccountsPayableController(new AccountPayableMongooseRepository(), restaurantOperatorMiddleware),
     new AccountsReceivableController(new AccountReceivableMongooseRepository(), restaurantOperatorMiddleware),
-    new CashRegisterController(cashRegisterRepository, restaurantOperatorMiddleware),
+    new CashRegisterController(cashRegisterRepository, orderRepository, restaurantOperatorMiddleware),
     new SuppliersController(new SupplierMongooseRepository(), restaurantOperatorMiddleware),
     new MotoboysController(new MotoboyMongooseRepository(), restaurantOperatorMiddleware),
     new PurchaseOrdersController(purchaseOrderRepository, receivePurchaseOrderService, restaurantOperatorMiddleware),
