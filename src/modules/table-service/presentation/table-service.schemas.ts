@@ -29,7 +29,7 @@ export const saveTableWaiterSchema = z.object({ name: z.string().trim().min(1, '
 const tableMapDecorationSchema = z.object({
   id: z.string().min(1).optional(),
   label: z.string().trim().min(1),
-  type: z.enum(['wall', 'bar', 'kitchen', 'entrance', 'other']),
+  type: z.enum(['wall', 'bar', 'kitchen', 'entrance', 'counter', 'other']),
   x: z.number().nonnegative(),
   y: z.number().nonnegative(),
   width: z.number().min(24),

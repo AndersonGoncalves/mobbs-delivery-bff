@@ -5,7 +5,7 @@ const decorationSchema = new Schema(
   {
     id: { type: String, required: true, default: () => randomUUID() },
     label: { type: String, required: true },
-    type: { type: String, enum: ['wall', 'bar', 'kitchen', 'entrance', 'other'], required: true },
+    type: { type: String, enum: ['wall', 'bar', 'kitchen', 'entrance', 'counter', 'other'], required: true },
     x: { type: Number, required: true },
     y: { type: Number, required: true },
     width: { type: Number, required: true, min: 24 },

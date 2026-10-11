@@ -25,7 +25,7 @@ export interface TableWaiter {
 export interface TableMapDecoration {
   id: string;
   label: string;
-  type: 'wall' | 'bar' | 'kitchen' | 'entrance' | 'other';
+  type: 'wall' | 'bar' | 'kitchen' | 'entrance' | 'counter' | 'other';
   x: number;
   y: number;
   width: number;
