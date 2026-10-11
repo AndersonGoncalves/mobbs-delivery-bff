@@ -66,6 +66,7 @@ const restaurantSchema = new Schema(
     phone: { type: String },
     document: { type: String },
     minimumOrderValue: { type: Number, required: true, default: 0 },
+    stockControlEnabled: { type: Boolean, required: true, default: false },
     deliveryFeeCents: { type: Number, required: true, default: 0 },
     shareMessage: { type: String },
     // specs/0094-mensagem-boas-vindas-home — sem default: ausente/vazio = nenhum card na home.

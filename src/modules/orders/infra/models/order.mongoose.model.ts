@@ -12,6 +12,7 @@ const orderItemSelectionSchema = new Schema(
     // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16 — resolvido pelo BFF, nunca
     // aceito do cliente (ver comentário na entity).
     linkedProductId: { type: String },
+    rawMaterialId: { type: String },
   },
   { _id: false },
 );
@@ -29,6 +30,16 @@ const orderItemSchema = new Schema(
     selections: { type: [orderItemSelectionSchema], default: [] },
     unitPrice: { type: Number, required: true },
     notes: { type: String },
+    stockReservations: {
+      type: [{
+        resourceType: { type: String, enum: ['product', 'rawMaterial'], required: true },
+        resourceId: { type: String, required: true },
+        unitsPerItem: { type: Number, required: true, min: 0.01 },
+        quantity: { type: Number, required: true, min: 0.01 },
+        operationId: { type: String, required: true },
+      }],
+      default: [],
+    },
   },
   { _id: false },
 );
@@ -84,6 +95,7 @@ const orderSchema = new Schema(
     _id: { type: String, default: () => randomUUID() },
     orderNumber: { type: Number, required: true },
     trackingToken: { type: String, required: true, unique: true },
+    idempotencyKey: { type: String },
     customerId: { type: String, required: true },
     restaurantId: { type: String, required: true },
     items: { type: [orderItemSchema], default: [] },
@@ -124,6 +136,10 @@ const orderSchema = new Schema(
 );
 
 orderSchema.index({ restaurantId: 1, orderNumber: 1 });
+orderSchema.index(
+  { restaurantId: 1, customerId: 1, idempotencyKey: 1 },
+  { unique: true, partialFilterExpression: { idempotencyKey: { $type: 'string' } } },
+);
 orderSchema.index({ customerId: 1 });
 // specs/0022-cupons-desconto REQ-6 — suporta `countByCustomerAndCoupon` (limite de uso por cliente).
 orderSchema.index({ restaurantId: 1, customerId: 1, couponCode: 1 });

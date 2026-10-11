@@ -8,6 +8,8 @@ import { IOrder, IOrderItem, ISalesSummary, OrderStatus, OrderType, PaymentMetho
  * persistência, não do controller.
  */
 export interface NewOrderInput {
+  id?: string;
+  idempotencyKey?: string;
   customerId: string;
   restaurantId: string;
   items: IOrderItem[];
@@ -44,6 +46,7 @@ export interface IOrderRepository {
   findManyByCustomer(customerId: string): Promise<IOrder[]>;
 
   findById(id: string): Promise<IOrder | null>;
+  findByIdempotencyKey(restaurantId: string, customerId: string, idempotencyKey: string): Promise<IOrder | null>;
 
   /** REQ-8 — resolve pelo token opaco, nunca pelo `id` sequencial/interno. */
   findByTrackingToken(token: string): Promise<IOrder | null>;

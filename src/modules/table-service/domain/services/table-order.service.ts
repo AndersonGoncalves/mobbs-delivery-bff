@@ -5,6 +5,8 @@ import { IProductRepository } from '../../../catalog/domain/repositories/product
 import { IOrder, IOrderItem, IOrderItemSelection } from '../../../orders/domain/entities/order.entity';
 import { IProductAdditionalGroup } from '../../../catalog/domain/entities/product.entity';
 import { IOrderRepository } from '../../../orders/domain/repositories/order.repository.interface';
+import { StockReservationService } from '../../../orders/domain/services/stock-reservation.service';
+import { IRestaurantRepository } from '../../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IRestaurantTableRepository } from '../repositories/table.repository.interface';
 import { ITableWaiterRepository } from '../repositories/waiter.repository.interface';
 import { ITableMapLayoutRepository } from '../repositories/table-map-layout.repository.interface';
@@ -48,6 +50,8 @@ function resolveSelections(groups: IProductAdditionalGroup[], selections: Select
         groupName: group.name,
         optionName: option.name,
         priceDelta,
+        ...(option.linkedProductId ? { linkedProductId: option.linkedProductId } : {}),
+        ...(option.rawMaterialId ? { rawMaterialId: option.rawMaterialId } : {}),
         ...(nested.resolved.length > 0 ? { nestedSelections: nested.resolved } : {}),
       });
     }
@@ -63,6 +67,8 @@ export class TableOrderService {
     private readonly layoutRepository: ITableMapLayoutRepository,
     private readonly productRepository: IProductRepository,
     private readonly customerRepository: ICustomerRepository,
+    private readonly restaurantRepository: IRestaurantRepository,
+    private readonly stockReservationService: StockReservationService,
   ) {}
 
   async getFloor(restaurantId: string) {
@@ -134,7 +140,7 @@ export class TableOrderService {
     return order;
   }
 
-  async addItem(restaurantId: string, orderId: string, input: { productId: string; quantity: number; selections: SelectionInput[]; notes?: string }) {
+  async addItem(restaurantId: string, orderId: string, input: { productId: string; quantity: number; selections: SelectionInput[]; notes?: string; operationId: string }) {
     const order = await this.findOpenOrder(restaurantId, orderId);
     const layout = order.tableId ? await this.layoutRepository.getByRestaurant(restaurantId) : null;
     if (order.tableId) {
@@ -156,25 +162,38 @@ export class TableOrderService {
       selections: selections.resolved,
       notes: input.notes?.trim() || undefined,
     };
-    const items = [...order.items, item];
-    const totals = calculateTotals(order, items);
+    const itemsBeforeReservation = [...order.items, item];
+    const totals = calculateTotals(order, itemsBeforeReservation);
     const paid = (order.tablePayments ?? []).reduce((sum, payment) => sum + payment.amount, 0);
     if (layout?.spendingLimit && totals.total - paid > layout.spendingLimit) {
       throw new ConflictError('Este item ultrapassaria o limite de consumo configurado. Registre um pagamento parcial antes de continuar.');
     }
+    const restaurant = await this.restaurantRepository.findById(restaurantId);
+    const [reservedItem] = await this.stockReservationService.reserveOrderItems(
+      restaurantId,
+      [item],
+      restaurant?.stockControlEnabled ?? false,
+      order.id,
+      input.operationId,
+    );
+    const items = [...order.items, reservedItem];
     const updated = await this.orderRepository.updateTableOrder(order.id, restaurantId, { items, ...totals });
-    if (!updated) throw new ConflictError('O pedido não está mais aberto');
+    if (!updated) {
+      await this.stockReservationService.releaseOrderReservations(restaurantId, order.id, [reservedItem]);
+      throw new ConflictError('O pedido não está mais aberto');
+    }
     return updated;
   }
 
-  async setItemQuantity(restaurantId: string, orderId: string, itemId: string, quantity: number) {
+  async setItemQuantity(restaurantId: string, orderId: string, itemId: string, quantity: number, operationId: string) {
     const order = await this.findOpenOrder(restaurantId, orderId);
     const currentItem = order.items.find((item) => item.id === itemId);
     if (!currentItem) throw new NotFoundError('Item do pedido não encontrado');
-    const items = quantity === 0
+    const delta = quantity - currentItem.quantity;
+    const itemsBeforeReservation = quantity === 0
       ? order.items.filter((item) => item.id !== itemId)
       : order.items.map((item) => item.id === itemId ? { ...item, quantity } : item);
-    const totals = calculateTotals(order, items);
+    const totals = calculateTotals(order, itemsBeforeReservation);
     if (quantity > currentItem.quantity && order.tableId) {
       const layout = await this.layoutRepository.getByRestaurant(restaurantId);
       const paid = (order.tablePayments ?? []).reduce((sum, payment) => sum + payment.amount, 0);
@@ -182,8 +201,23 @@ export class TableOrderService {
         throw new ConflictError('Este item ultrapassaria o limite de consumo configurado. Registre um pagamento parcial antes de continuar.');
       }
     }
+    const restaurant = await this.restaurantRepository.findById(restaurantId);
+    const reservations = delta < 0 || restaurant?.stockControlEnabled
+      ? await this.stockReservationService.resizeItemReservations(restaurantId, order.id, currentItem, delta, operationId)
+      : currentItem.stockReservations ?? [];
+    const items = quantity === 0
+      ? itemsBeforeReservation
+      : itemsBeforeReservation.map((item) => item.id === itemId ? { ...item, stockReservations: reservations } : item);
     const updated = await this.orderRepository.updateTableOrder(order.id, restaurantId, { items, ...totals });
-    if (!updated) throw new ConflictError('O pedido não está mais aberto');
+    if (!updated) {
+      if (delta > 0) {
+        const addedReservations = reservations.filter((reservation) => reservation.operationId.startsWith(`${operationId}:`));
+        await this.stockReservationService.releaseOrderReservations(restaurantId, order.id, [{ ...currentItem, stockReservations: addedReservations }]);
+      } else if (delta < 0) {
+        await this.stockReservationService.resizeItemReservations(restaurantId, order.id, currentItem, -delta, `${operationId}:rollback`);
+      }
+      throw new ConflictError('O pedido não está mais aberto');
+    }
     return updated;
   }
 
@@ -193,7 +227,10 @@ export class TableOrderService {
     for (const item of order.items) {
       const key = JSON.stringify([item.productId, item.unitPrice, item.selections ?? [], item.notes ?? '']);
       const existing = groups.get(key);
-      if (existing) existing.quantity += item.quantity;
+      if (existing) {
+        existing.quantity += item.quantity;
+        existing.stockReservations = [...(existing.stockReservations ?? []), ...(item.stockReservations ?? [])];
+      }
       else groups.set(key, { ...item });
     }
     const items = [...groups.values()];

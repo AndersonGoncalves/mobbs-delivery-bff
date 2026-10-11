@@ -13,6 +13,7 @@ export type RestaurantProfileUpdate = Partial<
     | 'phone'
     | 'document'
     | 'minimumOrderValue'
+    | 'stockControlEnabled'
     | 'shareMessage'
     | 'pixKey'
     | 'pixKeyType'

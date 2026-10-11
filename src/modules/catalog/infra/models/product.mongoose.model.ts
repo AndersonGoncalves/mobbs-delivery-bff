@@ -72,7 +72,9 @@ const productSchema = new Schema(
     availableAsAdditional: { type: Boolean, required: true, default: false },
     // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16 — ausente = feito sob
     // demanda, sem controle de estoque (nunca `default`, propositalmente).
-    stockQuantity: { type: Number },
+    stockQuantity: { type: Number, min: 0 },
+    minimumStockAlert: { type: Number, min: 0 },
+    tracksStock: { type: Boolean, required: true, default: false },
     // specs/0116-ajustes-cadastro-produto.
     posId: { type: String },
     cost: { type: Number },

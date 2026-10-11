@@ -19,6 +19,8 @@ export interface IRawMaterial {
   unit: string;
   /** specs/0015-estoque-compras — nunca editado direto, só via `StockMovement` ($inc atômico). */
   currentStock: number;
+  /** specs/0108 — true habilita reserva/bloqueio quando o controle global está ligado. */
+  tracksStock?: boolean;
   /** specs/0015-estoque-compras — abaixo desse valor, retaguarda sinaliza "estoque baixo". */
   minimumStockAlert?: number;
 }

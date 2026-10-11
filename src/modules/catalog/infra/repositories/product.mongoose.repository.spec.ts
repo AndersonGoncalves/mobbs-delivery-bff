@@ -1,14 +1,17 @@
 import { IProductAdditionalGroup, IProductAdditionalOption } from '../../domain/entities/product.entity';
 import { IPromotion } from '../../../promotions/domain/entities/promotion.entity';
+import { IPromotionRepository } from '../../../promotions/domain/repositories/promotion.repository.interface';
+import { ProductModel } from '../models/product.mongoose.model';
 import {
   AdditionalGroupTemplateLeanDocument,
+  ProductMongooseRepository,
   resolveGroup,
   resolveOptionLinkedProduct,
   resolveOptionLinkedRawMaterial,
   syncPrimaryImage,
 } from './product.mongoose.repository';
 
-function buildLinkedProduct(overrides: Partial<{ _id: string; name: string; imageUrl?: string; price: number; description?: string }> = {}) {
+function buildLinkedProduct(overrides: Partial<{ _id: string; name: string; imageUrl?: string; price: number; description?: string; tracksStock?: boolean; stockQuantity?: number }> = {}) {
   return { _id: 'prod-coca', name: 'Coca-Cola 1L', price: 10, ...overrides };
 }
 
@@ -246,6 +249,13 @@ describe('resolveOptionLinkedProduct (specs/0041-item-adicional-vinculado-produt
     expect(resolved.name).toBe('Coca-Cola 1L (snapshot)');
   });
 
+  it('specs/0108: opção de produto vinculado sem saldo recebe stockAvailable false', () => {
+    const option = buildOption({ linkedProductId: 'prod-coca' });
+    const productsById = new Map([['prod-coca', buildLinkedProduct({ tracksStock: true, stockQuantity: 0 })]]);
+
+    expect(resolveOptionLinkedProduct(option, productsById).stockAvailable).toBe(false);
+  });
+
   it('resolve recursivamente dentro de nestedAdditionalGroups (produto composto)', () => {
     const option = buildOption({
       linkedProductId: undefined,
@@ -287,6 +297,13 @@ describe('resolveOptionLinkedRawMaterial (specs/0079-adicional-materia-prima-som
 
     expect(resolved.name).toBe('Catupiry');
     expect(resolved.priceDelta).toBe(8);
+  });
+
+  it('specs/0108: opção de matéria-prima sem saldo recebe stockAvailable false', () => {
+    const option = buildOption({ rawMaterialId: 'rm-queijo' });
+    const rawMaterialsById = new Map([['rm-queijo', { _id: 'rm-queijo', name: 'Catupiry', priceDelta: 8, tracksStock: true, currentStock: 0 }]]);
+
+    expect(resolveOptionLinkedRawMaterial(option, rawMaterialsById).stockAvailable).toBe(false);
   });
 
   it('AC-6 (REQ-6): matéria-prima apagada mantém o último snapshot conhecido, sem quebrar', () => {
@@ -352,5 +369,20 @@ describe('syncPrimaryImage (specs/0109-galeria-fotos-produto REQ-12)', () => {
     const input = { images: [] as string[], imageUrl: 'https://antiga.jpg' };
 
     expect(syncPrimaryImage(input).imageUrl).toBeUndefined();
+  });
+});
+
+describe('ProductMongooseRepository.decrementStock', () => {
+  it('reserva somente quando o saldo atual cobre toda a quantidade pedida', async () => {
+    const updateOne = jest.spyOn(ProductModel, 'updateOne').mockResolvedValue({ modifiedCount: 0 } as never);
+    const repository = new ProductMongooseRepository({} as IPromotionRepository);
+
+    await expect(repository.decrementStock('product-1', 2)).resolves.toBe(false);
+    expect(updateOne).toHaveBeenCalledWith(
+      { _id: 'product-1', tracksStock: true, stockQuantity: { $gte: 2 } },
+      { $inc: { stockQuantity: -2 } },
+    );
+
+    updateOne.mockRestore();
   });
 });

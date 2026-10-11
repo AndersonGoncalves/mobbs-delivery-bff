@@ -1,5 +1,5 @@
 import type { Request, Response, Server } from 'restify';
-import { ConflictError, NotFoundError } from 'restify-errors';
+import { BadRequestError, ConflictError, NotFoundError } from 'restify-errors';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
@@ -56,15 +56,19 @@ export class RawMaterialsController extends BaseRouter {
     });
 
     application.post('/restaurants/me/raw-materials', ...authenticated, async (req: Request, res: Response) => {
-      const { name, priceDelta, unit, minimumStockAlert, description } = parseBody(saveRawMaterialSchema, req.body);
-      const material = await this.rawMaterialRepository.create(req.restaurantId!, name, priceDelta, unit, minimumStockAlert, description);
+      const { name, priceDelta, unit, minimumStockAlert, description, tracksStock } = parseBody(saveRawMaterialSchema, req.body);
+      const material = tracksStock === undefined
+        ? await this.rawMaterialRepository.create(req.restaurantId!, name, priceDelta, unit, minimumStockAlert, description)
+        : await this.rawMaterialRepository.create(req.restaurantId!, name, priceDelta, unit, minimumStockAlert, description, tracksStock);
       res.json(201, material);
     });
 
     application.put('/restaurants/me/raw-materials/:id', ...authenticated, async (req: Request, res: Response) => {
-      const { name, priceDelta, unit, minimumStockAlert, description } = parseBody(saveRawMaterialSchema, req.body);
+      const { name, priceDelta, unit, minimumStockAlert, description, tracksStock } = parseBody(saveRawMaterialSchema, req.body);
       await this.findOwnedRawMaterial(req.params.id, req.restaurantId!);
-      const material = await this.rawMaterialRepository.update(req.params.id, name, priceDelta, unit, minimumStockAlert, description);
+      const material = tracksStock === undefined
+        ? await this.rawMaterialRepository.update(req.params.id, name, priceDelta, unit, minimumStockAlert, description)
+        : await this.rawMaterialRepository.update(req.params.id, name, priceDelta, unit, minimumStockAlert, description, tracksStock);
       res.json(200, material);
     });
 
@@ -104,18 +108,17 @@ export class RawMaterialsController extends BaseRouter {
         const { type, quantity, reason } = parseBody(stockAdjustmentSchema, req.body);
         const material = await this.findOwnedRawMaterial(req.params.id, req.restaurantId!);
 
-        const delta = type === 'entrada' ? quantity : -quantity;
-        const [updatedMaterial, movement] = await Promise.all([
-          this.rawMaterialRepository.incrementStock(material.id, delta),
-          this.stockMovementRepository.create({
-            restaurantId: req.restaurantId!,
-            rawMaterialId: material.id,
-            type,
-            quantity,
-            reason,
-            createdBy: req.user?.uid,
-          }),
-        ]);
+        const updatedMaterial = type === 'entrada'
+          ? await this.rawMaterialRepository.incrementStock(material.id, quantity)
+          : await this.decrementRawMaterial(material.id, quantity, material.currentStock);
+        const movement = await this.stockMovementRepository.create({
+          restaurantId: req.restaurantId!,
+          rawMaterialId: material.id,
+          type,
+          quantity,
+          reason,
+          createdBy: req.user?.uid,
+        });
         res.json(201, { rawMaterial: updatedMaterial, movement });
       },
     );
@@ -155,5 +158,14 @@ export class RawMaterialsController extends BaseRouter {
       throw new NotFoundError('Matéria-prima não encontrada');
     }
     return material;
+  }
+
+  private async decrementRawMaterial(id: string, quantity: number, currentStock: number) {
+    if (!(await this.rawMaterialRepository.decrementStockIfAvailable(id, quantity, false))) {
+      throw new BadRequestError(`Estoque insuficiente. Saldo atual: ${currentStock}`);
+    }
+    const updated = await this.rawMaterialRepository.findById(id);
+    if (!updated) throw new NotFoundError('Matéria-prima não encontrada');
+    return updated;
   }
 }

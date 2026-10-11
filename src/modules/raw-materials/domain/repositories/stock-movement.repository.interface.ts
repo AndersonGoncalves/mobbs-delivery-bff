@@ -4,4 +4,6 @@ export interface IStockMovementRepository {
   create(input: CreateStockMovementInput): Promise<IStockMovement>;
   /** REQ-6/AC-6 — ordem cronológica (mais antiga primeiro). */
   listByRawMaterial(rawMaterialId: string): Promise<IStockMovement[]>;
+  listByProduct(productId: string): Promise<IStockMovement[]>;
+  findByOperationId(restaurantId: string, operationId: string): Promise<IStockMovement | null>;
 }

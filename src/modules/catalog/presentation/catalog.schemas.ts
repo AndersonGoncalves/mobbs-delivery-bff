@@ -161,6 +161,8 @@ const productSchemaShape = {
   // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16 — `.optional()` de propósito
   // (mesmo padrão de `defaultProductImageUrl`): ausente = feito sob demanda, sem controle.
   stockQuantity: z.number().int().nonnegative().optional(),
+  minimumStockAlert: z.number().nonnegative().optional(),
+  tracksStock: z.boolean().default(false),
   // specs/0116-ajustes-cadastro-produto.
   posId: z.string().optional(),
   cost: z.number().nonnegative().optional(),

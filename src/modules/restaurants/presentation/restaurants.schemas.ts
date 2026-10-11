@@ -74,6 +74,7 @@ export const restaurantProfileSchema = z
     // specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-4.
     document: z.string().refine(isValidCnpj, 'CNPJ inválido'),
     minimumOrderValue: z.number().nonnegative(),
+    stockControlEnabled: z.boolean().optional(),
     // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-1 — só usado de verdade
     // quando deliveryFeeMode === 'fixed', mas sempre aceito/gravado (mesmo raciocínio de
     // deliveryFeeZones, que também persiste mesmo fora do modo byNeighborhood).

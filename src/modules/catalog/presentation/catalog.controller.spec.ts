@@ -4,6 +4,8 @@ import { IAdditionalGroupTemplateRepository } from '../../additional-group-templ
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { IMenuCategoryRepository } from '../domain/repositories/menu-category.repository.interface';
 import { IProductRepository } from '../domain/repositories/product.repository.interface';
+import { IStockMovementRepository } from '../../raw-materials/domain/repositories/stock-movement.repository.interface';
+import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { CatalogController } from './catalog.controller';
 
 type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & { restaurantId?: string; user?: { uid: string } };
@@ -81,6 +83,8 @@ describe('CatalogController', () => {
       productRepository?: Partial<IProductRepository>;
       orderRepository?: Partial<IOrderRepository>;
       additionalGroupTemplateRepository?: Partial<IAdditionalGroupTemplateRepository>;
+      stockMovementRepository?: Partial<IStockMovementRepository>;
+      restaurantRepository?: Partial<IRestaurantRepository>;
     } = {},
   ) {
     const menuCategoryRepository: Partial<IMenuCategoryRepository> = {
@@ -98,6 +102,8 @@ describe('CatalogController', () => {
       create: jest.fn().mockResolvedValue(buildProduct({ id: 'p-2' })),
       update: jest.fn().mockResolvedValue(buildProduct({ name: 'Pizza atualizada' })),
       setAvailable: jest.fn().mockResolvedValue(buildProduct({ isAvailable: false })),
+      incrementStock: jest.fn().mockResolvedValue(true),
+      decrementStockIfAvailable: jest.fn().mockResolvedValue(true),
       remove: jest.fn().mockResolvedValue(undefined),
       findAnyByLinkedProductId: jest.fn().mockResolvedValue([]),
       existsProductWithImageUrl: jest.fn().mockResolvedValue(false),
@@ -113,6 +119,15 @@ describe('CatalogController', () => {
       ...overrides.additionalGroupTemplateRepository,
     };
     const productImageStorage = { deleteProductImageIfOwned: jest.fn().mockResolvedValue(undefined) };
+    const stockMovementRepository: Partial<IStockMovementRepository> = {
+      create: jest.fn().mockResolvedValue({}),
+      listByProduct: jest.fn().mockResolvedValue([]),
+      ...overrides.stockMovementRepository,
+    };
+    const restaurantRepository: Partial<IRestaurantRepository> = {
+      findById: jest.fn().mockResolvedValue({ id: 'r-1', stockControlEnabled: false }),
+      ...overrides.restaurantRepository,
+    };
     const restaurantOperatorMiddleware = jest.fn(async () => {});
     const { application, routes } = buildFakeApplication();
     new CatalogController(
@@ -122,8 +137,10 @@ describe('CatalogController', () => {
       orderRepository as IOrderRepository,
       additionalGroupTemplateRepository as IAdditionalGroupTemplateRepository,
       productImageStorage,
+      stockMovementRepository as IStockMovementRepository,
+      restaurantRepository as IRestaurantRepository,
     ).initializeRoutes(application);
-    return { menuCategoryRepository, productRepository, orderRepository, additionalGroupTemplateRepository, productImageStorage, routes };
+    return { menuCategoryRepository, productRepository, orderRepository, additionalGroupTemplateRepository, productImageStorage, stockMovementRepository, routes };
   }
 
   it('AC-1: GET /restaurants/:id/menu-categories retorna as categorias do restaurante', async () => {
@@ -134,6 +151,59 @@ describe('CatalogController', () => {
 
     expect(menuCategoryRepository.listByRestaurant).toHaveBeenCalledWith('r-1');
     expect(json).toHaveBeenCalledWith(200, [expect.objectContaining({ id: 'c-1' })]);
+  });
+
+  it('specs/0108 AC-7: registra entrada e movimento para produto rastreado', async () => {
+    const { productRepository, stockMovementRepository, routes } = setup({
+      productRepository: { findById: jest.fn().mockResolvedValue(buildProduct({ tracksStock: true, stockQuantity: 4 })) },
+      stockMovementRepository: { create: jest.fn().mockResolvedValue({ id: 'mv-1' }) },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/products/:id/stock-adjustment'],
+      { restaurantId: 'r-1', user: { uid: 'operator-1' }, params: { id: 'p-1' }, body: { type: 'entrada', quantity: 5, reason: 'Compra avulsa' } },
+      { json },
+    );
+
+    expect(productRepository.incrementStock).toHaveBeenCalledWith('p-1', 5);
+    expect(stockMovementRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+      restaurantId: 'r-1', productId: 'p-1', type: 'entrada', quantity: 5, reason: 'Compra avulsa', createdBy: 'operator-1',
+    }));
+    expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ movement: expect.objectContaining({ id: 'mv-1' }) }));
+  });
+
+  it('specs/0108 AC-8: rejeita saída de produto maior que o saldo sem criar movimento', async () => {
+    const { stockMovementRepository, routes } = setup({
+      productRepository: {
+        findById: jest.fn().mockResolvedValue(buildProduct({ tracksStock: true, stockQuantity: 1 })),
+        decrementStockIfAvailable: jest.fn().mockResolvedValue(false),
+      },
+    });
+
+    await expect(runOperatorChain(
+      routes['POST /restaurants/me/products/:id/stock-adjustment'],
+      { restaurantId: 'r-1', params: { id: 'p-1' }, body: { type: 'saida', quantity: 2, reason: 'Quebra' } },
+      { json: jest.fn() },
+    )).rejects.toMatchObject({ statusCode: 400 });
+    expect(stockMovementRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('specs/0108 AC-10: lista histórico de produto dentro do restaurante', async () => {
+    const { stockMovementRepository, routes } = setup({
+      productRepository: { findById: jest.fn().mockResolvedValue(buildProduct({ tracksStock: true })) },
+      stockMovementRepository: { listByProduct: jest.fn().mockResolvedValue([{ id: 'mv-1', productId: 'p-1' }]) },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['GET /restaurants/me/products/:id/movements'],
+      { restaurantId: 'r-1', params: { id: 'p-1' } },
+      { json },
+    );
+
+    expect(stockMovementRepository.listByProduct).toHaveBeenCalledWith('p-1');
+    expect(json).toHaveBeenCalledWith(200, [expect.objectContaining({ id: 'mv-1' })]);
   });
 
   it('AC-3: GET /products/:id retorna o produto completo', async () => {
@@ -160,6 +230,57 @@ describe('CatalogController', () => {
     await runOperatorChain(routes['GET /restaurants/me/menu-categories'], { restaurantId: 'r-1' }, { json });
 
     expect(menuCategoryRepository.listByRestaurant).toHaveBeenCalledWith('r-1');
+  });
+
+  it('specs/0108 AC-1: controle global desligado mantém produto rastreado sem saldo no catálogo', async () => {
+    const zeroStock = buildProduct({ id: 'p-zero', tracksStock: true, stockQuantity: 0 });
+    const { routes } = setup({
+      menuCategoryRepository: { listByRestaurant: jest.fn().mockResolvedValue([{ ...buildCategory(), products: [zeroStock] }]) },
+      restaurantRepository: { findById: jest.fn().mockResolvedValue({ id: 'r-1', stockControlEnabled: false }) },
+    });
+    const json = jest.fn();
+
+    await runAuthenticatedChain(routes['GET /restaurants/:id/menu-categories'], { params: { id: 'r-1' } }, { json });
+
+    expect(json).toHaveBeenCalledWith(200, [expect.objectContaining({ products: [expect.objectContaining({ id: 'p-zero' })] })]);
+  });
+
+  it('specs/0108 AC-3/AC-4: controle ligado esconde produto sem saldo e opções de adicionais indisponíveis', async () => {
+    const product = buildProduct({
+      tracksStock: true,
+      stockQuantity: 4,
+      additionalGroups: [{
+        id: 'g-1', productId: 'p-1', name: 'Extras', type: 'adicionar', required: true, minSelections: 1, maxSelections: 2,
+        options: [
+          { id: 'o-out', groupId: 'g-1', name: 'Queijo', priceDelta: 2, stockAvailable: false },
+          { id: 'o-in', groupId: 'g-1', name: 'Bacon', priceDelta: 3, stockAvailable: true },
+        ],
+      }],
+    });
+    const { routes } = setup({
+      productRepository: { findById: jest.fn().mockResolvedValue(product) },
+      restaurantRepository: { findById: jest.fn().mockResolvedValue({ id: 'r-1', stockControlEnabled: true }) },
+    });
+    const json = jest.fn();
+
+    await runAuthenticatedChain(routes['GET /products/:id'], { params: { id: 'p-1' } }, { json });
+
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({
+      additionalGroups: [expect.objectContaining({ options: [expect.objectContaining({ id: 'o-in' })] })],
+    }));
+  });
+
+  it('specs/0108 AC-3: não retorna detalhe público de produto rastreado sem saldo com controle ligado', async () => {
+    const { routes } = setup({
+      productRepository: { findById: jest.fn().mockResolvedValue(buildProduct({ tracksStock: true, stockQuantity: 0 })) },
+      restaurantRepository: { findById: jest.fn().mockResolvedValue({ id: 'r-1', stockControlEnabled: true }) },
+    });
+
+    await expect(runAuthenticatedChain(
+      routes['GET /products/:id'],
+      { params: { id: 'p-1' } },
+      { json: jest.fn() },
+    )).rejects.toMatchObject({ statusCode: 404 });
   });
 
   it('AC-1: POST /restaurants/me/menu-categories cria categoria no restaurante do operador', async () => {
@@ -996,7 +1117,7 @@ describe('CatalogController', () => {
   });
 
   it('GET /restaurants/:id/best-sellers marca hasAdditionalGroups quando o produto tem grupos', async () => {
-    const productWithGroups = buildProduct({ id: 'p-1', isBestSeller: true, additionalGroups: [{ id: 'g-1' }] });
+    const productWithGroups = buildProduct({ id: 'p-1', isBestSeller: true, additionalGroups: [{ id: 'g-1', options: [] }] });
     const { routes } = setup({
       productRepository: { getBestSellers: jest.fn().mockResolvedValue([productWithGroups]) },
     });
@@ -1046,7 +1167,7 @@ describe('CatalogController', () => {
   });
 
   it('GET /restaurants/:id/featured-products marca hasAdditionalGroups quando o produto tem grupos', async () => {
-    const productWithGroups = buildProduct({ id: 'p-1', additionalGroups: [{ id: 'g-1' }] });
+    const productWithGroups = buildProduct({ id: 'p-1', additionalGroups: [{ id: 'g-1', options: [] }] });
     const { routes } = setup({
       productRepository: { getFeatured: jest.fn().mockResolvedValue([productWithGroups]) },
     });

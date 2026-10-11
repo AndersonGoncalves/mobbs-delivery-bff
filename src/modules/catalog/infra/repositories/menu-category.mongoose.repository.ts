@@ -39,6 +39,9 @@ function toProductLight(doc: ProductLightLeanDocument, promotionPercentageByProd
     imageUrl: doc.imageUrl,
     price: doc.price,
     isAvailable: doc.isAvailable,
+    tracksStock: doc.tracksStock ?? (doc.stockQuantity !== undefined && doc.stockQuantity !== null),
+    stockQuantity: doc.stockQuantity,
+    minimumStockAlert: doc.minimumStockAlert,
     // specs/0028-destaques-vendidos-banners REQ-3 — o app cliente filtra Destaques a partir
     // desta mesma listagem leve do cardápio, não busca produto por produto.
     isFeatured: doc.isFeatured ?? false,
@@ -80,7 +83,7 @@ export class MenuCategoryMongooseRepository implements IMenuCategoryRepository {
       // computar `hasAdditionalGroups` sem o resto da árvore).
       ProductModel.find({ restaurantId })
         .select(
-          'restaurantId menuCategoryId name description imageUrl price isAvailable isFeatured featuredOrder additionalGroups.id ' +
+          'restaurantId menuCategoryId name description imageUrl price isAvailable isFeatured featuredOrder tracksStock stockQuantity minimumStockAlert additionalGroups.id ' +
             'activeDays isAlcoholic scheduleStartTime scheduleEndTime',
         )
         .lean<ProductLightLeanDocument[]>(),

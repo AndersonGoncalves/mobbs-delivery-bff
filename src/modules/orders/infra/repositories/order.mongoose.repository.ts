@@ -10,6 +10,7 @@ interface OrderLeanDocument {
   _id: string;
   orderNumber: number;
   trackingToken: string;
+  idempotencyKey?: string;
   customerId: string;
   restaurantId: string;
   items: IOrderItem[];
@@ -46,6 +47,7 @@ function toEntity(doc: OrderLeanDocument): IOrder {
     id: doc._id,
     orderNumber: doc.orderNumber,
     trackingToken: doc.trackingToken,
+    idempotencyKey: doc.idempotencyKey,
     customerId: doc.customerId,
     restaurantId: doc.restaurantId,
     items: doc.items ?? [],
@@ -90,8 +92,10 @@ export class OrderMongooseRepository implements IOrderRepository {
     const now = new Date();
 
     const doc = await OrderModel.create({
+      _id: input.id,
       orderNumber,
       trackingToken,
+      idempotencyKey: input.idempotencyKey,
       customerId: input.customerId,
       restaurantId: input.restaurantId,
       items: input.items,
@@ -162,6 +166,11 @@ export class OrderMongooseRepository implements IOrderRepository {
 
   async findById(id: string): Promise<IOrder | null> {
     const doc = await OrderModel.findById(id).lean<OrderLeanDocument>();
+    return doc ? toEntity(doc) : null;
+  }
+
+  async findByIdempotencyKey(restaurantId: string, customerId: string, idempotencyKey: string): Promise<IOrder | null> {
+    const doc = await OrderModel.findOne({ restaurantId, customerId, idempotencyKey }).lean<OrderLeanDocument>();
     return doc ? toEntity(doc) : null;
   }
 

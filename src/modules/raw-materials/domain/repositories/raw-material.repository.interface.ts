@@ -15,6 +15,7 @@ export interface IRawMaterialRepository {
     unit: string,
     minimumStockAlert?: number,
     description?: string,
+    tracksStock?: boolean,
   ): Promise<IRawMaterial>;
   update(
     id: string,
@@ -23,6 +24,7 @@ export interface IRawMaterialRepository {
     unit: string,
     minimumStockAlert?: number,
     description?: string,
+    tracksStock?: boolean,
   ): Promise<IRawMaterial>;
   setActive(id: string, isActive: boolean): Promise<IRawMaterial>;
   findById(id: string): Promise<IRawMaterial | null>;
@@ -34,4 +36,6 @@ export interface IRawMaterialRepository {
    * pelo ajuste manual de estoque.
    */
   incrementStock(id: string, delta: number): Promise<IRawMaterial>;
+  /** specs/0108 — decremento condicional; false quando não há saldo suficiente ou rastreamento desligado. */
+  decrementStockIfAvailable(id: string, quantity: number, requireTracking?: boolean): Promise<boolean>;
 }

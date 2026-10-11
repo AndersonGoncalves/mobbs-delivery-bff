@@ -46,6 +46,7 @@ const orderItemSchema = z.object({
 export const createOrderSchema = z
   .object({
     restaurantId: z.string().min(1),
+    idempotencyKey: z.string().min(1).max(128).optional(),
     items: z.array(orderItemSchema).min(1),
     orderType: z.enum(['delivery', 'pickup']),
     deliveryAddress: optionalString(z.string().min(1)),

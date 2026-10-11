@@ -12,6 +12,8 @@ import { ITableWaiterRepository } from '../domain/repositories/waiter.repository
 import { ICustomerRepository } from '../../customers/domain/repositories/customer.repository.interface';
 import { IProductRepository } from '../../catalog/domain/repositories/product.repository.interface';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
+import { StockReservationService } from '../../orders/domain/services/stock-reservation.service';
+import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { TableOrderService } from '../domain/services/table-order.service';
 import {
   addTableOrderItemSchema,
@@ -40,10 +42,15 @@ export class TableServiceController extends BaseRouter {
     private readonly orderRepository: IOrderRepository,
     customerRepository: ICustomerRepository,
     productRepository: IProductRepository,
+    restaurantRepository: IRestaurantRepository,
+    stockReservationService: StockReservationService,
     private readonly restaurantOperatorMiddleware: AsyncHandler,
   ) {
     super();
-    this.tableOrders = new TableOrderService(orderRepository, tableRepository, waiterRepository, layoutRepository, productRepository, customerRepository);
+    this.tableOrders = new TableOrderService(
+      orderRepository, tableRepository, waiterRepository, layoutRepository, productRepository, customerRepository,
+      restaurantRepository, stockReservationService,
+    );
   }
 
   private readonly tableOrders: TableOrderService;
@@ -79,12 +86,12 @@ export class TableServiceController extends BaseRouter {
 
     application.post('/restaurants/me/table-orders/:id/items', ...authenticated, async (req: Request, res: Response) => {
       const input = parseBody(addTableOrderItemSchema, req.body);
-      res.json(200, await this.tableOrders.addItem(req.restaurantId!, req.params.id, input));
+      res.json(200, await this.tableOrders.addItem(req.restaurantId!, req.params.id, { ...input, operationId: input.operationId ?? randomUUID() }));
     });
 
     application.patch('/restaurants/me/table-orders/:id/items/:itemId/quantity', ...authenticated, async (req: Request, res: Response) => {
-      const { quantity } = parseBody(updateTableOrderItemQuantitySchema, req.body);
-      res.json(200, await this.tableOrders.setItemQuantity(req.restaurantId!, req.params.id, req.params.itemId, quantity));
+      const { quantity, operationId } = parseBody(updateTableOrderItemQuantitySchema, req.body);
+      res.json(200, await this.tableOrders.setItemQuantity(req.restaurantId!, req.params.id, req.params.itemId, quantity, operationId ?? randomUUID()));
     });
 
     application.post('/restaurants/me/table-orders/:id/items/group', ...authenticated, async (req: Request, res: Response) => {

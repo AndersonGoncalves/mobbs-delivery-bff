@@ -67,6 +67,9 @@ export class ReceivePurchaseOrderService implements IReceivePurchaseOrderService
           purchaseOrderId: updated.id,
         });
       } else if (item.rawMaterialId) {
+        // specs/0108 REQ-9 — matéria-prima sem controle de estoque não recebe saldo.
+        const material = await this.rawMaterialRepository.findById(item.rawMaterialId);
+        if (!material?.tracksStock) continue;
         await this.rawMaterialRepository.incrementStock(item.rawMaterialId, item.quantity);
         await this.stockMovementRepository.create({
           restaurantId,

@@ -18,6 +18,8 @@ export interface IProductAdditionalOption {
    */
   priceDelta?: number;
   rawMaterialId?: string;
+  /** specs/0108 — disponibilidade calculada na leitura pública; nunca persistida no item de catálogo. */
+  stockAvailable?: boolean;
   /**
    * specs/0041-item-adicional-vinculado-produto REQ-2/REQ-3 — referência opcional a um
    * `IProduct` já cadastrado (produto vendável, ex. "Coca-Cola 1L"), mutuamente exclusiva com
@@ -130,6 +132,9 @@ export interface IProduct {
    * quando um pedido com este produto — vendido avulso ou como adicional vinculado,
    * `specs/0041` — muda pra `entregue`). */
   stockQuantity?: number;
+  minimumStockAlert?: number;
+  /** specs/0108 — true habilita reserva/bloqueio quando o controle global do restaurante está ligado. */
+  tracksStock?: boolean;
   /**
    * specs/0044-promocoes-produtos REQ-2/REQ-3 — computados na leitura (nunca armazenados no
    * documento do produto), cruzando com `Promotion`s "efetivamente ativas"

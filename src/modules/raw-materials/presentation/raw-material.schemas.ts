@@ -8,6 +8,7 @@ export const saveRawMaterialSchema = z.object({
   description: z.string().max(300).optional(),
   unit: z.string().min(1, 'Unidade de medida é obrigatória'),
   minimumStockAlert: z.number().nonnegative().optional(),
+  tracksStock: z.boolean().optional(),
 });
 
 // REQ-7: `confirmed` só é usado quando o cliente já viu o aviso de produtos afetados e quer

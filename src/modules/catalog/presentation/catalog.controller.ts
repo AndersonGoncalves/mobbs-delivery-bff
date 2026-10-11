@@ -1,5 +1,5 @@
 import type { Request, Response, Server } from 'restify';
-import { ConflictError, NotFoundError } from 'restify-errors';
+import { BadRequestError, ConflictError, NotFoundError } from 'restify-errors';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
@@ -12,6 +12,9 @@ import { IProduct } from '../domain/entities/product.entity';
 import { IMenuCategoryRepository } from '../domain/repositories/menu-category.repository.interface';
 import { IProductImageStorage } from '../domain/product-image-storage';
 import { IProductRepository } from '../domain/repositories/product.repository.interface';
+import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
+import { IStockMovementRepository } from '../../raw-materials/domain/repositories/stock-movement.repository.interface';
+import { stockAdjustmentSchema } from '../../raw-materials/presentation/raw-material.schemas';
 import {
   listProductsQuerySchema,
   menuCategoryNameSchema,
@@ -27,6 +30,56 @@ import {
 } from './catalog.schemas';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
+
+function hasStock(item: { tracksStock?: boolean; stockQuantity?: number }, enabled: boolean): boolean {
+  return !enabled || !item.tracksStock || (item.stockQuantity ?? 0) > 0;
+}
+
+function filterStockGroups(groups: IProduct['additionalGroups']): { groups: IProduct['additionalGroups']; valid: boolean } {
+  let valid = true;
+  const filtered = groups.map((group) => {
+    const options = group.options.flatMap((option) => {
+      if (option.stockAvailable === false) return [];
+      const nested = filterStockGroups(option.nestedAdditionalGroups ?? []);
+      if (!nested.valid) return [];
+      return [{ ...option, nestedAdditionalGroups: nested.groups }];
+    });
+    if (options.length < group.minSelections) valid = false;
+    return { ...group, options };
+  });
+  return { groups: filtered, valid };
+}
+
+function filterProductStock<T extends { tracksStock?: boolean; stockQuantity?: number }>(products: T[], enabled: boolean): T[] {
+  return products.filter((product) => hasStock(product, enabled));
+}
+
+function stripInventoryFields<T extends { tracksStock?: boolean; stockQuantity?: number; minimumStockAlert?: number }>(item: T) {
+  const publicItem = { ...item };
+  delete publicItem.tracksStock;
+  delete publicItem.stockQuantity;
+  delete publicItem.minimumStockAlert;
+  return publicItem;
+}
+
+function stripOptionStockAvailability(groups: IProduct['additionalGroups']): IProduct['additionalGroups'] {
+  return groups.map((group) => ({
+    ...group,
+    options: (group.options ?? []).map((option) => {
+      const publicOption = { ...option };
+      delete publicOption.stockAvailable;
+      return { ...publicOption, nestedAdditionalGroups: stripOptionStockAvailability(option.nestedAdditionalGroups ?? []) };
+    }),
+  }));
+}
+
+function toPublicProduct(product: IProduct) {
+  const { additionalGroups, ...publicFields } = product;
+  return {
+    ...stripInventoryFields(publicFields),
+    additionalGroups: stripOptionStockAvailability(additionalGroups),
+  };
+}
 
 /**
  * REQ-1/REQ-3 (`specs/0003-catalogo-navegacao`) — leitura do cardápio do restaurante já resolvido
@@ -57,6 +110,8 @@ export class CatalogController extends BaseRouter {
     // specs/0099-preserva-imagem-compartilhada-s3-exclusao-produto — apaga do bucket só a foto
     // enviada pelo próprio restaurante, depois do registro removido.
     private readonly productImageStorage: IProductImageStorage,
+    private readonly stockMovementRepository: IStockMovementRepository,
+    private readonly restaurantRepository: IRestaurantRepository,
   ) {
     super();
   }
@@ -67,13 +122,20 @@ export class CatalogController extends BaseRouter {
       firebaseAuthMiddleware,
       async (req: Request, res: Response) => {
         const categories = await this.menuCategoryRepository.listByRestaurant(req.params.id);
-        res.json(200, categories);
+        res.json(200, await this.filterPublicCategories(req.params.id, categories));
       },
     );
 
     application.get('/products/:id', firebaseAuthMiddleware, async (req: Request, res: Response) => {
-      const product = await this.productRepository.findById(req.params.id);
-      res.json(200, this.render(product));
+      const product = this.render(await this.productRepository.findById(req.params.id));
+      if (!(await this.isStockControlEnabled(product.restaurantId))) {
+        res.json(200, toPublicProduct(product));
+        return;
+      }
+      if (!hasStock(product, true)) throw new NotFoundError('Produto indisponível');
+      const filtered = filterStockGroups(product.additionalGroups);
+      if (!filtered.valid) throw new NotFoundError('Produto indisponível');
+      res.json(200, toPublicProduct({ ...product, additionalGroups: filtered.groups }));
     });
 
     // specs/0028-destaques-vendidos-banners REQ-2 — pública (mesmo padrão de
@@ -88,7 +150,8 @@ export class CatalogController extends BaseRouter {
       firebaseAuthMiddleware,
       async (req: Request, res: Response) => {
         const products = await this.productRepository.getBestSellers(req.params.id);
-        res.json(200, products.map((product) => ({ ...product, hasAdditionalGroups: product.additionalGroups.length > 0 })));
+        const filtered = await this.filterPublicProducts(req.params.id, products);
+        res.json(200, filtered.map((product) => ({ ...toPublicProduct(product), hasAdditionalGroups: product.additionalGroups.length > 0 })));
       },
     );
 
@@ -101,7 +164,8 @@ export class CatalogController extends BaseRouter {
       firebaseAuthMiddleware,
       async (req: Request, res: Response) => {
         const products = await this.productRepository.getCartSuggestions(req.params.id);
-        res.json(200, products.map((product) => ({ ...product, hasAdditionalGroups: product.additionalGroups.length > 0 })));
+        const filtered = await this.filterPublicProducts(req.params.id, products);
+        res.json(200, filtered.map((product) => ({ ...toPublicProduct(product), hasAdditionalGroups: product.additionalGroups.length > 0 })));
       },
     );
 
@@ -113,7 +177,8 @@ export class CatalogController extends BaseRouter {
       firebaseAuthMiddleware,
       async (req: Request, res: Response) => {
         const products = await this.productRepository.getFeatured(req.params.id);
-        res.json(200, products.map((product) => ({ ...product, hasAdditionalGroups: product.additionalGroups.length > 0 })));
+        const filtered = await this.filterPublicProducts(req.params.id, products);
+        res.json(200, filtered.map((product) => ({ ...toPublicProduct(product), hasAdditionalGroups: product.additionalGroups.length > 0 })));
       },
     );
 
@@ -258,6 +323,35 @@ export class CatalogController extends BaseRouter {
       },
     );
 
+    application.post('/restaurants/me/products/:id/stock-adjustment', ...authenticated, async (req: Request, res: Response) => {
+      const { type, quantity, reason } = parseBody(stockAdjustmentSchema, req.body);
+      const product = await this.findOwnedProduct(req.params.id, req.restaurantId!);
+      if (!product.tracksStock) throw new ConflictError('Ative o controle de estoque do produto antes de ajustar o saldo');
+
+      if (type === 'entrada') {
+        if (!(await this.productRepository.incrementStock(product.id, quantity))) throw new NotFoundError('Produto não encontrado');
+      } else if (!(await this.productRepository.decrementStockIfAvailable(product.id, quantity))) {
+        throw new BadRequestError(`Estoque insuficiente. Saldo atual: ${product.stockQuantity ?? 0}`);
+      }
+
+      const movement = await this.stockMovementRepository.create({
+        restaurantId: req.restaurantId!,
+        productId: product.id,
+        type,
+        quantity,
+        reason,
+        createdBy: req.user?.uid,
+      });
+      const updatedProduct = await this.findOwnedProduct(product.id, req.restaurantId!);
+      res.json(201, { product: updatedProduct, movement });
+    });
+
+    application.get('/restaurants/me/products/:id/movements', ...authenticated, async (req: Request, res: Response) => {
+      const product = await this.findOwnedProduct(req.params.id, req.restaurantId!);
+      if (!product.tracksStock) throw new ConflictError('Produto não controla estoque');
+      res.json(200, await this.stockMovementRepository.listByProduct(product.id));
+    });
+
     // specs/0026-selecao-clonar-excluir-busca-web REQ-4/REQ-5/REQ-6 — exclusão REAL (diferente
     // de `available`), só pra "dono", bloqueada sem confirmação possível se já foi usado alguma
     // vez em algum pedido (qualquer status).
@@ -318,6 +412,24 @@ export class CatalogController extends BaseRouter {
       throw new NotFoundError('Produto não encontrado');
     }
     return product;
+  }
+
+  private async isStockControlEnabled(restaurantId: string): Promise<boolean> {
+    const restaurant = await this.restaurantRepository.findById(restaurantId);
+    return restaurant?.stockControlEnabled ?? false;
+  }
+
+  private async filterPublicProducts(restaurantId: string, products: IProduct[]): Promise<IProduct[]> {
+    return filterProductStock(products, await this.isStockControlEnabled(restaurantId));
+  }
+
+  private async filterPublicCategories(restaurantId: string, categories: Awaited<ReturnType<IMenuCategoryRepository['listByRestaurant']>>) {
+    const enabled = await this.isStockControlEnabled(restaurantId);
+    if (!enabled) return categories;
+    return categories.map((category) => ({
+      ...category,
+      products: filterProductStock(category.products, true).map(stripInventoryFields),
+    }));
   }
 
   /** specs/0109-galeria-fotos-produto REQ-13 — só apaga do S3 (`deleteProductImageIfOwned`, que

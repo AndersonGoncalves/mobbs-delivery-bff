@@ -39,6 +39,8 @@ interface LinkedProductLeanDocument {
   // specs/0087-descricao-adicional-vinculado — mesmo raciocínio de `name`/`priceDelta`: sempre o
   // valor ATUAL do produto vinculado, nunca um snapshot persistido na opção.
   description?: string;
+  tracksStock?: boolean;
+  stockQuantity?: number;
 }
 
 function toEntity(doc: ProductLeanDocument): IProduct {
@@ -57,6 +59,8 @@ function toEntity(doc: ProductLeanDocument): IProduct {
     featuredOrder: doc.featuredOrder ?? 0,
     availableAsAdditional: doc.availableAsAdditional ?? false,
     stockQuantity: doc.stockQuantity,
+    minimumStockAlert: doc.minimumStockAlert,
+    tracksStock: doc.tracksStock ?? (doc.stockQuantity !== undefined && doc.stockQuantity !== null),
     activePromotionPercentage: doc.activePromotionPercentage,
     promotionalPrice: doc.promotionalPrice,
     // specs/0116-ajustes-cadastro-produto.
@@ -120,6 +124,8 @@ interface LinkedRawMaterialLeanDocument {
   name: string;
   priceDelta: number;
   description?: string;
+  tracksStock?: boolean;
+  currentStock?: number;
 }
 
 // specs/0079-adicional-materia-prima-some-sem-estoque REQ-4/REQ-6 — "vínculo vivo" igual
@@ -135,7 +141,14 @@ export function resolveOptionLinkedRawMaterial(
   const linked = option.rawMaterialId ? rawMaterialsById.get(option.rawMaterialId) : undefined;
   if (!linked) return nestedAdditionalGroups ? { ...option, nestedAdditionalGroups } : option;
 
-  return { ...option, name: linked.name, priceDelta: linked.priceDelta, description: option.description ?? linked.description, nestedAdditionalGroups };
+  return {
+    ...option,
+    name: linked.name,
+    priceDelta: linked.priceDelta,
+    description: option.description ?? linked.description,
+    stockAvailable: !linked.tracksStock || (linked.currentStock ?? 0) > 0,
+    nestedAdditionalGroups,
+  };
 }
 
 function resolveGroupLinkedRawMaterials(
@@ -164,7 +177,7 @@ async function resolveLinkedRawMaterials(docs: ProductLeanDocument[]): Promise<v
   if (rawMaterialIds.size === 0) return;
 
   const rawMaterials = await RawMaterialModel.find({ _id: { $in: [...rawMaterialIds] } })
-    .select('_id name priceDelta description')
+    .select('_id name priceDelta description tracksStock currentStock')
     .lean<LinkedRawMaterialLeanDocument[]>();
   const rawMaterialsById = new Map(rawMaterials.map((rawMaterial) => [rawMaterial._id, rawMaterial]));
 
@@ -220,7 +233,14 @@ export function resolveOptionLinkedProduct(
   const promotion = option.linkedProductId ? promotionsByProductId.get(option.linkedProductId) : undefined;
   const priceDelta = promotion ? computePromotionalPrice(linked.price, promotion.discountPercentage) : linked.price;
 
-  return { ...option, name: linked.name, description: option.description ?? linked.description, priceDelta, nestedAdditionalGroups };
+  return {
+    ...option,
+    name: linked.name,
+    description: option.description ?? linked.description,
+    priceDelta,
+    stockAvailable: !linked.tracksStock || (linked.stockQuantity ?? 0) > 0,
+    nestedAdditionalGroups,
+  };
 }
 
 function resolveGroupLinkedProducts(
@@ -296,7 +316,7 @@ async function resolveLinkedProducts(docs: ProductLeanDocument[], promotionsByPr
   if (linkedProductIds.size === 0) return;
 
   const linkedProducts = await ProductModel.find({ _id: { $in: [...linkedProductIds] } })
-    .select('_id name price description')
+    .select('_id name price description tracksStock stockQuantity')
     .lean<LinkedProductLeanDocument[]>();
   const productsById = new Map(linkedProducts.map((product) => [product._id, product]));
 
@@ -364,7 +384,13 @@ export class ProductMongooseRepository implements IProductRepository {
   }
 
   async create(restaurantId: string, input: NewProductInput): Promise<IProduct> {
-    const doc = await ProductModel.create({ restaurantId, ...syncPrimaryImage(input) });
+    const tracksStock = input.tracksStock ?? input.stockQuantity !== undefined;
+    const doc = await ProductModel.create({
+      restaurantId,
+      ...syncPrimaryImage(input),
+      tracksStock,
+      stockQuantity: tracksStock ? input.stockQuantity ?? 0 : input.stockQuantity,
+    });
     return toEntity(doc.toObject() as ProductLeanDocument);
   }
 
@@ -373,7 +399,11 @@ export class ProductMongooseRepository implements IProductRepository {
     // remove o campo) — mesmo cuidado já tomado em `MenuCategoryMongooseRepository.update`:
     // galeria esvaziada (`images: []`) precisa de `$unset` explícito pra tirar a foto principal
     // de verdade, não só deixar o valor antigo intacto.
-    const { imageUrl, ...rest } = syncPrimaryImage(input);
+    const normalized = syncPrimaryImage(input);
+    const tracksStock = normalized.tracksStock ?? (normalized.stockQuantity !== undefined ? true : undefined);
+    const { imageUrl, ...rest } = normalized;
+    if (tracksStock !== undefined) rest.tracksStock = tracksStock;
+    if (tracksStock && normalized.stockQuantity === undefined) rest.stockQuantity = 0;
     const doc = await ProductModel.findByIdAndUpdate(
       id,
       imageUrl === undefined && input.images !== undefined ? { $set: rest, $unset: { imageUrl: '' } } : { $set: { ...rest, imageUrl } },
@@ -562,22 +592,27 @@ export class ProductMongooseRepository implements IProductRepository {
   }
 
   async decrementStock(id: string, quantity: number): Promise<boolean> {
-    // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16 — só baixa produtos com
-    // `stockQuantity` já definido (feito sob demanda = `null`/ausente, nunca mexido); update via
-    // pipeline agregação (`$max`) pra nunca deixar negativo, mesmo em baixas concorrentes.
-    // Devolve se de fato baixou (`matchedCount > 0`) — usado pelo caso de uso pra decidir se
-    // registra um `StockMovement` (não registra baixa "fantasma" de produto sem controle).
-    const result = await ProductModel.updateOne({ _id: id, stockQuantity: { $ne: null } }, [
-      { $set: { stockQuantity: { $max: [0, { $subtract: ['$stockQuantity', quantity] }] } } },
-    ]);
-    return result.matchedCount > 0;
+    const result = await ProductModel.updateOne(
+      { _id: id, tracksStock: true, stockQuantity: { $gte: quantity } },
+      { $inc: { stockQuantity: -quantity } },
+    );
+    return result.modifiedCount > 0;
+  }
+
+  async decrementStockIfAvailable(id: string, quantity: number): Promise<boolean> {
+    return this.decrementStock(id, quantity);
+  }
+
+  async restoreStock(id: string, quantity: number): Promise<boolean> {
+    const result = await ProductModel.updateOne({ _id: id }, { $inc: { stockQuantity: quantity } });
+    return result.modifiedCount > 0;
   }
 
   async incrementStock(id: string, quantity: number): Promise<boolean> {
     // Pedido explícito do usuário (follow-up) — mesma regra de `decrementStock`: só soma em
     // produtos com `stockQuantity` já definido (feito sob demanda = `null`/ausente, nunca mexido).
     const result = await ProductModel.updateOne(
-      { _id: id, stockQuantity: { $ne: null } },
+      { _id: id, tracksStock: true, stockQuantity: { $ne: null } },
       { $inc: { stockQuantity: quantity } },
     );
     return result.matchedCount > 0;

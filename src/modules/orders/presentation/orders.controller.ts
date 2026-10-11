@@ -1,4 +1,5 @@
 import { isBillingBlocked } from '../../billing/domain/billing';
+import { randomUUID } from 'crypto';
 import { BillingBlockedError } from '../../../shared/http/billing-blocked.error';
 import { findDeliveryFeeZone } from '../../restaurants/domain/find-delivery-fee-zone';
 import type { Request, Response, Server } from 'restify';
@@ -17,10 +18,11 @@ import { ICashRegisterService } from '../../financeiro/domain/services/i-cash-re
 import { buildNewOrderRestaurantMessage, DEFAULT_NEW_ORDER_RESTAURANT_TEMPLATE } from '../../notifications/domain/new-order-restaurant-message-builder';
 import { IWhatsAppNotificationService } from '../../notifications/domain/services/i-whatsapp-notification.service';
 import { IStockMovementRepository } from '../../raw-materials/domain/repositories/stock-movement.repository.interface';
+import { IRawMaterialRepository } from '../../raw-materials/domain/repositories/raw-material.repository.interface';
 import { isRestaurantOpenNow } from '../../restaurants/domain/is-restaurant-open-now';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
-import { DeductStockForDeliveredOrderUseCase } from '../domain/deduct-stock-for-delivered-order.use-case';
 import { IOrder, IOrderItem, IPayment } from '../domain/entities/order.entity';
+import { StockReservationService } from '../domain/services/stock-reservation.service';
 import { isOrderCancellable, isValidOrderStatusTransition } from '../domain/order-status-transitions';
 import { buildOrderPixCode } from '../domain/build-order-pix-code';
 import { resolveOrderItemLinkedProducts } from '../domain/resolve-order-item-linked-products';
@@ -45,7 +47,7 @@ type AsyncHandler = (req: Request, res: Response) => Promise<void>;
  * de manipular o valor pago.
  */
 export class OrdersController extends BaseRouter {
-  private readonly deductStockUseCase: DeductStockForDeliveredOrderUseCase;
+  private readonly stockReservationService?: StockReservationService;
 
   constructor(
     private readonly orderRepository: IOrderRepository,
@@ -66,14 +68,23 @@ export class OrdersController extends BaseRouter {
     // specs/0042 REQ-2/REQ-3/REQ-4 — recalcula a faixa de faturamento quando um pedido vira `entregue`.
     private readonly recomputeRestaurantBilling?: { call(restaurantId: string): Promise<void> },
     private readonly tableRepository?: IRestaurantTableRepository,
+    rawMaterialRepository?: IRawMaterialRepository,
   ) {
     super();
-    this.deductStockUseCase = new DeductStockForDeliveredOrderUseCase(productRepository, stockMovementRepository);
+    if (rawMaterialRepository) {
+      this.stockReservationService = new StockReservationService(productRepository, rawMaterialRepository, stockMovementRepository);
+    }
   }
 
   initializeRoutes(application: Server): void {
     application.post('/orders', firebaseAuthMiddleware, async (req: Request, res: Response) => {
       const payload = parseBody(createOrderSchema, req.body);
+      const idempotencyKey = payload.idempotencyKey ?? randomUUID();
+      const existingOrder = await this.orderRepository.findByIdempotencyKey(req.restaurantId ?? payload.restaurantId, req.user!.uid, idempotencyKey);
+      if (existingOrder) {
+        res.json(200, existingOrder);
+        return;
+      }
 
       const restaurant = await this.restaurantRepository.findById(payload.restaurantId);
       if (!restaurant) throw new NotFoundError('Restaurante não encontrado');
@@ -122,13 +133,25 @@ export class OrdersController extends BaseRouter {
       const { discount, couponCode } = await this.applyCoupon(payload.couponCode, payload.restaurantId, req.user!.uid, subtotal);
       const total = subtotal + deliveryFee - discount;
 
-      // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16 — resolve
-      // `linkedProductId` (`specs/0041`) de cada seleção casando contra o catálogo ATUAL do
-      // produto de cada item, antes de congelar o pedido — usado só na baixa de estoque quando
-      // o pedido for entregue (nunca aceito do cliente, ver `resolveOrderItemLinkedProducts`).
-      const items = await this.resolveItemsLinkedProducts(payload.items);
+      // Resolve os vínculos atuais e reserva saldo antes de aceitar o pedido. O corpo enviado pelo
+      // cliente nunca fornece ids de estoque; só nomes de grupo/opção são casados com o catálogo.
+      const resolvedItems = await this.resolveItemsLinkedProducts(payload.items);
+      const orderId = randomUUID();
+      const items = restaurant.stockControlEnabled
+        ? await this.requireStockReservationService().reserveOrderItems(
+            restaurant.id,
+            resolvedItems,
+            true,
+            orderId,
+            idempotencyKey,
+          )
+        : resolvedItems;
 
-      const order = await this.orderRepository.create({
+      let order: IOrder;
+      try {
+        order = await this.orderRepository.create({
+        id: orderId,
+        idempotencyKey,
         customerId: req.user!.uid,
         restaurantId: payload.restaurantId,
         items,
@@ -144,6 +167,25 @@ export class OrdersController extends BaseRouter {
         cardBrand: payload.cardBrand,
         cashChangeFor: payload.cashChangeFor,
       });
+      } catch (error) {
+        const alreadyCreated = await this.orderRepository.findByIdempotencyKey(restaurant.id, req.user!.uid, idempotencyKey);
+        if (alreadyCreated) {
+          if (restaurant.stockControlEnabled) {
+            await this.requireStockReservationService().releaseReservationsNotAttachedToOrder(
+              restaurant.id,
+              orderId,
+              items,
+              alreadyCreated.items,
+            );
+          }
+          res.json(200, alreadyCreated);
+          return;
+        }
+        if (restaurant.stockControlEnabled) {
+          await this.requireStockReservationService().releaseOrderReservations(restaurant.id, orderId, items);
+        }
+        throw error;
+      }
 
       // specs/0013-notificacoes-whatsapp REQ-1/REQ-4 — fire-and-forget: nunca bloqueia a
       // resposta HTTP nem reverte a criação do pedido se o envio falhar (o serviço já engole
@@ -206,6 +248,9 @@ export class OrdersController extends BaseRouter {
         throw new BadRequestError('Pedido não pode mais ser cancelado');
       }
       const updated = await this.orderRepository.updateStatus(order.id, 'cancelado', req.user!.uid);
+      if (order.items.some((item) => (item.stockReservations?.length ?? 0) > 0)) {
+        await this.requireStockReservationService().releaseOrderReservations(order.restaurantId, order.id, order.items);
+      }
 
       void this.whatsAppNotificationService.sendOrderStatusUpdate(updated).catch((error) => {
         console.error(`[whatsapp] erro inesperado enviando atualização de status do pedido ${updated.id}:`, error);
@@ -285,14 +330,6 @@ export class OrdersController extends BaseRouter {
             console.error(`[financeiro] erro inesperado lançando movimento automático de caixa do pedido ${updated.id}:`, error);
           }
 
-          // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16 — mesmo isolamento
-          // do lançamento de caixa acima: uma falha na baixa de estoque nunca reverte nem falha
-          // a resposta da mudança de status, que já foi persistida.
-          try {
-            await this.deductStockUseCase.execute(updated);
-          } catch (error) {
-            console.error(`[estoque] erro inesperado baixando estoque do pedido ${updated.id}:`, error);
-          }
         }
 
         res.json(200, updated);
@@ -341,6 +378,9 @@ export class OrdersController extends BaseRouter {
         }
 
         const updated = await this.orderRepository.updateStatus(order.id, 'cancelado', req.restaurantId, reason);
+        if (order.items.some((item) => (item.stockReservations?.length ?? 0) > 0)) {
+          await this.requireStockReservationService().releaseOrderReservations(order.restaurantId, order.id, order.items);
+        }
         if (order.orderType === 'table' && order.tableId) {
           await this.tableRepository?.releaseFromOrder(order.tableId, req.restaurantId!, order.id);
         }
@@ -471,6 +511,11 @@ export class OrdersController extends BaseRouter {
       if (!product) return item;
       return { ...item, selections: resolveOrderItemLinkedProducts(item.selections, product.additionalGroups) };
     });
+  }
+
+  private requireStockReservationService(): StockReservationService {
+    if (!this.stockReservationService) throw new ConflictError('Controle de estoque indisponível no servidor');
+    return this.stockReservationService;
   }
 
   private async findOwnedOrder(id: string, customerId: string): Promise<IOrder> {

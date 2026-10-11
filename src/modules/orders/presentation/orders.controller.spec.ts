@@ -7,6 +7,7 @@ import { IMotoboyRepository } from '../../motoboys/domain/repositories/motoboy.r
 import { ICashRegisterService } from '../../financeiro/domain/services/i-cash-register.service';
 import { IWhatsAppNotificationService } from '../../notifications/domain/services/i-whatsapp-notification.service';
 import { IStockMovementRepository } from '../../raw-materials/domain/repositories/stock-movement.repository.interface';
+import { IRawMaterialRepository } from '../../raw-materials/domain/repositories/raw-material.repository.interface';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IOrderRepository } from '../domain/repositories/order.repository.interface';
 import { IPaymentRepository } from '../domain/repositories/payment.repository.interface';
@@ -64,6 +65,7 @@ async function runOperatorChain(handlers: RouteHandler[], req: FakeRequest, res:
 function buildRestaurant(
   overrides: Partial<{
     isActive: boolean;
+    stockControlEnabled: boolean;
     orderTypes: ('delivery' | 'pickup')[];
     deliveryFeeCents: number;
     deliveryFeeMode: string;
@@ -185,20 +187,22 @@ describe('OrdersController', () => {
       customerRepository?: Partial<ICustomerRepository>;
       motoboyRepository?: Partial<IMotoboyRepository>;
       tableRepository?: Partial<IRestaurantTableRepository>;
+      rawMaterialRepository?: Partial<IRawMaterialRepository>;
     } = {},
   ) {
     const orderRepository: Partial<IOrderRepository> = {
       create: jest.fn().mockImplementation(async (input) => ({
+        ...input,
         id: 'o-1',
         orderNumber: 1,
         trackingToken: 'token-1',
         status: 'aguardandoConfirmacao',
         statusHistory: [],
         createdAt: new Date().toISOString(),
-        ...input,
       })),
       findManyByCustomer: jest.fn().mockResolvedValue([buildOrder()]),
       findById: jest.fn().mockResolvedValue(buildOrder()),
+      findByIdempotencyKey: jest.fn().mockResolvedValue(null),
       findByTrackingToken: jest.fn().mockResolvedValue(buildOrder()),
       findActiveByRestaurant: jest.fn().mockResolvedValue([buildOrder()]),
       findByRestaurantBetween: jest.fn().mockResolvedValue([]),
@@ -251,9 +255,12 @@ describe('OrdersController', () => {
     const productRepository: Partial<IProductRepository> = {
       findById: jest.fn().mockResolvedValue(null),
       decrementStock: jest.fn().mockResolvedValue(false),
+      decrementStockIfAvailable: jest.fn().mockResolvedValue(false),
+      restoreStock: jest.fn().mockResolvedValue(true),
       ...overrides.productRepository,
     };
     const stockMovementRepository: Partial<IStockMovementRepository> = {
+      findByOperationId: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({}),
       ...overrides.stockMovementRepository,
     };
@@ -268,6 +275,12 @@ describe('OrdersController', () => {
     const tableRepository: Partial<IRestaurantTableRepository> = {
       releaseFromOrder: jest.fn().mockResolvedValue(true),
       ...overrides.tableRepository,
+    };
+    const rawMaterialRepository: Partial<IRawMaterialRepository> = {
+      findById: jest.fn().mockResolvedValue(null),
+      decrementStockIfAvailable: jest.fn().mockResolvedValue(false),
+      incrementStock: jest.fn().mockResolvedValue({}),
+      ...overrides.rawMaterialRepository,
     };
     const { application, routes } = buildFakeApplication();
     new OrdersController(
@@ -284,6 +297,7 @@ describe('OrdersController', () => {
       motoboyRepository as IMotoboyRepository,
       undefined,
       tableRepository as IRestaurantTableRepository,
+      rawMaterialRepository as IRawMaterialRepository,
     ).initializeRoutes(application);
     return {
       orderRepository,
@@ -297,6 +311,7 @@ describe('OrdersController', () => {
       customerRepository,
       motoboyRepository,
       tableRepository,
+      rawMaterialRepository,
       routes,
     };
   }
@@ -315,6 +330,107 @@ describe('OrdersController', () => {
       expect.objectContaining({ customerId: 'customer-1', subtotal: 50, deliveryFee: 5, discount: 0, total: 55 }),
     );
     expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ id: 'o-1', orderNumber: 1 }));
+  });
+
+  it('specs/0108 AC-9: replay da mesma chave devolve o pedido existente sem criar outro', async () => {
+    const existing = buildOrder({ idempotencyKey: 'checkout-attempt-1' });
+    const { orderRepository, routes } = setup({
+      orderRepository: { findByIdempotencyKey: jest.fn().mockResolvedValue(existing) },
+    });
+    const json = jest.fn();
+
+    await runAuthenticatedChain(
+      routes['POST /orders'],
+      { body: buildValidBody({ idempotencyKey: 'checkout-attempt-1' }), user: { uid: 'customer-1' } },
+      { json },
+    );
+
+    expect(orderRepository.findByIdempotencyKey).toHaveBeenCalledWith('r-1', 'customer-1', 'checkout-attempt-1');
+    expect(orderRepository.create).not.toHaveBeenCalled();
+    expect(json).toHaveBeenCalledWith(200, existing);
+  });
+
+  it('specs/0108 AC-6: cancelar pedido devolve cada reserva congelada', async () => {
+    const item = {
+      ...buildItem(),
+      stockReservations: [{ resourceType: 'product', resourceId: 'p-1', unitsPerItem: 1, quantity: 1, operationId: 'reserve-1' }],
+    };
+    const { productRepository, stockMovementRepository, routes } = setup({
+      orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ items: [item] })) },
+    });
+
+    await runAuthenticatedChain(routes['PATCH /orders/:id/cancel'], { params: { id: 'o-1' }, user: { uid: 'customer-1' } }, { json: jest.fn() });
+
+    expect(productRepository.restoreStock).toHaveBeenCalledWith('p-1', 1);
+    expect(stockMovementRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+      orderId: 'o-1', productId: 'p-1', type: 'entrada', quantity: 1, operationId: 'reserve-1:release',
+    }));
+  });
+
+  it('specs/0108 AC-7: saldo insuficiente bloqueia checkout antes de criar pedido', async () => {
+    const { orderRepository, productRepository, stockMovementRepository, routes } = setup({
+      restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ stockControlEnabled: true })) },
+      productRepository: {
+        findById: jest.fn().mockResolvedValue({ id: 'p-1', restaurantId: 'r-1', tracksStock: true, stockQuantity: 1, additionalGroups: [] }),
+        decrementStockIfAvailable: jest.fn().mockResolvedValue(false),
+      },
+    });
+
+    await expect(runAuthenticatedChain(
+      routes['POST /orders'],
+      { body: buildValidBody({ idempotencyKey: 'checkout-stock-1', items: [buildItem({ quantity: 2 })] }), user: { uid: 'customer-1' } },
+      { json: jest.fn() },
+    )).rejects.toMatchObject({ statusCode: 409 });
+    expect(productRepository.decrementStockIfAvailable).toHaveBeenCalledWith('p-1', 2);
+    expect(orderRepository.create).not.toHaveBeenCalled();
+    expect(stockMovementRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('specs/0108 AC-2: checkout reserva saldo e congela snapshot de quantidade no pedido', async () => {
+    const { orderRepository, productRepository, stockMovementRepository, routes } = setup({
+      restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ stockControlEnabled: true })) },
+      productRepository: {
+        findById: jest.fn().mockResolvedValue({ id: 'p-1', restaurantId: 'r-1', tracksStock: true, stockQuantity: 8, additionalGroups: [] }),
+        decrementStockIfAvailable: jest.fn().mockResolvedValue(true),
+      },
+    });
+    const json = jest.fn();
+
+    await runAuthenticatedChain(
+      routes['POST /orders'],
+      { body: buildValidBody({ idempotencyKey: 'checkout-reserve-1', items: [buildItem({ quantity: 2 })] }), user: { uid: 'customer-1' } },
+      { json },
+    );
+
+    expect(productRepository.decrementStockIfAvailable).toHaveBeenCalledWith('p-1', 2);
+    expect(stockMovementRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+      orderId: expect.any(String), productId: 'p-1', type: 'saida', quantity: 2, operationId: expect.stringContaining('checkout-reserve-1'),
+    }));
+    expect(orderRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+      idempotencyKey: 'checkout-reserve-1',
+      items: [expect.objectContaining({ stockReservations: [expect.objectContaining({ resourceId: 'p-1', quantity: 2 })] })],
+    }));
+  });
+
+  it('specs/0108 AC-6: cancelar pedido com reserva devolve o saldo registrado', async () => {
+    const reservedItem = {
+      ...buildItem(),
+      stockReservations: [{ resourceType: 'product', resourceId: 'p-1', unitsPerItem: 1, quantity: 1, operationId: 'reserve-1' }],
+    };
+    const { productRepository, stockMovementRepository, routes } = setup({
+      orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ items: [reservedItem] })) },
+    });
+
+    await runAuthenticatedChain(
+      routes['PATCH /orders/:id/cancel'],
+      { params: { id: 'o-1' }, user: { uid: 'customer-1' } },
+      { json: jest.fn() },
+    );
+
+    expect(productRepository.restoreStock).toHaveBeenCalledWith('p-1', 1);
+    expect(stockMovementRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+      orderId: 'o-1', productId: 'p-1', type: 'entrada', quantity: 1, operationId: 'reserve-1:release',
+    }));
   });
 
   // specs/0042 REQ-7 — restaurante bloqueado por inadimplência não aceita pedido novo, nem pela API direto.

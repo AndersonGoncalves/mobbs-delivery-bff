@@ -35,6 +35,7 @@ describe('ReceivePurchaseOrderService (specs/0015-estoque-compras REQ-3/REQ-7)',
       ...overrides.purchaseOrderRepository,
     };
     const rawMaterialRepository: Partial<IRawMaterialRepository> = {
+      findById: jest.fn().mockResolvedValue({ id: 'rm-1', restaurantId: 'r-1', tracksStock: true, currentStock: 10 }),
       incrementStock: jest.fn().mockResolvedValue({ id: 'rm-1', restaurantId: 'r-1', currentStock: 20 }),
       ...overrides.rawMaterialRepository,
     };
@@ -72,6 +73,17 @@ describe('ReceivePurchaseOrderService (specs/0015-estoque-compras REQ-3/REQ-7)',
       expect.objectContaining({ restaurantId: 'r-1', rawMaterialId: 'rm-2', type: 'entrada', quantity: 5, purchaseOrderId: 'po-1' }),
     );
     expect(result.status).toBe('recebido');
+  });
+
+  it('specs/0108 AC-7: matéria-prima sem controle de estoque não soma saldo nem gera movimento', async () => {
+    const { rawMaterialRepository, stockMovementRepository, service } = setup({
+      rawMaterialRepository: { findById: jest.fn().mockResolvedValue({ id: 'rm-1', restaurantId: 'r-1', tracksStock: false }) },
+    });
+
+    await service.receive('po-1', 'r-1');
+
+    expect(rawMaterialRepository.incrementStock).not.toHaveBeenCalled();
+    expect(stockMovementRepository.create).not.toHaveBeenCalled();
   });
 
   // Pedido explícito do usuário (follow-up) — item do pedido de compra pode ser um `Product`

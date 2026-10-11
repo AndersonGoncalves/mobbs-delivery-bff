@@ -22,6 +22,9 @@ export interface IStockMovement {
   quantity: number;
   reason?: string;
   purchaseOrderId?: string;
+  orderId?: string;
+  /** Chave por item/ação que torna a criação de movimentos de venda idempotente. */
+  operationId?: string;
   createdAt: string;
   createdBy?: string;
 }
@@ -34,5 +37,7 @@ export interface CreateStockMovementInput {
   quantity: number;
   reason?: string;
   purchaseOrderId?: string;
+  orderId?: string;
+  operationId?: string;
   createdBy?: string;
 }

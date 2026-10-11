@@ -7,6 +7,7 @@ import { OnboardingChecklistController } from './modules/restaurants/presentatio
 import { RestaurantOperatorMongooseRepository } from './modules/restaurant-operators/infra/repositories/restaurant-operator.mongoose.repository';
 import { migrateOperatorRolesToDono } from './modules/restaurant-operators/infra/migrations/migrate-operator-roles-to-dono';
 import { backfillManualBestSellers } from './modules/catalog/infra/migrations/backfill-manual-best-sellers';
+import { backfillStockTracking } from './modules/catalog/infra/migrations/backfill-stock-tracking';
 import { ReferralMongooseRepository } from './modules/referrals/infra/repositories/referral.mongoose.repository';
 import { ReferralCodeMongooseRepository } from './modules/referrals/infra/repositories/referral-code.mongoose.repository';
 import { CustomerPixKeyMongooseRepository } from './modules/referrals/infra/repositories/customer-pix-key.mongoose.repository';
@@ -20,6 +21,7 @@ import { CatalogController } from './modules/catalog/presentation/catalog.contro
 import { environment } from './shared/config/environment';
 import { s3Client } from './shared/storage/s3-client';
 import { OrderMongooseRepository } from './modules/orders/infra/repositories/order.mongoose.repository';
+import { StockReservationService } from './modules/orders/domain/services/stock-reservation.service';
 import { PaymentMongooseRepository } from './modules/orders/infra/repositories/payment.mongoose.repository';
 import { OrdersController } from './modules/orders/presentation/orders.controller';
 import { CouponMongooseRepository } from './modules/coupons/infra/repositories/coupon.mongoose.repository';
@@ -199,6 +201,8 @@ server
       orderRepository,
       new AdditionalGroupTemplateMongooseRepository(),
       new S3ProductImageStorage(s3Client, environment.s3.bucket, environment.s3.region),
+      stockMovementRepository,
+      restaurantRepository,
     ),
     new OrdersController(
       orderRepository,
@@ -220,6 +224,7 @@ server
         billingSettingsRepository,
       }),
       new RestaurantTableMongooseRepository(),
+      rawMaterialRepository,
     ),
     new BillingController(restaurantRepository, orderRepository, restaurantOperatorMiddleware, billingSettingsRepository),
     // specs/0106 — painel da plataforma, restrito à lista PLATFORM_ADMIN_EMAILS.
@@ -278,6 +283,8 @@ server
       orderRepository,
       customerRepository,
       productRepository,
+      restaurantRepository,
+      new StockReservationService(productRepository, rawMaterialRepository, stockMovementRepository),
       restaurantOperatorMiddleware,
     ),
     new SuppliersController(new SupplierMongooseRepository(), restaurantOperatorMiddleware),
@@ -297,7 +304,7 @@ server
       customerPixKeyRepository,
       buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
     ),
-  ], [migrateOperatorRolesToDono, backfillManualBestSellers])
+  ], [migrateOperatorRolesToDono, backfillManualBestSellers, backfillStockTracking])
   // specs/0066 REQ-1 — sessões do Baileys vivem em memória; sem isto todo restart do container
   // derruba o envio de WhatsApp em silêncio. specs/0124 — mesma lógica pra sessão da plataforma.
   .then(() =>

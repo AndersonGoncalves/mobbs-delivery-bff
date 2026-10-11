@@ -5,6 +5,10 @@ import { ITableMapLayoutRepository } from '../domain/repositories/table-map-layo
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { ICustomerRepository } from '../../customers/domain/repositories/customer.repository.interface';
 import { IProductRepository } from '../../catalog/domain/repositories/product.repository.interface';
+import { IRawMaterialRepository } from '../../raw-materials/domain/repositories/raw-material.repository.interface';
+import { IStockMovementRepository } from '../../raw-materials/domain/repositories/stock-movement.repository.interface';
+import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
+import { StockReservationService } from '../../orders/domain/services/stock-reservation.service';
 import { TableServiceController } from './table-service.controller';
 
 type FakeRequest = Partial<Pick<Request, 'params' | 'body'>> & { restaurantId?: string; user?: { uid: string } };
@@ -41,6 +45,7 @@ describe('TableServiceController', () => {
     orderRepository?: Partial<IOrderRepository>;
     customerRepository?: Partial<ICustomerRepository>;
     productRepository?: Partial<IProductRepository>;
+    restaurantRepository?: Partial<IRestaurantRepository>;
   } = {}) {
     const tableRepository: Partial<IRestaurantTableRepository> = {
       listByRestaurant: jest.fn().mockResolvedValue([]),
@@ -84,6 +89,15 @@ describe('TableServiceController', () => {
       ...overrides.customerRepository,
     };
     const productRepository = { ...overrides.productRepository } as Partial<IProductRepository>;
+    const restaurantRepository: Partial<IRestaurantRepository> = {
+      findById: jest.fn().mockResolvedValue({ id: 'r-1', stockControlEnabled: false }),
+      ...overrides.restaurantRepository,
+    };
+    const rawMaterialRepository = { findById: jest.fn() } as unknown as IRawMaterialRepository;
+    const stockMovementRepository: Partial<IStockMovementRepository> = {
+      findByOperationId: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({}),
+    };
     const middleware = jest.fn(async () => {});
     const { application, routes } = buildApp();
     new TableServiceController(
@@ -93,9 +107,11 @@ describe('TableServiceController', () => {
       orderRepository as IOrderRepository,
       customerRepository as ICustomerRepository,
       productRepository as IProductRepository,
+      restaurantRepository as IRestaurantRepository,
+      new StockReservationService(productRepository as IProductRepository, rawMaterialRepository, stockMovementRepository as IStockMovementRepository),
       middleware,
     ).initializeRoutes(application);
-    return { tableRepository, waiterRepository, layoutRepository, orderRepository, customerRepository, routes };
+    return { tableRepository, waiterRepository, layoutRepository, orderRepository, customerRepository, productRepository, stockMovementRepository, routes };
   }
 
   it('AC-1: cria mesa escopada ao restaurante autenticado', async () => {
@@ -158,6 +174,40 @@ describe('TableServiceController', () => {
       items: [expect.objectContaining({ productId: 'p-1', unitPrice: 20, quantity: 2 })],
     }));
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ total: 44 }));
+  });
+
+  it('specs/0108 AC-13: reserva estoque ao incluir item rastreado no POS da mesa', async () => {
+    const order = {
+      id: 'o-table', restaurantId: 'r-1', orderType: 'table', tableId: 't-1', tableName: '1', status: 'confirmado',
+      items: [], subtotal: 0, deliveryFee: 0, discount: 0, total: 0, serviceChargePercent: 0, tablePayments: [],
+    };
+    const product = { id: 'p-1', restaurantId: 'r-1', name: 'Suco', price: 8, isAvailable: true, tracksStock: true, stockQuantity: 5, additionalGroups: [] };
+    const { productRepository, stockMovementRepository, orderRepository, routes } = setup({
+      restaurantRepository: { findById: jest.fn().mockResolvedValue({ id: 'r-1', stockControlEnabled: true }) },
+      productRepository: {
+        findById: jest.fn().mockResolvedValue(product),
+        decrementStockIfAvailable: jest.fn().mockResolvedValue(true),
+      },
+      orderRepository: {
+        findById: jest.fn().mockResolvedValue(order),
+        updateTableOrder: jest.fn().mockImplementation(async (_id, _restaurantId, patch) => ({ ...order, ...patch })),
+      },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/table-orders/:id/items'],
+      { restaurantId: 'r-1', params: { id: 'o-table' }, body: { productId: 'p-1', quantity: 2, selections: [], operationId: 'pos-add-1' } },
+      { json, send: jest.fn() },
+    );
+
+    expect(productRepository.decrementStockIfAvailable).toHaveBeenCalledWith('p-1', 2);
+    expect(stockMovementRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+      orderId: 'o-table', productId: 'p-1', type: 'saida', quantity: 2, operationId: expect.stringContaining('pos-add-1'),
+    }));
+    expect(orderRepository.updateTableOrder).toHaveBeenCalledWith('o-table', 'r-1', expect.objectContaining({
+      items: [expect.objectContaining({ stockReservations: [expect.objectContaining({ resourceId: 'p-1', quantity: 2 })] })],
+    }));
   });
 
   it('AC-9/AC-22: fecha a conta com pagamentos e libera a mesa', async () => {

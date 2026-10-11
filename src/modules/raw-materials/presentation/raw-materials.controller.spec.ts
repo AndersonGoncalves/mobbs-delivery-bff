@@ -79,6 +79,7 @@ describe('RawMaterialsController', () => {
       setActive: jest.fn().mockResolvedValue(buildMaterial({ isActive: false })),
       findById: jest.fn().mockResolvedValue(buildMaterial()),
       incrementStock: jest.fn().mockResolvedValue(buildMaterial({ currentStock: 15 })),
+      decrementStockIfAvailable: jest.fn().mockResolvedValue(true),
       remove: jest.fn().mockResolvedValue(undefined),
       ...overrides.rawMaterialRepository,
     };
@@ -90,6 +91,7 @@ describe('RawMaterialsController', () => {
     const stockMovementRepository: Partial<IStockMovementRepository> = {
       create: jest.fn().mockResolvedValue(buildMovement()),
       listByRawMaterial: jest.fn().mockResolvedValue([buildMovement()]),
+      listByProduct: jest.fn().mockResolvedValue([]),
       ...overrides.stockMovementRepository,
     };
     const restaurantOperatorMiddleware = jest.fn(async () => {});
@@ -237,7 +239,7 @@ describe('RawMaterialsController', () => {
       { json },
     );
 
-    expect(rawMaterialRepository.incrementStock).toHaveBeenCalledWith('rm-1', -3);
+    expect(rawMaterialRepository.decrementStockIfAvailable).toHaveBeenCalledWith('rm-1', 3, false);
     expect(stockMovementRepository.create).toHaveBeenCalledWith(
       expect.objectContaining({
         restaurantId: 'r-1',

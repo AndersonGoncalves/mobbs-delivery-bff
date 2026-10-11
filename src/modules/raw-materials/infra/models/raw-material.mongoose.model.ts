@@ -12,6 +12,7 @@ const rawMaterialSchema = new Schema(
     // specs/0015-estoque-compras — texto livre nesta v1 (decisão confirmada, spec.md).
     unit: { type: String, required: true },
     currentStock: { type: Number, required: true, default: 0 },
+    tracksStock: { type: Boolean, required: true, default: false },
     minimumStockAlert: { type: Number },
   },
   { _id: false, timestamps: true },

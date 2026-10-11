@@ -12,6 +12,7 @@ interface RawMaterialLeanDocument {
   isActive: boolean;
   unit: string;
   currentStock: number;
+  tracksStock?: boolean;
   minimumStockAlert?: number;
 }
 
@@ -25,6 +26,7 @@ function toEntity(doc: RawMaterialLeanDocument): IRawMaterial {
     isActive: doc.isActive,
     unit: doc.unit,
     currentStock: doc.currentStock,
+    tracksStock: doc.tracksStock ?? false,
     minimumStockAlert: doc.minimumStockAlert,
   };
 }
@@ -45,6 +47,7 @@ export class RawMaterialMongooseRepository implements IRawMaterialRepository {
     unit: string,
     minimumStockAlert?: number,
     description?: string,
+    tracksStock = false,
   ): Promise<IRawMaterial> {
     const doc = await RawMaterialModel.create({
       restaurantId,
@@ -53,6 +56,7 @@ export class RawMaterialMongooseRepository implements IRawMaterialRepository {
       unit,
       minimumStockAlert,
       description,
+      tracksStock,
       isActive: true,
       currentStock: 0,
     });
@@ -66,10 +70,13 @@ export class RawMaterialMongooseRepository implements IRawMaterialRepository {
     unit: string,
     minimumStockAlert?: number,
     description?: string,
+    tracksStock?: boolean,
   ): Promise<IRawMaterial> {
+    const patch: Record<string, unknown> = { name, priceDelta, unit, minimumStockAlert, description };
+    if (tracksStock !== undefined) patch.tracksStock = tracksStock;
     const doc = await RawMaterialModel.findByIdAndUpdate(
       id,
-      { $set: { name, priceDelta, unit, minimumStockAlert, description } },
+      { $set: patch },
       { new: true },
     ).lean<RawMaterialLeanDocument>();
     return toEntity(doc as RawMaterialLeanDocument);
@@ -100,5 +107,18 @@ export class RawMaterialMongooseRepository implements IRawMaterialRepository {
       { new: true },
     ).lean<RawMaterialLeanDocument>();
     return toEntity(doc as RawMaterialLeanDocument);
+  }
+
+  async decrementStockIfAvailable(id: string, quantity: number, requireTracking = true): Promise<boolean> {
+    const filter = {
+      _id: id,
+      currentStock: { $gte: quantity },
+      ...(requireTracking ? { tracksStock: true } : {}),
+    };
+    const result = await RawMaterialModel.updateOne(
+      filter,
+      { $inc: { currentStock: -quantity } },
+    );
+    return result.modifiedCount > 0;
   }
 }

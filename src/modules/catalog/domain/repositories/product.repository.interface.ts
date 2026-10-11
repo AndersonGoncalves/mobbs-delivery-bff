@@ -16,6 +16,8 @@ export type NewProductInput = {
   /** specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16 — ausente/`undefined` =
    * feito sob demanda, sem controle de estoque (ver `IProduct.stockQuantity`). */
   stockQuantity?: number;
+  minimumStockAlert?: number;
+  tracksStock?: boolean;
   /** specs/0116-ajustes-cadastro-produto — ver comentários dos mesmos campos em `IProduct`. */
   posId?: string;
   cost?: number;
@@ -144,6 +146,10 @@ export interface IProductRepository {
    * (feito sob demanda nunca passa a ser rastreado só por receber uma compra). Devolve `true` se
    * de fato incrementou. */
   incrementStock(id: string, quantity: number): Promise<boolean>;
+
+  /** specs/0108 — decremento condicional; false quando não há saldo suficiente ou rastreamento desligado. */
+  decrementStockIfAvailable(id: string, quantity: number): Promise<boolean>;
+  restoreStock(id: string, quantity: number): Promise<boolean>;
 
   /** specs/0109-galeria-fotos-produto REQ-13 — se algum OUTRO produto do restaurante (exceto
    * `excludingProductId`) ainda tem `url` em `images`/`imageUrl`, não deve ser apagada do S3 ao

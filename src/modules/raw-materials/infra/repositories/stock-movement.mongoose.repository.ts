@@ -15,6 +15,8 @@ interface StockMovementLeanDocument {
   quantity: number;
   reason?: string;
   purchaseOrderId?: string;
+  orderId?: string;
+  operationId?: string;
   createdBy?: string;
   createdAt: Date;
 }
@@ -29,6 +31,8 @@ function toEntity(doc: StockMovementLeanDocument): IStockMovement {
     quantity: doc.quantity,
     reason: doc.reason,
     purchaseOrderId: doc.purchaseOrderId,
+    orderId: doc.orderId,
+    operationId: doc.operationId,
     createdBy: doc.createdBy,
     createdAt: doc.createdAt.toISOString(),
   };
@@ -45,5 +49,17 @@ export class StockMovementMongooseRepository implements IStockMovementRepository
       .sort({ createdAt: 1 })
       .lean<StockMovementLeanDocument[]>();
     return docs.map(toEntity);
+  }
+
+  async listByProduct(productId: string): Promise<IStockMovement[]> {
+    const docs = await StockMovementModel.find({ productId })
+      .sort({ createdAt: 1 })
+      .lean<StockMovementLeanDocument[]>();
+    return docs.map(toEntity);
+  }
+
+  async findByOperationId(restaurantId: string, operationId: string): Promise<IStockMovement | null> {
+    const doc = await StockMovementModel.findOne({ restaurantId, operationId }).lean<StockMovementLeanDocument>();
+    return doc ? toEntity(doc) : null;
   }
 }

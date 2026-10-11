@@ -24,6 +24,7 @@ export function resolveOrderItemLinkedProducts(
     return {
       ...selection,
       linkedProductId: option?.linkedProductId,
+      rawMaterialId: option?.rawMaterialId,
       ...(nestedSelections ? { nestedSelections } : {}),
     };
   });

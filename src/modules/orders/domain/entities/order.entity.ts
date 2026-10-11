@@ -27,6 +27,8 @@ export interface IOrderItemSelection {
    * não pôde ser resolvido (produto/opção renomeado ou removido entre o pedido e a entrega).
    */
   linkedProductId?: string;
+  /** specs/0108 — snapshot do adicional de matéria-prima para reserva/devolução. */
+  rawMaterialId?: string;
 }
 
 /** docs/architecture/data-model.md §OrderItem — cópia congelada de `CartItem` (specs/0004). */
@@ -38,6 +40,15 @@ export interface IOrderItem {
   selections?: IOrderItemSelection[];
   unitPrice: number;
   notes?: string;
+  stockReservations?: IOrderItemStockReservation[];
+}
+
+export interface IOrderItemStockReservation {
+  resourceType: 'product' | 'rawMaterial';
+  resourceId: string;
+  unitsPerItem: number;
+  quantity: number;
+  operationId: string;
 }
 
 export interface IOrderStatusHistory {
@@ -76,6 +87,7 @@ export interface IOrder {
   id: string;
   orderNumber: number;
   trackingToken: string;
+  idempotencyKey?: string;
   customerId: string;
   restaurantId: string;
   items: IOrderItem[];

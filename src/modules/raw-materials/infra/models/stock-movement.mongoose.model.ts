@@ -11,6 +11,8 @@ const stockMovementSchema = new Schema(
     quantity: { type: Number, required: true },
     reason: { type: String },
     purchaseOrderId: { type: String },
+    orderId: { type: String },
+    operationId: { type: String },
     createdBy: { type: String },
   },
   { _id: false, timestamps: true },
@@ -19,5 +21,10 @@ const stockMovementSchema = new Schema(
 // docs/architecture/patterns.md §16.6.1 — índice composto liderando por restaurantId; histórico
 // por matéria-prima (REQ-6) é a segunda query mais comum deste módulo.
 stockMovementSchema.index({ restaurantId: 1, rawMaterialId: 1, createdAt: 1 });
+stockMovementSchema.index({ restaurantId: 1, productId: 1, createdAt: 1 });
+stockMovementSchema.index(
+  { restaurantId: 1, operationId: 1 },
+  { unique: true, partialFilterExpression: { operationId: { $type: 'string' } } },
+);
 
 export const StockMovementModel = model('StockMovement', stockMovementSchema, 'stockMovement');

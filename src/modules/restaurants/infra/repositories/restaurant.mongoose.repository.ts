@@ -30,6 +30,7 @@ interface RestaurantLeanDocument {
   phone?: string;
   document?: string;
   minimumOrderValue?: number;
+  stockControlEnabled?: boolean;
   deliveryFeeCents?: number;
   shareMessage?: string;
   welcomeMessage?: string;
@@ -101,6 +102,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     phone: doc.phone,
     document: doc.document,
     minimumOrderValue: doc.minimumOrderValue ?? 0,
+    stockControlEnabled: doc.stockControlEnabled ?? false,
     deliveryFeeCents: doc.deliveryFeeCents ?? 0,
     shareMessage: doc.shareMessage ?? buildDefaultShareMessage(doc.name),
     welcomeMessage: doc.welcomeMessage,

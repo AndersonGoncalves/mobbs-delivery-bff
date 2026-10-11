@@ -68,6 +68,8 @@ export interface IRestaurant {
    * público do restaurante (app cliente). */
   document?: string;
   minimumOrderValue: number;
+  /** specs/0108 — chave global de reserva/ocultação de itens rastreados; ausência equivale a false. */
+  stockControlEnabled?: boolean;
   /**
    * specs/0004-carrinho — taxa de entrega fixa nesta v1 (docs/architecture/data-model.md,
    * `deliveryFeeCents`; sem cálculo por distância). Default 0. Editável pela retaguarda (campo

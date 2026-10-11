@@ -54,7 +54,7 @@ export const openTableOrderSchema = z.object({
   waiterId: z.string().min(1).nullable().optional(),
 });
 
-export const updateTableOrderItemQuantitySchema = z.object({ quantity: z.number().int().min(0).max(99) });
+export const updateTableOrderItemQuantitySchema = z.object({ quantity: z.number().int().min(0).max(99), operationId: z.string().min(1).optional() });
 export const transferTableOrderSchema = z.object({ tableId: z.string().min(1) });
 
 export const addTableOrderItemSchema = z.object({
@@ -62,6 +62,7 @@ export const addTableOrderItemSchema = z.object({
   quantity: z.number().int().min(1).max(99),
   selections: z.array(tableSelectionSchema).default([]),
   notes: z.string().max(500).optional(),
+  operationId: z.string().min(1).optional(),
 });
 
 export const tableOrderAdjustmentsSchema = z.object({
