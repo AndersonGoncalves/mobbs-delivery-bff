@@ -1,6 +1,8 @@
 import type { Request, Response, Server } from 'restify';
 
 import { IPurchaseOrderRepository } from '../domain/repositories/purchase-order.repository.interface';
+import { IProductRepository } from '../../catalog/domain/repositories/product.repository.interface';
+import { IRawMaterialRepository } from '../../raw-materials/domain/repositories/raw-material.repository.interface';
 import { IReceivePurchaseOrderService } from '../domain/services/i-receive-purchase-order.service';
 import { PurchaseOrdersController } from './purchase-orders.controller';
 
@@ -51,6 +53,8 @@ describe('PurchaseOrdersController (specs/0015-estoque-compras REQ-2/REQ-3/REQ-7
     overrides: {
       purchaseOrderRepository?: Partial<IPurchaseOrderRepository>;
       receivePurchaseOrderService?: Partial<IReceivePurchaseOrderService>;
+      rawMaterialRepository?: Partial<IRawMaterialRepository>;
+      productRepository?: Partial<IProductRepository>;
     } = {},
   ) {
     const purchaseOrderRepository: Partial<IPurchaseOrderRepository> = {
@@ -63,11 +67,21 @@ describe('PurchaseOrdersController (specs/0015-estoque-compras REQ-2/REQ-3/REQ-7
       ...overrides.receivePurchaseOrderService,
     };
     const restaurantOperatorMiddleware = jest.fn(async () => {});
+    const rawMaterialRepository: Partial<IRawMaterialRepository> = {
+      findById: jest.fn().mockImplementation(async (id: string) => ({ id, restaurantId: 'r-1', tracksStock: true })),
+      ...overrides.rawMaterialRepository,
+    };
+    const productRepository: Partial<IProductRepository> = {
+      findById: jest.fn().mockImplementation(async (id: string) => ({ id, restaurantId: 'r-1', tracksStock: true })),
+      ...overrides.productRepository,
+    };
     const { application, routes } = buildFakeApplication();
     new PurchaseOrdersController(
       purchaseOrderRepository as IPurchaseOrderRepository,
       receivePurchaseOrderService as IReceivePurchaseOrderService,
       restaurantOperatorMiddleware,
+      rawMaterialRepository as IRawMaterialRepository,
+      productRepository as IProductRepository,
     ).initializeRoutes(application);
     return { purchaseOrderRepository, receivePurchaseOrderService, routes };
   }
@@ -109,6 +123,33 @@ describe('PurchaseOrdersController (specs/0015-estoque-compras REQ-2/REQ-3/REQ-7
         { json: jest.fn() },
       ),
     ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('rejeita item de mat\u00e9ria-prima sem controle de estoque', async () => {
+    const { purchaseOrderRepository, routes } = setup({
+      rawMaterialRepository: { findById: jest.fn().mockResolvedValue({ id: 'rm-1', restaurantId: 'r-1', tracksStock: false }) },
+    });
+
+    await expect(
+      runOperatorChain(
+        routes['POST /restaurants/me/purchase-orders'],
+        { restaurantId: 'r-1', body: { supplierId: 'sup-1', items: [{ rawMaterialId: 'rm-1', quantity: 1, unitCost: 2 }] } },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(purchaseOrderRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('rejeita item de produto sem controle de estoque ou de outro restaurante', async () => {
+    const untracked = setup({ productRepository: { findById: jest.fn().mockResolvedValue({ id: 'p-1', restaurantId: 'r-1', tracksStock: false }) } });
+    const otherRestaurant = setup({ productRepository: { findById: jest.fn().mockResolvedValue({ id: 'p-1', restaurantId: 'r-2', tracksStock: true }) } });
+    const body = { supplierId: 'sup-1', items: [{ productId: 'p-1', quantity: 1, unitCost: 2 }] };
+
+    for (const { routes } of [untracked, otherRestaurant]) {
+      await expect(
+        runOperatorChain(routes['POST /restaurants/me/purchase-orders'], { restaurantId: 'r-1', body }, { json: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 400 });
+    }
   });
 
   it('AC-3: PATCH .../receive marca o pedido como recebido delegando pro service', async () => {
