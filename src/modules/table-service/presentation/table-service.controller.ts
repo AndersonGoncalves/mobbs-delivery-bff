@@ -171,9 +171,9 @@ export class TableServiceController extends BaseRouter {
     });
 
     application.put('/restaurants/me/table-map/layout', ...authenticated, async (req: Request, res: Response) => {
-      const { decorations, spendingLimit } = parseBody(saveTableMapLayoutSchema, req.body);
+      const { decorations, spendingLimit, counterPositions } = parseBody(saveTableMapLayoutSchema, req.body);
       const normalized = decorations.map((decoration) => ({ ...decoration, id: decoration.id ?? randomUUID() }));
-      res.json(200, await this.layoutRepository.save(req.restaurantId!, normalized, spendingLimit));
+      res.json(200, await this.layoutRepository.save(req.restaurantId!, normalized, spendingLimit, counterPositions));
     });
 
     application.get('/restaurants/me/waiters', ...authenticated, async (req: Request, res: Response) => {

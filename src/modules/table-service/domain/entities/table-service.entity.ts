@@ -32,8 +32,11 @@ export interface TableMapDecoration {
   height: number;
 }
 
+export type CounterPositions = Record<string, { x: number; y: number }>;
+
 export interface TableMapLayout {
   restaurantId: string;
   decorations: TableMapDecoration[];
   spendingLimit?: number;
+  counterPositions?: CounterPositions;
 }

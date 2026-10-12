@@ -20,6 +20,7 @@ const tableMapLayoutSchema = new Schema(
     restaurantId: { type: String, required: true, unique: true },
     decorations: { type: [decorationSchema], default: [] },
     spendingLimit: { type: Number, min: 0.01 },
+    counterPositions: { type: Schema.Types.Mixed },
   },
   { _id: false, timestamps: true },
 );

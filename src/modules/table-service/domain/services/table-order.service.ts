@@ -85,6 +85,7 @@ export class TableOrderService {
       waiters: waiters.filter((waiter) => waiter.isActive),
       decorations: layout.decorations,
       spendingLimit: layout.spendingLimit,
+      counterPositions: layout.counterPositions ?? {},
     };
   }
 
