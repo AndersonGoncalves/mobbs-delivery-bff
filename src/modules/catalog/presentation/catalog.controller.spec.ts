@@ -318,7 +318,48 @@ describe('CatalogController', () => {
 
     await runAuthenticatedChain(routes['GET /products/:id'], { params: { id: 'p-1' } }, { json });
 
-    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ additionalGroups: [expect.objectContaining({ options: [] })] }));
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ id: 'p-1', additionalGroups: [] }));
+  });
+
+  it('grupo obrigatório cuja única opção está sem saldo some, e o produto continua disponível', async () => {
+    const product = buildProduct({
+      additionalGroups: [{
+        id: 'g-1', productId: 'p-1', name: 'Teste', type: 'adicionar', required: true, minSelections: 1, maxSelections: 1,
+        options: [{ id: 'o-queijo', groupId: 'g-1', name: 'Queijo', priceDelta: 2, stockAvailable: false }],
+      }],
+    });
+    const { routes } = setup({
+      productRepository: { findById: jest.fn().mockResolvedValue(product) },
+      restaurantRepository: { findById: jest.fn().mockResolvedValue({ id: 'r-1', stockControlEnabled: true }) },
+    });
+    const json = jest.fn();
+
+    await runAuthenticatedChain(routes['GET /products/:id'], { params: { id: 'p-1' } }, { json });
+
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ id: 'p-1', additionalGroups: [] }));
+  });
+
+  it('grupo com menos opções em estoque do que o mínimo/máximo tem os limites reduzidos à quantidade que sobrou', async () => {
+    const product = buildProduct({
+      additionalGroups: [{
+        id: 'g-1', productId: 'p-1', name: 'Sabores', type: 'adicionar', required: true, minSelections: 2, maxSelections: 2,
+        options: [
+          { id: 'o-1', groupId: 'g-1', name: 'Calabresa', priceDelta: 0, stockAvailable: true },
+          { id: 'o-2', groupId: 'g-1', name: 'Frango', priceDelta: 0, stockAvailable: false },
+        ],
+      }],
+    });
+    const { routes } = setup({
+      productRepository: { findById: jest.fn().mockResolvedValue(product) },
+      restaurantRepository: { findById: jest.fn().mockResolvedValue({ id: 'r-1', stockControlEnabled: true }) },
+    });
+    const json = jest.fn();
+
+    await runAuthenticatedChain(routes['GET /products/:id'], { params: { id: 'p-1' } }, { json });
+
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({
+      additionalGroups: [expect.objectContaining({ minSelections: 1, maxSelections: 1, options: [expect.objectContaining({ id: 'o-1' })] })],
+    }));
   });
 
   it('AC-1: POST /restaurants/me/menu-categories cria categoria no restaurante do operador', async () => {

@@ -35,21 +35,23 @@ function hasStock(item: { tracksStock?: boolean; stockQuantity?: number }, enabl
   return !enabled || !item.tracksStock || (item.stockQuantity ?? 0) > 0;
 }
 
-function filterStockGroups(groups: IProduct['additionalGroups']): { groups: IProduct['additionalGroups']; valid: boolean } {
-  let valid = true;
-  const filtered = groups.map((group) => {
+// Opção sem saldo sai do detalhe e o grupo se ajusta ao que sobrou (grupo vazio some; mínimo/máximo
+// nunca passam da quantidade de opções) — o produto em si continua disponível.
+function filterStockGroups(groups: IProduct['additionalGroups']): IProduct['additionalGroups'] {
+  return groups.flatMap((group) => {
     // "Sem X" não consome o ingrediente: remoção continua disponível mesmo com o saldo zerado.
-    if (group.type === 'remover') return group;
-    const options = group.options.flatMap((option) => {
-      if (option.stockAvailable === false) return [];
-      const nested = filterStockGroups(option.nestedAdditionalGroups ?? []);
-      if (!nested.valid) return [];
-      return [{ ...option, nestedAdditionalGroups: nested.groups }];
-    });
-    if (options.length < group.minSelections) valid = false;
-    return { ...group, options };
+    if (group.type === 'remover') return [group];
+    const options = group.options
+      .filter((option) => option.stockAvailable !== false)
+      .map((option) => ({ ...option, nestedAdditionalGroups: filterStockGroups(option.nestedAdditionalGroups ?? []) }));
+    if (options.length === 0) return [];
+    return [{
+      ...group,
+      options,
+      minSelections: Math.min(group.minSelections, options.length),
+      maxSelections: Math.min(group.maxSelections, options.length),
+    }];
   });
-  return { groups: filtered, valid };
 }
 
 function filterProductStock<T extends { tracksStock?: boolean; stockQuantity?: number }>(products: T[], enabled: boolean): T[] {
@@ -136,8 +138,7 @@ export class CatalogController extends BaseRouter {
       }
       if (!hasStock(product, true)) throw new NotFoundError('Produto indisponível');
       const filtered = filterStockGroups(product.additionalGroups);
-      if (!filtered.valid) throw new NotFoundError('Produto indisponível');
-      res.json(200, toPublicProduct({ ...product, additionalGroups: filtered.groups }));
+      res.json(200, toPublicProduct({ ...product, additionalGroups: filtered }));
     });
 
     // specs/0028-destaques-vendidos-banners REQ-2 — pública (mesmo padrão de
