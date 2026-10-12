@@ -16,7 +16,7 @@ const bannerSchema = z
   .object({
     id: z.string().min(1),
     imageUrl: z.string().url(),
-    linkType: z.enum(['product', 'category', 'externalUrl', 'none']),
+    linkType: z.enum(['product', 'category', 'externalUrl', 'highlights', 'bestSellers', 'none']),
     productId: z.string().min(1).optional(),
     menuCategoryId: z.string().min(1).optional(),
     externalUrl: z.string().url().optional(),

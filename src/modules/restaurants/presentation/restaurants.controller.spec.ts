@@ -451,6 +451,8 @@ describe('RestaurantsController', () => {
         { id: 'b-2', imageUrl: 'https://exemplo.com/2.png', linkType: 'category', menuCategoryId: 'c-1' },
         { id: 'b-3', imageUrl: 'https://exemplo.com/3.png', linkType: 'externalUrl', externalUrl: 'https://exemplo.com' },
         { id: 'b-4', imageUrl: 'https://exemplo.com/4.png', linkType: 'none' },
+        { id: 'b-5', imageUrl: 'https://exemplo.com/5.png', linkType: 'highlights' },
+        { id: 'b-6', imageUrl: 'https://exemplo.com/6.png', linkType: 'bestSellers' },
       ];
       const { repository, routes } = setup({ updateProfile: jest.fn().mockResolvedValue(buildRestaurant({ banners })) });
       const json = jest.fn();

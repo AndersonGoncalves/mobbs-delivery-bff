@@ -33,7 +33,7 @@ const bannerSchema = new Schema(
   {
     id: { type: String, required: true },
     imageUrl: { type: String, required: true },
-    linkType: { type: String, enum: ['product', 'category', 'externalUrl', 'none'], required: true },
+    linkType: { type: String, enum: ['product', 'category', 'externalUrl', 'highlights', 'bestSellers', 'none'], required: true },
     productId: { type: String },
     menuCategoryId: { type: String },
     externalUrl: { type: String },
