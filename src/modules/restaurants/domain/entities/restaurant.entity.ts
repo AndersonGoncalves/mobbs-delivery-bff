@@ -247,7 +247,7 @@ export interface IDeliveryFeeZone {
 
 /** specs/0028-destaques-vendidos-banners REQ-6 — destino de um banner ao ser tocado no app;
  * `none` = sem destino configurado, toque não faz nada. */
-export type RestaurantBannerLinkType = 'product' | 'category' | 'externalUrl' | 'none';
+export type RestaurantBannerLinkType = 'product' | 'category' | 'externalUrl' | 'highlights' | 'bestSellers' | 'none';
 
 export interface IRestaurantBanner {
   /** Gerado no client (`crypto.randomUUID()`) — só serve de `key` pra reordenar/editar/remover

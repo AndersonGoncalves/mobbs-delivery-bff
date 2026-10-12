@@ -38,6 +38,8 @@ function hasStock(item: { tracksStock?: boolean; stockQuantity?: number }, enabl
 function filterStockGroups(groups: IProduct['additionalGroups']): { groups: IProduct['additionalGroups']; valid: boolean } {
   let valid = true;
   const filtered = groups.map((group) => {
+    // "Sem X" não consome o ingrediente: remoção continua disponível mesmo com o saldo zerado.
+    if (group.type === 'remover') return group;
     const options = group.options.flatMap((option) => {
       if (option.stockAvailable === false) return [];
       const nested = filterStockGroups(option.nestedAdditionalGroups ?? []);

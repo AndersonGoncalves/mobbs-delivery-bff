@@ -17,14 +17,16 @@ export function resolveOrderItemLinkedProducts(
   return selections.map((selection) => {
     const group = groups.find((candidate) => candidate.name === selection.groupName);
     const option = group?.options.find((candidate) => candidate.name === selection.optionName);
+    // Opção de remoção ("Sem X") não consome estoque, então não carrega vínculo de produto/matéria-prima.
+    const consumesStock = group?.type !== 'remover';
     const nestedSelections =
       selection.nestedSelections && option?.nestedAdditionalGroups
         ? resolveOrderItemLinkedProducts(selection.nestedSelections, option.nestedAdditionalGroups)
         : selection.nestedSelections;
     return {
       ...selection,
-      linkedProductId: option?.linkedProductId,
-      rawMaterialId: option?.rawMaterialId,
+      linkedProductId: consumesStock ? option?.linkedProductId : undefined,
+      rawMaterialId: consumesStock ? option?.rawMaterialId : undefined,
       ...(nestedSelections ? { nestedSelections } : {}),
     };
   });

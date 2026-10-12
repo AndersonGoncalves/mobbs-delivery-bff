@@ -283,6 +283,44 @@ describe('CatalogController', () => {
     )).rejects.toMatchObject({ statusCode: 404 });
   });
 
+  it('opção de grupo "remover" sem saldo continua no detalhe (remover um ingrediente não consome estoque)', async () => {
+    const product = buildProduct({
+      additionalGroups: [{
+        id: 'g-1', productId: 'p-1', name: 'Retirar', type: 'remover', required: false, minSelections: 0, maxSelections: 1,
+        options: [{ id: 'o-cebola', groupId: 'g-1', name: 'Cebola', priceDelta: 0, stockAvailable: false }],
+      }],
+    });
+    const { routes } = setup({
+      productRepository: { findById: jest.fn().mockResolvedValue(product) },
+      restaurantRepository: { findById: jest.fn().mockResolvedValue({ id: 'r-1', stockControlEnabled: true }) },
+    });
+    const json = jest.fn();
+
+    await runAuthenticatedChain(routes['GET /products/:id'], { params: { id: 'p-1' } }, { json });
+
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({
+      additionalGroups: [expect.objectContaining({ options: [expect.objectContaining({ id: 'o-cebola' })] })],
+    }));
+  });
+
+  it('adicional sem saldo em grupo opcional some do detalhe, mas o produto continua', async () => {
+    const product = buildProduct({
+      additionalGroups: [{
+        id: 'g-1', productId: 'p-1', name: 'Extras', type: 'adicionar', required: false, minSelections: 0, maxSelections: 1,
+        options: [{ id: 'o-out', groupId: 'g-1', name: 'Queijo', priceDelta: 2, stockAvailable: false }],
+      }],
+    });
+    const { routes } = setup({
+      productRepository: { findById: jest.fn().mockResolvedValue(product) },
+      restaurantRepository: { findById: jest.fn().mockResolvedValue({ id: 'r-1', stockControlEnabled: true }) },
+    });
+    const json = jest.fn();
+
+    await runAuthenticatedChain(routes['GET /products/:id'], { params: { id: 'p-1' } }, { json });
+
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ additionalGroups: [expect.objectContaining({ options: [] })] }));
+  });
+
   it('AC-1: POST /restaurants/me/menu-categories cria categoria no restaurante do operador', async () => {
     const { menuCategoryRepository, routes } = setup();
     const json = jest.fn();

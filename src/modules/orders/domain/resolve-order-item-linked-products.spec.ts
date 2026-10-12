@@ -46,6 +46,27 @@ describe('resolveOrderItemLinkedProducts (specs/0047 REQ-16)', () => {
     expect(resolved[0].groupName).toBe('Grupo que não existe mais');
   });
 
+  it('opção de um grupo "remover" não carrega vínculo, pra não reservar estoque do ingrediente removido', () => {
+    const groups = buildGroups([
+      {
+        id: 'g-remover',
+        productId: 'p-1',
+        name: 'Retirar',
+        type: 'remover',
+        required: false,
+        minSelections: 0,
+        maxSelections: 1,
+        options: [{ id: 'o-queijo', groupId: 'g-remover', name: 'Queijo', priceDelta: 0, rawMaterialId: 'raw-queijo', linkedProductId: 'prod-queijo' }],
+      },
+    ]);
+    const selections = [{ groupName: 'Retirar', optionName: 'Queijo', priceDelta: 0 }];
+
+    const resolved = resolveOrderItemLinkedProducts(selections, groups);
+
+    expect(resolved[0].rawMaterialId).toBeUndefined();
+    expect(resolved[0].linkedProductId).toBeUndefined();
+  });
+
   it('resolve recursivamente em nestedSelections (produto composto)', () => {
     const groups: IProductAdditionalGroup[] = [
       {
