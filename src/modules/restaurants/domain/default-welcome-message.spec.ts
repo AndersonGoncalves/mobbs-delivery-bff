@@ -16,7 +16,7 @@ describe('buildDefaultWelcomeMessage (specs/0094-mensagem-boas-vindas-home REQ-2
   it('gera uma mensagem para todos os tipos, sem placeholder cru', () => {
     for (const type of BUSINESS_TYPES) {
       const message = buildDefaultWelcomeMessage(type);
-      expect(message).toMatch(/^Seja bem-vindo\(a\) à nossa .+!/);
+      expect(message).toMatch(/^Olá, seja bem-vindo\(a\) à nossa .+!/);
       expect(message.length).toBeLessThanOrEqual(500);
       expect(message).not.toContain('{');
     }
