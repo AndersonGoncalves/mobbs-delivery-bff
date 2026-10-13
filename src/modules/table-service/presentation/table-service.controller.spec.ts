@@ -186,6 +186,40 @@ describe('TableServiceController', () => {
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ total: 44 }));
   });
 
+  // Pedido explícito do usuário — motivo do ajuste (ex. "quebrou um copo"), opcional.
+  it('aceita e repassa a descrição do ajuste manual (desconto/acréscimo)', async () => {
+    const order = {
+      id: 'o-table', restaurantId: 'r-1', orderType: 'table', tableId: 't-1', tableName: '1', status: 'confirmado',
+      items: [{ id: 'i-1', productId: 'p-1', productName: 'Pizza', quantity: 1, unitPrice: 39 }],
+      subtotal: 39, deliveryFee: 0, discount: 0, total: 39, serviceChargePercent: 0, serviceChargeAmount: 0,
+      coverCharge: 0, tablePayments: [],
+    };
+    const { orderRepository, routes } = setup({
+      orderRepository: {
+        findById: jest.fn().mockResolvedValue(order),
+        updateTableOrder: jest.fn().mockImplementation(async (_id, _restaurantId, patch) => ({ ...order, ...patch })),
+      },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/table-orders/:id/adjustments'],
+      {
+        restaurantId: 'r-1',
+        params: { id: 'o-table' },
+        body: { adjustment: { type: 'surcharge', mode: 'fixed', value: 5, description: 'quebrou um copo' } },
+      },
+      { json, send: jest.fn() },
+    );
+
+    expect(orderRepository.updateTableOrder).toHaveBeenCalledWith('o-table', 'r-1', expect.objectContaining({
+      tableAdjustment: { type: 'surcharge', mode: 'fixed', value: 5, description: 'quebrou um copo' },
+    }));
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({
+      tableAdjustment: expect.objectContaining({ description: 'quebrou um copo' }),
+    }));
+  });
+
   it('specs/0108 AC-13: reserva estoque ao incluir item rastreado no POS da mesa', async () => {
     const order = {
       id: 'o-table', restaurantId: 'r-1', orderType: 'table', tableId: 't-1', tableName: '1', status: 'confirmado',

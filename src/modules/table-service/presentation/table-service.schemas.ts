@@ -73,6 +73,7 @@ export const tableOrderAdjustmentsSchema = z.object({
     type: z.enum(['discount', 'surcharge']),
     mode: z.enum(['fixed', 'percent']),
     value: z.number().nonnegative(),
+    description: z.string().trim().max(200).optional(),
   }).nullable().optional(),
   peopleCount: z.number().int().positive().nullable().optional(),
 });

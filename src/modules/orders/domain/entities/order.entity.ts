@@ -75,6 +75,9 @@ export interface ITableOrderAdjustment {
   type: 'discount' | 'surcharge';
   mode: 'fixed' | 'percent';
   value: number;
+  /** Pedido explícito do usuário — motivo do ajuste (ex. "quebrou um copo"), opcional, exibido
+   * entre parênteses ao lado do valor na tela do PDV. */
+  description?: string;
 }
 
 /**
