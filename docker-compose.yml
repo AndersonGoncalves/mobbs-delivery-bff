@@ -32,6 +32,8 @@ services:
   mongo:
     image: mongo:7
     restart: always
+    # O mongod (PID 1) não faz reap dos `mongosh` do healthcheck — viravam zumbis até esgotar o limite de processos.
+    init: true
     ports: ["27017:27017"]
     environment:
       - MONGO_INITDB_ROOT_USERNAME=${MONGO_USER}
