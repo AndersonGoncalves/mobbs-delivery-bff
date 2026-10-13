@@ -65,6 +65,20 @@ function buildDeliveredOrder(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function buildClosedTableOrder(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'o-1',
+    orderNumber: 1,
+    restaurantId: 'r-1',
+    orderType: 'table',
+    status: 'entregue',
+    serviceChargeAmount: 5,
+    tableWaiter: { id: 'w-1', name: 'Ana' },
+    tableClosedAt: '2026-10-10T12:00:00.000Z',
+    ...overrides,
+  };
+}
+
 describe('CashRegisterController', () => {
   function setup(overrides: { cashRegisterRepository?: Partial<ICashRegisterRepository>; orderRepository?: Partial<IOrderRepository> } = {}) {
     const cashRegisterRepository: Partial<ICashRegisterRepository> = {
@@ -79,6 +93,7 @@ describe('CashRegisterController', () => {
     };
     const orderRepository: Partial<IOrderRepository> = {
       findDeliveredByRestaurantCompletedBetween: jest.fn().mockResolvedValue([]),
+      findClosedTableOrders: jest.fn().mockResolvedValue([]),
       getTableSalesBetween: jest.fn().mockResolvedValue(75),
       ...overrides.orderRepository,
     };
@@ -124,6 +139,63 @@ describe('CashRegisterController', () => {
     await expect(
       runOperatorChain(
         routes['GET /restaurants/me/cash-register/motoboy-payouts'],
+        { restaurantId: 'r-1', query: { from: 'amanhã', to: 'hoje' } },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('specs/0136 AC-2/AC-3: agrupa taxa de serviço por garçom e separa pedidos sem atribuição', async () => {
+    const from = '2026-10-10T00:00:00.000Z';
+    const to = '2026-10-11T00:00:00.000Z';
+    const orders = [
+      buildClosedTableOrder({ id: 'o-1', orderNumber: 1, serviceChargeAmount: 5 }),
+      buildClosedTableOrder({ id: 'o-2', orderNumber: 2, serviceChargeAmount: 7 }),
+      buildClosedTableOrder({ id: 'o-3', orderNumber: 3, serviceChargeAmount: 3, tableWaiter: undefined }),
+    ];
+    const { orderRepository, routes } = setup({
+      orderRepository: { findClosedTableOrders: jest.fn().mockResolvedValue(orders) },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['GET /restaurants/me/cash-register/waiter-payouts'],
+      { restaurantId: 'r-1', query: { from, to } },
+      { json },
+    );
+
+    expect(orderRepository.findClosedTableOrders).toHaveBeenCalledWith('r-1', new Date(from), new Date(to));
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({
+      totalDue: 12,
+      waiters: [expect.objectContaining({ waiterId: 'w-1', waiterName: 'Ana', orderCount: 2, totalDue: 12 })],
+      unassignedOrderCount: 1,
+      unassignedServiceCharges: 3,
+    }));
+  });
+
+  it('specs/0136: pedido sem taxa de serviço soma 0, sem quebrar o agrupamento', async () => {
+    const orders = [buildClosedTableOrder({ serviceChargeAmount: undefined })];
+    const { routes } = setup({ orderRepository: { findClosedTableOrders: jest.fn().mockResolvedValue(orders) } });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['GET /restaurants/me/cash-register/waiter-payouts'],
+      { restaurantId: 'r-1', query: { from: '2026-10-10T00:00:00.000Z', to: '2026-10-11T00:00:00.000Z' } },
+      { json },
+    );
+
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({
+      totalDue: 0,
+      waiters: [expect.objectContaining({ waiterId: 'w-1', orderCount: 1, totalDue: 0 })],
+    }));
+  });
+
+  it('specs/0136: rejeita período de repasse inválido', async () => {
+    const { routes } = setup();
+
+    await expect(
+      runOperatorChain(
+        routes['GET /restaurants/me/cash-register/waiter-payouts'],
         { restaurantId: 'r-1', query: { from: 'amanhã', to: 'hoje' } },
         { json: jest.fn() },
       ),

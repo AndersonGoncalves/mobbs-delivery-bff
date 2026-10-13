@@ -85,6 +85,53 @@ export class CashRegisterController extends BaseRouter {
       });
     });
 
+    // specs/0136-repasses-garcons — relatório somente leitura, mesmo padrão de REQ acima
+    // (motoboy-payouts), mas somando `serviceChargeAmount` dos pedidos de mesa fechados
+    // (`findClosedTableOrders`) agrupados por `tableWaiter`.
+    application.get('/restaurants/me/cash-register/waiter-payouts', ...authenticated, async (req: Request, res: Response) => {
+      const { from, to } = parseBody(motoboyPayoutPeriodSchema, req.query);
+      const orders = await this.orderRepository.findClosedTableOrders(req.restaurantId!, new Date(from), new Date(to));
+      const grouped = new Map<
+        string,
+        { waiterId: string; waiterName: string; orderCount: number; totalDue: number; orders: { orderId: string; orderNumber: number; closedAt: string; serviceChargeAmount: number }[] }
+      >();
+      let unassignedOrderCount = 0;
+      let unassignedServiceCharges = 0;
+
+      for (const order of orders) {
+        const closedAt = order.tableClosedAt;
+        if (!closedAt) continue;
+        const serviceChargeAmount = order.serviceChargeAmount ?? 0;
+        if (!order.tableWaiter) {
+          unassignedOrderCount += 1;
+          unassignedServiceCharges += serviceChargeAmount;
+          continue;
+        }
+        const waiterId = order.tableWaiter.id;
+        const summary = grouped.get(waiterId) ?? {
+          waiterId,
+          waiterName: order.tableWaiter.name,
+          orderCount: 0,
+          totalDue: 0,
+          orders: [],
+        };
+        summary.orderCount += 1;
+        summary.totalDue += serviceChargeAmount;
+        summary.orders.push({ orderId: order.id, orderNumber: order.orderNumber, closedAt, serviceChargeAmount });
+        grouped.set(waiterId, summary);
+      }
+
+      const waiters = [...grouped.values()].sort((first, second) => first.waiterName.localeCompare(second.waiterName));
+      res.json(200, {
+        from,
+        to,
+        totalDue: waiters.reduce((total, waiter) => total + waiter.totalDue, 0),
+        waiters,
+        unassignedOrderCount,
+        unassignedServiceCharges,
+      });
+    });
+
     // REQ-4/REQ-6 — devolve a sessão aberta (ou `null`, estado válido de "sem caixa aberto"),
     // junto dos movimentos e do saldo calculado ao vivo, pra tela de caixa montar tudo numa
     // única chamada.
