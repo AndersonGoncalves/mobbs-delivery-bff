@@ -18,4 +18,24 @@ export const DEFAULT_RAW_MATERIALS: { name: string; unit: string }[] = [
   { name: 'Batata', unit: 'kg' },
   { name: 'Leite', unit: 'L' },
   { name: 'Maionese', unit: 'kg' },
+  // Pedido explícito do usuário — lista adicional de matérias-primas comuns (sabores de
+  // pizza/lanche, coberturas). Itens que já estavam na lista acima (bacon, carne moída ≈ carne
+  // bovina moída, cebola, frango ≈ frango desfiado, mussarela ≈ queijo mussarela, ovo, presunto,
+  // tomate) foram desconsiderados — só o que ainda não existia entra aqui.
+  { name: 'Azeitona', unit: 'kg' },
+  { name: 'Banana', unit: 'kg' },
+  { name: 'Calabresa', unit: 'kg' },
+  { name: 'Calabresa picante', unit: 'kg' },
+  { name: 'Carne do sol', unit: 'kg' },
+  { name: 'Catupiry', unit: 'kg' },
+  { name: 'Cheddar', unit: 'kg' },
+  { name: 'Cream cheese', unit: 'kg' },
+  { name: 'Milho', unit: 'kg' },
+  { name: 'Molho da casa temperado', unit: 'kg' },
+  { name: 'Orégano', unit: 'g' },
+  { name: 'Passas', unit: 'g' },
+  { name: 'Purê', unit: 'kg' },
+  { name: 'Queijo coalho', unit: 'kg' },
+  { name: 'Requeijão', unit: 'kg' },
+  { name: 'Salada', unit: 'kg' },
 ];
