@@ -10,6 +10,7 @@ import { IRestaurantRepository } from '../../../restaurants/domain/repositories/
 import { IRestaurantTableRepository } from '../repositories/table.repository.interface';
 import { ITableWaiterRepository } from '../repositories/waiter.repository.interface';
 import { ITableMapLayoutRepository } from '../repositories/table-map-layout.repository.interface';
+import { IRestaurantOperatorRepository } from '../../../restaurant-operators/domain/repositories/restaurant-operator.repository.interface';
 
 type SelectionInput = { groupName: string; optionName: string; nestedSelections?: SelectionInput[] };
 type Adjustment = NonNullable<IOrder['tableAdjustment']>;
@@ -63,26 +64,39 @@ export class TableOrderService {
   constructor(
     private readonly orderRepository: IOrderRepository,
     private readonly tableRepository: IRestaurantTableRepository,
+    // specs/0119/0120 — cadastro informativo de garçom, ainda usado pelas rotas CRUD de
+    // `/restaurants/me/waiters` (`TableServiceController`); não mais pelo seletor de garçom da
+    // mesa abaixo (`getFloor`/`openOrder`), que passou a usar `RestaurantOperator` (specs/0137).
     private readonly waiterRepository: ITableWaiterRepository,
     private readonly layoutRepository: ITableMapLayoutRepository,
     private readonly productRepository: IProductRepository,
     private readonly customerRepository: ICustomerRepository,
     private readonly restaurantRepository: IRestaurantRepository,
     private readonly stockReservationService: StockReservationService,
+    // specs/0137-papeis-garcom-motoboy REQ-7 — seletor de garçom da mesa passa a listar
+    // `RestaurantOperator` com papel `garcom`, não mais `TableWaiter`.
+    private readonly restaurantOperatorRepository: IRestaurantOperatorRepository,
   ) {}
 
   async getFloor(restaurantId: string) {
-    const [tables, activeOrders, layout, waiters] = await Promise.all([
+    const [tables, activeOrders, layout, operators] = await Promise.all([
       this.tableRepository.listByRestaurant(restaurantId),
       this.orderRepository.findActiveByRestaurant(restaurantId),
       this.layoutRepository.getByRestaurant(restaurantId),
-      this.waiterRepository.listByRestaurant(restaurantId),
+      this.restaurantOperatorRepository.listByRestaurant(restaurantId),
     ]);
     const tableOrders = activeOrders.filter((order) => order.orderType === 'table');
     return {
       tables: tables.map((table) => ({ ...table, order: tableOrders.find((order) => order.id === table.activeOrderId) ?? null })),
       counterOrders: tableOrders.filter((order) => !order.tableId),
-      waiters: waiters.filter((waiter) => waiter.isActive),
+      // specs/0137-papeis-garcom-motoboy REQ-7/AC-7 — lista de garçons do seletor vem dos
+      // `RestaurantOperator` com papel `garcom` ativos, não mais do cadastro `TableWaiter`
+      // (specs/0120 REQ-4, que continua existindo em paralelo, sem uso aqui). `RestaurantOperator`
+      // não tem campo `name` (só `email`) — usa o e-mail como nome exibido, mesmo padrão do
+      // snapshot `tableWaiter` abaixo (`openOrder`).
+      waiters: operators
+        .filter((operator) => operator.role === 'garcom' && operator.isActive)
+        .map((operator) => ({ id: operator.id, restaurantId: operator.restaurantId, name: operator.email, isActive: operator.isActive })),
       decorations: layout.decorations,
       spendingLimit: layout.spendingLimit,
       counterPositions: layout.counterPositions ?? {},
@@ -110,8 +124,15 @@ export class TableOrderService {
       throw new ConflictError('Esta mesa já está ocupada');
     }
 
-    const waiter = input.waiterId ? await this.waiterRepository.findById(input.waiterId, restaurantId) : null;
-    if (input.waiterId && (!waiter || !waiter.isActive)) throw new NotFoundError('Garçom ativo não encontrado');
+    // specs/0137-papeis-garcom-motoboy REQ-7 — `waiterId` agora é o id de um `RestaurantOperator`
+    // com papel `garcom`, não mais de um `TableWaiter` cadastral.
+    const waiterOperator = input.waiterId ? await this.restaurantOperatorRepository.findById(input.waiterId) : null;
+    if (
+      input.waiterId &&
+      (!waiterOperator || waiterOperator.restaurantId !== restaurantId || waiterOperator.role !== 'garcom' || !waiterOperator.isActive)
+    ) {
+      throw new NotFoundError('Garçom ativo não encontrado');
+    }
 
     const customerId = await this.ensureCounterCustomer(restaurantId);
     const order = await this.orderRepository.create({
@@ -127,7 +148,10 @@ export class TableOrderService {
       initialStatus: 'confirmado',
       tableId: table?.id,
       tableName: table?.name ?? 'Balcão',
-      tableWaiter: waiter ? { id: waiter.id, name: waiter.name } : undefined,
+      // `RestaurantOperator` não tem campo `name` (só `email`) — usa o e-mail como nome exibido
+      // no snapshot, já que não há outro identificador legível disponível (mesmo padrão de
+      // `deliveryMotoboy` em `OrdersController`).
+      tableWaiter: waiterOperator ? { id: waiterOperator.id, name: waiterOperator.email } : undefined,
       serviceChargePercent: 10,
       serviceChargeAmount: 0,
       coverCharge: 0,

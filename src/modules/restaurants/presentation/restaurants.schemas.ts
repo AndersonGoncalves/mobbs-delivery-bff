@@ -188,7 +188,8 @@ export const updateSlugSchema = z.object({
 // specs/0021-papeis-operador REQ-1 — todo operador novo já nasce com um papel explícito (o
 // `dono` que cadastra escolhe; `gerente` por padrão no formulário da web, mas o BFF sempre exige
 // o campo, nunca assume).
-export const operatorRoleSchema = z.enum(['dono', 'gerente', 'financeiro']);
+// specs/0137-papeis-garcom-motoboy REQ-2/REQ-3 — `garcom`/`motoboy` adicionados ao mesmo enum.
+export const operatorRoleSchema = z.enum(['dono', 'gerente', 'financeiro', 'garcom', 'motoboy']);
 
 export const addOperatorSchema = z.object({ email: z.string().email(), role: operatorRoleSchema });
 

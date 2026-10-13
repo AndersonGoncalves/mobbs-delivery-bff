@@ -268,6 +268,18 @@ export class OrderMongooseRepository implements IOrderRepository {
     return docs.map(toEntity);
   }
 
+  // specs/0137-papeis-garcom-motoboy REQ-3.
+  async findActiveByRestaurantAndMotoboy(restaurantId: string, motoboyId: string): Promise<IOrder[]> {
+    const docs = await OrderModel.find({
+      restaurantId,
+      status: { $nin: ['entregue', 'cancelado'] },
+      'deliveryMotoboy.id': motoboyId,
+    })
+      .sort({ createdAt: 1 })
+      .lean<OrderLeanDocument[]>();
+    return docs.map(toEntity);
+  }
+
   async findByRestaurantBetween(restaurantId: string, from: Date, to: Date): Promise<IOrder[]> {
     const docs = await OrderModel.find({ restaurantId, createdAt: { $gte: from, $lt: to } })
       .sort({ createdAt: 1 })

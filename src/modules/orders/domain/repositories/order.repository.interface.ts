@@ -74,6 +74,13 @@ export interface IOrderRepository {
    */
   findActiveByRestaurant(restaurantId: string): Promise<IOrder[]>;
 
+  /**
+   * specs/0137-papeis-garcom-motoboy REQ-3 — mesmo filtro de `findActiveByRestaurant`, restrito
+   * às entregas atribuídas a um motoboy (`deliveryMotoboy.id`) — usado por
+   * `GET /restaurants/me/orders/my-deliveries`, exclusivo do papel `motoboy`.
+   */
+  findActiveByRestaurantAndMotoboy(restaurantId: string, motoboyId: string): Promise<IOrder[]>;
+
   /** specs/0126 — pedidos de qualquer status criados no intervalo [from, to), mais antigos primeiro. */
   findByRestaurantBetween(restaurantId: string, from: Date, to: Date): Promise<IOrder[]>;
 

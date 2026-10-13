@@ -180,6 +180,31 @@ describe('RestaurantOperatorsController', () => {
     ).rejects.toMatchObject({ statusCode: 403 });
   });
 
+  // specs/0137-papeis-garcom-motoboy REQ-6.
+  it('AC-6: GET /restaurants/me/operators/motoboys lista só os operadores motoboy ativos, com email como nome', async () => {
+    const { repository, routes } = setup({
+      listByRestaurant: jest.fn().mockResolvedValue([
+        buildOperator({ id: 'op-1', email: 'carlos@example.com', role: 'motoboy', isActive: true }),
+        buildOperator({ id: 'op-2', email: 'inativo@example.com', role: 'motoboy', isActive: false }),
+        buildOperator({ id: 'op-3', email: 'dono@example.com', role: 'dono', isActive: true }),
+      ]),
+    }, buildPassthroughOperatorMiddleware('gerente'));
+    const json = jest.fn();
+
+    await runChain(routes['GET /restaurants/me/operators/motoboys'], {}, { json, send: jest.fn() });
+
+    expect(repository.listByRestaurant).toHaveBeenCalledWith('r-1');
+    expect(json).toHaveBeenCalledWith(200, [{ id: 'op-1', name: 'carlos@example.com' }]);
+  });
+
+  it('REQ-6: bloqueia financeiro tentando listar operadores motoboy (403)', async () => {
+    const { routes } = setup({}, buildPassthroughOperatorMiddleware('financeiro'));
+
+    await expect(
+      runChain(routes['GET /restaurants/me/operators/motoboys'], {}, { json: jest.fn(), send: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 403 });
+  });
+
   // specs/0021-papeis-operador T010 — qualquer operador logado sabe o próprio papel (não exige
   // `dono`; usado pela web pra decidir navegação).
   it('T010: GET /restaurants/me/operators/me devolve o operador logado com o papel, pra qualquer papel', async () => {

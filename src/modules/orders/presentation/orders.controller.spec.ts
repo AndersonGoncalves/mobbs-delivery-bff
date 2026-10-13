@@ -3,7 +3,7 @@ import type { Request, Response, Server } from 'restify';
 import { IProductRepository } from '../../catalog/domain/repositories/product.repository.interface';
 import { ICouponRepository } from '../../coupons/domain/repositories/coupon.repository.interface';
 import { ICustomerRepository } from '../../customers/domain/repositories/customer.repository.interface';
-import { IMotoboyRepository } from '../../motoboys/domain/repositories/motoboy.repository.interface';
+import { IRestaurantOperatorRepository } from '../../restaurant-operators/domain/repositories/restaurant-operator.repository.interface';
 import { ICashRegisterService } from '../../financeiro/domain/services/i-cash-register.service';
 import { IWhatsAppNotificationService } from '../../notifications/domain/services/i-whatsapp-notification.service';
 import { IStockMovementRepository } from '../../raw-materials/domain/repositories/stock-movement.repository.interface';
@@ -17,6 +17,8 @@ import { OrdersController } from './orders.controller';
 type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & {
   user?: { uid: string; email?: string };
   restaurantId?: string;
+  operatorRole?: string;
+  operatorId?: string;
 };
 type FakeResponse = Pick<Response, 'json'>;
 type RouteHandler = (req: FakeRequest, res: FakeResponse) => Promise<void>;
@@ -185,7 +187,7 @@ describe('OrdersController', () => {
       productRepository?: Partial<IProductRepository>;
       stockMovementRepository?: Partial<IStockMovementRepository>;
       customerRepository?: Partial<ICustomerRepository>;
-      motoboyRepository?: Partial<IMotoboyRepository>;
+      restaurantOperatorRepository?: Partial<IRestaurantOperatorRepository>;
       tableRepository?: Partial<IRestaurantTableRepository>;
       rawMaterialRepository?: Partial<IRawMaterialRepository>;
     } = {},
@@ -205,6 +207,7 @@ describe('OrdersController', () => {
       findByIdempotencyKey: jest.fn().mockResolvedValue(null),
       findByTrackingToken: jest.fn().mockResolvedValue(buildOrder()),
       findActiveByRestaurant: jest.fn().mockResolvedValue([buildOrder()]),
+      findActiveByRestaurantAndMotoboy: jest.fn().mockResolvedValue([buildOrder()]),
       findByRestaurantBetween: jest.fn().mockResolvedValue([]),
       assignDeliveryMotoboy: jest.fn().mockImplementation(async (_id, deliveryMotoboy) => ({ ...buildOrder(), deliveryMotoboy })),
       updateStatus: jest.fn().mockImplementation(async (id, status, changedBy, reason) => ({
@@ -268,9 +271,11 @@ describe('OrdersController', () => {
       findById: jest.fn().mockResolvedValue({ id: 'customer-1', name: 'Ana', email: 'ana@exemplo.com', phone: '85984224877' }),
       ...overrides.customerRepository,
     };
-    const motoboyRepository: Partial<IMotoboyRepository> = {
-      findById: jest.fn().mockResolvedValue({ id: 'm-1', restaurantId: 'r-1', name: 'Carlos', whatsapp: '85999999999', canMarkAsDelivered: true, isActive: true }),
-      ...overrides.motoboyRepository,
+    // specs/0137-papeis-garcom-motoboy REQ-6 — `RestaurantOperator` com papel `motoboy` (substitui
+    // o antigo mock de `IMotoboyRepository` neste controller).
+    const restaurantOperatorRepository: Partial<IRestaurantOperatorRepository> = {
+      findById: jest.fn().mockResolvedValue({ id: 'm-1', restaurantId: 'r-1', email: 'carlos@exemplo.com', role: 'motoboy', isActive: true, createdAt: new Date() }),
+      ...overrides.restaurantOperatorRepository,
     };
     const tableRepository: Partial<IRestaurantTableRepository> = {
       releaseFromOrder: jest.fn().mockResolvedValue(true),
@@ -294,7 +299,7 @@ describe('OrdersController', () => {
       productRepository as IProductRepository,
       stockMovementRepository as IStockMovementRepository,
       customerRepository as ICustomerRepository,
-      motoboyRepository as IMotoboyRepository,
+      restaurantOperatorRepository as IRestaurantOperatorRepository,
       undefined,
       tableRepository as IRestaurantTableRepository,
       rawMaterialRepository as IRawMaterialRepository,
@@ -309,7 +314,7 @@ describe('OrdersController', () => {
       productRepository,
       stockMovementRepository,
       customerRepository,
-      motoboyRepository,
+      restaurantOperatorRepository,
       tableRepository,
       rawMaterialRepository,
       routes,
@@ -907,11 +912,11 @@ describe('OrdersController', () => {
     ).rejects.toMatchObject({ statusCode: 400 });
   });
 
-  it('specs/0125 AC-2: atribui snapshot de motoboy ativo ao pedido de entrega em preparo', async () => {
-    const motoboy = { id: 'm-1', restaurantId: 'r-1', name: 'Carlos', whatsapp: '85999999999', canMarkAsDelivered: true, isActive: true };
-    const { orderRepository, motoboyRepository, routes } = setup({
+  it('specs/0137 AC-6: atribui snapshot de operador motoboy ativo ao pedido de entrega em preparo (email como nome, sem campo name em RestaurantOperator)', async () => {
+    const motoboyOperator = { id: 'm-1', restaurantId: 'r-1', email: 'carlos@exemplo.com', role: 'motoboy' as const, isActive: true, createdAt: new Date() };
+    const { orderRepository, restaurantOperatorRepository, routes } = setup({
       orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ status: 'emPreparo' })) },
-      motoboyRepository: { findById: jest.fn().mockResolvedValue(motoboy) },
+      restaurantOperatorRepository: { findById: jest.fn().mockResolvedValue(motoboyOperator) },
     });
     const json = jest.fn();
 
@@ -921,18 +926,19 @@ describe('OrdersController', () => {
       { json },
     );
 
-    expect(motoboyRepository.findById).toHaveBeenCalledWith('m-1');
-    expect(orderRepository.assignDeliveryMotoboy).toHaveBeenCalledWith('o-1', { id: 'm-1', name: 'Carlos' });
-    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ deliveryMotoboy: { id: 'm-1', name: 'Carlos' } }));
+    expect(restaurantOperatorRepository.findById).toHaveBeenCalledWith('m-1');
+    expect(orderRepository.assignDeliveryMotoboy).toHaveBeenCalledWith('o-1', { id: 'm-1', name: 'carlos@exemplo.com' });
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ deliveryMotoboy: { id: 'm-1', name: 'carlos@exemplo.com' } }));
   });
 
   it.each([
-    ['inativo', { id: 'm-1', restaurantId: 'r-1', name: 'Carlos', whatsapp: '85999999999', canMarkAsDelivered: true, isActive: false }],
-    ['de outro restaurante', { id: 'm-1', restaurantId: 'r-2', name: 'Carlos', whatsapp: '85999999999', canMarkAsDelivered: true, isActive: true }],
-  ])('specs/0125 AC-3: rejeita motoboy %s', async (_description, motoboy) => {
+    ['inativo', { id: 'm-1', restaurantId: 'r-1', email: 'carlos@exemplo.com', role: 'motoboy' as const, isActive: false, createdAt: new Date() }],
+    ['de outro restaurante', { id: 'm-1', restaurantId: 'r-2', email: 'carlos@exemplo.com', role: 'motoboy' as const, isActive: true, createdAt: new Date() }],
+    ['com papel diferente de motoboy', { id: 'm-1', restaurantId: 'r-1', email: 'carlos@exemplo.com', role: 'gerente' as const, isActive: true, createdAt: new Date() }],
+  ])('specs/0137 AC-6: rejeita operador motoboy %s', async (_description, operator) => {
     const { orderRepository, routes } = setup({
       orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ status: 'emPreparo' })) },
-      motoboyRepository: { findById: jest.fn().mockResolvedValue(motoboy) },
+      restaurantOperatorRepository: { findById: jest.fn().mockResolvedValue(operator) },
     });
 
     await expect(
@@ -946,7 +952,7 @@ describe('OrdersController', () => {
   });
 
   it('specs/0125 AC-4: limpar a atribuição não exige motoboy nem muda o status', async () => {
-    const { orderRepository, motoboyRepository, routes } = setup({
+    const { orderRepository, restaurantOperatorRepository, routes } = setup({
       orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ status: 'emPreparo' })) },
     });
 
@@ -956,7 +962,7 @@ describe('OrdersController', () => {
       { json: jest.fn() },
     );
 
-    expect(motoboyRepository.findById).not.toHaveBeenCalled();
+    expect(restaurantOperatorRepository.findById).not.toHaveBeenCalled();
     expect(orderRepository.assignDeliveryMotoboy).toHaveBeenCalledWith('o-1', undefined);
   });
 
@@ -964,7 +970,7 @@ describe('OrdersController', () => {
     ['fora de preparo', { status: 'confirmado' }],
     ['de retirada', { status: 'emPreparo', orderType: 'pickup' }],
   ])('specs/0125: não permite atribuir motoboy a pedido %s', async (_description, orderOverrides) => {
-    const { orderRepository, motoboyRepository, routes } = setup({
+    const { orderRepository, restaurantOperatorRepository, routes } = setup({
       orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder(orderOverrides)) },
     });
 
@@ -975,8 +981,68 @@ describe('OrdersController', () => {
         { json: jest.fn() },
       ),
     ).rejects.toMatchObject({ statusCode: 400 });
-    expect(motoboyRepository.findById).not.toHaveBeenCalled();
+    expect(restaurantOperatorRepository.findById).not.toHaveBeenCalled();
     expect(orderRepository.assignDeliveryMotoboy).not.toHaveBeenCalled();
+  });
+
+  it('specs/0137 AC-3: GET /restaurants/me/orders/my-deliveries filtra pelas entregas do motoboy logado', async () => {
+    const { orderRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['GET /restaurants/me/orders/my-deliveries'],
+      { restaurantId: 'r-1', operatorRole: 'motoboy', operatorId: 'op-motoboy-1' },
+      { json },
+    );
+
+    expect(orderRepository.findActiveByRestaurantAndMotoboy).toHaveBeenCalledWith('r-1', 'op-motoboy-1');
+    expect(json).toHaveBeenCalledWith(200, expect.any(Array));
+  });
+
+  it('specs/0137 AC-3: motoboy marca pedido próprio como entregue via PATCH /status', async () => {
+    const { orderRepository, routes } = setup({
+      orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ status: 'saiuParaEntrega', deliveryMotoboy: { id: 'op-motoboy-1', name: 'carlos@exemplo.com' } })) },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/status'],
+      { restaurantId: 'r-1', operatorRole: 'motoboy', operatorId: 'op-motoboy-1', params: { id: 'o-1' }, body: { status: 'entregue' } },
+      { json },
+    );
+
+    expect(orderRepository.updateStatus).toHaveBeenCalledWith('o-1', 'entregue', 'r-1');
+    expect(json).toHaveBeenCalledWith(200, expect.anything());
+  });
+
+  it('specs/0137 REQ-4: motoboy não pode alterar status de pedido atribuído a outro motoboy (403)', async () => {
+    const { orderRepository, routes } = setup({
+      orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ status: 'saiuParaEntrega', deliveryMotoboy: { id: 'outro-motoboy', name: 'outro@exemplo.com' } })) },
+    });
+
+    await expect(
+      runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/status'],
+        { restaurantId: 'r-1', operatorRole: 'motoboy', operatorId: 'op-motoboy-1', params: { id: 'o-1' }, body: { status: 'entregue' } },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(orderRepository.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it('specs/0137 REQ-3: motoboy não pode mudar status pra algo diferente de entregue, mesmo no próprio pedido (403)', async () => {
+    const { orderRepository, routes } = setup({
+      orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ status: 'saiuParaEntrega', deliveryMotoboy: { id: 'op-motoboy-1', name: 'carlos@exemplo.com' } })) },
+    });
+
+    await expect(
+      runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/status'],
+        { restaurantId: 'r-1', operatorRole: 'motoboy', operatorId: 'op-motoboy-1', params: { id: 'o-1' }, body: { status: 'cancelado' } },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(orderRepository.updateStatus).not.toHaveBeenCalled();
   });
 
   it('AC-2: PATCH /restaurants/me/orders/:id/status avança um passo (aguardandoConfirmacao -> confirmado)', async () => {

@@ -14,6 +14,7 @@ import { IProductRepository } from '../../catalog/domain/repositories/product.re
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { StockReservationService } from '../../orders/domain/services/stock-reservation.service';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
+import { IRestaurantOperatorRepository } from '../../restaurant-operators/domain/repositories/restaurant-operator.repository.interface';
 import { TableOrderService } from '../domain/services/table-order.service';
 import {
   addTableOrderItemSchema,
@@ -45,21 +46,27 @@ export class TableServiceController extends BaseRouter {
     restaurantRepository: IRestaurantRepository,
     stockReservationService: StockReservationService,
     private readonly restaurantOperatorMiddleware: AsyncHandler,
+    // specs/0137-papeis-garcom-motoboy REQ-7 — seletor de garçom da mesa passa a listar
+    // `RestaurantOperator` com papel `garcom`.
+    restaurantOperatorRepository: IRestaurantOperatorRepository,
   ) {
     super();
     this.tableOrders = new TableOrderService(
       orderRepository, tableRepository, waiterRepository, layoutRepository, productRepository, customerRepository,
-      restaurantRepository, stockReservationService,
+      restaurantRepository, stockReservationService, restaurantOperatorRepository,
     );
   }
 
   private readonly tableOrders: TableOrderService;
 
   initializeRoutes(application: Server): void {
+    // specs/0137-papeis-garcom-motoboy REQ-2 — `garcom` ganha acesso a TODAS as rotas deste
+    // controller (mapa de mesas/PDV é o único módulo que esse papel acessa); `dono`/`gerente`
+    // continuam com acesso total, como hoje.
     const authenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,
-      requireOperatorRole('dono', 'gerente'),
+      requireOperatorRole('dono', 'gerente', 'garcom'),
     ];
 
     application.get('/restaurants/me/table-service/map', ...authenticated, async (req: Request, res: Response) => {

@@ -8,11 +8,17 @@
  * - `dono`: acesso total, sem restrição (REQ-2), inclusive gestão de outros operadores.
  * - `gerente`: cardápio, estoque/compras, clientes, pedidos — sem financeiro nem gestão de
  *   operadores (REQ-3).
- * - `financeiro`: só o módulo financeiro, mais confirmar Pix recebido (REQ-4).
+ * - `financeiro`: só o módulo financeiro, mais confirmar Pix recebido (REQ-4). Rótulo exibido na
+ *   retaguarda passou a ser "Caixa" (specs/0137 REQ-1), mas o valor interno continua `financeiro`.
+ *
+ * specs/0137-papeis-garcom-motoboy REQ-2/REQ-3 — dois papéis novos, cada um com acesso restrito a
+ * um único módulo:
+ * - `garcom`: só o mapa de mesas/PDV (`table-service`).
+ * - `motoboy`: só a lista dos próprios pedidos atribuídos a ele (`GET /restaurants/me/orders/my-deliveries`).
  */
-export type OperatorRole = 'dono' | 'gerente' | 'financeiro';
+export type OperatorRole = 'dono' | 'gerente' | 'financeiro' | 'garcom' | 'motoboy';
 
-export const OPERATOR_ROLES: OperatorRole[] = ['dono', 'gerente', 'financeiro'];
+export const OPERATOR_ROLES: OperatorRole[] = ['dono', 'gerente', 'financeiro', 'garcom', 'motoboy'];
 
 export interface IRestaurantOperator {
   id: string;

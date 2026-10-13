@@ -48,6 +48,26 @@ export class RestaurantOperatorsController extends BaseRouter {
       res.json(200, operators);
     });
 
+    // specs/0137-papeis-garcom-motoboy REQ-6 — seletor de motoboy do pedido (`OrdersController`,
+    // `ActiveOrdersPanel` na web) precisa listar operadores `motoboy`, mas quem usa esse seletor é
+    // `dono`/`gerente` (não só `dono`, como a listagem completa acima) — endpoint dedicado, mais
+    // estreito, em vez de abrir `GET /restaurants/me/operators` (que devolve e-mail/papel de TODOS
+    // os operadores, inclusive `dono`/`financeiro`) pra `gerente`.
+    application.get(
+      '/restaurants/me/operators/motoboys',
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('dono', 'gerente'),
+      async (req: Request, res: Response) => {
+        const operators = await this.operatorRepository.listByRestaurant(req.restaurantId!);
+        const motoboys = operators
+          .filter((operator) => operator.role === 'motoboy' && operator.isActive)
+          // `RestaurantOperator` não tem campo `name` (só `email`) — usa o e-mail como nome exibido.
+          .map((operator) => ({ id: operator.id, name: operator.email }));
+        res.json(200, motoboys);
+      },
+    );
+
     application.post('/restaurants/me/operators', ...ownerAuthenticated, async (req: Request, res: Response) => {
       const { email, role } = parseBody(addOperatorSchema, req.body);
       // specs/0095-isolamento-cadastro-operadores REQ-1 — um e-mail com vínculo ativo em outro

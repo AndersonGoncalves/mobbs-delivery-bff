@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto';
 import { BillingBlockedError } from '../../../shared/http/billing-blocked.error';
 import { findDeliveryFeeZone } from '../../restaurants/domain/find-delivery-fee-zone';
 import type { Request, Response, Server } from 'restify';
-import { BadRequestError, ConflictError, NotFoundError } from 'restify-errors';
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from 'restify-errors';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
@@ -13,7 +13,7 @@ import { IProductRepository } from '../../catalog/domain/repositories/product.re
 import { ICouponRepository } from '../../coupons/domain/repositories/coupon.repository.interface';
 import { validateCoupon } from '../../coupons/domain/services/coupon-validator';
 import { ICustomerRepository } from '../../customers/domain/repositories/customer.repository.interface';
-import { IMotoboyRepository } from '../../motoboys/domain/repositories/motoboy.repository.interface';
+import { IRestaurantOperatorRepository } from '../../restaurant-operators/domain/repositories/restaurant-operator.repository.interface';
 import { ICashRegisterService } from '../../financeiro/domain/services/i-cash-register.service';
 import { buildNewOrderRestaurantMessage, DEFAULT_NEW_ORDER_RESTAURANT_TEMPLATE } from '../../notifications/domain/new-order-restaurant-message-builder';
 import { IWhatsAppNotificationService } from '../../notifications/domain/services/i-whatsapp-notification.service';
@@ -63,8 +63,11 @@ export class OrdersController extends BaseRouter {
     // specs/0062-confirmar-pedido-whatsapp-restaurante — só pro `customerName` da mensagem de
     // aviso; `IOrder` não guarda o nome do cliente.
     private readonly customerRepository: ICustomerRepository,
-    // specs/0125 — valida a atribuição ao motoboy ativo do restaurante autenticado.
-    private readonly motoboyRepository: IMotoboyRepository,
+    // specs/0137-papeis-garcom-motoboy REQ-6 — valida a atribuição contra o `RestaurantOperator`
+    // com papel `motoboy` do restaurante autenticado (antes validava contra `IMotoboyRepository`,
+    // o cadastro informativo de `specs/0119`, que continua existindo em paralelo sem relação com
+    // atribuição de pedido).
+    private readonly restaurantOperatorRepository: IRestaurantOperatorRepository,
     // specs/0042 REQ-2/REQ-3/REQ-4 — recalcula a faixa de faturamento quando um pedido vira `entregue`.
     private readonly recomputeRestaurantBilling?: { call(restaurantId: string): Promise<void> },
     private readonly tableRepository?: IRestaurantTableRepository,
@@ -278,6 +281,20 @@ export class OrdersController extends BaseRouter {
       res.json(200, await this.attachCustomers(await this.attachPaymentSummaries(orders)));
     });
 
+    // specs/0137-papeis-garcom-motoboy REQ-3/AC-3 — próprias entregas ativas do motoboy logado
+    // (nunca por parâmetro de rota); exclusivo do papel `motoboy`, não `dono`/`gerente` (que já
+    // veem tudo em `GET /restaurants/me/orders` acima).
+    application.get(
+      '/restaurants/me/orders/my-deliveries',
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('motoboy'),
+      async (req: Request, res: Response) => {
+        const orders = await this.orderRepository.findActiveByRestaurantAndMotoboy(req.restaurantId!, req.operatorId!);
+        res.json(200, await this.attachCustomers(orders));
+      },
+    );
+
     // specs/0126 REQ-1 — pedidos criados no dia/período pedido pela retaguarda, sem filtrar status.
     // O restaurante vem sempre do operador autenticado; `to` é limite exclusivo.
     application.get('/restaurants/me/orders/map', ...operatorAuthenticated, async (req: Request, res: Response) => {
@@ -286,14 +303,35 @@ export class OrdersController extends BaseRouter {
       res.json(200, await this.attachCustomers(orders));
     });
 
+    // specs/0137-papeis-garcom-motoboy REQ-3 — além de `dono`/`gerente`, `motoboy` também pode
+    // chamar esta rota, mas só pra marcar a própria entrega como `entregue` (checagem de posse
+    // abaixo); `dono`/`gerente` continuam sem nenhuma restrição extra, como hoje.
+    const statusUpdateAuthenticated: AsyncHandler[] = [
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('dono', 'gerente', 'motoboy'),
+    ];
+
     // REQ-2/REQ-5: só avança um passo por vez (`isValidOrderStatusTransition`) — fonte de
     // verdade da regra é o BFF, a retaguarda só espelha pra feedback imediato (plan.md, ADR).
     application.patch(
       '/restaurants/me/orders/:id/status',
-      ...operatorAuthenticated,
+      ...statusUpdateAuthenticated,
       async (req: Request, res: Response) => {
         const { status } = parseBody(updateOrderStatusSchema, req.body);
         const order = await this.findOwnedOrderForRestaurant(req.params.id, req.restaurantId!);
+
+        // specs/0137-papeis-garcom-motoboy REQ-3/REQ-4 — motoboy só altera o pedido atribuído a
+        // ele mesmo (`deliveryMotoboy.id`), e só pra marcar como entregue; nunca o fluxo geral de
+        // status que `dono`/`gerente` têm.
+        if (req.operatorRole === 'motoboy') {
+          if (order.deliveryMotoboy?.id !== req.operatorId) {
+            throw new ForbiddenError('Este pedido não está atribuído a você');
+          }
+          if (status !== 'entregue') {
+            throw new ForbiddenError('Motoboy só pode marcar o pedido como entregue');
+          }
+        }
 
         if (!isValidOrderStatusTransition(order.status, status)) {
           throw new BadRequestError(`Não é possível mudar de "${order.status}" para "${status}"`);
@@ -351,11 +389,15 @@ export class OrdersController extends BaseRouter {
 
         let deliveryMotoboy: { id: string; name: string } | undefined;
         if (motoboyId) {
-          const motoboy = await this.motoboyRepository.findById(motoboyId);
-          if (!motoboy || motoboy.restaurantId !== req.restaurantId || !motoboy.isActive) {
+          // specs/0137-papeis-garcom-motoboy REQ-6 — `motoboyId` agora é o id de um
+          // `RestaurantOperator` com papel `motoboy`, não mais de um `Motoboy` cadastral.
+          const operator = await this.restaurantOperatorRepository.findById(motoboyId);
+          if (!operator || operator.restaurantId !== req.restaurantId || operator.role !== 'motoboy' || !operator.isActive) {
             throw new NotFoundError('Motoboy ativo não encontrado');
           }
-          deliveryMotoboy = { id: motoboy.id, name: motoboy.name };
+          // `RestaurantOperator` não tem campo `name` (só `email`) — usa o e-mail como nome
+          // exibido no snapshot, já que não há outro identificador legível disponível.
+          deliveryMotoboy = { id: operator.id, name: operator.email };
         }
 
         const updated = await this.orderRepository.assignDeliveryMotoboy(order.id, deliveryMotoboy);

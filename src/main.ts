@@ -215,7 +215,9 @@ server
       productRepository,
       stockMovementRepository,
       customerRepository,
-      new MotoboyMongooseRepository(),
+      // specs/0137-papeis-garcom-motoboy REQ-6 — atribuição de motoboy ao pedido agora valida
+      // contra `RestaurantOperator` (papel `motoboy`), não mais contra `IMotoboyRepository`.
+      restaurantOperatorRepository,
       // specs/0042 — faixa de faturamento recalculada a cada pedido entregue.
       new RecomputeRestaurantBillingUseCase({
         restaurantRepository,
@@ -286,6 +288,7 @@ server
       restaurantRepository,
       new StockReservationService(productRepository, rawMaterialRepository, stockMovementRepository),
       restaurantOperatorMiddleware,
+      restaurantOperatorRepository,
     ),
     new SuppliersController(new SupplierMongooseRepository(), restaurantOperatorMiddleware),
     new MotoboysController(new MotoboyMongooseRepository(), restaurantOperatorMiddleware),

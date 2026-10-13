@@ -8,6 +8,7 @@ import { IProductRepository } from '../../catalog/domain/repositories/product.re
 import { IRawMaterialRepository } from '../../raw-materials/domain/repositories/raw-material.repository.interface';
 import { IStockMovementRepository } from '../../raw-materials/domain/repositories/stock-movement.repository.interface';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
+import { IRestaurantOperatorRepository } from '../../restaurant-operators/domain/repositories/restaurant-operator.repository.interface';
 import { StockReservationService } from '../../orders/domain/services/stock-reservation.service';
 import { TableServiceController } from './table-service.controller';
 
@@ -46,6 +47,7 @@ describe('TableServiceController', () => {
     customerRepository?: Partial<ICustomerRepository>;
     productRepository?: Partial<IProductRepository>;
     restaurantRepository?: Partial<IRestaurantRepository>;
+    restaurantOperatorRepository?: Partial<IRestaurantOperatorRepository>;
   } = {}) {
     const tableRepository: Partial<IRestaurantTableRepository> = {
       listByRestaurant: jest.fn().mockResolvedValue([]),
@@ -98,6 +100,13 @@ describe('TableServiceController', () => {
       findByOperationId: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({}),
     };
+    // specs/0137-papeis-garcom-motoboy REQ-7 — `RestaurantOperator` com papel `garcom`, usado
+    // pelo seletor de garçom da mesa (substitui o antigo `TableWaiter` nesse ponto específico).
+    const restaurantOperatorRepository: Partial<IRestaurantOperatorRepository> = {
+      listByRestaurant: jest.fn().mockResolvedValue([]),
+      findById: jest.fn().mockResolvedValue(null),
+      ...overrides.restaurantOperatorRepository,
+    };
     const middleware = jest.fn(async () => {});
     const { application, routes } = buildApp();
     new TableServiceController(
@@ -110,8 +119,9 @@ describe('TableServiceController', () => {
       restaurantRepository as IRestaurantRepository,
       new StockReservationService(productRepository as IProductRepository, rawMaterialRepository, stockMovementRepository as IStockMovementRepository),
       middleware,
+      restaurantOperatorRepository as IRestaurantOperatorRepository,
     ).initializeRoutes(application);
-    return { tableRepository, waiterRepository, layoutRepository, orderRepository, customerRepository, productRepository, stockMovementRepository, routes };
+    return { tableRepository, waiterRepository, layoutRepository, orderRepository, customerRepository, productRepository, stockMovementRepository, restaurantOperatorRepository, routes };
   }
 
   it('AC-1: cria mesa escopada ao restaurante autenticado', async () => {
@@ -344,5 +354,65 @@ describe('TableServiceController', () => {
       runOperatorChain(routes['DELETE /restaurants/me/tables/:id'], { restaurantId: 'r-1', params: { id: 't-1' } }, { json: jest.fn(), send: jest.fn() }),
     ).rejects.toMatchObject({ statusCode: 409 });
     expect(tableRepository.deleteIfFree).toHaveBeenCalledWith('t-1', 'r-1');
+  });
+
+  // specs/0137-papeis-garcom-motoboy REQ-7/AC-7.
+  it('AC-7 (specs/0137): GET /restaurants/me/table-service/map lista garçons a partir de RestaurantOperator com papel garcom, usando o e-mail como nome', async () => {
+    const operators = [
+      { id: 'op-1', restaurantId: 'r-1', email: 'ana@exemplo.com', role: 'garcom', isActive: true, createdAt: new Date() },
+      { id: 'op-2', restaurantId: 'r-1', email: 'bruno@exemplo.com', role: 'garcom', isActive: false, createdAt: new Date() },
+      { id: 'op-3', restaurantId: 'r-1', email: 'dono@exemplo.com', role: 'dono', isActive: true, createdAt: new Date() },
+    ];
+    const { routes } = setup({
+      restaurantOperatorRepository: { listByRestaurant: jest.fn().mockResolvedValue(operators) },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(routes['GET /restaurants/me/table-service/map'], { restaurantId: 'r-1' }, { json, send: jest.fn() });
+
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({
+      waiters: [{ id: 'op-1', restaurantId: 'r-1', name: 'ana@exemplo.com', isActive: true }],
+    }));
+  });
+
+  it('AC-2/AC-7 (specs/0137): abre pedido de mesa com garçom a partir de RestaurantOperator ativo com papel garcom', async () => {
+    const garcomOperator = { id: 'op-1', restaurantId: 'r-1', email: 'ana@exemplo.com', role: 'garcom', isActive: true, createdAt: new Date() };
+    const createdOrder = { id: 'o-table', restaurantId: 'r-1', orderType: 'table', tableId: 't-1', status: 'confirmado' };
+    const { orderRepository, routes } = setup({
+      tableRepository: { findById: jest.fn().mockResolvedValue(buildTable()) },
+      orderRepository: { create: jest.fn().mockResolvedValue(createdOrder) },
+      restaurantOperatorRepository: { findById: jest.fn().mockResolvedValue(garcomOperator) },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/table-orders'],
+      { restaurantId: 'r-1', body: { tableId: 't-1', waiterId: 'op-1' } },
+      { json, send: jest.fn() },
+    );
+
+    expect(orderRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+      tableWaiter: { id: 'op-1', name: 'ana@exemplo.com' },
+    }));
+    expect(json).toHaveBeenCalledWith(201, createdOrder);
+  });
+
+  it.each([
+    ['inativo', { id: 'op-1', restaurantId: 'r-1', email: 'ana@exemplo.com', role: 'garcom', isActive: false, createdAt: new Date() }],
+    ['de outro restaurante', { id: 'op-1', restaurantId: 'r-2', email: 'ana@exemplo.com', role: 'garcom', isActive: true, createdAt: new Date() }],
+    ['com papel diferente de garcom', { id: 'op-1', restaurantId: 'r-1', email: 'ana@exemplo.com', role: 'gerente', isActive: true, createdAt: new Date() }],
+  ])('REQ-7 (specs/0137): rejeita abrir pedido de mesa com operador garçom %s', async (_description, operator) => {
+    const { routes } = setup({
+      tableRepository: { findById: jest.fn().mockResolvedValue(buildTable()) },
+      restaurantOperatorRepository: { findById: jest.fn().mockResolvedValue(operator) },
+    });
+
+    await expect(
+      runOperatorChain(
+        routes['POST /restaurants/me/table-orders'],
+        { restaurantId: 'r-1', body: { tableId: 't-1', waiterId: 'op-1' } },
+        { json: jest.fn(), send: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 404 });
   });
 });

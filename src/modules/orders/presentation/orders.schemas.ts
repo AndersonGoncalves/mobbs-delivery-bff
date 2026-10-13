@@ -83,7 +83,12 @@ export const updateOrderStatusSchema = z.object({
   status: orderStatusEnum,
 });
 
-/** specs/0125 — null remove a atribuição; um id será validado contra o restaurante no controller. */
+/**
+ * specs/0125 — null remove a atribuição; um id será validado contra o restaurante no controller.
+ * specs/0137-papeis-garcom-motoboy REQ-6 — `motoboyId` passou a ser o id de um `RestaurantOperator`
+ * com papel `motoboy` (não mais de um `Motoboy` cadastral); nome do campo mantido igual, só a
+ * entidade validada contra mudou (web não precisou ser alterada nesse ponto).
+ */
 export const assignOrderMotoboySchema = z.object({
   motoboyId: z.string().min(1).nullable(),
 });
