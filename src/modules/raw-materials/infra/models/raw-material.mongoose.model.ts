@@ -14,6 +14,8 @@ const rawMaterialSchema = new Schema(
     currentStock: { type: Number, required: true, default: 0 },
     tracksStock: { type: Boolean, required: true, default: false },
     minimumStockAlert: { type: Number },
+    // specs/0133-foto-materia-prima — 1 foto opcional, mesmo mecanismo de `Product.imageUrl`.
+    imageUrl: { type: String },
   },
   { _id: false, timestamps: true },
 );

@@ -124,8 +124,55 @@ describe('RawMaterialsController', () => {
       { json },
     );
 
-    expect(rawMaterialRepository.create).toHaveBeenCalledWith('r-1', 'Catupiry', 4, 'kg', undefined, undefined);
+    expect(rawMaterialRepository.create).toHaveBeenCalledWith('r-1', 'Catupiry', 4, 'kg', undefined, undefined, undefined, undefined);
     expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ name: 'Catupiry' }));
+  });
+
+  // specs/0133-foto-materia-prima
+  it('AC-1: POST /restaurants/me/raw-materials repassa imageUrl pro repositório', async () => {
+    const { rawMaterialRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/raw-materials'],
+      { restaurantId: 'r-1', body: { name: 'Catupiry', priceDelta: 4, unit: 'kg', imageUrl: 'https://s3.example.com/raw-materials/foto.png' } },
+      { json },
+    );
+
+    expect(rawMaterialRepository.create).toHaveBeenCalledWith(
+      'r-1', 'Catupiry', 4, 'kg', undefined, undefined, undefined, 'https://s3.example.com/raw-materials/foto.png',
+    );
+  });
+
+  it('AC-1: PUT /restaurants/me/raw-materials/:id repassa imageUrl pro repositório', async () => {
+    const { rawMaterialRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['PUT /restaurants/me/raw-materials/:id'],
+      {
+        restaurantId: 'r-1',
+        params: { id: 'rm-1' },
+        body: { name: 'Bacon', priceDelta: 5, unit: 'kg', imageUrl: 'https://s3.example.com/raw-materials/foto.png' },
+      },
+      { json },
+    );
+
+    expect(rawMaterialRepository.update).toHaveBeenCalledWith(
+      'rm-1', 'Bacon', 5, 'kg', undefined, undefined, undefined, 'https://s3.example.com/raw-materials/foto.png',
+    );
+  });
+
+  it('rejeita imageUrl que não é uma URL válida', async () => {
+    const { routes } = setup();
+
+    await expect(
+      runOperatorChain(
+        routes['POST /restaurants/me/raw-materials'],
+        { restaurantId: 'r-1', body: { name: 'Catupiry', priceDelta: 4, unit: 'kg', imageUrl: 'não-é-url' } },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
   });
 
   it('rejeita criação sem unidade de medida', async () => {

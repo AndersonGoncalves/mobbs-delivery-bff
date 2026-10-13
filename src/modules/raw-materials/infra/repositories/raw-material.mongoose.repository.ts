@@ -14,6 +14,7 @@ interface RawMaterialLeanDocument {
   currentStock: number;
   tracksStock?: boolean;
   minimumStockAlert?: number;
+  imageUrl?: string;
 }
 
 function toEntity(doc: RawMaterialLeanDocument): IRawMaterial {
@@ -28,6 +29,7 @@ function toEntity(doc: RawMaterialLeanDocument): IRawMaterial {
     currentStock: doc.currentStock,
     tracksStock: doc.tracksStock ?? false,
     minimumStockAlert: doc.minimumStockAlert,
+    imageUrl: doc.imageUrl,
   };
 }
 
@@ -48,6 +50,7 @@ export class RawMaterialMongooseRepository implements IRawMaterialRepository {
     minimumStockAlert?: number,
     description?: string,
     tracksStock = false,
+    imageUrl?: string,
   ): Promise<IRawMaterial> {
     const doc = await RawMaterialModel.create({
       restaurantId,
@@ -57,6 +60,7 @@ export class RawMaterialMongooseRepository implements IRawMaterialRepository {
       minimumStockAlert,
       description,
       tracksStock,
+      imageUrl,
       isActive: true,
       currentStock: 0,
     });
@@ -71,8 +75,9 @@ export class RawMaterialMongooseRepository implements IRawMaterialRepository {
     minimumStockAlert?: number,
     description?: string,
     tracksStock?: boolean,
+    imageUrl?: string,
   ): Promise<IRawMaterial> {
-    const patch: Record<string, unknown> = { name, priceDelta, unit, minimumStockAlert, description };
+    const patch: Record<string, unknown> = { name, priceDelta, unit, minimumStockAlert, description, imageUrl };
     if (tracksStock !== undefined) patch.tracksStock = tracksStock;
     const doc = await RawMaterialModel.findByIdAndUpdate(
       id,

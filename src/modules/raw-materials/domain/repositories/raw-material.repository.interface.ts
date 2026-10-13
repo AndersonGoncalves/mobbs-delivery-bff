@@ -16,6 +16,8 @@ export interface IRawMaterialRepository {
     minimumStockAlert?: number,
     description?: string,
     tracksStock?: boolean,
+    // specs/0133-foto-materia-prima — 1 foto opcional, mesmo mecanismo de upload de `Product.imageUrl`.
+    imageUrl?: string,
   ): Promise<IRawMaterial>;
   update(
     id: string,
@@ -25,6 +27,7 @@ export interface IRawMaterialRepository {
     minimumStockAlert?: number,
     description?: string,
     tracksStock?: boolean,
+    imageUrl?: string,
   ): Promise<IRawMaterial>;
   setActive(id: string, isActive: boolean): Promise<IRawMaterial>;
   findById(id: string): Promise<IRawMaterial | null>;

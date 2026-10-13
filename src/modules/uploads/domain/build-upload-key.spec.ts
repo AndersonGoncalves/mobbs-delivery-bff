@@ -24,6 +24,12 @@ describe('buildUploadKey', () => {
     expect(key).toMatch(/^restaurants\/r-1\/additional-group-options\/[0-9a-f-]{36}\.png$/);
   });
 
+  // specs/0133-foto-materia-prima
+  it('rawMaterial: gera um UUID por chamada, dentro da pasta raw-materials/', () => {
+    const key = buildUploadKey('rawMaterial', 'r-1', 'foto.png');
+    expect(key).toMatch(/^restaurants\/r-1\/raw-materials\/[0-9a-f-]{36}\.png$/);
+  });
+
   it('sem extensão no filename, usa "jpg" como fallback', () => {
     expect(buildUploadKey('logo', 'r-1', 'foto-sem-extensao')).toBe('restaurants/r-1/logo.jpg');
   });

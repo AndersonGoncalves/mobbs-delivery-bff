@@ -23,4 +23,6 @@ export interface IRawMaterial {
   tracksStock?: boolean;
   /** specs/0015-estoque-compras — abaixo desse valor, retaguarda sinaliza "estoque baixo". */
   minimumStockAlert?: number;
+  /** specs/0133-foto-materia-prima — 1 foto opcional, mesmo mecanismo de upload (presign S3) de `Product.imageUrl`. */
+  imageUrl?: string;
 }

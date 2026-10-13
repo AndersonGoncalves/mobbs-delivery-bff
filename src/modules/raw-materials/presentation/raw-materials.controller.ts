@@ -56,19 +56,19 @@ export class RawMaterialsController extends BaseRouter {
     });
 
     application.post('/restaurants/me/raw-materials', ...authenticated, async (req: Request, res: Response) => {
-      const { name, priceDelta, unit, minimumStockAlert, description, tracksStock } = parseBody(saveRawMaterialSchema, req.body);
+      const { name, priceDelta, unit, minimumStockAlert, description, tracksStock, imageUrl } = parseBody(saveRawMaterialSchema, req.body);
       const material = tracksStock === undefined
-        ? await this.rawMaterialRepository.create(req.restaurantId!, name, priceDelta, unit, minimumStockAlert, description)
-        : await this.rawMaterialRepository.create(req.restaurantId!, name, priceDelta, unit, minimumStockAlert, description, tracksStock);
+        ? await this.rawMaterialRepository.create(req.restaurantId!, name, priceDelta, unit, minimumStockAlert, description, undefined, imageUrl)
+        : await this.rawMaterialRepository.create(req.restaurantId!, name, priceDelta, unit, minimumStockAlert, description, tracksStock, imageUrl);
       res.json(201, material);
     });
 
     application.put('/restaurants/me/raw-materials/:id', ...authenticated, async (req: Request, res: Response) => {
-      const { name, priceDelta, unit, minimumStockAlert, description, tracksStock } = parseBody(saveRawMaterialSchema, req.body);
+      const { name, priceDelta, unit, minimumStockAlert, description, tracksStock, imageUrl } = parseBody(saveRawMaterialSchema, req.body);
       await this.findOwnedRawMaterial(req.params.id, req.restaurantId!);
       const material = tracksStock === undefined
-        ? await this.rawMaterialRepository.update(req.params.id, name, priceDelta, unit, minimumStockAlert, description)
-        : await this.rawMaterialRepository.update(req.params.id, name, priceDelta, unit, minimumStockAlert, description, tracksStock);
+        ? await this.rawMaterialRepository.update(req.params.id, name, priceDelta, unit, minimumStockAlert, description, undefined, imageUrl)
+        : await this.rawMaterialRepository.update(req.params.id, name, priceDelta, unit, minimumStockAlert, description, tracksStock, imageUrl);
       res.json(200, material);
     });
 

@@ -9,6 +9,8 @@ export const saveRawMaterialSchema = z.object({
   unit: z.string().min(1, 'Unidade de medida é obrigatória'),
   minimumStockAlert: z.number().nonnegative().optional(),
   tracksStock: z.boolean().optional(),
+  // specs/0133-foto-materia-prima — 1 foto opcional, mesmo mecanismo de upload (presign S3) de `Product.imageUrl`.
+  imageUrl: z.string().url().optional(),
 });
 
 // REQ-7: `confirmed` só é usado quando o cliente já viu o aviso de produtos afetados e quer

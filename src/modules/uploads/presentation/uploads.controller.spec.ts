@@ -67,6 +67,16 @@ describe('UploadsController', () => {
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ publicUrl: expect.stringContaining('restaurants/r-1/') }));
   });
 
+  // specs/0133-foto-materia-prima
+  it('AC-1: aceita kind "rawMaterial"', async () => {
+    const { routes } = setup();
+    const json = jest.fn();
+
+    await runAuthenticatedChain(routes['POST /restaurants/me/uploads/presign'], { body: { kind: 'rawMaterial', filename: 'foto.png' } }, { json });
+
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ publicUrl: expect.stringContaining('restaurants/r-1/raw-materials/') }));
+  });
+
   it('rejeita com 400 quando kind não é um dos valores aceitos', async () => {
     const { routes } = setup();
 
