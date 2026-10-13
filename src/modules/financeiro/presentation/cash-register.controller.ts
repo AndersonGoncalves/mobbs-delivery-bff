@@ -7,7 +7,14 @@ import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middl
 import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { ICashRegisterRepository } from '../domain/repositories/cash-register.repository.interface';
-import { addCashMovementSchema, closeCashRegisterSchema, motoboyPayoutPeriodSchema, openCashRegisterSchema } from './financeiro.schemas';
+import { ICashRegisterService } from '../domain/services/i-cash-register.service';
+import {
+  addCashMovementSchema,
+  cashRegisterPeriodSchema,
+  closeCashRegisterSchema,
+  motoboyPayoutPeriodSchema,
+  openCashRegisterSchema,
+} from './financeiro.schemas';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
@@ -23,6 +30,9 @@ export class CashRegisterController extends BaseRouter {
   constructor(
     private readonly cashRegisterRepository: ICashRegisterRepository,
     private readonly orderRepository: IOrderRepository,
+    // specs/0118-controle-caixa-automatico-redes-sociais — `ensureAutomaticSchedule` (REQ-3/REQ-4/
+    // REQ-6) chamado no início de toda rota abaixo que lê ou muda o caixa (ver `plan.md`).
+    private readonly cashRegisterService: ICashRegisterService,
     private readonly restaurantOperatorMiddleware: AsyncHandler,
   ) {
     super();
@@ -132,25 +142,28 @@ export class CashRegisterController extends BaseRouter {
       });
     });
 
-    // REQ-4/REQ-6 — devolve a sessão aberta (ou `null`, estado válido de "sem caixa aberto"),
-    // junto dos movimentos e do saldo calculado ao vivo, pra tela de caixa montar tudo numa
-    // única chamada.
+    // REQ-4/REQ-6/REQ-9 — devolve a sessão aberta (ou `null`, estado válido de "sem caixa
+    // aberto"), junto dos movimentos, do saldo calculado ao vivo e do saldo por forma de
+    // pagamento (REQ-9), pra tela de caixa montar tudo numa única chamada.
     application.get('/restaurants/me/cash-register/open', ...authenticated, async (req: Request, res: Response) => {
+      await this.cashRegisterService.ensureAutomaticSchedule(req.restaurantId!);
       const session = await this.cashRegisterRepository.findOpenSessionByRestaurant(req.restaurantId!);
       if (!session) {
-        res.json(200, { session: null, movements: [], calculatedBalance: 0, tableSales: 0 });
+        res.json(200, { session: null, movements: [], calculatedBalance: 0, tableSales: 0, balanceByPaymentMethod: {} });
         return;
       }
-      const [movements, calculatedBalance, tableSales] = await Promise.all([
+      const [movements, calculatedBalance, tableSales, balanceByPaymentMethod] = await Promise.all([
         this.cashRegisterRepository.listMovements(session.id),
         this.cashRegisterRepository.getCalculatedBalance(session.id),
         this.orderRepository.getTableSalesBetween(req.restaurantId!, new Date(session.openedAt), new Date()),
+        this.cashRegisterService.getBalanceByPaymentMethod(session.id),
       ]);
-      res.json(200, { session, movements, calculatedBalance, tableSales });
+      res.json(200, { session, movements, calculatedBalance, tableSales, balanceByPaymentMethod });
     });
 
     // AC-4/AC-8 — REQ-8: bloqueia se já houver sessão aberta, indicando qual é.
     application.post('/restaurants/me/cash-register/open', ...authenticated, async (req: Request, res: Response) => {
+      await this.cashRegisterService.ensureAutomaticSchedule(req.restaurantId!);
       const { openingBalance } = parseBody(openCashRegisterSchema, req.body);
       const existing = await this.cashRegisterRepository.findOpenSessionByRestaurant(req.restaurantId!);
       if (existing) {
@@ -167,6 +180,7 @@ export class CashRegisterController extends BaseRouter {
       '/restaurants/me/cash-register/:id/movements',
       ...authenticated,
       async (req: Request, res: Response) => {
+        await this.cashRegisterService.ensureAutomaticSchedule(req.restaurantId!);
         const payload = parseBody(addCashMovementSchema, req.body);
         const session = await this.findOwnedSession(req.params.id, req.restaurantId!);
         if (session.status !== 'aberto') {
@@ -182,6 +196,7 @@ export class CashRegisterController extends BaseRouter {
       '/restaurants/me/cash-register/:id/close',
       ...authenticated,
       async (req: Request, res: Response) => {
+        await this.cashRegisterService.ensureAutomaticSchedule(req.restaurantId!);
         const { countedValue } = parseBody(closeCashRegisterSchema, req.body);
         const session = await this.findOwnedSession(req.params.id, req.restaurantId!);
         if (session.status !== 'aberto') {
@@ -193,6 +208,29 @@ export class CashRegisterController extends BaseRouter {
         res.json(200, { ...result, tableSales });
       },
     );
+
+    // REQ-10 — histórico de fechamentos no período, com o resumo (saldo por forma de pagamento,
+    // total de vendas, abertura/fechamento calculado vs. contado) de cada um.
+    application.get('/restaurants/me/cash-register/history', ...authenticated, async (req: Request, res: Response) => {
+      await this.cashRegisterService.ensureAutomaticSchedule(req.restaurantId!);
+      const { from, to } = parseBody(cashRegisterPeriodSchema, req.query);
+      const sessions = await this.cashRegisterRepository.findClosedSessionsBetween(req.restaurantId!, new Date(from), new Date(to));
+      const closings = await Promise.all(sessions.map((session) => this.cashRegisterService.getClosingSummary(session.id)));
+      res.json(200, { from, to, closings });
+    });
+
+    // REQ-11 — só os `CashMovementEntry` manuais (sangria/suprimento), separados das vendas
+    // automáticas, no período filtrado.
+    application.get('/restaurants/me/cash-register/movements', ...authenticated, async (req: Request, res: Response) => {
+      await this.cashRegisterService.ensureAutomaticSchedule(req.restaurantId!);
+      const { from, to } = parseBody(cashRegisterPeriodSchema, req.query);
+      const movements = await this.cashRegisterRepository.findManualMovementsByRestaurantBetween(
+        req.restaurantId!,
+        new Date(from),
+        new Date(to),
+      );
+      res.json(200, { from, to, movements });
+    });
   }
 
   private async findOwnedSession(id: string, restaurantId: string) {

@@ -1,6 +1,7 @@
 import { buildDefaultShareMessage } from '../../domain/default-share-message';
 import { OrderType, PaymentMethod } from '../../../orders/domain/entities/order.entity';
 import {
+  CashRegisterMode,
   DeliveryFeeMode,
   IBusinessHours,
   IDeliveryFeeZone,
@@ -83,6 +84,8 @@ interface RestaurantLeanDocument {
   orderCancelledWhatsAppTemplate?: string;
   notifyCustomerOnOrderDelivered?: boolean;
   orderDeliveredWhatsAppTemplate?: string;
+  facebookUrl?: string;
+  cashRegisterMode?: CashRegisterMode;
 }
 
 const ALL_PAYMENT_METHODS: PaymentMethod[] = ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'];
@@ -155,6 +158,8 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     orderCancelledWhatsAppTemplate: doc.orderCancelledWhatsAppTemplate,
     notifyCustomerOnOrderDelivered: doc.notifyCustomerOnOrderDelivered ?? true,
     orderDeliveredWhatsAppTemplate: doc.orderDeliveredWhatsAppTemplate,
+    facebookUrl: doc.facebookUrl,
+    cashRegisterMode: doc.cashRegisterMode ?? 'manual',
   };
 }
 

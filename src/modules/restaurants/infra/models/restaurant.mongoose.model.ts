@@ -109,6 +109,11 @@ const restaurantSchema = new Schema(
     deliveryFeeZones: { type: [deliveryFeeZoneSchema], default: [] },
     // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-9.
     instagramUrl: { type: String },
+    // specs/0118-controle-caixa-automatico-redes-sociais REQ-7/REQ-8.
+    facebookUrl: { type: String },
+    // specs/0118-controle-caixa-automatico-redes-sociais REQ-1 — default 'manual' preserva o
+    // comportamento atual de todo restaurante já existente.
+    cashRegisterMode: { type: String, enum: ['manual', 'automatic'], required: true, default: 'manual' },
     // Pedido explícito do usuário — tempo médio de atendimento mostrado no app do cliente, por
     // modalidade; defaults vindos do exemplo mostrado (40-60min delivery, 20-40min balcão).
     deliveryTimeMinMinutes: { type: Number, required: true, default: 40 },

@@ -145,8 +145,12 @@ export interface IRestaurant {
   deliveryFeeZones: IDeliveryFeeZone[];
   /** specs/0032-ajustes-diversos-rating-taxa-entrega REQ-9 — link do Instagram da loja, mostrado
    * no perfil do restaurante e usado como destino de exemplo de banner `externalUrl` no seed.
-   * Mesmo padrão opcional de `defaultProductImageUrl`. */
+   * Mesmo padrão opcional de `defaultProductImageUrl`. Desde specs/0118-controle-caixa-automatico-
+   * redes-sociais REQ-7, mora no quadro "Redes sociais" do Perfil (não mais em "App do cliente"). */
   instagramUrl?: string;
+  /** specs/0118-controle-caixa-automatico-redes-sociais REQ-7/REQ-8 — link do Facebook da loja,
+   * mesmo padrão opcional/validação de `instagramUrl`, quadro "Redes sociais" do Perfil. */
+  facebookUrl?: string;
   /** Pedido explícito do usuário — tempo médio de atendimento estimado, mostrado no app do
    * cliente (perfil do restaurante); faixa min-max em minutos, uma pra cada modalidade. Defaults
    * (40-60 delivery, 20-40 balcão) aplicados no schema do Mongoose e espelhados aqui como
@@ -233,7 +237,14 @@ export interface IRestaurant {
   notifyCustomerOnOrderDelivered: boolean;
   /** specs/0086 — template; `undefined` usa `DEFAULT_ORDER_DELIVERED_TEMPLATE`. */
   orderDeliveredWhatsAppTemplate?: string;
+  /** specs/0118-controle-caixa-automatico-redes-sociais REQ-1/REQ-2 — `'manual'` (default,
+   * comportamento atual: dono abre/fecha pela tela "Controle de caixa") ou `'automatic'`
+   * (abertura/fechamento seguem o `businessHours` do dia, sem horário próprio — REQ-2). Seletor
+   * mora em `CashRegisterPage.tsx` (decisão do spec), não no Perfil. */
+  cashRegisterMode: CashRegisterMode;
 }
+
+export type CashRegisterMode = 'manual' | 'automatic';
 
 export type DeliveryFeeMode = 'fixed' | 'byNeighborhood' | 'free';
 

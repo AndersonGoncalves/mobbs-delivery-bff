@@ -21,10 +21,21 @@ export interface ICashRegisterRepository {
   /** REQ-8 — no máximo uma sessão `aberto` por restaurante ao mesmo tempo. */
   findOpenSessionByRestaurant(restaurantId: string): Promise<ICashRegisterSession | null>;
   findById(id: string): Promise<ICashRegisterSession | null>;
-  open(restaurantId: string, openingBalance: number, openedBy?: string): Promise<ICashRegisterSession>;
+  /** specs/0118-controle-caixa-automatico-redes-sociais REQ-3 — `openedAutomatically` default
+   * `false`/ausente (abertura manual, comportamento de sempre); `true` quando chamado por
+   * `CashRegisterService.ensureAutomaticSchedule`. */
+  open(restaurantId: string, openingBalance: number, openedBy?: string, openedAutomatically?: boolean): Promise<ICashRegisterSession>;
   addMovement(sessionId: string, input: NewCashMovementInput): Promise<ICashMovementEntry>;
   listMovements(sessionId: string): Promise<ICashMovementEntry[]>;
   /** REQ-7 — calcula o saldo (abertura + entradas − saídas) sem persistir nada. */
   getCalculatedBalance(sessionId: string): Promise<number>;
-  close(sessionId: string, countedValue: number, closedBy?: string): Promise<CloseCashRegisterResult>;
+  /** specs/0118-controle-caixa-automatico-redes-sociais REQ-4 — `closedAutomatically` mesmo
+   * raciocínio de `open` acima. */
+  close(sessionId: string, countedValue: number, closedBy?: string, closedAutomatically?: boolean): Promise<CloseCashRegisterResult>;
+  /** specs/0118-controle-caixa-automatico-redes-sociais REQ-10 — fechamentos (`status: 'fechado'`)
+   * cujo `closedAt` cai dentro de `[from, to]`, mais antigo primeiro. */
+  findClosedSessionsBetween(restaurantId: string, from: Date, to: Date): Promise<ICashRegisterSession[]>;
+  /** specs/0118-controle-caixa-automatico-redes-sociais REQ-11 — só `CashMovementEntry` manuais
+   * (sem `orderId`) de qualquer sessão deste restaurante, com `createdAt` em `[from, to]`. */
+  findManualMovementsByRestaurantBetween(restaurantId: string, from: Date, to: Date): Promise<ICashMovementEntry[]>;
 }

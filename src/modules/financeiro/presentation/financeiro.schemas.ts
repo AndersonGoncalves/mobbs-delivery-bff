@@ -51,3 +51,8 @@ export const closeCashRegisterSchema = z.object({
 export const motoboyPayoutPeriodSchema = z
   .object({ from: isoDateString, to: isoDateString })
   .refine(({ from, to }) => new Date(from).getTime() < new Date(to).getTime(), 'Período inválido');
+
+/** specs/0118-controle-caixa-automatico-redes-sociais REQ-10/REQ-11 — mesma validação de período
+ * de `motoboyPayoutPeriodSchema`, nome próprio só pra deixar claro o contexto nas novas rotas
+ * (histórico de fechamentos / entradas e saídas). */
+export const cashRegisterPeriodSchema = motoboyPayoutPeriodSchema;

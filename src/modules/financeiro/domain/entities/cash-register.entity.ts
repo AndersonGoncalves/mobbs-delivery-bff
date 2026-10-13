@@ -18,6 +18,14 @@ export interface ICashRegisterSession {
   status: CashRegisterStatus;
   openedBy?: string;
   closedBy?: string;
+  /** specs/0118-controle-caixa-automatico-redes-sociais REQ-3/REQ-5 — abertura disparada por
+   * `CashRegisterService.ensureAutomaticSchedule` (sem operador), não por um `POST .../open`
+   * manual. Ausente/`false` = abertura manual (comportamento de sempre). */
+  openedAutomatically?: boolean;
+  /** specs/0118-controle-caixa-automatico-redes-sociais REQ-4/REQ-5 — fechamento automático:
+   * `closingBalance` é o saldo calculado (sem contagem física), não um valor contado pelo
+   * operador — mostrado distinto no histórico (REQ-5). Ausente/`false` = fechamento manual. */
+  closedAutomatically?: boolean;
 }
 
 /**

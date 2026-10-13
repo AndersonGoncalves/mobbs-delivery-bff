@@ -22,6 +22,8 @@ interface SessionLeanDocument {
   status: CashRegisterStatus;
   openedBy?: string;
   closedBy?: string;
+  openedAutomatically?: boolean;
+  closedAutomatically?: boolean;
 }
 
 interface MovementLeanDocument {
@@ -45,6 +47,8 @@ function toSessionEntity(doc: SessionLeanDocument): ICashRegisterSession {
     status: doc.status,
     openedBy: doc.openedBy,
     closedBy: doc.closedBy,
+    openedAutomatically: doc.openedAutomatically,
+    closedAutomatically: doc.closedAutomatically,
   };
 }
 
@@ -71,13 +75,19 @@ export class CashRegisterMongooseRepository implements ICashRegisterRepository {
     return doc ? toSessionEntity(doc) : null;
   }
 
-  async open(restaurantId: string, openingBalance: number, openedBy?: string): Promise<ICashRegisterSession> {
+  async open(
+    restaurantId: string,
+    openingBalance: number,
+    openedBy?: string,
+    openedAutomatically?: boolean,
+  ): Promise<ICashRegisterSession> {
     const doc = await CashRegisterSessionModel.create({
       restaurantId,
       openedAt: new Date(),
       openingBalance,
       status: 'aberto',
       openedBy,
+      openedAutomatically,
     });
     return toSessionEntity(doc.toObject() as SessionLeanDocument);
   }
@@ -111,11 +121,16 @@ export class CashRegisterMongooseRepository implements ICashRegisterRepository {
     );
   }
 
-  async close(sessionId: string, countedValue: number, closedBy?: string): Promise<CloseCashRegisterResult> {
+  async close(
+    sessionId: string,
+    countedValue: number,
+    closedBy?: string,
+    closedAutomatically?: boolean,
+  ): Promise<CloseCashRegisterResult> {
     const calculatedBalance = await this.getCalculatedBalance(sessionId);
     const doc = await CashRegisterSessionModel.findByIdAndUpdate(
       sessionId,
-      { $set: { status: 'fechado', closedAt: new Date(), closingBalance: countedValue, closedBy } },
+      { $set: { status: 'fechado', closedAt: new Date(), closingBalance: countedValue, closedBy, closedAutomatically } },
       { new: true },
     ).lean<SessionLeanDocument>();
     return {
@@ -123,5 +138,35 @@ export class CashRegisterMongooseRepository implements ICashRegisterRepository {
       calculatedBalance,
       difference: countedValue - calculatedBalance,
     };
+  }
+
+  /** specs/0118-controle-caixa-automatico-redes-sociais REQ-10. */
+  async findClosedSessionsBetween(restaurantId: string, from: Date, to: Date): Promise<ICashRegisterSession[]> {
+    const docs = await CashRegisterSessionModel.find({
+      restaurantId,
+      status: 'fechado',
+      closedAt: { $gte: from, $lte: to },
+    })
+      .sort({ closedAt: 1 })
+      .lean<SessionLeanDocument[]>();
+    return docs.map(toSessionEntity);
+  }
+
+  /** specs/0118-controle-caixa-automatico-redes-sociais REQ-11 — resolve as sessões do
+   * restaurante primeiro (`CashMovementEntry` não tem `restaurantId` próprio, só
+   * `cashRegisterSessionId`), depois filtra os movimentos manuais (`orderId` ausente) no período. */
+  async findManualMovementsByRestaurantBetween(restaurantId: string, from: Date, to: Date): Promise<ICashMovementEntry[]> {
+    const sessions = await CashRegisterSessionModel.find({ restaurantId }, { _id: 1 }).lean<{ _id: string }[]>();
+    const sessionIds = sessions.map((session) => session._id);
+    if (sessionIds.length === 0) return [];
+
+    const docs = await CashMovementEntryModel.find({
+      cashRegisterSessionId: { $in: sessionIds },
+      orderId: { $exists: false },
+      createdAt: { $gte: from, $lte: to },
+    })
+      .sort({ createdAt: 1 })
+      .lean<MovementLeanDocument[]>();
+    return docs.map(toMovementEntity);
   }
 }

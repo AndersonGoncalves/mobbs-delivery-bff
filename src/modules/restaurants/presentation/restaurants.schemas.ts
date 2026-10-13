@@ -105,6 +105,12 @@ export const restaurantProfileSchema = z
     // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-9 — mesmo padrão `.optional()` de
     // `defaultProductImageUrl` (a maioria não configura, form manda `undefined`, não string vazia).
     instagramUrl: z.string().url().optional(),
+    // specs/0118-controle-caixa-automatico-redes-sociais REQ-7/REQ-8 — mesmo padrão `.optional()`
+    // de `instagramUrl` (opcional, link completo).
+    facebookUrl: z.string().url().optional(),
+    // specs/0118-controle-caixa-automatico-redes-sociais REQ-1 — seletor "manual"/"automático"
+    // salvo junto com o resto do perfil (`CashRegisterPage.tsx`, não o Perfil de verdade).
+    cashRegisterMode: z.enum(['manual', 'automatic']),
     // Pedido explícito do usuário — tempo médio de atendimento, por modalidade (minutos).
     deliveryTimeMinMinutes: z.number().int().positive(),
     deliveryTimeMaxMinutes: z.number().int().positive(),

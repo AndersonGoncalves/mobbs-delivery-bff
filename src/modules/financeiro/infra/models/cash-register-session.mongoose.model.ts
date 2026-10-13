@@ -12,6 +12,9 @@ const cashRegisterSessionSchema = new Schema(
     status: { type: String, enum: ['aberto', 'fechado'], required: true, default: 'aberto' },
     openedBy: { type: String },
     closedBy: { type: String },
+    // specs/0118-controle-caixa-automatico-redes-sociais REQ-3/REQ-4/REQ-5.
+    openedAutomatically: { type: Boolean },
+    closedAutomatically: { type: Boolean },
   },
   { _id: false, timestamps: false },
 );

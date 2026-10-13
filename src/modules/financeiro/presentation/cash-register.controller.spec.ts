@@ -1,6 +1,7 @@
 import type { Request, Response, Server } from 'restify';
 
 import { ICashRegisterRepository } from '../domain/repositories/cash-register.repository.interface';
+import { CashClosingSummary, ICashRegisterService } from '../domain/services/i-cash-register.service';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { CashRegisterController } from './cash-register.controller';
 
@@ -80,7 +81,11 @@ function buildClosedTableOrder(overrides: Record<string, unknown> = {}) {
 }
 
 describe('CashRegisterController', () => {
-  function setup(overrides: { cashRegisterRepository?: Partial<ICashRegisterRepository>; orderRepository?: Partial<IOrderRepository> } = {}) {
+  function setup(overrides: {
+    cashRegisterRepository?: Partial<ICashRegisterRepository>;
+    orderRepository?: Partial<IOrderRepository>;
+    cashRegisterService?: Partial<ICashRegisterService>;
+  } = {}) {
     const cashRegisterRepository: Partial<ICashRegisterRepository> = {
       findOpenSessionByRestaurant: jest.fn().mockResolvedValue(null),
       findById: jest.fn().mockResolvedValue(buildSession()),
@@ -89,6 +94,8 @@ describe('CashRegisterController', () => {
       listMovements: jest.fn().mockResolvedValue([buildMovement()]),
       getCalculatedBalance: jest.fn().mockResolvedValue(150),
       close: jest.fn().mockResolvedValue({ session: buildSession({ status: 'fechado', closingBalance: 150 }), calculatedBalance: 150, difference: 0 }),
+      findClosedSessionsBetween: jest.fn().mockResolvedValue([]),
+      findManualMovementsByRestaurantBetween: jest.fn().mockResolvedValue([]),
       ...overrides.cashRegisterRepository,
     };
     const orderRepository: Partial<IOrderRepository> = {
@@ -97,12 +104,30 @@ describe('CashRegisterController', () => {
       getTableSalesBetween: jest.fn().mockResolvedValue(75),
       ...overrides.orderRepository,
     };
+    // specs/0118-controle-caixa-automatico-redes-sociais — `ensureAutomaticSchedule` mockado como
+    // no-op por padrão: estes testes cobrem as rotas em si, a lógica do "cron" lazy já tem
+    // cobertura própria em `cash-register.service.spec.ts`.
+    const cashRegisterService: Partial<ICashRegisterService> = {
+      ensureAutomaticSchedule: jest.fn().mockResolvedValue(undefined),
+      getBalanceByPaymentMethod: jest.fn().mockResolvedValue({}),
+      getClosingSummary: jest.fn().mockResolvedValue({
+        session: buildSession({ status: 'fechado' }),
+        balanceByPaymentMethod: {},
+        totalSales: 0,
+        calculatedBalance: 0,
+        difference: 0,
+      }),
+      ...overrides.cashRegisterService,
+    };
     const restaurantOperatorMiddleware = jest.fn(async () => {});
     const { application, routes } = buildFakeApplication();
-    new CashRegisterController(cashRegisterRepository as ICashRegisterRepository, orderRepository as IOrderRepository, restaurantOperatorMiddleware).initializeRoutes(
-      application,
-    );
-    return { cashRegisterRepository, orderRepository, routes };
+    new CashRegisterController(
+      cashRegisterRepository as ICashRegisterRepository,
+      orderRepository as IOrderRepository,
+      cashRegisterService as ICashRegisterService,
+      restaurantOperatorMiddleware,
+    ).initializeRoutes(application);
+    return { cashRegisterRepository, orderRepository, cashRegisterService, routes };
   }
 
   it('specs/0127 AC-1/AC-2: agrupa taxa integral por motoboy e separa pedidos sem atribuição', async () => {
@@ -203,17 +228,19 @@ describe('CashRegisterController', () => {
   });
 
   it('GET /restaurants/me/cash-register/open devolve session:null quando não há sessão aberta', async () => {
-    const { routes } = setup();
+    const { cashRegisterService, routes } = setup();
     const json = jest.fn();
 
     await runOperatorChain(routes['GET /restaurants/me/cash-register/open'], { restaurantId: 'r-1' }, { json });
 
-    expect(json).toHaveBeenCalledWith(200, { session: null, movements: [], calculatedBalance: 0, tableSales: 0 });
+    expect(json).toHaveBeenCalledWith(200, { session: null, movements: [], calculatedBalance: 0, tableSales: 0, balanceByPaymentMethod: {} });
+    expect(cashRegisterService.ensureAutomaticSchedule).toHaveBeenCalledWith('r-1');
   });
 
-  it('GET /restaurants/me/cash-register/open devolve a sessão aberta com movimentos e saldo calculado', async () => {
-    const { orderRepository, routes } = setup({
+  it('GET /restaurants/me/cash-register/open devolve a sessão aberta com movimentos, saldo calculado e saldo por forma de pagamento (REQ-9)', async () => {
+    const { orderRepository, cashRegisterService, routes } = setup({
       cashRegisterRepository: { findOpenSessionByRestaurant: jest.fn().mockResolvedValue(buildSession()) },
+      cashRegisterService: { getBalanceByPaymentMethod: jest.fn().mockResolvedValue({ pix: 100, cash: 30 }) },
     });
     const json = jest.fn();
 
@@ -224,8 +251,10 @@ describe('CashRegisterController', () => {
       movements: [expect.objectContaining({ id: 'mv-1' })],
       calculatedBalance: 150,
       tableSales: 75,
+      balanceByPaymentMethod: { pix: 100, cash: 30 },
     });
     expect(orderRepository.getTableSalesBetween).toHaveBeenCalledWith('r-1', new Date('2026-09-09T08:00:00.000Z'), expect.any(Date));
+    expect(cashRegisterService.getBalanceByPaymentMethod).toHaveBeenCalledWith('cr-1');
   });
 
   it('AC-4: POST /restaurants/me/cash-register/open abre uma sessão com o valor inicial informado', async () => {
@@ -339,5 +368,85 @@ describe('CashRegisterController', () => {
       ),
     ).rejects.toMatchObject({ statusCode: 400 });
     expect(cashRegisterRepository.close).not.toHaveBeenCalled();
+  });
+
+  describe('GET /restaurants/me/cash-register/history (REQ-10)', () => {
+    it('AC-7: 3 fechamentos no período devolvem o resumo de cada um', async () => {
+      const from = '2026-10-01T00:00:00.000Z';
+      const to = '2026-10-31T23:59:59.000Z';
+      const closedSessions = [
+        buildSession({ id: 'cr-1', status: 'fechado' }),
+        buildSession({ id: 'cr-2', status: 'fechado' }),
+        buildSession({ id: 'cr-3', status: 'fechado' }),
+      ];
+      const summaryFor = (id: string): CashClosingSummary => ({
+        session: closedSessions.find((session) => session.id === id) as CashClosingSummary['session'],
+        balanceByPaymentMethod: { pix: 100 },
+        totalSales: 100,
+        calculatedBalance: 100,
+        difference: 0,
+      });
+      const { cashRegisterRepository, cashRegisterService, routes } = setup({
+        cashRegisterRepository: { findClosedSessionsBetween: jest.fn().mockResolvedValue(closedSessions) },
+        cashRegisterService: {
+          getClosingSummary: jest.fn((id: string) => Promise.resolve(summaryFor(id))),
+        },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(routes['GET /restaurants/me/cash-register/history'], { restaurantId: 'r-1', query: { from, to } }, { json });
+
+      expect(cashRegisterRepository.findClosedSessionsBetween).toHaveBeenCalledWith('r-1', new Date(from), new Date(to));
+      expect(cashRegisterService.getClosingSummary).toHaveBeenCalledTimes(3);
+      expect(json).toHaveBeenCalledWith(200, {
+        from,
+        to,
+        closings: [summaryFor('cr-1'), summaryFor('cr-2'), summaryFor('cr-3')],
+      });
+    });
+
+    it('rejeita período inválido', async () => {
+      const { routes } = setup();
+
+      await expect(
+        runOperatorChain(
+          routes['GET /restaurants/me/cash-register/history'],
+          { restaurantId: 'r-1', query: { from: 'amanhã', to: 'hoje' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+  });
+
+  describe('GET /restaurants/me/cash-register/movements (REQ-11)', () => {
+    it('AC-8: devolve só os movimentos manuais (sem orderId) do período, não as vendas automáticas', async () => {
+      const from = '2026-10-01T00:00:00.000Z';
+      const to = '2026-10-31T23:59:59.000Z';
+      const manualMovements = [
+        buildMovement({ id: 'mv-entrada', type: 'entrada', description: 'Suprimento' }),
+        buildMovement({ id: 'mv-saida', type: 'saida', description: 'Sangria' }),
+      ];
+      const { cashRegisterRepository, routes } = setup({
+        cashRegisterRepository: { findManualMovementsByRestaurantBetween: jest.fn().mockResolvedValue(manualMovements) },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(routes['GET /restaurants/me/cash-register/movements'], { restaurantId: 'r-1', query: { from, to } }, { json });
+
+      expect(cashRegisterRepository.findManualMovementsByRestaurantBetween).toHaveBeenCalledWith('r-1', new Date(from), new Date(to));
+      expect(json).toHaveBeenCalledWith(200, { from, to, movements: manualMovements });
+    });
+
+    it('rejeita período inválido', async () => {
+      const { routes } = setup();
+
+      await expect(
+        runOperatorChain(
+          routes['GET /restaurants/me/cash-register/movements'],
+          { restaurantId: 'r-1', query: { from: 'amanhã', to: 'hoje' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
   });
 });

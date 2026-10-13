@@ -111,8 +111,12 @@ const whatsAppNotificationService = new WhatsAppNotificationService(
 // specs/0014-financeiro — uma única instância de repositório de caixa compartilhada entre
 // `CashRegisterController` (rotas de caixa da retaguarda) e `CashRegisterService` (lançamento
 // automático chamado por `OrdersController` ao marcar um pedido Pix como entregue).
+// specs/0118-controle-caixa-automatico-redes-sociais — `CashRegisterService` ganhou
+// `ensureAutomaticSchedule`/`getClosingSummary`, por isso agora também recebe `restaurantRepository`
+// (ler `cashRegisterMode`/`businessHours`) e `orderRepository` (somar vendas por forma de
+// pagamento) — a instância só é montada depois de `orderRepository` existir, por isso o bloco
+// desceu pra depois dele (ver abaixo).
 const cashRegisterRepository = new CashRegisterMongooseRepository();
-const cashRegisterService = new CashRegisterService(cashRegisterRepository);
 
 // specs/0015-estoque-compras — `RawMaterialMongooseRepository`/`StockMovementMongooseRepository`
 // compartilhados entre `RawMaterialsController` (ajuste manual/histórico, REQ-5/REQ-6) e
@@ -131,6 +135,10 @@ const receivePurchaseOrderService = new ReceivePurchaseOrderService(
 // entre `OrdersController` e `CustomersSummaryController` (REQ-3, histórico de pedidos do
 // cliente escopado ao restaurante), sem duplicar instância.
 const orderRepository = new OrderMongooseRepository();
+
+// specs/0118-controle-caixa-automatico-redes-sociais — ver comentário acima de
+// `cashRegisterRepository`: só pode ser montado aqui, depois de `orderRepository` existir.
+const cashRegisterService = new CashRegisterService(cashRegisterRepository, restaurantRepository, orderRepository);
 
 // specs/0113-parametrizacao-faixas-cobranca — documento único de limites/mensalidades, compartilhado
 // entre o recálculo por pedido entregue, o card de faturamento do restaurante, o painel da
@@ -277,7 +285,7 @@ server
     new WhatsAppConnectionController(whatsAppConnectionService, restaurantOperatorMiddleware),
     new AccountsPayableController(new AccountPayableMongooseRepository(), restaurantOperatorMiddleware),
     new AccountsReceivableController(new AccountReceivableMongooseRepository(), restaurantOperatorMiddleware),
-    new CashRegisterController(cashRegisterRepository, orderRepository, restaurantOperatorMiddleware),
+    new CashRegisterController(cashRegisterRepository, orderRepository, cashRegisterService, restaurantOperatorMiddleware),
     new TableServiceController(
       new RestaurantTableMongooseRepository(),
       new TableWaiterMongooseRepository(),

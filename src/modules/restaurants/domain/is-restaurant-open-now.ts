@@ -28,20 +28,30 @@ const restaurantTimeFormatter = new Intl.DateTimeFormat('en-US', {
 export function isRestaurantOpenNow(restaurant: Pick<IRestaurant, 'isActive' | 'businessHours'>, instant: Date = new Date()): boolean {
   if (!restaurant.isActive) return false;
 
+  const { dayOfWeek, minutes } = getRestaurantLocalTime(instant);
+  const todayHours = restaurant.businessHours.find((day) => day.dayOfWeek === dayOfWeek);
+  if (!todayHours || todayHours.isClosed || !todayHours.openTime || !todayHours.closeTime) return false;
+
+  return minutes >= minutesSinceMidnight(todayHours.openTime) && minutes < minutesSinceMidnight(todayHours.closeTime);
+}
+
+/**
+ * specs/0118-controle-caixa-automatico-redes-sociais REQ-2/REQ-3/REQ-4 — extraído de
+ * `isRestaurantOpenNow` pra ser reaproveitado por `CashRegisterService.ensureAutomaticSchedule`
+ * (mesma necessidade: dia da semana + minutos desde a meia-noite, no fuso do restaurante,
+ * independente do fuso do processo do BFF — ver o comentário grande acima sobre o bug de
+ * produção corrigido por `Intl.DateTimeFormat`).
+ */
+export function getRestaurantLocalTime(instant: Date = new Date()): { dayOfWeek: IBusinessHours['dayOfWeek']; minutes: number } {
   const parts = restaurantTimeFormatter.formatToParts(instant);
-  const today = parts.find((part) => part.type === 'weekday')!.value.toLowerCase() as IBusinessHours['dayOfWeek'];
+  const dayOfWeek = parts.find((part) => part.type === 'weekday')!.value.toLowerCase() as IBusinessHours['dayOfWeek'];
   // Quirk do ICU: meia-noite (00h) vem como "24", não "00", com `hour12: false`.
   const hour = Number(parts.find((part) => part.type === 'hour')!.value) % 24;
   const minute = Number(parts.find((part) => part.type === 'minute')!.value);
-
-  const todayHours = restaurant.businessHours.find((day) => day.dayOfWeek === today);
-  if (!todayHours || todayHours.isClosed || !todayHours.openTime || !todayHours.closeTime) return false;
-
-  const instantMinutes = hour * 60 + minute;
-  return instantMinutes >= minutesSinceMidnight(todayHours.openTime) && instantMinutes < minutesSinceMidnight(todayHours.closeTime);
+  return { dayOfWeek, minutes: hour * 60 + minute };
 }
 
-function minutesSinceMidnight(hhmm: string): number {
+export function minutesSinceMidnight(hhmm: string): number {
   const [hours, minutes] = hhmm.split(':').map(Number);
   return hours * 60 + minutes;
 }
