@@ -149,8 +149,11 @@ describe('TableServiceController', () => {
     );
 
     expect(customerRepository.upsertProfile).toHaveBeenCalledWith('table-customer-r-1', expect.objectContaining({ name: 'Cliente balcão' }));
+    // Pedido explícito do usuário — checkbox "Taxa de serviço" começa desmarcada: o pedido nasce
+    // com serviceChargePercent 0, não mais 10.
     expect(orderRepository.create).toHaveBeenCalledWith(expect.objectContaining({
       orderType: 'table', tableId: 't-1', tableName: '1', initialStatus: 'confirmado', customerId: 'table-customer-r-1',
+      serviceChargePercent: 0,
     }));
     expect(tableRepository.claimForOrder).toHaveBeenCalledWith('t-1', 'r-1', 'o-table');
     expect(json).toHaveBeenCalledWith(201, createdOrder);
@@ -278,6 +281,35 @@ describe('TableServiceController', () => {
     );
 
     expect(orderRepository.addTablePayment).toHaveBeenCalledTimes(2);
+    expect(orderRepository.updateStatus).toHaveBeenCalledWith('o-table', 'entregue', 'r-1');
+    expect(tableRepository.releaseFromOrder).toHaveBeenCalledWith('t-1', 'r-1', 'o-table');
+    expect(json).toHaveBeenCalledWith(200, closedOrder);
+  });
+
+  // Pedido explícito do usuário — mesa aberta por engano/teste, sem nenhum item, precisa fechar
+  // sem exigir pagamento (saldo já é zero).
+  it('fecha a conta de uma mesa sem itens, sem exigir pagamento', async () => {
+    const order = {
+      id: 'o-table', restaurantId: 'r-1', orderType: 'table', tableId: 't-1', status: 'confirmado',
+      items: [], subtotal: 0, deliveryFee: 0, discount: 0, total: 0, tablePayments: [],
+    };
+    const closedOrder = { ...order, status: 'entregue' };
+    const { tableRepository, orderRepository, routes } = setup({
+      orderRepository: {
+        findById: jest.fn().mockResolvedValue(order),
+        updateTableOrder: jest.fn().mockResolvedValue(order),
+        updateStatus: jest.fn().mockResolvedValue(closedOrder),
+      },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/table-orders/:id/close'],
+      { restaurantId: 'r-1', user: { uid: 'operator-1' }, params: { id: 'o-table' }, body: { payments: [] } },
+      { json, send: jest.fn() },
+    );
+
+    expect(orderRepository.addTablePayment).not.toHaveBeenCalled();
     expect(orderRepository.updateStatus).toHaveBeenCalledWith('o-table', 'entregue', 'r-1');
     expect(tableRepository.releaseFromOrder).toHaveBeenCalledWith('t-1', 'r-1', 'o-table');
     expect(json).toHaveBeenCalledWith(200, closedOrder);
@@ -448,5 +480,21 @@ describe('TableServiceController', () => {
         { json: jest.fn(), send: jest.fn() },
       ),
     ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  // Pedido explícito do usuário — dias com música ao vivo, usados pra condicionar o checkbox
+  // "Couvert" na tela de atendimento (web).
+  it('PUT /restaurants/me/table-map/layout: repassa liveMusicDays pro repositório', async () => {
+    const { layoutRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['PUT /restaurants/me/table-map/layout'],
+      { restaurantId: 'r-1', body: { decorations: [], liveMusicDays: ['friday', 'saturday'] } },
+      { json, send: jest.fn() },
+    );
+
+    expect(layoutRepository.save).toHaveBeenCalledWith('r-1', [], undefined, undefined, ['friday', 'saturday']);
+    expect(json).toHaveBeenCalledWith(200, expect.anything());
   });
 });

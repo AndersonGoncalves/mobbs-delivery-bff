@@ -36,10 +36,13 @@ const tableMapDecorationSchema = z.object({
   height: z.number().min(24),
 });
 
+const dayOfWeekSchema = z.enum(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']);
+
 export const saveTableMapLayoutSchema = z.object({
   decorations: z.array(tableMapDecorationSchema).max(100),
   spendingLimit: z.number().positive().nullable().optional(),
   counterPositions: z.record(z.string().min(1), z.object({ x: z.number().nonnegative(), y: z.number().nonnegative() })).optional(),
+  liveMusicDays: z.array(dayOfWeekSchema).optional(),
 });
 
 const tableSelectionSchema: z.ZodType<TableSelectionInput> = z.lazy(() =>

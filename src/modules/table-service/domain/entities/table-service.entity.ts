@@ -34,9 +34,14 @@ export interface TableMapDecoration {
 
 export type CounterPositions = Record<string, { x: number; y: number }>;
 
+export type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
+
 export interface TableMapLayout {
   restaurantId: string;
   decorations: TableMapDecoration[];
   spendingLimit?: number;
   counterPositions?: CounterPositions;
+  // Pedido explícito do usuário — dias da semana com música ao vivo, usado por
+  // `TableOrderService`/web pra só exibir o checkbox "Couvert" nesses dias.
+  liveMusicDays: DayOfWeek[];
 }

@@ -100,6 +100,7 @@ export class TableOrderService {
       decorations: layout.decorations,
       spendingLimit: layout.spendingLimit,
       counterPositions: layout.counterPositions ?? {},
+      liveMusicDays: layout.liveMusicDays,
     };
   }
 
@@ -152,7 +153,9 @@ export class TableOrderService {
       // no snapshot, já que não há outro identificador legível disponível (mesmo padrão de
       // `deliveryMotoboy` em `OrdersController`).
       tableWaiter: waiterOperator ? { id: waiterOperator.id, name: waiterOperator.email } : undefined,
-      serviceChargePercent: 10,
+      // Pedido explícito do usuário — checkbox "Taxa de serviço" deve começar desmarcado; 10%
+      // continua sendo o valor sugerido no formulário quando o operador marca a opção (web).
+      serviceChargePercent: 0,
       serviceChargeAmount: 0,
       coverCharge: 0,
       tablePayments: [],
@@ -295,10 +298,12 @@ export class TableOrderService {
 
   async closeOrder(restaurantId: string, orderId: string, payments: { method: IOrder['paymentMethod']; amount: number }[], operatorId: string) {
     const order = await this.findOpenOrder(restaurantId, orderId);
-    if (order.items.length === 0) throw new BadRequestError('Adicione pelo menos um item antes de fechar a conta');
     const remaining = this.balanceDue(order);
     const closingTotal = payments.reduce((sum, payment) => sum + payment.amount, 0);
-    if (payments.length === 0 || Math.abs(closingTotal - remaining) > 0.01) {
+    // Pedido explícito do usuário — fechar mesa sem itens (aberta por engano/teste) precisa
+    // funcionar sem pagamento nenhum; `remaining` já é 0 nesse caso, então só exige pagamentos
+    // quando há saldo de fato em aberto. Fora isso, os pagamentos sempre têm que bater com o saldo.
+    if (Math.abs(closingTotal - remaining) > 0.01 || (payments.length === 0 && remaining > 0)) {
       throw new BadRequestError(`Os pagamentos devem somar o saldo em aberto de ${remaining.toFixed(2)}`);
     }
 

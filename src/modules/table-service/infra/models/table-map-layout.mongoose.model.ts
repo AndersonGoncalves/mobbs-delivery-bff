@@ -21,6 +21,11 @@ const tableMapLayoutSchema = new Schema(
     decorations: { type: [decorationSchema], default: [] },
     spendingLimit: { type: Number, min: 0.01 },
     counterPositions: { type: Schema.Types.Mixed },
+    liveMusicDays: {
+      type: [String],
+      enum: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'],
+      default: [],
+    },
   },
   { _id: false, timestamps: true },
 );
