@@ -1,5 +1,5 @@
 import type { Request, Response, Server } from 'restify';
-import { BadRequestError } from 'restify-errors';
+import { BadRequestError, ConflictError, NotFoundError } from 'restify-errors';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
@@ -59,6 +59,26 @@ export class PurchaseOrdersController extends BaseRouter {
         res.json(200, order);
       },
     );
+
+    // specs/0138-ajustes-compras-faturamento-home-mapa REQ-2/REQ-3 (AC-2) — editar
+    // fornecedor/itens de um pedido de compra ainda não recebido; 404 se o pedido não existe ou é
+    // de outro restaurante, 409 se já está `recebido` (mesmo racional de atomicidade de
+    // `ReceivePurchaseOrderService.receive`, compare-and-swap em `updateItemsIfNotReceived`).
+    application.patch('/restaurants/me/purchase-orders/:id', ...authenticated, async (req: Request, res: Response) => {
+      const { supplierId, items } = parseBody(savePurchaseOrderSchema, req.body);
+      await this.assertItemsTrackStock(req.restaurantId!, items);
+
+      const existing = await this.purchaseOrderRepository.findById(req.params.id);
+      if (!existing || existing.restaurantId !== req.restaurantId) {
+        throw new NotFoundError('Pedido de compra não encontrado');
+      }
+
+      const updated = await this.purchaseOrderRepository.updateItemsIfNotReceived(req.params.id, supplierId, items);
+      if (!updated) {
+        throw new ConflictError('Pedido de compra já foi recebido, não pode mais ser editado');
+      }
+      res.json(200, updated);
+    });
   }
 
   /** Compra só faz sentido pra item que controla estoque: o recebimento não somaria saldo em nenhum outro caso. */

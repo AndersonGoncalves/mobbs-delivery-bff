@@ -60,6 +60,8 @@ describe('PurchaseOrdersController (specs/0015-estoque-compras REQ-2/REQ-3/REQ-7
     const purchaseOrderRepository: Partial<IPurchaseOrderRepository> = {
       listByRestaurant: jest.fn().mockResolvedValue([buildOrder()]),
       create: jest.fn().mockResolvedValue(buildOrder()),
+      findById: jest.fn().mockResolvedValue(buildOrder()),
+      updateItemsIfNotReceived: jest.fn().mockResolvedValue(buildOrder({ totalValue: 50 })),
       ...overrides.purchaseOrderRepository,
     };
     const receivePurchaseOrderService: Partial<IReceivePurchaseOrderService> = {
@@ -180,5 +182,84 @@ describe('PurchaseOrdersController (specs/0015-estoque-compras REQ-2/REQ-3/REQ-7
         { json: jest.fn() },
       ),
     ).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  // specs/0138-ajustes-compras-faturamento-home-mapa REQ-2/REQ-3 (AC-2).
+  it('AC-2: PATCH /restaurants/me/purchase-orders/:id atualiza fornecedor/itens de um pedido aberto', async () => {
+    const { purchaseOrderRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/purchase-orders/:id'],
+      {
+        restaurantId: 'r-1',
+        params: { id: 'po-1' },
+        body: { supplierId: 'sup-1', items: [{ rawMaterialId: 'rm-1', quantity: 20, unitCost: 2.5 }] },
+      },
+      { json },
+    );
+
+    expect(purchaseOrderRepository.updateItemsIfNotReceived).toHaveBeenCalledWith(
+      'po-1',
+      'sup-1',
+      expect.arrayContaining([expect.objectContaining({ rawMaterialId: 'rm-1', quantity: 20, unitCost: 2.5 })]),
+    );
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ totalValue: 50 }));
+  });
+
+  it('AC-2: PATCH .../:id devolve 404 quando o pedido não existe ou é de outro restaurante', async () => {
+    const { routes } = setup({ purchaseOrderRepository: { findById: jest.fn().mockResolvedValue(null) } });
+
+    await expect(
+      runOperatorChain(
+        routes['PATCH /restaurants/me/purchase-orders/:id'],
+        {
+          restaurantId: 'r-1',
+          params: { id: 'po-404' },
+          body: { supplierId: 'sup-1', items: [{ rawMaterialId: 'rm-1', quantity: 1, unitCost: 1 }] },
+        },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('AC-2: PATCH .../:id devolve 409 quando o pedido já está recebido (não pode mais ser editado)', async () => {
+    const { routes } = setup({
+      purchaseOrderRepository: {
+        findById: jest.fn().mockResolvedValue(buildOrder({ status: 'recebido', receivedAt: '2026-09-09T09:00:00.000Z' })),
+        updateItemsIfNotReceived: jest.fn().mockResolvedValue(null),
+      },
+    });
+
+    await expect(
+      runOperatorChain(
+        routes['PATCH /restaurants/me/purchase-orders/:id'],
+        {
+          restaurantId: 'r-1',
+          params: { id: 'po-1' },
+          body: { supplierId: 'sup-1', items: [{ rawMaterialId: 'rm-1', quantity: 1, unitCost: 1 }] },
+        },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it('AC-2: PATCH .../:id rejeita item de matéria-prima sem controle de estoque', async () => {
+    const { purchaseOrderRepository, routes } = setup({
+      rawMaterialRepository: { findById: jest.fn().mockResolvedValue({ id: 'rm-1', restaurantId: 'r-1', tracksStock: false }) },
+    });
+
+    await expect(
+      runOperatorChain(
+        routes['PATCH /restaurants/me/purchase-orders/:id'],
+        {
+          restaurantId: 'r-1',
+          params: { id: 'po-1' },
+          body: { supplierId: 'sup-1', items: [{ rawMaterialId: 'rm-1', quantity: 1, unitCost: 1 }] },
+        },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(purchaseOrderRepository.updateItemsIfNotReceived).not.toHaveBeenCalled();
   });
 });

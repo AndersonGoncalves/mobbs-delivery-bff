@@ -12,4 +12,12 @@ export interface IPurchaseOrderRepository {
    * ambiente, MongoDB standalone sem replica set, `docs/architecture/patterns.md` §16.6.1).
    */
   markAsReceivedIfOpen(id: string, receivedAt: Date): Promise<IPurchaseOrder | null>;
+  /**
+   * specs/0138-ajustes-compras-faturamento-home-mapa REQ-2/REQ-3 — mesmo compare-and-swap de
+   * `markAsReceivedIfOpen`, agora filtrando `status: { $ne: 'recebido' }` (um pedido `'cancelado'`
+   * também pode ter os itens corrigidos, só `'recebido'` é definitivo): devolve `null` quando o
+   * pedido já está `'recebido'` (ou não existe), garantindo que a edição nunca é aplicada depois
+   * do recebimento mesmo sob concorrência.
+   */
+  updateItemsIfNotReceived(id: string, supplierId: string, items: IPurchaseOrderItem[]): Promise<IPurchaseOrder | null>;
 }

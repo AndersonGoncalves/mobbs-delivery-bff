@@ -68,4 +68,14 @@ export class PurchaseOrderMongooseRepository implements IPurchaseOrderRepository
     ).lean<PurchaseOrderLeanDocument>();
     return doc ? toEntity(doc) : null;
   }
+
+  async updateItemsIfNotReceived(id: string, supplierId: string, items: IPurchaseOrderItem[]): Promise<IPurchaseOrder | null> {
+    const totalValue = items.reduce((sum, item) => sum + item.quantity * item.unitCost, 0);
+    const doc = await PurchaseOrderModel.findOneAndUpdate(
+      { _id: id, status: { $ne: 'recebido' } },
+      { $set: { supplierId, items, totalValue } },
+      { new: true },
+    ).lean<PurchaseOrderLeanDocument>();
+    return doc ? toEntity(doc) : null;
+  }
 }
