@@ -3,9 +3,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
-# Sem isso, `tsc` estoura o heap default do V8 em hosts com pouca RAM (ex. EC2 t3.micro, 1GB) —
-# achado provisionando produção.
-RUN NODE_OPTIONS="--max-old-space-size=1536" npx tsc
+RUN npm run build
 
 FROM node:20-alpine
 WORKDIR /app

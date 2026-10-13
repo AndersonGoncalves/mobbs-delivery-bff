@@ -9,7 +9,16 @@ BFF (Node.js + Restify + MongoDB/Mongoose) do ecossistema mobbs-delivery — con
 - `npm run build` / `npm start` — build de produção (`tsc` + `node dist/main.js`).
 - `npm run lint` — ESLint.
 - `npm test` — Jest.
-- `docker compose up` — sobe `api` + `mongo:7`; `docker compose -f docker-compose.yml -f docker-compose.debug.yml up` expõe o inspector do Node na porta 9229.
+- `docker compose -f docker-compose.yml -f docker-compose.local.yml up --build` — compila a
+  imagem local e sobe `api` + `mongo:7`.
+- `docker compose -f docker-compose.yml -f docker-compose.local.yml -f docker-compose.debug.yml up --build`
+  — mesmo ambiente local com o inspector do Node exposto na porta 9229.
+- `docker compose pull api && docker compose up -d --no-build` — baixa do GHCR e sobe a imagem
+  já compilada usada em produção.
+
+Pushes para `main` publicam automaticamente no GHCR as tags `latest` e
+`sha-<commit-completo>`. Defina `IMAGE_TAG=sha-...` no `.env` para fixar ou restaurar uma versão
+específica.
 
 ## Padrões
 

@@ -1,6 +1,6 @@
 services:
   api:
-    build: .
+    image: ghcr.io/andersongoncalves/mobbs-delivery-bff:${IMAGE_TAG:-latest}
     restart: always
     ports: ["3001:3001"]
     environment:
