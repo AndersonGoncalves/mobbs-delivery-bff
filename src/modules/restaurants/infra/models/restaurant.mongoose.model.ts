@@ -155,6 +155,13 @@ const restaurantSchema = new Schema(
       enum: ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'],
       default: ['creditCard', 'debitCard', 'pix', 'cash'],
     },
+    // specs/0151-confirmacao-automatica-por-forma-pagamento REQ-1 — default vazio (opt-in
+    // explícito, preserva o comportamento de hoje pra quem nunca configurar nada).
+    autoConfirmPaymentMethods: {
+      type: [String],
+      enum: ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'],
+      default: [],
+    },
     // specs/0083-modalidade-entrega-retirada-restaurante REQ-1 — default "ambos" (retrocompatível).
     orderTypes: {
       type: [String],

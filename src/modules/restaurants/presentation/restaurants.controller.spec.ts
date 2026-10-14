@@ -203,6 +203,47 @@ describe('RestaurantsController', () => {
       expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ name: 'Novo nome' }));
     });
 
+    // specs/0151-confirmacao-automatica-por-forma-pagamento REQ-1/REQ-2/AC-1.
+    it('specs/0151: PUT /restaurants/me aceita e persiste autoConfirmPaymentMethods junto de acceptedPaymentMethods', async () => {
+      const { repository, routes } = setup({
+        updateProfile: jest.fn().mockResolvedValue(buildRestaurant({ acceptedPaymentMethods: ['cash', 'pix'], autoConfirmPaymentMethods: ['cash'] })),
+      });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(
+        routes['PUT /restaurants/me'],
+        { body: { acceptedPaymentMethods: ['cash', 'pix'], autoConfirmPaymentMethods: ['cash'] } },
+        { json },
+      );
+
+      expect(repository.updateProfile).toHaveBeenCalledWith('1', { acceptedPaymentMethods: ['cash', 'pix'], autoConfirmPaymentMethods: ['cash'] });
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ autoConfirmPaymentMethods: ['cash'] }));
+    });
+
+    it('specs/0151 AC-1: PUT /restaurants/me rejeita (400) autoConfirmPaymentMethods com forma fora de acceptedPaymentMethods', async () => {
+      const { routes } = setup();
+
+      await expect(
+        runAuthenticatedChain(
+          routes['PUT /restaurants/me'],
+          { body: { acceptedPaymentMethods: ['cash'], autoConfirmPaymentMethods: ['pix'] } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it('specs/0151: PUT /restaurants/me rejeita (400) autoConfirmPaymentMethods sem acceptedPaymentMethods no mesmo payload', async () => {
+      const { routes } = setup();
+
+      await expect(
+        runAuthenticatedChain(
+          routes['PUT /restaurants/me'],
+          { body: { autoConfirmPaymentMethods: ['cash'] } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
     // specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-2.
     it('PUT /restaurants/me aceita e persiste shareMessage', async () => {
       const shareMessage = 'Olá! Queria te indicar o InstaDelivery...';

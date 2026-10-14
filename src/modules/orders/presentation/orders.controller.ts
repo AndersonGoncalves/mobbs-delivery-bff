@@ -162,6 +162,14 @@ export class OrdersController extends BaseRouter {
           )
         : resolvedItems;
 
+      // specs/0151-confirmacao-automatica-por-forma-pagamento REQ-3 — Pix nunca nasce confirmado
+      // aqui (só confirma depois do pagamento aprovado, REQ-4); as demais formas nascem
+      // `confirmado` direto se estiverem na configuração de auto-confirmação do restaurante.
+      const initialStatus =
+        payload.paymentMethod !== 'pix' && restaurant.autoConfirmPaymentMethods?.includes(payload.paymentMethod)
+          ? 'confirmado'
+          : undefined;
+
       let order: IOrder;
       try {
         order = await this.orderRepository.create({
@@ -181,6 +189,7 @@ export class OrdersController extends BaseRouter {
         paymentMethod: payload.paymentMethod,
         cardBrand: payload.cardBrand,
         cashChangeFor: payload.cashChangeFor,
+        initialStatus,
       });
       } catch (error) {
         const alreadyCreated = await this.orderRepository.findByIdempotencyKey(restaurant.id, req.user!.uid, idempotencyKey);
@@ -208,6 +217,15 @@ export class OrdersController extends BaseRouter {
       void this.whatsAppNotificationService.sendOrderReceipt(order, payload.cardBrand).catch((error) => {
         console.error(`[whatsapp] erro inesperado enviando recibo do pedido ${order.id}:`, error);
       });
+
+      // specs/0151-confirmacao-automatica-por-forma-pagamento REQ-3 — pedido nasceu já
+      // `confirmado` (initialStatus acima): mesma notificação que `PATCH .../orders/:id/status`
+      // dispara ao confirmar manualmente, pra não ficar inconsistente entre os dois caminhos.
+      if (order.status === 'confirmado') {
+        void this.whatsAppNotificationService.sendOrderStatusUpdate(order).catch((error) => {
+          console.error(`[whatsapp] erro inesperado enviando confirmação automática do pedido ${order.id}:`, error);
+        });
+      }
 
       res.json(201, order);
     });
@@ -480,7 +498,21 @@ export class OrdersController extends BaseRouter {
           console.error(`[whatsapp] erro inesperado enviando confirmação de pagamento do pedido ${order.id}:`, error);
         });
 
-        res.json(200, { ...order, payment: this.toPaymentSummary(updatedPayment) });
+        // specs/0151-confirmacao-automatica-por-forma-pagamento REQ-4 (finalmente REQ-1a de
+        // specs/0140) — Pix confirmado automaticamente avança o pedido direto pra `confirmado`,
+        // na mesma chamada, se "Pix" estiver configurado pra isso.
+        let updatedOrder = order;
+        if (order.status === 'aguardandoConfirmacao') {
+          const restaurant = await this.restaurantRepository.findById(order.restaurantId);
+          if (restaurant?.autoConfirmPaymentMethods?.includes('pix')) {
+            updatedOrder = await this.orderRepository.updateStatus(order.id, 'confirmado', req.restaurantId);
+            void this.whatsAppNotificationService.sendOrderStatusUpdate(updatedOrder).catch((error) => {
+              console.error(`[whatsapp] erro inesperado enviando confirmação automática do pedido ${updatedOrder.id}:`, error);
+            });
+          }
+        }
+
+        res.json(200, { ...updatedOrder, payment: this.toPaymentSummary(updatedPayment) });
       },
     );
 

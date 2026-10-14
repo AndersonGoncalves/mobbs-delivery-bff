@@ -187,6 +187,12 @@ export interface IRestaurant {
    * este restaurante aceita hoje (reaproveita o mesmo `PaymentMethod` de `Order.paymentMethod`,
    * não um enum próprio) — nasce com as 5 ativas no autocadastro (`RestaurantSignupController`). */
   acceptedPaymentMethods: PaymentMethod[];
+  /** specs/0151-confirmacao-automatica-por-forma-pagamento REQ-1 — formas de pagamento (dentro de
+   * `acceptedPaymentMethods`) cujo pedido deve confirmar sozinho, sem o operador tocar no botão
+   * "Confirmar". Pix é tratado como caso particular na camada de aplicação: confirma só depois do
+   * pagamento aprovado (`PATCH .../payment/confirm`), nunca na criação do pedido. Default: vazio
+   * (nenhuma forma confirma sozinha — preserva o comportamento de hoje pra quem não configurar). */
+  autoConfirmPaymentMethods?: PaymentMethod[];
   /** specs/0083-modalidade-entrega-retirada-restaurante REQ-1 — modalidades que este restaurante
    * aceita (`delivery`/`pickup`, pelo menos uma). Default: ambas (documento antigo = "ambos"). */
   orderTypes: OrderType[];

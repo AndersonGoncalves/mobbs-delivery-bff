@@ -66,6 +66,7 @@ interface RestaurantLeanDocument {
   category?: string;
   businessHoursReviewedAt?: Date;
   acceptedPaymentMethods?: PaymentMethod[];
+  autoConfirmPaymentMethods?: PaymentMethod[];
   orderTypes?: OrderType[];
   notifyRestaurantOnNewOrder?: boolean;
   newOrderRestaurantWhatsAppTemplate?: string;
@@ -144,6 +145,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     category: doc.category,
     businessHoursReviewedAt: doc.businessHoursReviewedAt,
     acceptedPaymentMethods: doc.acceptedPaymentMethods ?? ALL_PAYMENT_METHODS,
+    autoConfirmPaymentMethods: doc.autoConfirmPaymentMethods ?? [],
     orderTypes: doc.orderTypes?.length ? doc.orderTypes : ['delivery', 'pickup'],
     notifyRestaurantOnNewOrder: doc.notifyRestaurantOnNewOrder ?? true,
     newOrderRestaurantWhatsAppTemplate: doc.newOrderRestaurantWhatsAppTemplate,

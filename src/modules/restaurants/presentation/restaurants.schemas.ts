@@ -130,6 +130,8 @@ export const restaurantProfileSchema = z
     showCartSuggestions: z.boolean(),
     // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-10.
     acceptedPaymentMethods: z.array(paymentMethodSchema),
+    // specs/0151-confirmacao-automatica-por-forma-pagamento REQ-1.
+    autoConfirmPaymentMethods: z.array(paymentMethodSchema),
     // specs/0083-modalidade-entrega-retirada-restaurante REQ-2/REQ-3 — pelo menos uma modalidade.
     orderTypes: z.array(z.enum(['delivery', 'pickup'])).min(1, 'Escolha pelo menos uma modalidade (entrega ou retirada)'),
     // specs/0062-confirmar-pedido-whatsapp-restaurante.
@@ -158,7 +160,31 @@ export const restaurantProfileSchema = z
     notifyCustomerOnOrderDelivered: z.boolean(),
     orderDeliveredWhatsAppTemplate: z.string(),
   })
-  .partial();
+  .partial()
+  .superRefine((data, ctx) => {
+    // specs/0151-confirmacao-automatica-por-forma-pagamento REQ-2 — validado de verdade no BFF,
+    // não só confiar na UI (mesmo padrão de `businessHourSchema` acima): toda forma marcada pra
+    // confirmar automaticamente também precisa estar marcada como aceita, no mesmo payload (o
+    // schema é `.partial()`, então exige os dois campos juntos quando `autoConfirmPaymentMethods`
+    // é enviado — não dá pra validar contra o estado atual do restaurante aqui).
+    if (!data.autoConfirmPaymentMethods) return;
+    if (!data.acceptedPaymentMethods) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['autoConfirmPaymentMethods'],
+        message: 'autoConfirmPaymentMethods precisa ser enviado junto com acceptedPaymentMethods',
+      });
+      return;
+    }
+    const notAccepted = data.autoConfirmPaymentMethods.filter((method) => !data.acceptedPaymentMethods!.includes(method));
+    if (notAccepted.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['autoConfirmPaymentMethods'],
+        message: `Forma(s) de pagamento não aceita(s), não pode(m) confirmar automaticamente: ${notAccepted.join(', ')}`,
+      });
+    }
+  });
 
 const businessHourSchema = z
   .object({

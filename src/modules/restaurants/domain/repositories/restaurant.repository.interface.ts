@@ -37,6 +37,7 @@ export type RestaurantProfileUpdate = Partial<
     | 'showBestSellersInMultipleRows'
     | 'showCartSuggestions'
     | 'acceptedPaymentMethods'
+    | 'autoConfirmPaymentMethods'
     | 'orderTypes'
     | 'welcomeMessage'
     | 'welcomeCardColor'

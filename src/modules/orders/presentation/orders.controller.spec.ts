@@ -82,6 +82,8 @@ function buildRestaurant(
     notifyRestaurantOnNewOrder: boolean;
     newOrderRestaurantWhatsAppTemplate: string;
     customerBlockingEnabled: boolean;
+    // specs/0151-confirmacao-automatica-por-forma-pagamento REQ-1.
+    autoConfirmPaymentMethods: ('creditCard' | 'debitCard' | 'pix' | 'cash' | 'bankTransfer')[];
   }> = {},
 ) {
   return {
@@ -201,7 +203,10 @@ describe('OrdersController', () => {
         id: 'o-1',
         orderNumber: 1,
         trackingToken: 'token-1',
-        status: 'aguardandoConfirmacao',
+        // specs/0151-confirmacao-automatica-por-forma-pagamento — mesmo fallback do repositório
+        // mongoose de verdade (`status: input.initialStatus ?? 'aguardandoConfirmacao'`), pra
+        // testes poderem conferir o status da resposta quando `initialStatus` é passado.
+        status: input.initialStatus ?? 'aguardandoConfirmacao',
         statusHistory: [],
         createdAt: new Date().toISOString(),
       })),
@@ -348,6 +353,56 @@ describe('OrdersController', () => {
       expect.objectContaining({ customerId: 'customer-1', subtotal: 50, deliveryFee: 5, discount: 0, total: 55 }),
     );
     expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ id: 'o-1', orderNumber: 1 }));
+  });
+
+  // specs/0151-confirmacao-automatica-por-forma-pagamento REQ-3/AC-2.
+  it('specs/0151 AC-2: forma de pagamento configurada em autoConfirmPaymentMethods faz o pedido nascer confirmado', async () => {
+    const { orderRepository, whatsAppNotificationService, routes } = setup({
+      restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ autoConfirmPaymentMethods: ['cash'] })) },
+    });
+    const json = jest.fn();
+
+    await runAuthenticatedChain(
+      routes['POST /orders'],
+      { body: buildValidBody({ paymentMethod: 'cash' }), user: { uid: 'customer-1' } },
+      { json },
+    );
+
+    expect(orderRepository.create).toHaveBeenCalledWith(expect.objectContaining({ initialStatus: 'confirmado' }));
+    expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ status: 'confirmado' }));
+    expect(whatsAppNotificationService.sendOrderStatusUpdate).toHaveBeenCalledWith(expect.objectContaining({ id: 'o-1', status: 'confirmado' }));
+  });
+
+  it('specs/0151: forma de pagamento fora de autoConfirmPaymentMethods nasce aguardandoConfirmacao, sem mudança', async () => {
+    const { orderRepository, routes } = setup({
+      restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ autoConfirmPaymentMethods: ['pix'] })) },
+    });
+    const json = jest.fn();
+
+    await runAuthenticatedChain(
+      routes['POST /orders'],
+      { body: buildValidBody({ paymentMethod: 'cash' }), user: { uid: 'customer-1' } },
+      { json },
+    );
+
+    expect(orderRepository.create).toHaveBeenCalledWith(expect.objectContaining({ initialStatus: undefined }));
+    expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ status: 'aguardandoConfirmacao' }));
+  });
+
+  it('specs/0151 AC-2 (Pix): Pix nunca nasce confirmado, mesmo com "pix" em autoConfirmPaymentMethods', async () => {
+    const { orderRepository, routes } = setup({
+      restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ pixKey: '11999999999', autoConfirmPaymentMethods: ['pix'] })) },
+    });
+    const json = jest.fn();
+
+    await runAuthenticatedChain(
+      routes['POST /orders'],
+      { body: buildValidBody({ paymentMethod: 'pix' }), user: { uid: 'customer-1' } },
+      { json },
+    );
+
+    expect(orderRepository.create).toHaveBeenCalledWith(expect.objectContaining({ initialStatus: undefined }));
+    expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ status: 'aguardandoConfirmacao' }));
   });
 
   it('specs/0108 AC-9: replay da mesma chave devolve o pedido existente sem criar outro', async () => {
@@ -1428,6 +1483,59 @@ describe('OrdersController', () => {
       );
 
       expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ payment: expect.objectContaining({ status: 'aprovado' }) }));
+    });
+
+    // specs/0151-confirmacao-automatica-por-forma-pagamento REQ-4/AC-3 (finalmente REQ-1a de specs/0140).
+    it('specs/0151 AC-3: "pix" em autoConfirmPaymentMethods avança Order.status pra confirmado na mesma chamada', async () => {
+      const { orderRepository, whatsAppNotificationService, routes } = setup({
+        paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ method: 'pix', status: 'pendente' })) },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ autoConfirmPaymentMethods: ['pix'] })) },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/payment/confirm'],
+        { restaurantId: 'r-1', params: { id: 'o-1' } },
+        { json },
+      );
+
+      expect(orderRepository.updateStatus).toHaveBeenCalledWith('o-1', 'confirmado', 'r-1');
+      const [, payload] = json.mock.calls[0] as [number, Record<string, unknown>];
+      expect(payload).toMatchObject({ status: 'confirmado', payment: { status: 'aprovado' } });
+      expect(whatsAppNotificationService.sendOrderStatusUpdate).toHaveBeenCalledWith(expect.objectContaining({ id: 'o-1', status: 'confirmado' }));
+    });
+
+    it('specs/0151 AC-4: sem "pix" em autoConfirmPaymentMethods, confirmar o Pix só aprova o pagamento (sem mudança)', async () => {
+      const { orderRepository, routes } = setup({
+        paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ method: 'pix', status: 'pendente' })) },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/payment/confirm'],
+        { restaurantId: 'r-1', params: { id: 'o-1' } },
+        { json },
+      );
+
+      expect(orderRepository.updateStatus).not.toHaveBeenCalled();
+      const [, payload] = json.mock.calls[0] as [number, Record<string, unknown>];
+      expect(payload).toMatchObject({ status: 'aguardandoConfirmacao', payment: { status: 'aprovado' } });
+    });
+
+    it('specs/0151: pedido já confirmado antes do Pix ser aprovado não chama updateStatus de novo', async () => {
+      const { orderRepository, routes } = setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ status: 'confirmado' })) },
+        paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ method: 'pix', status: 'pendente' })) },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ autoConfirmPaymentMethods: ['pix'] })) },
+      });
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/payment/confirm'],
+        { restaurantId: 'r-1', params: { id: 'o-1' } },
+        { json: jest.fn() },
+      );
+
+      expect(orderRepository.updateStatus).not.toHaveBeenCalled();
     });
 
     it('T005: PATCH .../payment/confirm rejeita (409) quando o pagamento já foi confirmado', async () => {
