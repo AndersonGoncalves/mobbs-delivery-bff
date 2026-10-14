@@ -51,6 +51,7 @@ describe('AutoPrintController', () => {
     const orderRepository: Partial<IOrderRepository> = {
       findPendingAutoPrint: jest.fn().mockResolvedValue([buildOrder()]),
       markAutoPrinted: jest.fn().mockResolvedValue(undefined),
+      findById: jest.fn().mockResolvedValue(buildOrder()),
       ...overrides.orderRepository,
     };
     const restaurantRepository: Partial<IRestaurantRepository> = {
@@ -127,5 +128,56 @@ describe('AutoPrintController', () => {
 
     expect(restaurantRepository.regenerateAutoPrintApiKey).toHaveBeenCalledWith('r-1');
     expect(json).toHaveBeenCalledWith(200, { autoPrintApiKey: 'new-key' });
+  });
+
+  describe('GET .../orders/:orderId/receipt-lines (specs/0147-impressao-manual-direta-bridge)', () => {
+    it('AC-1: devolve as linhas do recibo pro pedido (delivery/pickup)', async () => {
+      const { routes } = setup({ orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ orderType: 'pickup' })) } });
+      const json = jest.fn();
+
+      await runOperatorChain(
+        routes['GET /restaurants/me/orders/:orderId/receipt-lines'],
+        { restaurantId: 'r-1', params: { orderId: 'o-1' } },
+        { json, send: jest.fn() },
+      );
+
+      expect(json).toHaveBeenCalledWith(200, { lines: expect.any(Array) });
+    });
+
+    it('AC-1: 422 pra pedido de mesa/balcão', async () => {
+      const { routes } = setup({ orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ orderType: 'table' })) } });
+
+      await expect(
+        runOperatorChain(
+          routes['GET /restaurants/me/orders/:orderId/receipt-lines'],
+          { restaurantId: 'r-1', params: { orderId: 'o-1' } },
+          { json: jest.fn(), send: jest.fn() },
+        ),
+      ).rejects.toThrow();
+    });
+
+    it('AC-1: 404 quando o pedido não existe', async () => {
+      const { routes } = setup({ orderRepository: { findById: jest.fn().mockResolvedValue(null) } });
+
+      await expect(
+        runOperatorChain(
+          routes['GET /restaurants/me/orders/:orderId/receipt-lines'],
+          { restaurantId: 'r-1', params: { orderId: 'inexistente' } },
+          { json: jest.fn(), send: jest.fn() },
+        ),
+      ).rejects.toThrow();
+    });
+
+    it('AC-1: 404 quando o pedido é de outro restaurante', async () => {
+      const { routes } = setup({ orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ restaurantId: 'outro-restaurante' })) } });
+
+      await expect(
+        runOperatorChain(
+          routes['GET /restaurants/me/orders/:orderId/receipt-lines'],
+          { restaurantId: 'r-1', params: { orderId: 'o-1' } },
+          { json: jest.fn(), send: jest.fn() },
+        ),
+      ).rejects.toThrow();
+    });
   });
 });

@@ -1,4 +1,5 @@
 import type { Request, Response, Server } from 'restify';
+import { NotFoundError, UnprocessableEntityError } from 'restify-errors';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
@@ -75,6 +76,25 @@ export class AutoPrintController extends BaseRouter {
     application.post('/restaurants/me/auto-print/regenerate-key', ...operatorAuthenticated, async (req: Request, res: Response) => {
       const restaurant = await this.restaurantRepository.regenerateAutoPrintApiKey(req.restaurantId!);
       res.json(200, { autoPrintApiKey: restaurant.autoPrintApiKey });
+    });
+
+    // specs/0147-impressao-manual-direta-bridge REQ-1/REQ-2/REQ-3 — mesmas linhas da fila
+    // automática, só que sob demanda pra um pedido específico: o botão "Imprimir" da retaguarda
+    // usa isso pra mandar pro bridge local imprimir na hora, em vez de abrir o diálogo do
+    // navegador. Só delivery/pickup (mesmo escopo de `buildReceiptLines`) — mesa/balcão tem um
+    // formato de totais diferente, fora de escopo aqui.
+    application.get('/restaurants/me/orders/:orderId/receipt-lines', ...operatorAuthenticated, async (req: Request, res: Response) => {
+      const order = await this.orderRepository.findById(req.params.orderId);
+      if (!order || order.restaurantId !== req.restaurantId) {
+        throw new NotFoundError('Pedido não encontrado');
+      }
+      if (order.orderType === 'table') {
+        throw new UnprocessableEntityError('Impressão direta não suporta pedido de mesa/balcão');
+      }
+
+      const restaurant = await this.restaurantRepository.findById(req.restaurantId!);
+      const customer = await this.customerRepository.findById(order.customerId);
+      res.json(200, { lines: buildReceiptLines(order, restaurant!, customer) });
     });
   }
 }
