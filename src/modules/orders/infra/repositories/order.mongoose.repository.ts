@@ -40,6 +40,7 @@ interface OrderLeanDocument {
   cashChangeFor?: number;
   createdAt: Date;
   estimatedDeliveryAt?: Date;
+  autoPrintStatus?: 'printed';
 }
 
 function toEntity(doc: OrderLeanDocument): IOrder {
@@ -82,6 +83,7 @@ function toEntity(doc: OrderLeanDocument): IOrder {
     cashChangeFor: doc.cashChangeFor,
     createdAt: doc.createdAt.toISOString(),
     estimatedDeliveryAt: doc.estimatedDeliveryAt?.toISOString(),
+    autoPrintStatus: doc.autoPrintStatus,
   };
 }
 
@@ -266,6 +268,24 @@ export class OrderMongooseRepository implements IOrderRepository {
       .sort({ createdAt: 1 })
       .lean<OrderLeanDocument[]>();
     return docs.map(toEntity);
+  }
+
+  // specs/0139-impressao-automatica-bridge REQ-2.
+  async findPendingAutoPrint(restaurantId: string): Promise<IOrder[]> {
+    const docs = await OrderModel.find({
+      restaurantId,
+      orderType: { $in: ['delivery', 'pickup'] },
+      status: 'confirmado',
+      autoPrintStatus: { $ne: 'printed' },
+    })
+      .sort({ createdAt: 1 })
+      .lean<OrderLeanDocument[]>();
+    return docs.map(toEntity);
+  }
+
+  // specs/0139-impressao-automatica-bridge REQ-3 — idempotente (`updateOne` sem match não dá erro).
+  async markAutoPrinted(id: string, restaurantId: string): Promise<void> {
+    await OrderModel.updateOne({ _id: id, restaurantId }, { $set: { autoPrintStatus: 'printed' } });
   }
 
   // specs/0137-papeis-garcom-motoboy REQ-3.

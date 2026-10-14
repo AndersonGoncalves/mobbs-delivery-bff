@@ -246,6 +246,13 @@ export interface IRestaurant {
    * (`BlockedCustomer`, módulo `customer-blocking`); desligado (default) não bloqueia ninguém
    * mesmo com números cadastrados na lista — a lista e o liga/desliga são independentes. */
   customerBlockingEnabled: boolean;
+  /** specs/0139-impressao-automatica-bridge REQ-5/REQ-6 — configuração do bridge local
+   * (`mobbs-delivery-print`): liga/desliga, intervalo de consulta (segundos, 5-120, default 10) e
+   * a chave de API que o bridge usa pra se autenticar (gerada sob demanda, nunca em branco depois
+   * da primeira geração — ver `AutoPrintController`). */
+  autoPrintEnabled: boolean;
+  autoPrintIntervalSeconds: number;
+  autoPrintApiKey?: string;
 }
 
 export type CashRegisterMode = 'manual' | 'automatic';

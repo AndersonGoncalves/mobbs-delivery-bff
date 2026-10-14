@@ -131,6 +131,8 @@ const orderSchema = new Schema(
     // specs/0080-troco-pagamento-dinheiro-checkout REQ-2 (ver `IOrder.cashChangeFor`).
     cashChangeFor: { type: Number },
     estimatedDeliveryAt: { type: Date },
+    // specs/0139-impressao-automatica-bridge REQ-3.
+    autoPrintStatus: { type: String, enum: ['printed'] },
   },
   { _id: false, timestamps: { createdAt: true, updatedAt: false } },
 );

@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import { buildDefaultShareMessage } from '../../domain/default-share-message';
 import { OrderType, PaymentMethod } from '../../../orders/domain/entities/order.entity';
 import {
@@ -87,6 +88,9 @@ interface RestaurantLeanDocument {
   facebookUrl?: string;
   cashRegisterMode?: CashRegisterMode;
   customerBlockingEnabled?: boolean;
+  autoPrintEnabled?: boolean;
+  autoPrintIntervalSeconds?: number;
+  autoPrintApiKey?: string;
 }
 
 const ALL_PAYMENT_METHODS: PaymentMethod[] = ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'];
@@ -162,6 +166,9 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     facebookUrl: doc.facebookUrl,
     cashRegisterMode: doc.cashRegisterMode ?? 'manual',
     customerBlockingEnabled: doc.customerBlockingEnabled ?? false,
+    autoPrintEnabled: doc.autoPrintEnabled ?? false,
+    autoPrintIntervalSeconds: doc.autoPrintIntervalSeconds ?? 10,
+    autoPrintApiKey: doc.autoPrintApiKey,
   };
 }
 
@@ -255,5 +262,17 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
   async updateRatingStats(id: string, rating: number, ratingCount: number): Promise<IRestaurant> {
     const doc = await RestaurantModel.findByIdAndUpdate(id, { $set: { rating, ratingCount } }, { new: true }).lean<RestaurantLeanDocument>();
     return toEntity(doc as RestaurantLeanDocument);
+  }
+
+  // specs/0139-impressao-automatica-bridge REQ-6/REQ-7.
+  async regenerateAutoPrintApiKey(id: string): Promise<IRestaurant> {
+    const apiKey = randomBytes(24).toString('hex');
+    const doc = await RestaurantModel.findByIdAndUpdate(id, { $set: { autoPrintApiKey: apiKey } }, { new: true }).lean<RestaurantLeanDocument>();
+    return toEntity(doc as RestaurantLeanDocument);
+  }
+
+  async findByAutoPrintApiKey(apiKey: string): Promise<IRestaurant | null> {
+    const doc = await RestaurantModel.findOne({ autoPrintApiKey: apiKey }).lean<RestaurantLeanDocument>();
+    return doc ? toEntity(doc) : null;
   }
 }

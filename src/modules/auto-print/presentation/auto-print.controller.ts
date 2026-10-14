@@ -1,0 +1,69 @@
+import type { Request, Response, Server } from 'restify';
+
+import { BaseRouter } from '../../../shared/router/base.router';
+import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
+import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
+import { ICustomerRepository } from '../../customers/domain/repositories/customer.repository.interface';
+import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
+import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
+import { buildReceiptLines } from '../domain/build-receipt-lines';
+
+type AsyncHandler = (req: Request, res: Response) => Promise<void>;
+
+/**
+ * specs/0139-impressao-automatica-bridge — duas famílias de rotas:
+ * - `/restaurants/me/print-queue/...`: autenticadas pelo bridge local (`printApiKeyMiddleware`,
+ *   header `X-Print-Api-Key`, REQ-2/REQ-3), listam e confirmam a impressão de pedidos.
+ * - `/restaurants/me/auto-print/...`: autenticadas pelo operador logado (REQ-5/REQ-6/REQ-7),
+ *   configuração visível na retaguarda ("Impressão automática").
+ */
+export class AutoPrintController extends BaseRouter {
+  constructor(
+    private readonly orderRepository: IOrderRepository,
+    private readonly restaurantRepository: IRestaurantRepository,
+    private readonly customerRepository: ICustomerRepository,
+    private readonly printApiKeyMiddleware: AsyncHandler,
+    private readonly restaurantOperatorMiddleware: AsyncHandler,
+  ) {
+    super();
+  }
+
+  initializeRoutes(application: Server): void {
+    const bridgeAuthenticated: AsyncHandler[] = [this.printApiKeyMiddleware];
+    const operatorAuthenticated: AsyncHandler[] = [
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('dono', 'gerente'),
+    ];
+
+    // REQ-2/REQ-4 — lista os pedidos pendentes já no formato pronto pra imprimir (`ReceiptLine[]`),
+    // junto do intervalo de consulta configurado (REQ-5) pra o bridge ajustar o próprio loop sem
+    // precisar de uma segunda chamada.
+    application.get('/restaurants/me/print-queue/pending', ...bridgeAuthenticated, async (req: Request, res: Response) => {
+      const restaurant = await this.restaurantRepository.findById(req.restaurantId!);
+      const orders = await this.orderRepository.findPendingAutoPrint(req.restaurantId!);
+
+      const pending = await Promise.all(
+        orders.map(async (order) => {
+          const customer = await this.customerRepository.findById(order.customerId);
+          return { orderId: order.id, lines: buildReceiptLines(order, restaurant!, customer) };
+        }),
+      );
+
+      res.json(200, { pollIntervalSeconds: restaurant!.autoPrintIntervalSeconds, orders: pending });
+    });
+
+    // REQ-3 — idempotente: confirmar de novo o mesmo pedido não dá erro nem reimprime.
+    application.post('/restaurants/me/print-queue/:orderId/printed', ...bridgeAuthenticated, async (req: Request, res: Response) => {
+      await this.orderRepository.markAutoPrinted(req.params.orderId, req.restaurantId!);
+      res.send(204);
+    });
+
+    // REQ-6/REQ-7 — regenerar invalida a chave anterior (a antiga simplesmente não casa mais com
+    // nenhum restaurante em `findByAutoPrintApiKey`).
+    application.post('/restaurants/me/auto-print/regenerate-key', ...operatorAuthenticated, async (req: Request, res: Response) => {
+      const restaurant = await this.restaurantRepository.regenerateAutoPrintApiKey(req.restaurantId!);
+      res.json(200, { autoPrintApiKey: restaurant.autoPrintApiKey });
+    });
+  }
+}

@@ -113,6 +113,10 @@ export const restaurantProfileSchema = z
     cashRegisterMode: z.enum(['manual', 'automatic']),
     // Pedido explícito do usuário — liga/desliga global do bloqueio de clientes.
     customerBlockingEnabled: z.boolean(),
+    // specs/0139-impressao-automatica-bridge REQ-5 — a chave de API (`autoPrintApiKey`) não entra
+    // aqui de propósito, só é gerada/trocada pela rota dedicada de regenerar.
+    autoPrintEnabled: z.boolean(),
+    autoPrintIntervalSeconds: z.number().int().min(5).max(120),
     // Pedido explícito do usuário — tempo médio de atendimento, por modalidade (minutos).
     deliveryTimeMinMinutes: z.number().int().positive(),
     deliveryTimeMaxMinutes: z.number().int().positive(),

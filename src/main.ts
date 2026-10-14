@@ -53,6 +53,8 @@ import { AddressMongooseRepository } from './modules/customers/infra/repositorie
 import { CustomerMongooseRepository } from './modules/customers/infra/repositories/customer.mongoose.repository';
 import { BlockedCustomerMongooseRepository } from './modules/customer-blocking/infra/repositories/blocked-customer.mongoose.repository';
 import { CustomerBlockingController } from './modules/customer-blocking/presentation/customer-blocking.controller';
+import { AutoPrintController } from './modules/auto-print/presentation/auto-print.controller';
+import { buildPrintApiKeyMiddleware } from './shared/http/print-api-key.middleware';
 import { FavoriteMongooseRepository } from './modules/customers/infra/repositories/favorite.mongoose.repository';
 import { CustomersController } from './modules/customers/presentation/customers.controller';
 import { CustomerSummaryMongooseRepository } from './modules/customers-admin/infra/repositories/customer-summary.mongoose.repository';
@@ -243,6 +245,14 @@ server
     new BillingController(restaurantRepository, orderRepository, restaurantOperatorMiddleware, billingSettingsRepository),
     // Pedido explícito do usuário — página "Bloquear cliente".
     new CustomerBlockingController(blockedCustomerRepository, customerRepository, restaurantOperatorMiddleware),
+    // Pedido explícito do usuário — impressão automática (specs/0139).
+    new AutoPrintController(
+      orderRepository,
+      restaurantRepository,
+      customerRepository,
+      buildPrintApiKeyMiddleware(restaurantRepository),
+      restaurantOperatorMiddleware,
+    ),
     // specs/0106 — painel da plataforma, restrito à lista PLATFORM_ADMIN_EMAILS.
     new PlatformController(
       restaurantRepository,

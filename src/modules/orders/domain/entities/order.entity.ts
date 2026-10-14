@@ -134,6 +134,11 @@ export interface IOrder {
   cashChangeFor?: number;
   createdAt: string;
   estimatedDeliveryAt?: string;
+  /** specs/0139-impressao-automatica-bridge — `'printed'` só é gravado quando o bridge local
+   * confirma que imprimiu; ausência do campo já significa "ainda não impresso" (a fila de
+   * impressão automática é calculada ao vivo por `status === 'confirmado'`, sem precisar marcar
+   * nada como "pendente" na criação/confirmação do pedido). */
+  autoPrintStatus?: 'printed';
 }
 
 /**

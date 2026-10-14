@@ -117,6 +117,11 @@ const restaurantSchema = new Schema(
     // Pedido explícito do usuário — default desligado preserva o comportamento atual (sem
     // nenhuma restrição) de todo restaurante já existente.
     customerBlockingEnabled: { type: Boolean, required: true, default: false },
+    // specs/0139-impressao-automatica-bridge REQ-5/REQ-6 — default desligado preserva o
+    // comportamento atual (sem bridge nenhum) de todo restaurante já existente.
+    autoPrintEnabled: { type: Boolean, required: true, default: false },
+    autoPrintIntervalSeconds: { type: Number, required: true, default: 10, min: 5, max: 120 },
+    autoPrintApiKey: { type: String },
     // Pedido explícito do usuário — tempo médio de atendimento mostrado no app do cliente, por
     // modalidade; defaults vindos do exemplo mostrado (40-60min delivery, 20-40min balcão).
     deliveryTimeMinMinutes: { type: Number, required: true, default: 40 },

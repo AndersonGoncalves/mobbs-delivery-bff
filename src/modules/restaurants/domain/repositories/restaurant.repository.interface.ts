@@ -59,6 +59,8 @@ export type RestaurantProfileUpdate = Partial<
     | 'facebookUrl'
     | 'cashRegisterMode'
     | 'customerBlockingEnabled'
+    | 'autoPrintEnabled'
+    | 'autoPrintIntervalSeconds'
   >
 >;
 
@@ -117,4 +119,15 @@ export interface IRestaurantRepository {
    * a cada `POST /restaurants/:id/ratings`, nunca pelo operador direto (por isso fora de
    * `RestaurantProfileUpdate`, mesmo raciocínio de `setWhatsappConnected`). */
   updateRatingStats(id: string, rating: number, ratingCount: number): Promise<IRestaurant>;
+
+  /** specs/0139-impressao-automatica-bridge REQ-6/REQ-7 — gera e grava uma chave nova (string
+   * aleatória), devolvendo o restaurante atualizado; fora de `RestaurantProfileUpdate` de
+   * propósito (nunca setável por um PUT de perfil comum, só por este método dedicado — mesmo
+   * raciocínio de `setWhatsappConnected`). */
+  regenerateAutoPrintApiKey(id: string): Promise<IRestaurant>;
+
+  /** specs/0139-impressao-automatica-bridge — resolve o restaurante dono da chave de API do
+   * bridge (`X-Print-Api-Key`); usado pelo middleware de autenticação do bridge, não por operador
+   * logado. */
+  findByAutoPrintApiKey(apiKey: string): Promise<IRestaurant | null>;
 }

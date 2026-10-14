@@ -143,4 +143,15 @@ export interface IOrderRepository {
    * novamente" no `HighlightsSection` do app.
    */
   getPurchasedProductIds(customerId: string, restaurantId: string): Promise<string[]>;
+
+  /**
+   * specs/0139-impressao-automatica-bridge REQ-2 — pedidos de `delivery`/`pickup` confirmados e
+   * ainda não impressos pelo bridge (`autoPrintStatus !== 'printed'`), mais antigos primeiro.
+   * Calculado ao vivo a cada chamada (não é uma fila persistida) — um pedido cancelado depois de
+   * `confirmado` simplesmente deixa de aparecer na próxima consulta.
+   */
+  findPendingAutoPrint(restaurantId: string): Promise<IOrder[]>;
+
+  /** specs/0139-impressao-automatica-bridge REQ-3 — idempotente: confirmar de novo o mesmo pedido não dá erro. */
+  markAutoPrinted(id: string, restaurantId: string): Promise<void>;
 }
