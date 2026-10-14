@@ -41,6 +41,17 @@ export class AutoPrintController extends BaseRouter {
     // precisar de uma segunda chamada.
     application.get('/restaurants/me/print-queue/pending', ...bridgeAuthenticated, async (req: Request, res: Response) => {
       const restaurant = await this.restaurantRepository.findById(req.restaurantId!);
+
+      // specs/0143-correcao-gatilho-impressao-automatica T004 — achado testando em produção: o
+      // switch "Impressão automática" (REQ-5 de specs/0139) estava salvo mas nunca checado aqui,
+      // então desligar o switch não parava nada. Desligado -> fila sempre vazia, sem erro (o
+      // bridge continua rodando e consultando no intervalo configurado; volta a receber pedidos
+      // assim que o operador ligar de novo, sem precisar reiniciar o bridge).
+      if (!restaurant!.autoPrintEnabled) {
+        res.json(200, { pollIntervalSeconds: restaurant!.autoPrintIntervalSeconds, orders: [] });
+        return;
+      }
+
       const orders = await this.orderRepository.findPendingAutoPrint(req.restaurantId!);
 
       const pending = await Promise.all(

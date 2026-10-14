@@ -270,16 +270,25 @@ export class OrderMongooseRepository implements IOrderRepository {
     return docs.map(toEntity);
   }
 
-  // specs/0139-impressao-automatica-bridge REQ-2.
+  /**
+   * specs/0143-correcao-gatilho-impressao-automatica REQ-1/REQ-2/REQ-3 — gatilho não é mais
+   * `Order.status`: imprime assim que o pedido é criado (não cancelado), exceto Pix, que espera
+   * o `Payment` correspondente ficar `aprovado` (checado direto, não mais via status do pedido).
+   */
   async findPendingAutoPrint(restaurantId: string): Promise<IOrder[]> {
-    const docs = await OrderModel.find({
-      restaurantId,
-      orderType: { $in: ['delivery', 'pickup'] },
-      status: 'confirmado',
-      autoPrintStatus: { $ne: 'printed' },
-    })
-      .sort({ createdAt: 1 })
-      .lean<OrderLeanDocument[]>();
+    const docs = await OrderModel.aggregate<OrderLeanDocument>([
+      {
+        $match: {
+          restaurantId,
+          orderType: { $in: ['delivery', 'pickup'] },
+          status: { $ne: 'cancelado' },
+          autoPrintStatus: { $ne: 'printed' },
+        },
+      },
+      { $lookup: { from: 'payment', localField: '_id', foreignField: 'orderId', as: 'payment' } },
+      { $match: { $or: [{ paymentMethod: { $ne: 'pix' } }, { 'payment.status': 'aprovado' }] } },
+      { $sort: { createdAt: 1 } },
+    ]);
     return docs.map(toEntity);
   }
 

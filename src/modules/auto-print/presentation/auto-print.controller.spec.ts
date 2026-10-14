@@ -36,7 +36,10 @@ function buildOrder(overrides: Record<string, unknown> = {}) {
 }
 
 function buildRestaurant(overrides: Record<string, unknown> = {}) {
-  return { id: 'r-1', name: 'Prime Pizza', autoPrintIntervalSeconds: 10, autoPrintApiKey: 'key-1', ...overrides };
+  return {
+    id: 'r-1', name: 'Prime Pizza', autoPrintEnabled: true, autoPrintIntervalSeconds: 10, autoPrintApiKey: 'key-1',
+    ...overrides,
+  };
 }
 
 describe('AutoPrintController', () => {
@@ -90,6 +93,16 @@ describe('AutoPrintController', () => {
     await runBridgeChain(routes['GET /restaurants/me/print-queue/pending'], { restaurantId: 'r-1' }, { json, send: jest.fn() });
 
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ orders: [] }));
+  });
+
+  it('specs/0143 T004: com autoPrintEnabled desligado, devolve lista vazia sem consultar a fila', async () => {
+    const { orderRepository, routes } = setup({ restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ autoPrintEnabled: false })) } });
+    const json = jest.fn();
+
+    await runBridgeChain(routes['GET /restaurants/me/print-queue/pending'], { restaurantId: 'r-1' }, { json, send: jest.fn() });
+
+    expect(orderRepository.findPendingAutoPrint).not.toHaveBeenCalled();
+    expect(json).toHaveBeenCalledWith(200, { pollIntervalSeconds: 10, orders: [] });
   });
 
   it('POST .../print-queue/:orderId/printed marca como impresso (idempotente)', async () => {
