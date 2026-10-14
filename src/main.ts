@@ -51,6 +51,8 @@ import { AccountsReceivableController } from './modules/financeiro/presentation/
 import { CashRegisterController } from './modules/financeiro/presentation/cash-register.controller';
 import { AddressMongooseRepository } from './modules/customers/infra/repositories/address.mongoose.repository';
 import { CustomerMongooseRepository } from './modules/customers/infra/repositories/customer.mongoose.repository';
+import { BlockedCustomerMongooseRepository } from './modules/customer-blocking/infra/repositories/blocked-customer.mongoose.repository';
+import { CustomerBlockingController } from './modules/customer-blocking/presentation/customer-blocking.controller';
 import { FavoriteMongooseRepository } from './modules/customers/infra/repositories/favorite.mongoose.repository';
 import { CustomersController } from './modules/customers/presentation/customers.controller';
 import { CustomerSummaryMongooseRepository } from './modules/customers-admin/infra/repositories/customer-summary.mongoose.repository';
@@ -95,6 +97,7 @@ const restaurantOperatorMiddleware = buildRestaurantOperatorMiddleware(restauran
 const promotionRepository = new PromotionMongooseRepository();
 const productRepository = new ProductMongooseRepository(promotionRepository);
 const customerRepository = new CustomerMongooseRepository();
+const blockedCustomerRepository = new BlockedCustomerMongooseRepository();
 // specs/0112 — chave Pix do cliente, compartilhada entre o cliente, o painel e a exclusão de conta.
 const customerPixKeyRepository = new CustomerPixKeyMongooseRepository();
 
@@ -235,8 +238,11 @@ server
       }),
       new RestaurantTableMongooseRepository(),
       rawMaterialRepository,
+      blockedCustomerRepository,
     ),
     new BillingController(restaurantRepository, orderRepository, restaurantOperatorMiddleware, billingSettingsRepository),
+    // Pedido explícito do usuário — página "Bloquear cliente".
+    new CustomerBlockingController(blockedCustomerRepository, customerRepository, restaurantOperatorMiddleware),
     // specs/0106 — painel da plataforma, restrito à lista PLATFORM_ADMIN_EMAILS.
     new PlatformController(
       restaurantRepository,

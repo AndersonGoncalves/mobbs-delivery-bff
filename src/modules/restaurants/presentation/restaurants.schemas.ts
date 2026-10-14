@@ -111,6 +111,8 @@ export const restaurantProfileSchema = z
     // specs/0118-controle-caixa-automatico-redes-sociais REQ-1 — seletor "manual"/"automático"
     // salvo junto com o resto do perfil (`CashRegisterPage.tsx`, não o Perfil de verdade).
     cashRegisterMode: z.enum(['manual', 'automatic']),
+    // Pedido explícito do usuário — liga/desliga global do bloqueio de clientes.
+    customerBlockingEnabled: z.boolean(),
     // Pedido explícito do usuário — tempo médio de atendimento, por modalidade (minutos).
     deliveryTimeMinMinutes: z.number().int().positive(),
     deliveryTimeMaxMinutes: z.number().int().positive(),

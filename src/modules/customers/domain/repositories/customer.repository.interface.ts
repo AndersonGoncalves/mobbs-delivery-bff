@@ -11,6 +11,11 @@ export type CustomerProfileUpsert = Pick<ICustomer, 'name' | 'email'> &
 export interface ICustomerRepository {
   findById(id: string): Promise<ICustomer | null>;
 
+  /** Pedido explícito do usuário (módulo `customer-blocking`) — resolve o nome do cliente (se
+   * algum já pediu com esse telefone) pra exibição na lista de bloqueados; `phone` já normalizado
+   * pelo chamador. `null` se nenhum `Customer` tem esse telefone ainda. */
+  findByPhone(phone: string): Promise<ICustomer | null>;
+
   /** Foto própria removida pelo cliente: tira `photoUrl` do documento (volta a valer a foto da conta). */
   removePhoto(id: string): Promise<ICustomer | null>;
 

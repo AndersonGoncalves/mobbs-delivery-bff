@@ -35,6 +35,11 @@ export class CustomerMongooseRepository implements ICustomerRepository {
     return doc ? toEntity(doc) : null;
   }
 
+  async findByPhone(phone: string): Promise<ICustomer | null> {
+    const doc = await CustomerModel.findOne({ phone }).lean<CustomerLeanDocument>();
+    return doc ? toEntity(doc) : null;
+  }
+
   async removePhoto(id: string): Promise<ICustomer | null> {
     const doc = await CustomerModel.findByIdAndUpdate(id, { $unset: { photoUrl: 1 } }, { new: true }).lean<CustomerLeanDocument>();
     return doc ? toEntity(doc) : null;

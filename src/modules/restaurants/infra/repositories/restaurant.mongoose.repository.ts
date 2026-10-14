@@ -86,6 +86,7 @@ interface RestaurantLeanDocument {
   orderDeliveredWhatsAppTemplate?: string;
   facebookUrl?: string;
   cashRegisterMode?: CashRegisterMode;
+  customerBlockingEnabled?: boolean;
 }
 
 const ALL_PAYMENT_METHODS: PaymentMethod[] = ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'];
@@ -160,6 +161,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     orderDeliveredWhatsAppTemplate: doc.orderDeliveredWhatsAppTemplate,
     facebookUrl: doc.facebookUrl,
     cashRegisterMode: doc.cashRegisterMode ?? 'manual',
+    customerBlockingEnabled: doc.customerBlockingEnabled ?? false,
   };
 }
 

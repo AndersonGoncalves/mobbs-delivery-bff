@@ -242,6 +242,10 @@ export interface IRestaurant {
    * (abertura/fechamento seguem o `businessHours` do dia, sem horário próprio — REQ-2). Seletor
    * mora em `CashRegisterPage.tsx` (decisão do spec), não no Perfil. */
   cashRegisterMode: CashRegisterMode;
+  /** Pedido explícito do usuário — liga/desliga global do bloqueio de clientes por telefone
+   * (`BlockedCustomer`, módulo `customer-blocking`); desligado (default) não bloqueia ninguém
+   * mesmo com números cadastrados na lista — a lista e o liga/desliga são independentes. */
+  customerBlockingEnabled: boolean;
 }
 
 export type CashRegisterMode = 'manual' | 'automatic';

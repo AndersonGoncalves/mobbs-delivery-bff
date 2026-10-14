@@ -12,6 +12,7 @@ import { IRestaurantRepository } from '../../restaurants/domain/repositories/res
 import { IOrderRepository } from '../domain/repositories/order.repository.interface';
 import { IPaymentRepository } from '../domain/repositories/payment.repository.interface';
 import { IRestaurantTableRepository } from '../../table-service/domain/repositories/table.repository.interface';
+import { IBlockedCustomerRepository } from '../../customer-blocking/domain/repositories/blocked-customer.repository.interface';
 import { OrdersController } from './orders.controller';
 
 type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & {
@@ -80,6 +81,7 @@ function buildRestaurant(
     phone: string;
     notifyRestaurantOnNewOrder: boolean;
     newOrderRestaurantWhatsAppTemplate: string;
+    customerBlockingEnabled: boolean;
   }> = {},
 ) {
   return {
@@ -190,6 +192,7 @@ describe('OrdersController', () => {
       restaurantOperatorRepository?: Partial<IRestaurantOperatorRepository>;
       tableRepository?: Partial<IRestaurantTableRepository>;
       rawMaterialRepository?: Partial<IRawMaterialRepository>;
+      blockedCustomerRepository?: Partial<IBlockedCustomerRepository>;
     } = {},
   ) {
     const orderRepository: Partial<IOrderRepository> = {
@@ -290,6 +293,11 @@ describe('OrdersController', () => {
       incrementStock: jest.fn().mockResolvedValue({}),
       ...overrides.rawMaterialRepository,
     };
+    // Pedido explícito do usuário (módulo `customer-blocking`).
+    const blockedCustomerRepository: Partial<IBlockedCustomerRepository> = {
+      isBlocked: jest.fn().mockResolvedValue(false),
+      ...overrides.blockedCustomerRepository,
+    };
     const { application, routes } = buildFakeApplication();
     new OrdersController(
       orderRepository as IOrderRepository,
@@ -306,6 +314,7 @@ describe('OrdersController', () => {
       undefined,
       tableRepository as IRestaurantTableRepository,
       rawMaterialRepository as IRawMaterialRepository,
+      blockedCustomerRepository as IBlockedCustomerRepository,
     ).initializeRoutes(application);
     return {
       orderRepository,
@@ -320,6 +329,7 @@ describe('OrdersController', () => {
       restaurantOperatorRepository,
       tableRepository,
       rawMaterialRepository,
+      blockedCustomerRepository,
       routes,
     };
   }
@@ -480,6 +490,42 @@ describe('OrdersController', () => {
       runAuthenticatedChain(routes['POST /orders'], { body: buildValidBody(), user: { uid: 'customer-1' } }, { json: jest.fn() }),
     ).rejects.toMatchObject({ statusCode: 400 });
     expect(orderRepository.create).not.toHaveBeenCalled();
+  });
+
+  // Pedido explícito do usuário (módulo `customer-blocking`).
+  it('rejeita (403) pedido de cliente com telefone bloqueado, quando o bloqueio está ligado', async () => {
+    const { orderRepository, blockedCustomerRepository, routes } = setup({
+      restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ customerBlockingEnabled: true })) },
+      blockedCustomerRepository: { isBlocked: jest.fn().mockResolvedValue(true) },
+    });
+
+    await expect(
+      runAuthenticatedChain(routes['POST /orders'], { body: buildValidBody(), user: { uid: 'customer-1' } }, { json: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(orderRepository.create).not.toHaveBeenCalled();
+    expect(blockedCustomerRepository.isBlocked).toHaveBeenCalledWith('r-1', '5585984224877');
+  });
+
+  it('permite pedido de cliente bloqueado se o bloqueio estiver desligado no restaurante', async () => {
+    const { orderRepository, routes } = setup({
+      restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ customerBlockingEnabled: false })) },
+      blockedCustomerRepository: { isBlocked: jest.fn().mockResolvedValue(true) },
+    });
+
+    await runAuthenticatedChain(routes['POST /orders'], { body: buildValidBody(), user: { uid: 'customer-1' } }, { json: jest.fn() });
+
+    expect(orderRepository.create).toHaveBeenCalled();
+  });
+
+  it('permite pedido de cliente não bloqueado, com o bloqueio ligado', async () => {
+    const { orderRepository, routes } = setup({
+      restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ customerBlockingEnabled: true })) },
+      blockedCustomerRepository: { isBlocked: jest.fn().mockResolvedValue(false) },
+    });
+
+    await runAuthenticatedChain(routes['POST /orders'], { body: buildValidBody(), user: { uid: 'customer-1' } }, { json: jest.fn() });
+
+    expect(orderRepository.create).toHaveBeenCalled();
   });
 
   // specs/0055-checkout-revalida-restaurante-aberto (reabre 0046/0033-REQ-7) — nunca confia só no

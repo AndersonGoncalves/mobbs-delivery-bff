@@ -114,6 +114,9 @@ const restaurantSchema = new Schema(
     // specs/0118-controle-caixa-automatico-redes-sociais REQ-1 — default 'manual' preserva o
     // comportamento atual de todo restaurante já existente.
     cashRegisterMode: { type: String, enum: ['manual', 'automatic'], required: true, default: 'manual' },
+    // Pedido explícito do usuário — default desligado preserva o comportamento atual (sem
+    // nenhuma restrição) de todo restaurante já existente.
+    customerBlockingEnabled: { type: Boolean, required: true, default: false },
     // Pedido explícito do usuário — tempo médio de atendimento mostrado no app do cliente, por
     // modalidade; defaults vindos do exemplo mostrado (40-60min delivery, 20-40min balcão).
     deliveryTimeMinMinutes: { type: Number, required: true, default: 40 },

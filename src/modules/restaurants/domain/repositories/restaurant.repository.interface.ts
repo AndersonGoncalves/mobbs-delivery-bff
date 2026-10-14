@@ -58,6 +58,7 @@ export type RestaurantProfileUpdate = Partial<
     | 'orderCancelledWhatsAppTemplate'
     | 'facebookUrl'
     | 'cashRegisterMode'
+    | 'customerBlockingEnabled'
   >
 >;
 

@@ -29,7 +29,9 @@ import { resolveOrderItemLinkedProducts } from '../domain/resolve-order-item-lin
 import { IOrderRepository } from '../domain/repositories/order.repository.interface';
 import { IRestaurantTableRepository } from '../../table-service/domain/repositories/table.repository.interface';
 import { IPaymentRepository } from '../domain/repositories/payment.repository.interface';
+import { IBlockedCustomerRepository } from '../../customer-blocking/domain/repositories/blocked-customer.repository.interface';
 import { isValidCellphone } from '../../../shared/utils/is-valid-cellphone';
+import { normalizePhoneNumber } from '../../../shared/utils/normalize-phone-number';
 import { assignOrderMotoboySchema, cancelOrderWithReasonSchema, createOrderSchema, salesSummaryQuerySchema, updateOrderStatusSchema } from './orders.schemas';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
@@ -72,6 +74,9 @@ export class OrdersController extends BaseRouter {
     private readonly recomputeRestaurantBilling?: { call(restaurantId: string): Promise<void> },
     private readonly tableRepository?: IRestaurantTableRepository,
     rawMaterialRepository?: IRawMaterialRepository,
+    // Pedido explícito do usuário (módulo `customer-blocking`) — checagem em profundidade no
+    // momento do pedido, nunca confia só no app esconder a opção.
+    private readonly blockedCustomerRepository?: IBlockedCustomerRepository,
   ) {
     super();
     if (rawMaterialRepository) {
@@ -99,6 +104,13 @@ export class OrdersController extends BaseRouter {
       const customer = await this.customerRepository.findById(req.user!.uid);
       if (!customer?.name?.trim() || !isValidCellphone(customer.phone)) {
         throw new BadRequestError('Informe seu nome e WhatsApp antes de fazer o pedido');
+      }
+
+      // Pedido explícito do usuário (módulo `customer-blocking`) — liga/desliga do restaurante
+      // (`customerBlockingEnabled`) governa se a lista de bloqueados é sequer consultada.
+      if (restaurant.customerBlockingEnabled && this.blockedCustomerRepository) {
+        const blocked = await this.blockedCustomerRepository.isBlocked(restaurant.id, normalizePhoneNumber(customer.phone!));
+        if (blocked) throw new ForbiddenError('Não é possível fazer pedidos neste restaurante');
       }
 
       // specs/0055-checkout-revalida-restaurante-aberto (reabre 0046/0033-REQ-7) — nunca confia
