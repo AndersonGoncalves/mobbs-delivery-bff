@@ -91,12 +91,12 @@ export class TableOrderService {
       counterOrders: tableOrders.filter((order) => !order.tableId),
       // specs/0137-papeis-garcom-motoboy REQ-7/AC-7 — lista de garçons do seletor vem dos
       // `RestaurantOperator` com papel `garcom` ativos, não mais do cadastro `TableWaiter`
-      // (specs/0120 REQ-4, que continua existindo em paralelo, sem uso aqui). `RestaurantOperator`
-      // não tem campo `name` (só `email`) — usa o e-mail como nome exibido, mesmo padrão do
-      // snapshot `tableWaiter` abaixo (`openOrder`).
+      // (specs/0120 REQ-4, mantido só como listagem de leitura, sem uso aqui). (ajuste, pedido
+      // explícito do usuário) — `name` agora é `operator.name || operator.email` (campo `name`
+      // opcional acrescentado ao `RestaurantOperator`); antes era sempre o e-mail.
       waiters: operators
         .filter((operator) => operator.role === 'garcom' && operator.isActive)
-        .map((operator) => ({ id: operator.id, restaurantId: operator.restaurantId, name: operator.email, isActive: operator.isActive })),
+        .map((operator) => ({ id: operator.id, restaurantId: operator.restaurantId, name: operator.name || operator.email, isActive: operator.isActive })),
       decorations: layout.decorations,
       spendingLimit: layout.spendingLimit,
       counterPositions: layout.counterPositions ?? {},
@@ -149,10 +149,9 @@ export class TableOrderService {
       initialStatus: 'confirmado',
       tableId: table?.id,
       tableName: table?.name ?? 'Balcão',
-      // `RestaurantOperator` não tem campo `name` (só `email`) — usa o e-mail como nome exibido
-      // no snapshot, já que não há outro identificador legível disponível (mesmo padrão de
-      // `deliveryMotoboy` em `OrdersController`).
-      tableWaiter: waiterOperator ? { id: waiterOperator.id, name: waiterOperator.email } : undefined,
+      // (ajuste, pedido explícito do usuário) — `name || email`, mesmo padrão de `deliveryMotoboy`
+      // em `OrdersController` e da listagem de `waiters` acima.
+      tableWaiter: waiterOperator ? { id: waiterOperator.id, name: waiterOperator.name || waiterOperator.email } : undefined,
       // Pedido explícito do usuário — checkbox "Taxa de serviço" deve começar desmarcado; 10%
       // continua sendo o valor sugerido no formulário quando o operador marca a opção (web).
       serviceChargePercent: 0,

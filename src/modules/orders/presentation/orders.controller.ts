@@ -451,9 +451,9 @@ export class OrdersController extends BaseRouter {
           if (!operator || operator.restaurantId !== req.restaurantId || operator.role !== 'motoboy' || !operator.isActive) {
             throw new NotFoundError('Motoboy ativo não encontrado');
           }
-          // `RestaurantOperator` não tem campo `name` (só `email`) — usa o e-mail como nome
-          // exibido no snapshot, já que não há outro identificador legível disponível.
-          deliveryMotoboy = { id: operator.id, name: operator.email };
+          // (ajuste, pedido explícito do usuário) — `name || email`, mesmo padrão de `tableWaiter`
+          // em `TableOrderService`.
+          deliveryMotoboy = { id: operator.id, name: operator.name || operator.email };
         }
 
         const updated = await this.orderRepository.assignDeliveryMotoboy(order.id, deliveryMotoboy);

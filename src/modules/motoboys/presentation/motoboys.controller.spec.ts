@@ -13,15 +13,6 @@ function buildFakeApplication() {
     get: (path: string, ...handlers: RouteHandler[]) => {
       routes[`GET ${path}`] = handlers;
     },
-    post: (path: string, ...handlers: RouteHandler[]) => {
-      routes[`POST ${path}`] = handlers;
-    },
-    put: (path: string, ...handlers: RouteHandler[]) => {
-      routes[`PUT ${path}`] = handlers;
-    },
-    patch: (path: string, ...handlers: RouteHandler[]) => {
-      routes[`PATCH ${path}`] = handlers;
-    },
   };
   return { application: application as unknown as Server, routes };
 }
@@ -44,14 +35,16 @@ function buildMotoboy(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/**
+ * (ajuste, pedido explícito do usuário) — POST/PUT/PATCH deste cadastro legado (`Motoboy`,
+ * specs/0119) saíram do controller: "Cadastro de motoboys" na web virou só leitura, listando
+ * `RestaurantOperator` com papel `motoboy` (ver restaurant-operators.controller.spec.ts). Só o GET
+ * continua existindo aqui (dado antigo não foi apagado do banco).
+ */
 describe('MotoboysController (specs/0119-cadastro-motoboys)', () => {
   function setup(overrides: { motoboyRepository?: Partial<IMotoboyRepository> } = {}) {
     const motoboyRepository: Partial<IMotoboyRepository> = {
       listByRestaurant: jest.fn().mockResolvedValue([buildMotoboy()]),
-      findById: jest.fn().mockResolvedValue(buildMotoboy()),
-      create: jest.fn().mockResolvedValue(buildMotoboy()),
-      update: jest.fn().mockResolvedValue(buildMotoboy({ name: 'João Silva' })),
-      setActive: jest.fn().mockResolvedValue(buildMotoboy({ isActive: false })),
       ...overrides.motoboyRepository,
     };
     const restaurantOperatorMiddleware = jest.fn(async () => {});
@@ -70,75 +63,11 @@ describe('MotoboysController (specs/0119-cadastro-motoboys)', () => {
     expect(json).toHaveBeenCalledWith(200, [expect.objectContaining({ id: 'mt-1' })]);
   });
 
-  it('AC-1: POST /restaurants/me/motoboys cria um motoboy', async () => {
-    const { motoboyRepository, routes } = setup();
-    const json = jest.fn();
-
-    await runOperatorChain(
-      routes['POST /restaurants/me/motoboys'],
-      { restaurantId: 'r-1', body: { name: 'João', whatsapp: '11999990000' } },
-      { json },
-    );
-
-    expect(motoboyRepository.create).toHaveBeenCalledWith('r-1', expect.objectContaining({ name: 'João', whatsapp: '11999990000', canMarkAsDelivered: true }));
-    expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ isActive: true }));
-  });
-
-  it('rejeita criação sem nome', async () => {
+  it('não registra mais rotas de escrita (POST/PUT/PATCH)', () => {
     const { routes } = setup();
 
-    await expect(
-      runOperatorChain(routes['POST /restaurants/me/motoboys'], { restaurantId: 'r-1', body: { whatsapp: '11999990000' } }, { json: jest.fn() }),
-    ).rejects.toMatchObject({ statusCode: 400 });
-  });
-
-  it('rejeita criação sem WhatsApp', async () => {
-    const { routes } = setup();
-
-    await expect(
-      runOperatorChain(routes['POST /restaurants/me/motoboys'], { restaurantId: 'r-1', body: { name: 'João' } }, { json: jest.fn() }),
-    ).rejects.toMatchObject({ statusCode: 400 });
-  });
-
-  it('REQ-1: PUT /restaurants/me/motoboys/:id edita um motoboy existente', async () => {
-    const { motoboyRepository, routes } = setup();
-    const json = jest.fn();
-
-    await runOperatorChain(
-      routes['PUT /restaurants/me/motoboys/:id'],
-      { restaurantId: 'r-1', params: { id: 'mt-1' }, body: { name: 'João Silva', whatsapp: '11999990000' } },
-      { json },
-    );
-
-    expect(motoboyRepository.update).toHaveBeenCalledWith('mt-1', expect.objectContaining({ name: 'João Silva' }));
-    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ name: 'João Silva' }));
-  });
-
-  it('REQ-4: PATCH .../active desativa um motoboy', async () => {
-    const { motoboyRepository, routes } = setup();
-    const json = jest.fn();
-
-    await runOperatorChain(
-      routes['PATCH /restaurants/me/motoboys/:id/active'],
-      { restaurantId: 'r-1', params: { id: 'mt-1' }, body: { isActive: false } },
-      { json },
-    );
-
-    expect(motoboyRepository.setActive).toHaveBeenCalledWith('mt-1', false);
-    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ isActive: false }));
-  });
-
-  it('lança 404 ao operar sobre um motoboy de outro restaurante', async () => {
-    const { routes } = setup({
-      motoboyRepository: { findById: jest.fn().mockResolvedValue(buildMotoboy({ restaurantId: 'r-OUTRO' })) },
-    });
-
-    await expect(
-      runOperatorChain(
-        routes['PUT /restaurants/me/motoboys/:id'],
-        { restaurantId: 'r-1', params: { id: 'mt-1' }, body: { name: 'X', whatsapp: '11999990000' } },
-        { json: jest.fn() },
-      ),
-    ).rejects.toMatchObject({ statusCode: 404 });
+    expect(routes['POST /restaurants/me/motoboys']).toBeUndefined();
+    expect(routes['PUT /restaurants/me/motoboys/:id']).toBeUndefined();
+    expect(routes['PATCH /restaurants/me/motoboys/:id/active']).toBeUndefined();
   });
 });

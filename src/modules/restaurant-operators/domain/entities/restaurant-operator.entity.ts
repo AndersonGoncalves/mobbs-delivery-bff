@@ -24,6 +24,9 @@ export interface IRestaurantOperator {
   id: string;
   restaurantId: string;
   email: string;
+  // (ajuste, pedido explícito do usuário) — opcional: operadores criados antes deste campo
+  // existir não têm nome; UI usa `email` como fallback onde precisar exibir algo.
+  name?: string;
   role: OperatorRole;
   isActive: boolean;
   createdAt: Date;

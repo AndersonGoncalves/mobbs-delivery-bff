@@ -23,7 +23,7 @@ export interface IRestaurantOperatorRepository {
    * é o único `dono` ativo do restaurante antes de aceitar rebaixá-lo.
    */
   countActiveByRestaurantAndRole(restaurantId: string, role: OperatorRole): Promise<number>;
-  create(restaurantId: string, email: string, role: OperatorRole): Promise<IRestaurantOperator>;
+  create(restaurantId: string, email: string, role: OperatorRole, name?: string): Promise<IRestaurantOperator>;
   deactivate(id: string): Promise<void>;
   findById(id: string): Promise<IRestaurantOperator | null>;
   /** specs/0021-papeis-operador REQ-8 — troca o papel de um operador já cadastrado. */

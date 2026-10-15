@@ -6,6 +6,7 @@ interface RestaurantOperatorLeanDocument {
   _id: string;
   restaurantId: string;
   email: string;
+  name?: string;
   role?: OperatorRole;
   isActive: boolean;
   createdAt: Date;
@@ -16,6 +17,7 @@ function toEntity(doc: RestaurantOperatorLeanDocument): IRestaurantOperator {
     id: doc._id,
     restaurantId: doc.restaurantId,
     email: doc.email,
+    name: doc.name,
     // specs/0021-papeis-operador REQ-7 — rede de segurança além da migração de startup
     // (`migrateOperatorRolesToDono`): `.lean()` nunca aplica `default` do schema na leitura, só
     // no `save()`/`create()`, então um documento lido antes da migração rodar (ou num teste que
@@ -55,8 +57,8 @@ export class RestaurantOperatorMongooseRepository implements IRestaurantOperator
     return RestaurantOperatorModel.countDocuments({ restaurantId, role, isActive: true });
   }
 
-  async create(restaurantId: string, email: string, role: OperatorRole): Promise<IRestaurantOperator> {
-    const doc = await RestaurantOperatorModel.create({ restaurantId, email, role });
+  async create(restaurantId: string, email: string, role: OperatorRole, name?: string): Promise<IRestaurantOperator> {
+    const doc = await RestaurantOperatorModel.create({ restaurantId, email, role, name });
     return toEntity(doc.toObject());
   }
 

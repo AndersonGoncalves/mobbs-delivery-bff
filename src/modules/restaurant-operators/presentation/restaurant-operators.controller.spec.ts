@@ -88,8 +88,22 @@ describe('RestaurantOperatorsController', () => {
       { json, send: jest.fn() },
     );
 
-    expect(repository.create).toHaveBeenCalledWith('r-1', 'novo@example.com', 'gerente');
+    expect(repository.create).toHaveBeenCalledWith('r-1', 'novo@example.com', 'gerente', undefined);
     expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ email: 'novo@example.com', role: 'gerente' }));
+  });
+
+  // (ajuste, pedido explícito do usuário) — `name` opcional no corpo, repassado pro repositório.
+  it('POST /restaurants/me/operators aceita um nome opcional, junto do e-mail e papel', async () => {
+    const { repository, routes } = setup();
+    const json = jest.fn();
+
+    await runChain(
+      routes['POST /restaurants/me/operators'],
+      { body: { email: 'novo@example.com', role: 'garcom', name: 'João' } },
+      { json, send: jest.fn() },
+    );
+
+    expect(repository.create).toHaveBeenCalledWith('r-1', 'novo@example.com', 'garcom', 'João');
   });
 
   // specs/0095-isolamento-cadastro-operadores REQ-1/REQ-2.
@@ -112,7 +126,7 @@ describe('RestaurantOperatorsController', () => {
 
     await runChain(routes['POST /restaurants/me/operators'], { body: { email: 'novo@example.com', role: 'gerente' } }, { json, send: jest.fn() });
 
-    expect(repository.create).toHaveBeenCalledWith('r-1', 'novo@example.com', 'gerente');
+    expect(repository.create).toHaveBeenCalledWith('r-1', 'novo@example.com', 'gerente', undefined);
   });
 
   it('rejeita POST /restaurants/me/operators com e-mail inválido', async () => {
@@ -181,7 +195,7 @@ describe('RestaurantOperatorsController', () => {
   });
 
   // specs/0137-papeis-garcom-motoboy REQ-6.
-  it('AC-6: GET /restaurants/me/operators/motoboys lista só os operadores motoboy ativos, com email como nome', async () => {
+  it('AC-6: GET /restaurants/me/operators/motoboys lista só os operadores motoboy ativos, com email como nome quando não tem nome cadastrado', async () => {
     const { repository, routes } = setup({
       listByRestaurant: jest.fn().mockResolvedValue([
         buildOperator({ id: 'op-1', email: 'carlos@example.com', role: 'motoboy', isActive: true }),
@@ -194,7 +208,21 @@ describe('RestaurantOperatorsController', () => {
     await runChain(routes['GET /restaurants/me/operators/motoboys'], {}, { json, send: jest.fn() });
 
     expect(repository.listByRestaurant).toHaveBeenCalledWith('r-1');
-    expect(json).toHaveBeenCalledWith(200, [{ id: 'op-1', name: 'carlos@example.com' }]);
+    expect(json).toHaveBeenCalledWith(200, [{ id: 'op-1', name: 'carlos@example.com', email: 'carlos@example.com' }]);
+  });
+
+  // (ajuste, pedido explícito do usuário) — nome de verdade, quando cadastrado, em vez do e-mail.
+  it('GET /restaurants/me/operators/motoboys usa o nome cadastrado quando existe, em vez do e-mail', async () => {
+    const { routes } = setup({
+      listByRestaurant: jest.fn().mockResolvedValue([
+        buildOperator({ id: 'op-1', email: 'carlos@example.com', name: 'Carlos', role: 'motoboy', isActive: true }),
+      ]),
+    }, buildPassthroughOperatorMiddleware('gerente'));
+    const json = jest.fn();
+
+    await runChain(routes['GET /restaurants/me/operators/motoboys'], {}, { json, send: jest.fn() });
+
+    expect(json).toHaveBeenCalledWith(200, [{ id: 'op-1', name: 'Carlos', email: 'carlos@example.com' }]);
   });
 
   it('REQ-6: bloqueia financeiro tentando listar operadores motoboy (403)', async () => {
@@ -202,6 +230,32 @@ describe('RestaurantOperatorsController', () => {
 
     await expect(
       runChain(routes['GET /restaurants/me/operators/motoboys'], {}, { json: jest.fn(), send: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  // (ajuste, pedido explícito do usuário) — equivalente ao de motoboys, pra "Cadastro de
+  // garçons" (web), agora só leitura.
+  it('GET /restaurants/me/operators/waiters lista só os operadores garcom ativos', async () => {
+    const { repository, routes } = setup({
+      listByRestaurant: jest.fn().mockResolvedValue([
+        buildOperator({ id: 'op-1', email: 'joao@example.com', name: 'João', role: 'garcom', isActive: true }),
+        buildOperator({ id: 'op-2', email: 'inativo@example.com', role: 'garcom', isActive: false }),
+        buildOperator({ id: 'op-3', email: 'dono@example.com', role: 'dono', isActive: true }),
+      ]),
+    }, buildPassthroughOperatorMiddleware('gerente'));
+    const json = jest.fn();
+
+    await runChain(routes['GET /restaurants/me/operators/waiters'], {}, { json, send: jest.fn() });
+
+    expect(repository.listByRestaurant).toHaveBeenCalledWith('r-1');
+    expect(json).toHaveBeenCalledWith(200, [{ id: 'op-1', name: 'João', email: 'joao@example.com' }]);
+  });
+
+  it('bloqueia financeiro tentando listar operadores garçom (403)', async () => {
+    const { routes } = setup({}, buildPassthroughOperatorMiddleware('financeiro'));
+
+    await expect(
+      runChain(routes['GET /restaurants/me/operators/waiters'], {}, { json: jest.fn(), send: jest.fn() }),
     ).rejects.toMatchObject({ statusCode: 403 });
   });
 

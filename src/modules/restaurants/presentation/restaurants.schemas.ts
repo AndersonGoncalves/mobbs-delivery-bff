@@ -231,7 +231,7 @@ export const updateSlugSchema = z.object({
 // specs/0137-papeis-garcom-motoboy REQ-2/REQ-3 — `garcom`/`motoboy` adicionados ao mesmo enum.
 export const operatorRoleSchema = z.enum(['dono', 'gerente', 'financeiro', 'garcom', 'motoboy']);
 
-export const addOperatorSchema = z.object({ email: z.string().email(), role: operatorRoleSchema });
+export const addOperatorSchema = z.object({ email: z.string().email(), role: operatorRoleSchema, name: z.string().trim().min(1).optional() });
 
 // specs/0021-papeis-operador REQ-8 — troca do papel de um operador já cadastrado.
 export const updateOperatorRoleSchema = z.object({ role: operatorRoleSchema });

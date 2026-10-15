@@ -53,6 +53,13 @@ export class RestaurantOperatorsController extends BaseRouter {
     // `dono`/`gerente` (não só `dono`, como a listagem completa acima) — endpoint dedicado, mais
     // estreito, em vez de abrir `GET /restaurants/me/operators` (que devolve e-mail/papel de TODOS
     // os operadores, inclusive `dono`/`financeiro`) pra `gerente`.
+    //
+    // (ajuste, pedido explícito do usuário) — `name` agora é `operator.name || operator.email`
+    // (antes era sempre o e-mail, campo `name` não existia): mostra o nome de verdade quando
+    // cadastrado, sem quebrar quem já consumia este endpoint esperando sempre uma string em
+    // `name` (o seletor de motoboy de `ActiveOrdersPanel` continua funcionando sem mudar nada lá).
+    // `email` também vai junto, cru, pra quem precisar mostrar os dois juntos (ex. a página
+    // "Cadastro de motoboys", agora só leitura, lista operadores `motoboy`).
     application.get(
       '/restaurants/me/operators/motoboys',
       firebaseAuthMiddleware,
@@ -62,21 +69,36 @@ export class RestaurantOperatorsController extends BaseRouter {
         const operators = await this.operatorRepository.listByRestaurant(req.restaurantId!);
         const motoboys = operators
           .filter((operator) => operator.role === 'motoboy' && operator.isActive)
-          // `RestaurantOperator` não tem campo `name` (só `email`) — usa o e-mail como nome exibido.
-          .map((operator) => ({ id: operator.id, name: operator.email }));
+          .map((operator) => ({ id: operator.id, name: operator.name || operator.email, email: operator.email }));
         res.json(200, motoboys);
       },
     );
 
+    // (ajuste, pedido explícito do usuário) — equivalente ao endpoint de motoboys acima, pra
+    // alimentar a página "Cadastro de garçons" (agora só leitura, lista operadores `garcom`).
+    application.get(
+      '/restaurants/me/operators/waiters',
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('dono', 'gerente'),
+      async (req: Request, res: Response) => {
+        const operators = await this.operatorRepository.listByRestaurant(req.restaurantId!);
+        const waiters = operators
+          .filter((operator) => operator.role === 'garcom' && operator.isActive)
+          .map((operator) => ({ id: operator.id, name: operator.name || operator.email, email: operator.email }));
+        res.json(200, waiters);
+      },
+    );
+
     application.post('/restaurants/me/operators', ...ownerAuthenticated, async (req: Request, res: Response) => {
-      const { email, role } = parseBody(addOperatorSchema, req.body);
+      const { email, role, name } = parseBody(addOperatorSchema, req.body);
       // specs/0095-isolamento-cadastro-operadores REQ-1 — um e-mail com vínculo ativo em outro
       // restaurante não pode ser adicionado aqui também (mesma regra do autocadastro, specs/0038).
       const activeElsewhere = await this.operatorRepository.findActiveByEmailInOtherRestaurant(email, req.restaurantId!);
       if (activeElsewhere) {
         throw new ConflictError('Este e-mail já está associado a outro restaurante');
       }
-      const operator = await this.operatorRepository.create(req.restaurantId!, email, role);
+      const operator = await this.operatorRepository.create(req.restaurantId!, email, role, name);
       res.json(201, operator);
     });
 

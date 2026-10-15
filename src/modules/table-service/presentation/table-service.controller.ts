@@ -24,7 +24,6 @@ import {
   openTableOrderSchema,
   saveTableMapLayoutSchema,
   saveTableSchema,
-  saveTableWaiterSchema,
   tableOrderAdjustmentsSchema,
   tableOrderHistoryQuerySchema,
   tableOrderIdSchema,
@@ -183,26 +182,14 @@ export class TableServiceController extends BaseRouter {
       res.json(200, await this.layoutRepository.save(req.restaurantId!, normalized, spendingLimit, counterPositions, liveMusicDays));
     });
 
+    // (ajuste, pedido explícito do usuário) — "Cadastro de garçons" (web) virou só leitura,
+    // listando `RestaurantOperator` com papel `garcom` (ver `restaurant-operators.controller.ts`,
+    // `GET /restaurants/me/operators/waiters`); POST/PUT/DELETE deste cadastro legado
+    // (`TableWaiter`, specs/0120) saíram daqui porque nada mais os chama — ninguém mais cria,
+    // edita ou remove um `TableWaiter`. O GET continua existindo (dado antigo não foi apagado do
+    // banco), só não tem mais consumidor na web.
     application.get('/restaurants/me/waiters', ...authenticated, async (req: Request, res: Response) => {
       res.json(200, await this.waiterRepository.listByRestaurant(req.restaurantId!));
-    });
-
-    application.post('/restaurants/me/waiters', ...authenticated, async (req: Request, res: Response) => {
-      const { name } = parseBody(saveTableWaiterSchema, req.body);
-      res.json(201, await this.waiterRepository.create(req.restaurantId!, name));
-    });
-
-    application.put('/restaurants/me/waiters/:id', ...authenticated, async (req: Request, res: Response) => {
-      const { name } = parseBody(saveTableWaiterSchema, req.body);
-      const updated = await this.waiterRepository.update(req.params.id, req.restaurantId!, name);
-      if (!updated) throw new NotFoundError('Garçom não encontrado');
-      res.json(200, updated);
-    });
-
-    application.del('/restaurants/me/waiters/:id', ...authenticated, async (req: Request, res: Response) => {
-      const removed = await this.waiterRepository.remove(req.params.id, req.restaurantId!);
-      if (!removed) throw new NotFoundError('Garçom não encontrado');
-      res.send(204);
     });
   }
 
