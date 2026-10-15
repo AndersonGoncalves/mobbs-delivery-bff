@@ -214,19 +214,35 @@ export class OrdersController extends BaseRouter {
 
       // specs/0013-notificacoes-whatsapp REQ-1/REQ-4 — fire-and-forget: nunca bloqueia a
       // resposta HTTP nem reverte a criação do pedido se o envio falhar (o serviço já engole
-      // qualquer exceção internamente, `.catch` aqui é só uma segunda rede de segurança).
-      void this.whatsAppNotificationService.sendOrderReceipt(order, payload.cardBrand).catch((error) => {
-        console.error(`[whatsapp] erro inesperado enviando recibo do pedido ${order.id}:`, error);
-      });
+      // qualquer exceção internamente, `.catch`/try-catch aqui é só uma segunda rede de
+      // segurança).
+      //
+      // Achado real (pedido explícito do usuário) — recibo e confirmação automática (abaixo)
+      // eram disparados em paralelo, cada um com seu próprio `void ...catch(...)`, sem relação de
+      // ordem entre si; a ordem de CHEGADA no WhatsApp dependia de qual chamada respondia mais
+      // rápido, não da ordem em que foram disparadas — a de confirmação (mensagem mais simples)
+      // às vezes chegava no chat do cliente antes da de recibo (mais pesada: monta o texto do
+      // pedido inteiro + eventual código Pix). Envio em sequência dentro da mesma IIFE
+      // fire-and-forget (a resposta HTTP continua sem esperar nenhuma das duas) garante que o
+      // recibo sempre termina de ser enviado antes da confirmação começar.
+      void (async () => {
+        try {
+          await this.whatsAppNotificationService.sendOrderReceipt(order, payload.cardBrand);
+        } catch (error) {
+          console.error(`[whatsapp] erro inesperado enviando recibo do pedido ${order.id}:`, error);
+        }
 
-      // specs/0151-confirmacao-automatica-por-forma-pagamento REQ-3 — pedido nasceu já
-      // `confirmado` (initialStatus acima): mesma notificação que `PATCH .../orders/:id/status`
-      // dispara ao confirmar manualmente, pra não ficar inconsistente entre os dois caminhos.
-      if (order.status === 'confirmado') {
-        void this.whatsAppNotificationService.sendOrderStatusUpdate(order).catch((error) => {
-          console.error(`[whatsapp] erro inesperado enviando confirmação automática do pedido ${order.id}:`, error);
-        });
-      }
+        // specs/0151-confirmacao-automatica-por-forma-pagamento REQ-3 — pedido nasceu já
+        // `confirmado` (initialStatus acima): mesma notificação que `PATCH .../orders/:id/status`
+        // dispara ao confirmar manualmente, pra não ficar inconsistente entre os dois caminhos.
+        if (order.status === 'confirmado') {
+          try {
+            await this.whatsAppNotificationService.sendOrderStatusUpdate(order);
+          } catch (error) {
+            console.error(`[whatsapp] erro inesperado enviando confirmação automática do pedido ${order.id}:`, error);
+          }
+        }
+      })();
 
       res.json(201, order);
     });
