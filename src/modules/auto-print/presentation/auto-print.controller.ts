@@ -53,7 +53,11 @@ export class AutoPrintController extends BaseRouter {
         return;
       }
 
-      const orders = await this.orderRepository.findPendingAutoPrint(req.restaurantId!);
+      // specs/0156-filtro-idade-impressao-automatica REQ-1.
+      const orders = await this.orderRepository.findPendingAutoPrint(
+        req.restaurantId!,
+        restaurant!.autoPrintMaxAgeMinutes ?? 5,
+      );
 
       const pending = await Promise.all(
         orders.map(async (order) => {

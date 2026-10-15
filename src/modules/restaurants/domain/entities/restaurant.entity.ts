@@ -259,6 +259,11 @@ export interface IRestaurant {
   autoPrintEnabled: boolean;
   autoPrintIntervalSeconds: number;
   autoPrintApiKey?: string;
+  /** specs/0156-filtro-idade-impressao-automatica REQ-1/REQ-2 — pedido mais velho que isso (desde
+   * `Order.createdAt`) deixa de ser candidato à fila de impressão automática, mesmo nunca tendo
+   * sido impresso — evita despejar uma pilha de pedidos represados quando o bridge volta a ficar
+   * online depois de ficar fora do ar. Default 5 minutos quando não configurado. */
+  autoPrintMaxAgeMinutes?: number;
 }
 
 export type CashRegisterMode = 'manual' | 'automatic';

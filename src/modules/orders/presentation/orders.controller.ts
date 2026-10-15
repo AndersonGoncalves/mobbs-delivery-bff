@@ -20,6 +20,7 @@ import { IWhatsAppNotificationService } from '../../notifications/domain/service
 import { IStockMovementRepository } from '../../raw-materials/domain/repositories/stock-movement.repository.interface';
 import { IRawMaterialRepository } from '../../raw-materials/domain/repositories/raw-material.repository.interface';
 import { isRestaurantOpenNow } from '../../restaurants/domain/is-restaurant-open-now';
+import { IRestaurant } from '../../restaurants/domain/entities/restaurant.entity';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IOrder, IOrderItem, IPayment } from '../domain/entities/order.entity';
 import { StockReservationService } from '../domain/services/stock-reservation.service';
@@ -307,8 +308,13 @@ export class OrdersController extends BaseRouter {
     // specs/0020-pix-no-app T006 — inclui `payment.status` em cada pedido, pra retaguarda saber
     // quais estão com Pix pendente de confirmação (`ActiveOrdersPage`, mobbs-delivery-web).
     application.get('/restaurants/me/orders', ...operatorAuthenticated, async (req: Request, res: Response) => {
-      const orders = await this.orderRepository.findActiveByRestaurant(req.restaurantId!);
-      res.json(200, await this.attachCustomers(await this.attachPaymentSummaries(orders)));
+      const [orders, restaurant] = await Promise.all([
+        this.orderRepository.findActiveByRestaurant(req.restaurantId!),
+        this.restaurantRepository.findById(req.restaurantId!),
+      ]);
+      const withCustomersAndPayments = await this.attachCustomers(await this.attachPaymentSummaries(orders));
+      // specs/0156-filtro-idade-impressao-automatica REQ-3.
+      res.json(200, this.attachAutoPrintMissed(withCustomersAndPayments, restaurant!));
     });
 
     // specs/0137-papeis-garcom-motoboy REQ-3/AC-3 — próprias entregas ativas do motoboy logado
@@ -329,8 +335,12 @@ export class OrdersController extends BaseRouter {
     // O restaurante vem sempre do operador autenticado; `to` é limite exclusivo.
     application.get('/restaurants/me/orders/map', ...operatorAuthenticated, async (req: Request, res: Response) => {
       const { from, to } = parseBody(salesSummaryQuerySchema, req.query);
-      const orders = await this.orderRepository.findByRestaurantBetween(req.restaurantId!, new Date(from), new Date(to));
-      res.json(200, await this.attachCustomers(orders));
+      const [orders, restaurant] = await Promise.all([
+        this.orderRepository.findByRestaurantBetween(req.restaurantId!, new Date(from), new Date(to)),
+        this.restaurantRepository.findById(req.restaurantId!),
+      ]);
+      // specs/0156-filtro-idade-impressao-automatica REQ-3.
+      res.json(200, this.attachAutoPrintMissed(await this.attachCustomers(orders), restaurant!));
     });
 
     // specs/0137-papeis-garcom-motoboy REQ-3 — além de `dono`/`gerente`, `motoboy` também pode
@@ -641,6 +651,21 @@ export class OrdersController extends BaseRouter {
   }
 
   /** specs/0020-pix-no-app T006 — usado nas listagens (`GET /restaurants/me/orders`): só `payment.status`, sem `pixCode` (fica só no detalhe, REQ-2). */
+  /** specs/0156-filtro-idade-impressao-automatica REQ-3 — calculado na hora de responder, nunca
+   * gravado no banco: sempre consistente com `autoPrintMaxAgeMinutes` vigente, mesmo que o
+   * restaurante reconfigure esse valor depois (um valor persistido ficaria preso à config antiga). */
+  private attachAutoPrintMissed<T extends IOrder>(orders: T[], restaurant: IRestaurant): (T & { autoPrintMissed: boolean })[] {
+    const cutoff = Date.now() - (restaurant.autoPrintMaxAgeMinutes ?? 5) * 60_000;
+    return orders.map((order) => ({
+      ...order,
+      autoPrintMissed:
+        order.autoPrintStatus !== 'printed' &&
+        order.status !== 'cancelado' &&
+        (order.orderType === 'delivery' || order.orderType === 'pickup') &&
+        new Date(order.createdAt).getTime() < cutoff,
+    }));
+  }
+
   private async attachPaymentSummaries(orders: IOrder[]): Promise<(IOrder & { payment?: Pick<IPayment, 'method' | 'status'> })[]> {
     const payments = await this.paymentRepository.findManyByOrderIds(orders.map((order) => order.id));
     const paymentByOrderId = new Map(payments.map((payment) => [payment.orderId, payment]));

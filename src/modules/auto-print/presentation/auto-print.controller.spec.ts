@@ -80,11 +80,22 @@ describe('AutoPrintController', () => {
 
     await runBridgeChain(routes['GET /restaurants/me/print-queue/pending'], { restaurantId: 'r-1' }, { json, send: jest.fn() });
 
-    expect(orderRepository.findPendingAutoPrint).toHaveBeenCalledWith('r-1');
+    expect(orderRepository.findPendingAutoPrint).toHaveBeenCalledWith('r-1', 5);
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({
       pollIntervalSeconds: 10,
       orders: [expect.objectContaining({ orderId: 'o-1', lines: expect.any(Array) })],
     }));
+  });
+
+  // specs/0156-filtro-idade-impressao-automatica REQ-1.
+  it('specs/0156: repassa autoPrintMaxAgeMinutes configurado pra findPendingAutoPrint', async () => {
+    const { orderRepository, routes } = setup({
+      restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ autoPrintMaxAgeMinutes: 20 })) },
+    });
+
+    await runBridgeChain(routes['GET /restaurants/me/print-queue/pending'], { restaurantId: 'r-1' }, { json: jest.fn(), send: jest.fn() });
+
+    expect(orderRepository.findPendingAutoPrint).toHaveBeenCalledWith('r-1', 20);
   });
 
   it('GET .../print-queue/pending sem pedidos pendentes devolve lista vazia', async () => {

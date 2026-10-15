@@ -117,6 +117,8 @@ export const restaurantProfileSchema = z
     // aqui de propósito, só é gerada/trocada pela rota dedicada de regenerar.
     autoPrintEnabled: z.boolean(),
     autoPrintIntervalSeconds: z.number().int().min(5).max(120),
+    // specs/0156-filtro-idade-impressao-automatica REQ-2.
+    autoPrintMaxAgeMinutes: z.number().int().min(1).max(60),
     // Pedido explícito do usuário — tempo médio de atendimento, por modalidade (minutos).
     deliveryTimeMinMinutes: z.number().int().positive(),
     deliveryTimeMaxMinutes: z.number().int().positive(),

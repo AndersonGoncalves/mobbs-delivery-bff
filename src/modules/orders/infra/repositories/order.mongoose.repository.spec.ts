@@ -32,7 +32,14 @@ function buildDoc(overrides: Record<string, unknown> = {}) {
 }
 
 describe('OrderMongooseRepository.findPendingAutoPrint', () => {
+  const NOW = new Date('2026-10-15T12:00:00.000Z');
+
+  beforeEach(() => {
+    jest.useFakeTimers({ now: NOW });
+  });
+
   afterEach(() => {
+    jest.useRealTimers();
     jest.clearAllMocks();
   });
 
@@ -40,7 +47,7 @@ describe('OrderMongooseRepository.findPendingAutoPrint', () => {
     (OrderModel.aggregate as jest.Mock).mockResolvedValue([]);
     const repository = new OrderMongooseRepository();
 
-    await repository.findPendingAutoPrint('r-1');
+    await repository.findPendingAutoPrint('r-1', 5);
 
     expect(OrderModel.aggregate).toHaveBeenCalledWith([
       {
@@ -49,6 +56,7 @@ describe('OrderMongooseRepository.findPendingAutoPrint', () => {
           orderType: { $in: ['delivery', 'pickup'] },
           status: { $ne: 'cancelado' },
           autoPrintStatus: { $ne: 'printed' },
+          createdAt: { $gte: new Date(NOW.getTime() - 5 * 60_000) },
         },
       },
       { $lookup: { from: 'payment', localField: '_id', foreignField: 'orderId', as: 'payment' } },
@@ -61,10 +69,21 @@ describe('OrderMongooseRepository.findPendingAutoPrint', () => {
     (OrderModel.aggregate as jest.Mock).mockResolvedValue([buildDoc({ status: 'aguardandoConfirmacao' })]);
     const repository = new OrderMongooseRepository();
 
-    const orders = await repository.findPendingAutoPrint('r-1');
+    const orders = await repository.findPendingAutoPrint('r-1', 5);
 
     expect(orders).toHaveLength(1);
     expect(orders[0].status).toBe('aguardandoConfirmacao');
     expect(orders[0].id).toBe('order-1');
+  });
+
+  // specs/0156-filtro-idade-impressao-automatica REQ-1.
+  it('specs/0156: calcula o corte (cutoff) a partir de maxAgeMinutes diferentes', async () => {
+    (OrderModel.aggregate as jest.Mock).mockResolvedValue([]);
+    const repository = new OrderMongooseRepository();
+
+    await repository.findPendingAutoPrint('r-1', 30);
+
+    const [[pipeline]] = (OrderModel.aggregate as jest.Mock).mock.calls;
+    expect(pipeline[0].$match.createdAt).toEqual({ $gte: new Date(NOW.getTime() - 30 * 60_000) });
   });
 });

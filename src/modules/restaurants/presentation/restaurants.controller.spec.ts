@@ -316,6 +316,28 @@ describe('RestaurantsController', () => {
       ).rejects.toMatchObject({ statusCode: 400 });
     });
 
+    // specs/0156-filtro-idade-impressao-automatica REQ-2.
+    it('specs/0156: PUT /restaurants/me aceita e persiste autoPrintMaxAgeMinutes', async () => {
+      const { repository, routes } = setup({ updateProfile: jest.fn().mockResolvedValue(buildRestaurant({ autoPrintMaxAgeMinutes: 15 })) });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['PUT /restaurants/me'], { body: { autoPrintMaxAgeMinutes: 15 } }, { json });
+
+      expect(repository.updateProfile).toHaveBeenCalledWith('1', { autoPrintMaxAgeMinutes: 15 });
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ autoPrintMaxAgeMinutes: 15 }));
+    });
+
+    it('specs/0156: rejeita PUT /restaurants/me com autoPrintMaxAgeMinutes fora de 1-60', async () => {
+      const { routes } = setup();
+
+      await expect(
+        runAuthenticatedChain(routes['PUT /restaurants/me'], { body: { autoPrintMaxAgeMinutes: 0 } }, { json: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 400 });
+      await expect(
+        runAuthenticatedChain(routes['PUT /restaurants/me'], { body: { autoPrintMaxAgeMinutes: 61 } }, { json: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
     // specs/0031-imagem-padrao-disponibilidade-checkout-ajustes REQ-1.
     it('PUT /restaurants/me aceita e persiste defaultProductImageUrl', async () => {
       const defaultProductImageUrl = 'https://storage.example.com/restaurants/1/default-product-image.png';

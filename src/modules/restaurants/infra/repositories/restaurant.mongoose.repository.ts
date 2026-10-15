@@ -91,6 +91,7 @@ interface RestaurantLeanDocument {
   customerBlockingEnabled?: boolean;
   autoPrintEnabled?: boolean;
   autoPrintIntervalSeconds?: number;
+  autoPrintMaxAgeMinutes?: number;
   autoPrintApiKey?: string;
 }
 
@@ -170,6 +171,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     customerBlockingEnabled: doc.customerBlockingEnabled ?? false,
     autoPrintEnabled: doc.autoPrintEnabled ?? false,
     autoPrintIntervalSeconds: doc.autoPrintIntervalSeconds ?? 10,
+    autoPrintMaxAgeMinutes: doc.autoPrintMaxAgeMinutes ?? 5,
     autoPrintApiKey: doc.autoPrintApiKey,
   };
 }

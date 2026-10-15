@@ -971,6 +971,28 @@ describe('OrdersController', () => {
     expect(json).toHaveBeenCalledWith(200, [expect.objectContaining({ id: 'o-1' })]);
   });
 
+  // specs/0156-filtro-idade-impressao-automatica REQ-3.
+  it('specs/0156 AC-4: GET /restaurants/me/orders inclui autoPrintMissed certo por pedido', async () => {
+    const tooOld = new Date(Date.now() - 10 * 60_000).toISOString();
+    const orders = [
+      buildOrder({ id: 'o-missed', createdAt: tooOld }),
+      buildOrder({ id: 'o-fresh', createdAt: new Date().toISOString() }),
+      buildOrder({ id: 'o-already-printed', createdAt: tooOld, autoPrintStatus: 'printed' }),
+      buildOrder({ id: 'o-cancelled', createdAt: tooOld, status: 'cancelado' }),
+    ];
+    const { routes } = setup({ orderRepository: { findActiveByRestaurant: jest.fn().mockResolvedValue(orders) } });
+    const json = jest.fn();
+
+    await runOperatorChain(routes['GET /restaurants/me/orders'], { restaurantId: 'r-1' }, { json });
+
+    expect(json).toHaveBeenCalledWith(200, [
+      expect.objectContaining({ id: 'o-missed', autoPrintMissed: true }),
+      expect.objectContaining({ id: 'o-fresh', autoPrintMissed: false }),
+      expect.objectContaining({ id: 'o-already-printed', autoPrintMissed: false }),
+      expect.objectContaining({ id: 'o-cancelled', autoPrintMissed: false }),
+    ]);
+  });
+
   it('specs/0066 AC-4: GET /restaurants/me/orders inclui customer { name, phone } de cada pedido', async () => {
     const { routes } = setup({
       customerRepository: { findById: jest.fn().mockResolvedValue({ id: 'customer-1', name: 'Michelle', email: 'm@exemplo.com', phone: '85984224877' }) },
@@ -999,9 +1021,25 @@ describe('OrdersController', () => {
 
     expect(orderRepository.findByRestaurantBetween).toHaveBeenCalledWith('r-1', new Date(from), new Date(to));
     expect(json).toHaveBeenCalledWith(200, expect.arrayContaining([
-      expect.objectContaining({ id: 'o-delivered', status: 'entregue' }),
-      expect.objectContaining({ id: 'o-cancelled', status: 'cancelado' }),
+      expect.objectContaining({ id: 'o-delivered', status: 'entregue', autoPrintMissed: false }),
+      expect.objectContaining({ id: 'o-cancelled', status: 'cancelado', autoPrintMissed: false }),
     ]));
+  });
+
+  // specs/0156-filtro-idade-impressao-automatica REQ-3.
+  it('specs/0156 AC-4: GET /restaurants/me/orders/map inclui autoPrintMissed: true num pedido velho e nunca impresso', async () => {
+    const tooOld = new Date(Date.now() - 10 * 60_000).toISOString();
+    const orders = [buildOrder({ id: 'o-missed', createdAt: tooOld })];
+    const { routes } = setup({ orderRepository: { findByRestaurantBetween: jest.fn().mockResolvedValue(orders) } });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['GET /restaurants/me/orders/map'],
+      { restaurantId: 'r-1', query: { from: '2026-10-10T07:00:00.000Z', to: '2026-10-11T07:00:00.000Z' } },
+      { json },
+    );
+
+    expect(json).toHaveBeenCalledWith(200, [expect.objectContaining({ id: 'o-missed', autoPrintMissed: true })]);
   });
 
   it('specs/0126: GET /restaurants/me/orders/map rejeita intervalo inválido', async () => {

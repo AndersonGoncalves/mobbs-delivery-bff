@@ -275,7 +275,10 @@ export class OrderMongooseRepository implements IOrderRepository {
    * `Order.status`: imprime assim que o pedido é criado (não cancelado), exceto Pix, que espera
    * o `Payment` correspondente ficar `aprovado` (checado direto, não mais via status do pedido).
    */
-  async findPendingAutoPrint(restaurantId: string): Promise<IOrder[]> {
+  async findPendingAutoPrint(restaurantId: string, maxAgeMinutes: number): Promise<IOrder[]> {
+    // specs/0156-filtro-idade-impressao-automatica REQ-1 — pedido mais velho que isso nunca mais
+    // entra aqui (a idade dele só cresce com o tempo), mesmo que nunca tenha sido impresso.
+    const cutoff = new Date(Date.now() - maxAgeMinutes * 60_000);
     const docs = await OrderModel.aggregate<OrderLeanDocument>([
       {
         $match: {
@@ -283,6 +286,7 @@ export class OrderMongooseRepository implements IOrderRepository {
           orderType: { $in: ['delivery', 'pickup'] },
           status: { $ne: 'cancelado' },
           autoPrintStatus: { $ne: 'printed' },
+          createdAt: { $gte: cutoff },
         },
       },
       { $lookup: { from: 'payment', localField: '_id', foreignField: 'orderId', as: 'payment' } },

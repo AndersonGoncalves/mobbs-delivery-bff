@@ -62,6 +62,7 @@ export type RestaurantProfileUpdate = Partial<
     | 'customerBlockingEnabled'
     | 'autoPrintEnabled'
     | 'autoPrintIntervalSeconds'
+    | 'autoPrintMaxAgeMinutes'
   >
 >;
 
