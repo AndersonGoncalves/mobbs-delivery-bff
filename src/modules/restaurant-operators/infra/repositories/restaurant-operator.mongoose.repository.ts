@@ -93,4 +93,8 @@ export class RestaurantOperatorMongooseRepository implements IRestaurantOperator
   async updateFullAccess(id: string, hasFullAccess: boolean): Promise<void> {
     await RestaurantOperatorModel.findByIdAndUpdate(id, { $set: { hasFullAccess } });
   }
+
+  async updateProfile(id: string, profile: { name: string; whatsapp?: string; photoUrl?: string }): Promise<void> {
+    await RestaurantOperatorModel.findByIdAndUpdate(id, { $set: profile });
+  }
 }

@@ -36,4 +36,6 @@ export interface IRestaurantOperatorRepository {
   /** specs/0021-papeis-operador REQ-8 — troca o papel de um operador já cadastrado. */
   updateRole(id: string, role: OperatorRole): Promise<void>;
   updateFullAccess(id: string, hasFullAccess: boolean): Promise<void>;
+  /** (ajuste, pedido explícito do usuário) — edita nome/WhatsApp/foto; nunca o e-mail. */
+  updateProfile(id: string, profile: { name: string; whatsapp?: string; photoUrl?: string }): Promise<void>;
 }

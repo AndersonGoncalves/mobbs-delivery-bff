@@ -9,6 +9,7 @@ import { IRestaurantOperatorRepository } from '../domain/repositories/restaurant
 import {
   addOperatorSchema,
   updateOperatorFullAccessSchema,
+  updateOperatorProfileSchema,
   updateOperatorRoleSchema,
 } from '../../restaurants/presentation/restaurants.schemas';
 
@@ -183,6 +184,29 @@ export class RestaurantOperatorsController extends BaseRouter {
           throw new BadRequestError('Acesso total só pode ser concedido a um gerente');
         }
         await this.operatorRepository.updateFullAccess(target.id, hasFullAccess);
+        const updated = await this.operatorRepository.findById(target.id);
+        res.json(200, this.render(updated));
+      },
+    );
+
+    // (ajuste, pedido explícito do usuário) — editar nome/WhatsApp/foto de um operador já
+    // cadastrado (ex. completar o nome de quem foi criado antes da specs/0161 exigir o campo).
+    // Nunca o e-mail (pedido explícito: não pode ser alterado) — e-mail é o que casa com a conta
+    // Firebase de login, mudar aqui quebraria esse vínculo sem o operador saber.
+    application.patch(
+      '/restaurants/me/operators/:id/profile',
+      ...operatorManagementAuthenticated,
+      async (req: Request, res: Response) => {
+        const profile = parseBody(updateOperatorProfileSchema, req.body);
+        const target = await this.operatorRepository.findById(req.params.id);
+        if (!target || target.restaurantId !== req.restaurantId) {
+          throw new NotFoundError('Operador não encontrado');
+        }
+        // Mesma proteção do papel/exclusão: gerente não edita o perfil do dono.
+        if (req.operatorRole === 'gerente' && target.role === 'dono') {
+          throw new ForbiddenError('Gerentes não podem editar o perfil de um dono');
+        }
+        await this.operatorRepository.updateProfile(target.id, profile);
         const updated = await this.operatorRepository.findById(target.id);
         res.json(200, this.render(updated));
       },

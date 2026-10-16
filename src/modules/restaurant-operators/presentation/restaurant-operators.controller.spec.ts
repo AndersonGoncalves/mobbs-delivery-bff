@@ -61,6 +61,7 @@ describe('RestaurantOperatorsController', () => {
       deactivate: jest.fn().mockResolvedValue(undefined),
       updateRole: jest.fn().mockResolvedValue(undefined),
       updateFullAccess: jest.fn().mockResolvedValue(undefined),
+      updateProfile: jest.fn().mockResolvedValue(undefined),
       ...repositoryOverrides,
     };
     const { application, routes } = buildFakeApplication();
@@ -451,6 +452,96 @@ describe('RestaurantOperatorsController', () => {
       runChain(
         routes['PATCH /restaurants/me/operators/:id/role'],
         { params: { id: 'op-1' }, body: { role: 'gerente' } },
+        { json: jest.fn(), send: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  // (ajuste, pedido explícito do usuário) — editar nome/WhatsApp/foto de um operador já
+  // cadastrado, nunca o e-mail.
+  it('PATCH /restaurants/me/operators/:id/profile edita nome/WhatsApp/foto de um operador', async () => {
+    const { repository, routes } = setup({
+      findById: jest.fn().mockResolvedValue(buildOperator({ id: 'op-2', role: 'garcom', name: undefined })),
+    });
+    const json = jest.fn();
+
+    await runChain(
+      routes['PATCH /restaurants/me/operators/:id/profile'],
+      { params: { id: 'op-2' }, body: { name: 'Esther', whatsapp: '(11)99999-9999', photoUrl: 'https://images.example.com/esther.jpg' } },
+      { json, send: jest.fn() },
+    );
+
+    expect(repository.updateProfile).toHaveBeenCalledWith('op-2', {
+      name: 'Esther',
+      whatsapp: '5511999999999',
+      photoUrl: 'https://images.example.com/esther.jpg',
+    });
+    expect(json).toHaveBeenCalledWith(200, expect.anything());
+  });
+
+  it('rejeita PATCH .../profile sem nome', async () => {
+    const { repository, routes } = setup();
+
+    await expect(
+      runChain(
+        routes['PATCH /restaurants/me/operators/:id/profile'],
+        { params: { id: 'op-1' }, body: {} },
+        { json: jest.fn(), send: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(repository.updateProfile).not.toHaveBeenCalled();
+  });
+
+  it('PATCH .../profile ignora um e-mail enviado no corpo — nunca repassa pro repositório', async () => {
+    const { repository, routes } = setup();
+    const json = jest.fn();
+
+    await runChain(
+      routes['PATCH /restaurants/me/operators/:id/profile'],
+      { params: { id: 'op-1' }, body: { name: 'Ana', email: 'outro@example.com' } },
+      { json, send: jest.fn() },
+    );
+
+    expect(repository.updateProfile).toHaveBeenCalledWith('op-1', { name: 'Ana' });
+  });
+
+  it('gerente não pode editar o perfil do dono', async () => {
+    const { repository, routes } = setup(
+      { findById: jest.fn().mockResolvedValue(buildOperator({ role: 'dono' })) },
+      buildPassthroughOperatorMiddleware('gerente', 'op-2', true),
+    );
+
+    await expect(
+      runChain(
+        routes['PATCH /restaurants/me/operators/:id/profile'],
+        { params: { id: 'op-1' }, body: { name: 'Novo nome' } },
+        { json: jest.fn(), send: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(repository.updateProfile).not.toHaveBeenCalled();
+  });
+
+  it('gerente pode editar o perfil de um operador não dono', async () => {
+    const { repository, routes } = setup(
+      { findById: jest.fn().mockResolvedValue(buildOperator({ id: 'op-2', role: 'garcom' })) },
+      buildPassthroughOperatorMiddleware('gerente'),
+    );
+
+    await runChain(
+      routes['PATCH /restaurants/me/operators/:id/profile'],
+      { params: { id: 'op-2' }, body: { name: 'Novo nome' } },
+      { json: jest.fn(), send: jest.fn() },
+    );
+    expect(repository.updateProfile).toHaveBeenCalledWith('op-2', { name: 'Novo nome' });
+  });
+
+  it('lança 404 ao editar o perfil de um operador de outro restaurante', async () => {
+    const { routes } = setup({ findById: jest.fn().mockResolvedValue(buildOperator({ restaurantId: 'outro-restaurante' })) });
+
+    await expect(
+      runChain(
+        routes['PATCH /restaurants/me/operators/:id/profile'],
+        { params: { id: 'op-1' }, body: { name: 'X' } },
         { json: jest.fn(), send: jest.fn() },
       ),
     ).rejects.toMatchObject({ statusCode: 404 });

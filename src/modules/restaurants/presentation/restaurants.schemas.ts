@@ -243,3 +243,13 @@ export const addOperatorSchema = z.object({
 // specs/0021-papeis-operador REQ-8 — troca do papel de um operador já cadastrado.
 export const updateOperatorRoleSchema = z.object({ role: operatorRoleSchema });
 export const updateOperatorFullAccessSchema = z.object({ hasFullAccess: z.boolean() });
+
+// (ajuste, pedido explícito do usuário) — editar nome/WhatsApp/foto de um operador já cadastrado
+// (ex. um operador criado antes do nome virar obrigatório, specs/0161). Nunca inclui `email`
+// (pedido explícito do usuário: e-mail não pode ser alterado aqui — é o que casa com a conta
+// Firebase de login) nem `role`/`hasFullAccess` (já têm os próprios controles no grid).
+export const updateOperatorProfileSchema = z.object({
+  name: z.string().trim().min(1),
+  whatsapp: z.string().trim().min(1).transform(normalizePhoneNumber).optional(),
+  photoUrl: z.string().url().optional(),
+});
