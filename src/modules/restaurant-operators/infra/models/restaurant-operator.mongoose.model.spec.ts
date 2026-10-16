@@ -21,4 +21,14 @@ describe('RestaurantOperatorModel', () => {
     expect(namePath).toBeDefined();
     expect(namePath.instance).toBe('String');
   });
+
+  it('schema persiste "hasFullAccess" com valor padrão falso', () => {
+    const operator = new RestaurantOperatorModel({
+      restaurantId: 'r-1',
+      email: 'manager@example.com',
+      role: 'gerente',
+    });
+
+    expect(operator.hasFullAccess).toBe(false);
+  });
 });

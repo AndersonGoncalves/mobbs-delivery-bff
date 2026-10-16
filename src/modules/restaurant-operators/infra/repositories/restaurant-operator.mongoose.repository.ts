@@ -8,6 +8,7 @@ interface RestaurantOperatorLeanDocument {
   email: string;
   name?: string;
   role?: OperatorRole;
+  hasFullAccess?: boolean;
   isActive: boolean;
   createdAt: Date;
 }
@@ -23,6 +24,7 @@ function toEntity(doc: RestaurantOperatorLeanDocument): IRestaurantOperator {
     // no `save()`/`create()`, então um documento lido antes da migração rodar (ou num teste que
     // não passa por ela) ainda cai em `dono`, nunca em `undefined`.
     role: doc.role ?? 'dono',
+    hasFullAccess: doc.hasFullAccess ?? false,
     isActive: doc.isActive,
     createdAt: doc.createdAt,
   };
@@ -72,6 +74,12 @@ export class RestaurantOperatorMongooseRepository implements IRestaurantOperator
   }
 
   async updateRole(id: string, role: OperatorRole): Promise<void> {
-    await RestaurantOperatorModel.findByIdAndUpdate(id, { $set: { role } });
+    await RestaurantOperatorModel.findByIdAndUpdate(id, {
+      $set: { role, ...(role === 'gerente' ? {} : { hasFullAccess: false }) },
+    });
+  }
+
+  async updateFullAccess(id: string, hasFullAccess: boolean): Promise<void> {
+    await RestaurantOperatorModel.findByIdAndUpdate(id, { $set: { hasFullAccess } });
   }
 }

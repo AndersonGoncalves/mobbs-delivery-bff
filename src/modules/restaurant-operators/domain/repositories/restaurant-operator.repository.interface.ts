@@ -28,4 +28,5 @@ export interface IRestaurantOperatorRepository {
   findById(id: string): Promise<IRestaurantOperator | null>;
   /** specs/0021-papeis-operador REQ-8 — troca o papel de um operador já cadastrado. */
   updateRole(id: string, role: OperatorRole): Promise<void>;
+  updateFullAccess(id: string, hasFullAccess: boolean): Promise<void>;
 }

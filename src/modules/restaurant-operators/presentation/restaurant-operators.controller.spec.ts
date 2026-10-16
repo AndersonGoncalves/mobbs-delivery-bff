@@ -6,6 +6,7 @@ import { RestaurantOperatorsController } from './restaurant-operators.controller
 type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'restaurantId'>> & {
   operatorRole?: string;
   operatorId?: string;
+  hasFullAccess?: boolean;
 };
 type FakeResponse = Pick<Response, 'json' | 'send'>;
 type RouteHandler = (req: FakeRequest, res: FakeResponse) => Promise<void>;
@@ -32,11 +33,12 @@ async function runChain(handlers: RouteHandler[], req: FakeRequest, res: FakeRes
   }
 }
 
-function buildPassthroughOperatorMiddleware(role = 'dono', operatorId = 'op-1') {
+function buildPassthroughOperatorMiddleware(role = 'dono', operatorId = 'op-1', hasFullAccess = false) {
   return async (req: FakeRequest) => {
     req.restaurantId = 'r-1';
     req.operatorRole = role;
     req.operatorId = operatorId;
+    req.hasFullAccess = hasFullAccess;
   };
 }
 
@@ -58,6 +60,7 @@ describe('RestaurantOperatorsController', () => {
       countActiveByRestaurantAndRole: jest.fn().mockResolvedValue(2),
       deactivate: jest.fn().mockResolvedValue(undefined),
       updateRole: jest.fn().mockResolvedValue(undefined),
+      updateFullAccess: jest.fn().mockResolvedValue(undefined),
       ...repositoryOverrides,
     };
     const { application, routes } = buildFakeApplication();
@@ -146,7 +149,10 @@ describe('RestaurantOperatorsController', () => {
   });
 
   it('AC-12: DELETE /restaurants/me/operators/:id remove um operador quando há mais de um ativo', async () => {
-    const { repository, routes } = setup({ countActiveByRestaurant: jest.fn().mockResolvedValue(2) });
+    const { repository, routes } = setup({
+      countActiveByRestaurant: jest.fn().mockResolvedValue(2),
+      findById: jest.fn().mockResolvedValue(buildOperator({ role: 'gerente' })),
+    });
     const send = jest.fn();
 
     await runChain(routes['DEL /restaurants/me/operators/:id'], { params: { id: 'op-1' } }, { json: jest.fn(), send });
@@ -156,7 +162,10 @@ describe('RestaurantOperatorsController', () => {
   });
 
   it('AC-13: bloqueia a remoção do único operador ativo do restaurante', async () => {
-    const { repository, routes } = setup({ countActiveByRestaurant: jest.fn().mockResolvedValue(1) });
+    const { repository, routes } = setup({
+      countActiveByRestaurant: jest.fn().mockResolvedValue(1),
+      findById: jest.fn().mockResolvedValue(buildOperator({ role: 'gerente' })),
+    });
 
     await expect(
       runChain(routes['DEL /restaurants/me/operators/:id'], { params: { id: 'op-1' } }, { json: jest.fn(), send: jest.fn() }),
@@ -172,14 +181,37 @@ describe('RestaurantOperatorsController', () => {
     ).rejects.toMatchObject({ statusCode: 404 });
   });
 
-  // specs/0021-papeis-operador REQ-6/AC-5/T018 — só `dono` cadastra/remove/lista operadores.
-  it('AC-5/REQ-6: bloqueia gerente tentando cadastrar um operador (403)', async () => {
+  it('não permite remover um operador com papel dono nem pela API', async () => {
+    const { repository, routes } = setup();
+
+    await expect(
+      runChain(
+        routes['DEL /restaurants/me/operators/:id'],
+        { params: { id: 'op-1' } },
+        { json: jest.fn(), send: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(repository.deactivate).not.toHaveBeenCalled();
+  });
+
+  it('gerente pode cadastrar operadores, mas não conceder acesso total', async () => {
+    const { repository, routes } = setup({}, buildPassthroughOperatorMiddleware('gerente'));
+
+    await runChain(
+      routes['POST /restaurants/me/operators'],
+      { body: { email: 'novo@example.com', role: 'gerente' } },
+      { json: jest.fn(), send: jest.fn() },
+    );
+    expect(repository.create).toHaveBeenCalled();
+  });
+
+  it('gerente não pode cadastrar um novo operador com papel dono', async () => {
     const { repository, routes } = setup({}, buildPassthroughOperatorMiddleware('gerente'));
 
     await expect(
       runChain(
         routes['POST /restaurants/me/operators'],
-        { body: { email: 'novo@example.com', role: 'gerente' } },
+        { body: { email: 'novo@example.com', role: 'dono' } },
         { json: jest.fn(), send: jest.fn() },
       ),
     ).rejects.toMatchObject({ statusCode: 403 });
@@ -225,12 +257,11 @@ describe('RestaurantOperatorsController', () => {
     expect(json).toHaveBeenCalledWith(200, [{ id: 'op-1', name: 'Carlos', email: 'carlos@example.com' }]);
   });
 
-  it('REQ-6: bloqueia financeiro tentando listar operadores motoboy (403)', async () => {
-    const { routes } = setup({}, buildPassthroughOperatorMiddleware('financeiro'));
+  it('caixa pode listar operadores motoboy', async () => {
+    const { repository, routes } = setup({}, buildPassthroughOperatorMiddleware('financeiro'));
 
-    await expect(
-      runChain(routes['GET /restaurants/me/operators/motoboys'], {}, { json: jest.fn(), send: jest.fn() }),
-    ).rejects.toMatchObject({ statusCode: 403 });
+    await runChain(routes['GET /restaurants/me/operators/motoboys'], {}, { json: jest.fn(), send: jest.fn() });
+    expect(repository.listByRestaurant).toHaveBeenCalledWith('r-1');
   });
 
   // (ajuste, pedido explícito do usuário) — equivalente ao de motoboys, pra "Cadastro de
@@ -251,12 +282,11 @@ describe('RestaurantOperatorsController', () => {
     expect(json).toHaveBeenCalledWith(200, [{ id: 'op-1', name: 'João', email: 'joao@example.com' }]);
   });
 
-  it('bloqueia financeiro tentando listar operadores garçom (403)', async () => {
-    const { routes } = setup({}, buildPassthroughOperatorMiddleware('financeiro'));
+  it('caixa pode listar operadores garçom', async () => {
+    const { repository, routes } = setup({}, buildPassthroughOperatorMiddleware('financeiro'));
 
-    await expect(
-      runChain(routes['GET /restaurants/me/operators/waiters'], {}, { json: jest.fn(), send: jest.fn() }),
-    ).rejects.toMatchObject({ statusCode: 403 });
+    await runChain(routes['GET /restaurants/me/operators/waiters'], {}, { json: jest.fn(), send: jest.fn() });
+    expect(repository.listByRestaurant).toHaveBeenCalledWith('r-1');
   });
 
   // specs/0021-papeis-operador T010 — qualquer operador logado sabe o próprio papel (não exige
@@ -292,17 +322,66 @@ describe('RestaurantOperatorsController', () => {
     expect(json).toHaveBeenCalledWith(200, expect.anything());
   });
 
-  it('REQ-6: bloqueia gerente tentando trocar o papel de outro operador (403)', async () => {
-    const { repository, routes } = setup({}, buildPassthroughOperatorMiddleware('gerente'));
+  it('gerente consegue alterar papel de operador não dono', async () => {
+    const { repository, routes } = setup(
+      { findById: jest.fn().mockResolvedValue(buildOperator({ id: 'op-2', role: 'gerente' })) },
+      buildPassthroughOperatorMiddleware('gerente'),
+    );
+
+    await runChain(
+      routes['PATCH /restaurants/me/operators/:id/role'],
+      { params: { id: 'op-2' }, body: { role: 'financeiro' } },
+      { json: jest.fn(), send: jest.fn() },
+    );
+    expect(repository.updateRole).toHaveBeenCalledWith('op-2', 'financeiro');
+  });
+
+  it('gerente com acesso total não pode alterar o papel do dono', async () => {
+    const { repository, routes } = setup(
+      { findById: jest.fn().mockResolvedValue(buildOperator({ role: 'dono' })) },
+      buildPassthroughOperatorMiddleware('gerente', 'op-2', true),
+    );
 
     await expect(
       runChain(
         routes['PATCH /restaurants/me/operators/:id/role'],
-        { params: { id: 'op-2' }, body: { role: 'financeiro' } },
+        { params: { id: 'op-1' }, body: { role: 'gerente' } },
         { json: jest.fn(), send: jest.fn() },
       ),
     ).rejects.toMatchObject({ statusCode: 403 });
     expect(repository.updateRole).not.toHaveBeenCalled();
+  });
+
+  it('o dono concede acesso total somente a um gerente', async () => {
+    const { repository, routes } = setup({
+      findById: jest.fn().mockResolvedValue(buildOperator({ id: 'op-2', role: 'gerente' })),
+    });
+    const json = jest.fn();
+
+    await runChain(
+      routes['PATCH /restaurants/me/operators/:id/full-access'],
+      { params: { id: 'op-2' }, body: { hasFullAccess: true } },
+      { json, send: jest.fn() },
+    );
+
+    expect(repository.updateFullAccess).toHaveBeenCalledWith('op-2', true);
+    expect(json).toHaveBeenCalledWith(200, expect.anything());
+  });
+
+  it('gerente com acesso total não pode alterar o próprio atributo de acesso total', async () => {
+    const { repository, routes } = setup(
+      { findById: jest.fn().mockResolvedValue(buildOperator({ id: 'op-2', role: 'gerente' })) },
+      buildPassthroughOperatorMiddleware('gerente', 'op-2', true),
+    );
+
+    await expect(
+      runChain(
+        routes['PATCH /restaurants/me/operators/:id/full-access'],
+        { params: { id: 'op-2' }, body: { hasFullAccess: false } },
+        { json: jest.fn(), send: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(repository.updateFullAccess).not.toHaveBeenCalled();
   });
 
   // specs/0021-papeis-operador REQ-9/AC-6/T019 — nunca pode restar um restaurante sem `dono`.

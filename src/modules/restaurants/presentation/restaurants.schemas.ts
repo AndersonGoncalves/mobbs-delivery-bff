@@ -235,3 +235,4 @@ export const addOperatorSchema = z.object({ email: z.string().email(), role: ope
 
 // specs/0021-papeis-operador REQ-8 — troca do papel de um operador já cadastrado.
 export const updateOperatorRoleSchema = z.object({ role: operatorRoleSchema });
+export const updateOperatorFullAccessSchema = z.object({ hasFullAccess: z.boolean() });

@@ -2,6 +2,7 @@ import type { Request, Response, Server } from 'restify';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
+import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { IWhatsAppConnectionService } from '../domain/services/i-whatsapp-connection.service';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
@@ -19,7 +20,11 @@ export class WhatsAppConnectionController extends BaseRouter {
   }
 
   initializeRoutes(application: Server): void {
-    const authenticated: AsyncHandler[] = [firebaseAuthMiddleware, this.restaurantOperatorMiddleware];
+    const authenticated: AsyncHandler[] = [
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('dono', 'gerente'),
+    ];
 
     // REQ-11 — inicia o pareamento e devolve o QR (texto bruto, a retaguarda renderiza como
     // imagem); `qr: null` quando já está conectado.

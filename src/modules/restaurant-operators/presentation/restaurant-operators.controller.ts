@@ -1,12 +1,16 @@
 import type { Request, Response, Server } from 'restify';
-import { BadRequestError, ConflictError, NotFoundError } from 'restify-errors';
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from 'restify-errors';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
-import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
+import { requireOperatorRole, requireOwnerRole } from '../../../shared/http/require-operator-role.middleware';
 import { IRestaurantOperatorRepository } from '../domain/repositories/restaurant-operator.repository.interface';
-import { addOperatorSchema, updateOperatorRoleSchema } from '../../restaurants/presentation/restaurants.schemas';
+import {
+  addOperatorSchema,
+  updateOperatorFullAccessSchema,
+  updateOperatorRoleSchema,
+} from '../../restaurants/presentation/restaurants.schemas';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
@@ -15,9 +19,8 @@ type AsyncHandler = (req: Request, res: Response) => Promise<void>;
  * retaguarda do próprio restaurante (nunca de outro, `restaurantId` sempre do token via
  * `restaurantOperatorMiddleware`, nunca de parâmetro de rota).
  *
- * specs/0021-papeis-operador REQ-6/T008 — cadastrar/remover/listar e trocar papel só `dono`
- * (`requireOperatorRole('dono')`); `GET .../operators/me` é a exceção (T010, qualquer operador
- * autenticado pode saber o próprio papel — é assim que a web decide o que mostrar na navegação).
+ * Dono e gerente podem administrar operadores, mas só o dono concede acesso total. A titularidade
+ * não pode ser removida, e gerente não pode alterar o papel do dono ou promover outro operador.
  */
 export class RestaurantOperatorsController extends BaseRouter {
   constructor(
@@ -32,7 +35,12 @@ export class RestaurantOperatorsController extends BaseRouter {
     const ownerAuthenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,
-      requireOperatorRole('dono'),
+      requireOwnerRole(),
+    ];
+    const operatorManagementAuthenticated: AsyncHandler[] = [
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('dono', 'gerente'),
     ];
 
     // specs/0021-papeis-operador T010 — qualquer operador logado sabe o próprio papel (usado
@@ -43,7 +51,7 @@ export class RestaurantOperatorsController extends BaseRouter {
       res.json(200, this.render(operator));
     });
 
-    application.get('/restaurants/me/operators', ...ownerAuthenticated, async (req: Request, res: Response) => {
+    application.get('/restaurants/me/operators', ...operatorManagementAuthenticated, async (req: Request, res: Response) => {
       const operators = await this.operatorRepository.listByRestaurant(req.restaurantId!);
       res.json(200, operators);
     });
@@ -64,7 +72,7 @@ export class RestaurantOperatorsController extends BaseRouter {
       '/restaurants/me/operators/motoboys',
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,
-      requireOperatorRole('dono', 'gerente'),
+      requireOperatorRole('dono', 'gerente', 'financeiro'),
       async (req: Request, res: Response) => {
         const operators = await this.operatorRepository.listByRestaurant(req.restaurantId!);
         const motoboys = operators
@@ -80,7 +88,7 @@ export class RestaurantOperatorsController extends BaseRouter {
       '/restaurants/me/operators/waiters',
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,
-      requireOperatorRole('dono', 'gerente'),
+      requireOperatorRole('dono', 'gerente', 'financeiro'),
       async (req: Request, res: Response) => {
         const operators = await this.operatorRepository.listByRestaurant(req.restaurantId!);
         const waiters = operators
@@ -90,8 +98,11 @@ export class RestaurantOperatorsController extends BaseRouter {
       },
     );
 
-    application.post('/restaurants/me/operators', ...ownerAuthenticated, async (req: Request, res: Response) => {
+    application.post('/restaurants/me/operators', ...operatorManagementAuthenticated, async (req: Request, res: Response) => {
       const { email, role, name } = parseBody(addOperatorSchema, req.body);
+      if (req.operatorRole === 'gerente' && role === 'dono') {
+        throw new ForbiddenError('Gerentes não podem cadastrar operadores com papel de dono');
+      }
       // specs/0095-isolamento-cadastro-operadores REQ-1 — um e-mail com vínculo ativo em outro
       // restaurante não pode ser adicionado aqui também (mesma regra do autocadastro, specs/0038).
       const activeElsewhere = await this.operatorRepository.findActiveByEmailInOtherRestaurant(email, req.restaurantId!);
@@ -104,11 +115,14 @@ export class RestaurantOperatorsController extends BaseRouter {
 
     application.del(
       '/restaurants/me/operators/:id',
-      ...ownerAuthenticated,
+      ...operatorManagementAuthenticated,
       async (req: Request, res: Response) => {
         const target = await this.operatorRepository.findById(req.params.id);
         if (!target || target.restaurantId !== req.restaurantId) {
           throw new NotFoundError('Operador não encontrado');
+        }
+        if (target.role === 'dono') {
+          throw new ForbiddenError('O operador dono não pode ser removido');
         }
         if (target.isActive) {
           const activeCount = await this.operatorRepository.countActiveByRestaurant(req.restaurantId!);
@@ -129,12 +143,18 @@ export class RestaurantOperatorsController extends BaseRouter {
     // nunca ficar sem dono, não sobre quem executa a ação.
     application.patch(
       '/restaurants/me/operators/:id/role',
-      ...ownerAuthenticated,
+      ...operatorManagementAuthenticated,
       async (req: Request, res: Response) => {
         const { role } = parseBody(updateOperatorRoleSchema, req.body);
         const target = await this.operatorRepository.findById(req.params.id);
         if (!target || target.restaurantId !== req.restaurantId) {
           throw new NotFoundError('Operador não encontrado');
+        }
+        if (
+          req.operatorRole === 'gerente' &&
+          (target.role === 'dono' || role === 'dono')
+        ) {
+          throw new ForbiddenError('Gerentes não podem alterar o papel de um dono nem promover outro operador a dono');
         }
 
         if (target.role === 'dono' && role !== 'dono' && target.isActive) {
@@ -145,6 +165,24 @@ export class RestaurantOperatorsController extends BaseRouter {
         }
 
         await this.operatorRepository.updateRole(target.id, role);
+        const updated = await this.operatorRepository.findById(target.id);
+        res.json(200, this.render(updated));
+      },
+    );
+
+    application.patch(
+      '/restaurants/me/operators/:id/full-access',
+      ...ownerAuthenticated,
+      async (req: Request, res: Response) => {
+        const { hasFullAccess } = parseBody(updateOperatorFullAccessSchema, req.body);
+        const target = await this.operatorRepository.findById(req.params.id);
+        if (!target || target.restaurantId !== req.restaurantId) {
+          throw new NotFoundError('Operador não encontrado');
+        }
+        if (target.role !== 'gerente') {
+          throw new BadRequestError('Acesso total só pode ser concedido a um gerente');
+        }
+        await this.operatorRepository.updateFullAccess(target.id, hasFullAccess);
         const updated = await this.operatorRepository.findById(target.id);
         res.json(200, this.render(updated));
       },

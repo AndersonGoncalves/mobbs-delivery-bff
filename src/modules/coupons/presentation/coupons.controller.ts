@@ -45,7 +45,7 @@ export class CouponsController extends BaseRouter {
     const authenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,
-      requireOperatorRole('dono', 'gerente'),
+      requireOperatorRole('dono'),
     ];
 
     // AC-1/AC-5 — lista com `usageCount` atual (REQ-5), mais recente primeiro.

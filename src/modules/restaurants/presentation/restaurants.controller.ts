@@ -5,6 +5,7 @@ import type { Request, Response, Server } from 'restify';
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
+import { requireOperatorRole, requireOwnerRole } from '../../../shared/http/require-operator-role.middleware';
 import { IRestaurantRepository } from '../domain/repositories/restaurant.repository.interface';
 import {
   restaurantProfileSchema,
@@ -65,6 +66,16 @@ export class RestaurantsController extends BaseRouter {
     });
 
     const authenticated: AsyncHandler[] = [firebaseAuthMiddleware, this.restaurantOperatorMiddleware];
+    const ownerAuthenticated: AsyncHandler[] = [
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOwnerRole(),
+    ];
+    const ownerOrManagerAuthenticated: AsyncHandler[] = [
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('dono', 'gerente'),
+    ];
 
     application.get('/restaurants/me', ...authenticated, async (req: Request, res: Response) => {
       const restaurant = await this.restaurantRepository.findById(req.restaurantId!);
@@ -73,13 +84,24 @@ export class RestaurantsController extends BaseRouter {
 
     application.put('/restaurants/me', ...authenticated, async (req: Request, res: Response) => {
       const patch = parseBody(restaurantProfileSchema, req.body);
+      const fields = Object.keys(patch);
+      const autoPrintFields = new Set([
+        'autoPrintEnabled',
+        'autoPrintIntervalSeconds',
+        'autoPrintMaxAgeMinutes',
+      ]);
+      if (fields.length > 0 && fields.every((field) => autoPrintFields.has(field))) {
+        await requireOperatorRole('dono', 'gerente', 'financeiro')(req);
+      } else {
+        await requireOperatorRole('dono', 'gerente')(req);
+      }
       const restaurant = await this.restaurantRepository.updateProfile(req.restaurantId!, patch);
       res.json(200, restaurant);
     });
 
     application.put(
       '/restaurants/me/business-hours',
-      ...authenticated,
+      ...ownerOrManagerAuthenticated,
       async (req: Request, res: Response) => {
         const businessHours = parseBody(businessHoursSchema, req.body);
         const restaurant = await this.restaurantRepository.updateBusinessHours(req.restaurantId!, businessHours);
@@ -87,7 +109,7 @@ export class RestaurantsController extends BaseRouter {
       },
     );
 
-    application.patch('/restaurants/me/active', ...authenticated, async (req: Request, res: Response) => {
+    application.patch('/restaurants/me/active', ...ownerAuthenticated, async (req: Request, res: Response) => {
       const { isActive } = parseBody(setActiveSchema, req.body);
       const restaurant = await this.restaurantRepository.setActive(req.restaurantId!, isActive);
       res.json(200, restaurant);

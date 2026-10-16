@@ -12,7 +12,11 @@ import { IRestaurantOperatorRepository } from '../../restaurant-operators/domain
 import { StockReservationService } from '../../orders/domain/services/stock-reservation.service';
 import { TableServiceController } from './table-service.controller';
 
-type FakeRequest = Partial<Pick<Request, 'params' | 'body'>> & { restaurantId?: string; user?: { uid: string } };
+type FakeRequest = Partial<Pick<Request, 'params' | 'body'>> & {
+  restaurantId?: string;
+  operatorRole?: Request['operatorRole'];
+  user?: { uid: string };
+};
 type FakeResponse = Pick<Response, 'json' | 'send'>;
 type RouteHandler = (req: FakeRequest, res: FakeResponse) => Promise<void>;
 
@@ -123,6 +127,26 @@ describe('TableServiceController', () => {
     ).initializeRoutes(application);
     return { tableRepository, waiterRepository, layoutRepository, orderRepository, customerRepository, productRepository, stockMovementRepository, restaurantOperatorRepository, routes };
   }
+
+  it('permite Caixa e Garçom no atendimento, mas restringe o cadastro de mesas a Dono e Gerente', async () => {
+    const { routes } = setup();
+    const response = { json: jest.fn(), send: jest.fn() };
+    const cashierRequest = { operatorRole: 'financeiro' as const };
+    const waiterRequest = { operatorRole: 'garcom' as const };
+
+    await expect(
+      routes['GET /restaurants/me/table-orders/active'][2](cashierRequest, response),
+    ).resolves.toBeUndefined();
+    await expect(
+      routes['GET /restaurants/me/table-orders/active'][2](waiterRequest, response),
+    ).resolves.toBeUndefined();
+    await expect(
+      routes['POST /restaurants/me/tables'][2](cashierRequest, response),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    await expect(
+      routes['POST /restaurants/me/tables'][2](waiterRequest, response),
+    ).rejects.toMatchObject({ statusCode: 403 });
+  });
 
   it('AC-1: cria mesa escopada ao restaurante autenticado', async () => {
     const { tableRepository, routes } = setup();

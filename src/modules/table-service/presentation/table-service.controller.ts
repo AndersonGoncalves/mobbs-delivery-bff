@@ -59,13 +59,17 @@ export class TableServiceController extends BaseRouter {
   private readonly tableOrders: TableOrderService;
 
   initializeRoutes(application: Server): void {
-    // specs/0137-papeis-garcom-motoboy REQ-2 — `garcom` ganha acesso a TODAS as rotas deste
-    // controller (mapa de mesas/PDV é o único módulo que esse papel acessa); `dono`/`gerente`
-    // continuam com acesso total, como hoje.
+    // specs/0137-papeis-garcom-motoboy REQ-2 — `garcom` acessa as rotas de atendimento;
+    // cadastro/edição de mesas e do layout continuam restritos a dono/gerente.
     const authenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,
-      requireOperatorRole('dono', 'gerente', 'garcom'),
+      requireOperatorRole('dono', 'gerente', 'financeiro', 'garcom'),
+    ];
+    const tableManagementAuthenticated: AsyncHandler[] = [
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('dono', 'gerente'),
     ];
 
     application.get('/restaurants/me/table-service/map', ...authenticated, async (req: Request, res: Response) => {
@@ -129,17 +133,17 @@ export class TableServiceController extends BaseRouter {
       res.json(200, await this.tableOrders.mergeOrders(req.restaurantId!, req.params.id, orderId));
     });
 
-    application.get('/restaurants/me/tables', ...authenticated, async (req: Request, res: Response) => {
+    application.get('/restaurants/me/tables', ...tableManagementAuthenticated, async (req: Request, res: Response) => {
       res.json(200, await this.tableRepository.listByRestaurant(req.restaurantId!));
     });
 
-    application.post('/restaurants/me/tables', ...authenticated, async (req: Request, res: Response) => {
+    application.post('/restaurants/me/tables', ...tableManagementAuthenticated, async (req: Request, res: Response) => {
       const input = parseBody(saveTableSchema, req.body);
       await this.ensureNameAvailable(req.restaurantId!, input.name);
       res.json(201, await this.tableRepository.create(req.restaurantId!, input));
     });
 
-    application.post('/restaurants/me/tables/range', ...authenticated, async (req: Request, res: Response) => {
+    application.post('/restaurants/me/tables/range', ...tableManagementAuthenticated, async (req: Request, res: Response) => {
       const { from, to } = parseBody(createTableRangeSchema, req.body);
       const inputs = Array.from({ length: to - from + 1 }, (_, index) => ({ name: String(from + index) }));
       const existingNames = new Set((await this.tableRepository.listByRestaurant(req.restaurantId!)).map((table) => table.normalizedName));
@@ -148,7 +152,7 @@ export class TableServiceController extends BaseRouter {
       res.json(201, await this.tableRepository.createMany(req.restaurantId!, inputs));
     });
 
-    application.put('/restaurants/me/tables/:id', ...authenticated, async (req: Request, res: Response) => {
+    application.put('/restaurants/me/tables/:id', ...tableManagementAuthenticated, async (req: Request, res: Response) => {
       const input = parseBody(saveTableSchema, req.body);
       const current = await this.findTable(req.params.id, req.restaurantId!);
       if (normalizeTableName(current.name) !== normalizeTableName(input.name)) {
@@ -158,14 +162,14 @@ export class TableServiceController extends BaseRouter {
       res.json(200, updated);
     });
 
-    application.put('/restaurants/me/tables/:id/position', ...authenticated, async (req: Request, res: Response) => {
+    application.put('/restaurants/me/tables/:id/position', ...tableManagementAuthenticated, async (req: Request, res: Response) => {
       const { position } = parseBody(updateTablePositionSchema, req.body);
       const table = await this.findTable(req.params.id, req.restaurantId!);
       const updated = await this.tableRepository.updatePosition(table.id, req.restaurantId!, position);
       res.json(200, updated);
     });
 
-    application.del('/restaurants/me/tables/:id', ...authenticated, async (req: Request, res: Response) => {
+    application.del('/restaurants/me/tables/:id', ...tableManagementAuthenticated, async (req: Request, res: Response) => {
       await this.findTable(req.params.id, req.restaurantId!);
       const deleted = await this.tableRepository.deleteIfFree(req.params.id, req.restaurantId!);
       if (!deleted) throw new ConflictError('Mesa ocupada não pode ser excluída');
@@ -176,7 +180,7 @@ export class TableServiceController extends BaseRouter {
       res.json(200, await this.layoutRepository.getByRestaurant(req.restaurantId!));
     });
 
-    application.put('/restaurants/me/table-map/layout', ...authenticated, async (req: Request, res: Response) => {
+    application.put('/restaurants/me/table-map/layout', ...tableManagementAuthenticated, async (req: Request, res: Response) => {
       const { decorations, spendingLimit, counterPositions, liveMusicDays } = parseBody(saveTableMapLayoutSchema, req.body);
       const normalized = decorations.map((decoration) => ({ ...decoration, id: decoration.id ?? randomUUID() }));
       res.json(200, await this.layoutRepository.save(req.restaurantId!, normalized, spendingLimit, counterPositions, liveMusicDays));

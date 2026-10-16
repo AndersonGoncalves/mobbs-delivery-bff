@@ -3,7 +3,9 @@ import type { Request, Response, Server } from 'restify';
 import { IRestaurantRepository } from '../domain/repositories/restaurant.repository.interface';
 import { RestaurantsController } from './restaurants.controller';
 
-type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'restaurantId' | 'query'>>;
+type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'restaurantId' | 'query'>> & {
+  operatorRole?: Request['operatorRole'];
+};
 type FakeResponse = Pick<Response, 'json'>;
 type RouteHandler = (req: FakeRequest, res: FakeResponse) => Promise<void>;
 
@@ -39,6 +41,7 @@ async function runAuthenticatedChain(handlers: RouteHandler[], req: FakeRequest,
 
 const passthroughOperatorMiddleware = async (req: FakeRequest) => {
   req.restaurantId = '1';
+  req.operatorRole = 'dono';
 };
 
 function buildRestaurant(overrides: Partial<Record<string, unknown>> = {}) {
@@ -201,6 +204,41 @@ describe('RestaurantsController', () => {
 
       expect(repository.updateProfile).toHaveBeenCalledWith('1', { name: 'Novo nome' });
       expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ name: 'Novo nome' }));
+    });
+
+    it('permite que Caixa altere apenas as configurações de impressão automática', async () => {
+      const { repository, routes } = setup();
+      const json = jest.fn();
+
+      await routes['PUT /restaurants/me'][2](
+        { restaurantId: '1', operatorRole: 'financeiro', body: { autoPrintEnabled: true } },
+        { json },
+      );
+
+      expect(repository.updateProfile).toHaveBeenCalledWith('1', { autoPrintEnabled: true });
+    });
+
+    it('bloqueia Caixa ao alterar dados reservados a dono e gerente', async () => {
+      const { repository, routes } = setup();
+
+      await expect(
+        routes['PUT /restaurants/me'][2](
+          { operatorRole: 'financeiro', body: { name: 'Nome não autorizado' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 403 });
+      expect(repository.updateProfile).not.toHaveBeenCalled();
+    });
+
+    it('bloqueia Caixa ao alterar horário de funcionamento', async () => {
+      const { routes } = setup();
+
+      await expect(
+        routes['PUT /restaurants/me/business-hours'][2](
+          { operatorRole: 'financeiro', body: [] },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 403 });
     });
 
     // specs/0151-confirmacao-automatica-por-forma-pagamento REQ-1/REQ-2/AC-1.
@@ -567,6 +605,26 @@ describe('RestaurantsController', () => {
 
       expect(repository.setActive).toHaveBeenCalledWith('1', false);
       expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ isActive: false }));
+    });
+
+    it('somente o dono pode abrir ou fechar o restaurante', async () => {
+      const managerMiddleware = async (req: FakeRequest) => {
+        req.restaurantId = '1';
+        req.operatorRole = 'gerente';
+      };
+      const { application, routes } = buildFakeApplication();
+      new RestaurantsController(
+        { setActive: jest.fn() } as unknown as IRestaurantRepository,
+        managerMiddleware as unknown as (req: Request, res: Response) => Promise<void>,
+      ).initializeRoutes(application);
+
+      await expect(
+        runAuthenticatedChain(
+          routes['PATCH /restaurants/me/active'],
+          { body: { isActive: false }, operatorRole: 'gerente' },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 403 });
     });
 
     it('AC-4/AC-5: GET /restaurants/me/onboarding retorna URL web e link nativo a partir do slug', async () => {

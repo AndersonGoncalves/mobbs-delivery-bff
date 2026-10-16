@@ -24,11 +24,11 @@ export class AccountsPayableController extends BaseRouter {
   }
 
   initializeRoutes(application: Server): void {
-    // specs/0021-papeis-operador REQ-4/T006 — financeiro é `dono`/`financeiro` (sem `gerente`).
+    // Contas a pagar: dono e gerente.
     const authenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,
-      requireOperatorRole('dono', 'financeiro'),
+      requireOperatorRole('dono', 'gerente'),
     ];
 
     // AC-1

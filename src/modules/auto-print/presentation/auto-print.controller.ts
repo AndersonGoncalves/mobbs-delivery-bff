@@ -34,7 +34,7 @@ export class AutoPrintController extends BaseRouter {
     const operatorAuthenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,
-      requireOperatorRole('dono', 'gerente'),
+      requireOperatorRole('dono', 'gerente', 'financeiro'),
     ];
 
     // REQ-2/REQ-4 — lista os pedidos pendentes já no formato pronto pra imprimir (`ReceiptLine[]`),

@@ -315,7 +315,7 @@ export class OrdersController extends BaseRouter {
     const operatorAuthenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,
-      requireOperatorRole('dono', 'gerente'),
+      requireOperatorRole('dono', 'gerente', 'financeiro'),
     ];
 
     // specs/0008-acompanhamento-vendas REQ-1 — pedidos em andamento do restaurante do operador
@@ -365,7 +365,7 @@ export class OrdersController extends BaseRouter {
     const statusUpdateAuthenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,
-      requireOperatorRole('dono', 'gerente', 'motoboy'),
+      requireOperatorRole('dono', 'gerente', 'financeiro', 'motoboy'),
     ];
 
     // REQ-2/REQ-5: só avança um passo por vez (`isValidOrderStatusTransition`) — fonte de

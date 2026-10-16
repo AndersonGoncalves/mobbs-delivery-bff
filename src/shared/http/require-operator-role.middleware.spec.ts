@@ -1,9 +1,12 @@
 import type { Request } from 'restify';
 
-import { requireOperatorRole } from './require-operator-role.middleware';
+import { requireOperatorRole, requireOwnerRole } from './require-operator-role.middleware';
 
-function buildRequest(operatorRole?: 'dono' | 'gerente' | 'financeiro'): Request {
-  return { operatorRole } as unknown as Request;
+function buildRequest(
+  operatorRole?: 'dono' | 'gerente' | 'financeiro',
+  hasFullAccess = false,
+): Request {
+  return { operatorRole, hasFullAccess } as unknown as Request;
 }
 
 /**
@@ -72,5 +75,15 @@ describe('requireOperatorRole (specs/0021-papeis-operador REQ-2..REQ-6)', () => 
 
   it('rejeita (403) quando `req.operatorRole` nunca foi populado (bug de composição de rota, não confia em undefined)', async () => {
     await expect(requireOperatorRole('dono')(buildRequest(undefined))).rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  it('gerente com acesso total passa pelas rotas de qualquer módulo, inclusive roles dono-only', async () => {
+    await expect(requireOperatorRole('dono')(buildRequest('gerente', true))).resolves.toBeUndefined();
+    await expect(requireOperatorRole('dono', 'financeiro')(buildRequest('gerente', true))).resolves.toBeUndefined();
+  });
+
+  it('acesso total não concede ações exclusivas do dono', async () => {
+    await expect(requireOwnerRole()(buildRequest('gerente', true))).rejects.toMatchObject({ statusCode: 403 });
+    await expect(requireOwnerRole()(buildRequest('dono'))).resolves.toBeUndefined();
   });
 });

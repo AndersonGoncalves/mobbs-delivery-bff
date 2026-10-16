@@ -31,7 +31,7 @@ export class MotoboysController extends BaseRouter {
     const authenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,
-      requireOperatorRole('dono', 'gerente'),
+      requireOperatorRole('dono', 'gerente', 'financeiro'),
     ];
 
     application.get('/restaurants/me/motoboys', ...authenticated, async (req: Request, res: Response) => {

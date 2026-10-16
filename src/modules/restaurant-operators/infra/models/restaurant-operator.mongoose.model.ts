@@ -19,6 +19,7 @@ const restaurantOperatorSchema = new Schema(
     // na hora de salvar (erro não tratado, sem try/catch na rota) — cadastrar um operador
     // garçom/motoboy sempre falhava, mesmo com o restante do sistema já pronto pra eles.
     role: { type: String, enum: ['dono', 'gerente', 'financeiro', 'garcom', 'motoboy'], required: true, default: 'dono' },
+    hasFullAccess: { type: Boolean, required: true, default: false },
     isActive: { type: Boolean, required: true, default: true },
   },
   { _id: false, timestamps: { createdAt: true, updatedAt: false } },

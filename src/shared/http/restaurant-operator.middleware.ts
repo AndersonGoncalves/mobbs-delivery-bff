@@ -14,6 +14,7 @@ declare module 'restify' {
     operatorRole?: OperatorRole;
     /** specs/0021-papeis-operador REQ-9 — id do próprio operador logado (auto-rebaixamento). */
     operatorId?: string;
+    hasFullAccess?: boolean;
   }
 }
 
@@ -53,5 +54,6 @@ export function buildRestaurantOperatorMiddleware(
     req.restaurantId = operator.restaurantId;
     req.operatorRole = operator.role;
     req.operatorId = operator.id;
+    req.hasFullAccess = operator.role === 'gerente' && operator.hasFullAccess === true;
   };
 }

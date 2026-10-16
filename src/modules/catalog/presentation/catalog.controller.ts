@@ -203,6 +203,11 @@ export class CatalogController extends BaseRouter {
       this.restaurantOperatorMiddleware,
       requireOperatorRole('dono', 'gerente'),
     ];
+    const showcaseAuthenticated: AsyncHandler[] = [
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('dono', 'gerente', 'financeiro'),
+    ];
 
     // REQ-1 (retaguarda): mesmo cardápio de cima, mas escopado pelo token do operador.
     application.get('/restaurants/me/menu-categories', ...authenticated, async (req: Request, res: Response) => {
@@ -251,7 +256,7 @@ export class CatalogController extends BaseRouter {
 
     // REQ-2 (retaguarda): produtos completos (com `additionalGroups`) do restaurante do operador.
     // specs/0026-selecao-clonar-excluir-busca-web REQ-7 — `name`/`isAvailable` filtram no servidor.
-    application.get('/restaurants/me/products', ...authenticated, async (req: Request, res: Response) => {
+    application.get('/restaurants/me/products', ...showcaseAuthenticated, async (req: Request, res: Response) => {
       const query = parseBody(listProductsQuerySchema, req.query ?? {});
       const products = await this.productRepository.listByRestaurant(req.restaurantId!, {
         name: query.name,
@@ -283,7 +288,7 @@ export class CatalogController extends BaseRouter {
     // `/restaurants/me/menu-categories/reorder`.
     application.put(
       '/restaurants/me/products/featured/reorder',
-      ...authenticated,
+      ...showcaseAuthenticated,
       async (req: Request, res: Response) => {
         const { orderedIds } = parseBody(reorderFeaturedProductsSchema, req.body);
         const products = await this.productRepository.reorderFeatured(req.restaurantId!, orderedIds);
@@ -295,7 +300,7 @@ export class CatalogController extends BaseRouter {
     // `.../products/featured/reorder`.
     application.put(
       '/restaurants/me/products/best-sellers/reorder',
-      ...authenticated,
+      ...showcaseAuthenticated,
       async (req: Request, res: Response) => {
         const { orderedIds } = parseBody(reorderBestSellersSchema, req.body);
         const products = await this.productRepository.reorderBestSellers(req.restaurantId!, orderedIds);
@@ -307,7 +312,7 @@ export class CatalogController extends BaseRouter {
     // `.../products/featured/reorder`.
     application.put(
       '/restaurants/me/products/cart-suggestions/reorder',
-      ...authenticated,
+      ...showcaseAuthenticated,
       async (req: Request, res: Response) => {
         const { orderedIds } = parseBody(reorderCartSuggestionsSchema, req.body);
         const products = await this.productRepository.reorderCartSuggestions(req.restaurantId!, orderedIds);

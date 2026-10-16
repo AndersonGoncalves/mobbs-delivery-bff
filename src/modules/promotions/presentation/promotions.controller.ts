@@ -29,7 +29,7 @@ export class PromotionsController extends BaseRouter {
     const authenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,
-      requireOperatorRole('dono', 'gerente'),
+      requireOperatorRole('dono'),
     ];
 
     // AC-1

@@ -27,7 +27,7 @@ export class SuppliersController extends BaseRouter {
     const authenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,
-      requireOperatorRole('dono', 'gerente'),
+      requireOperatorRole('dono', 'gerente', 'financeiro'),
     ];
 
     // AC-1

@@ -60,4 +60,24 @@ describe('restaurantOperatorMiddleware', () => {
 
     expect(req.restaurantId).toBe('r-1');
   });
+
+  it('disponibiliza acesso total apenas quando o operador é gerente autorizado', async () => {
+    const repository: Partial<IRestaurantOperatorRepository> = {
+      findActiveOperatorByEmail: jest.fn().mockResolvedValue({
+        id: 'op-1',
+        restaurantId: 'r-1',
+        email: 'ana@example.com',
+        role: 'gerente',
+        hasFullAccess: true,
+        isActive: true,
+        createdAt: new Date(),
+      }),
+    };
+    const middleware = buildRestaurantOperatorMiddleware(repository as IRestaurantOperatorRepository);
+    const req = buildRequest('ana@example.com');
+
+    await middleware(req);
+
+    expect(req.hasFullAccess).toBe(true);
+  });
 });

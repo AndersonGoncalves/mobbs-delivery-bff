@@ -1,9 +1,9 @@
-import type { Response, Server } from 'restify';
+import type { Request, Response, Server } from 'restify';
 
 import { IWhatsAppConnectionService } from '../domain/services/i-whatsapp-connection.service';
 import { WhatsAppConnectionController } from './whatsapp-connection.controller';
 
-type FakeRequest = { restaurantId?: string };
+type FakeRequest = { restaurantId?: string; operatorRole?: Request['operatorRole'] };
 type FakeResponse = Partial<Pick<Response, 'json' | 'send'>>;
 type RouteHandler = (req: FakeRequest, res: FakeResponse) => Promise<void>;
 
@@ -23,10 +23,10 @@ function buildFakeApplication() {
   return { application: application as unknown as Server, routes };
 }
 
-// Pula firebaseAuthMiddleware + restaurantOperatorMiddleware (cada um com spec própria) e
-// injeta `req.restaurantId` manualmente, como os middlewares reais fariam.
+// Pula firebaseAuthMiddleware + restaurantOperatorMiddleware + requireOperatorRole; cada
+// middleware tem sua própria spec e as rotas funcionais abaixo testam o comportamento do handler.
 async function runOperatorChain(handlers: RouteHandler[], req: FakeRequest, res: FakeResponse): Promise<void> {
-  for (const handler of handlers.slice(2)) {
+  for (const handler of handlers.slice(3)) {
     await handler(req, res);
   }
 }
@@ -74,5 +74,13 @@ describe('WhatsAppConnectionController', () => {
 
     expect(whatsAppConnectionService.disconnect).toHaveBeenCalledWith('r-1');
     expect(send).toHaveBeenCalledWith(204);
+  });
+
+  it('permite conectar WhatsApp apenas para Dono e Gerente', async () => {
+    const { routes } = setup();
+    const guard = routes['POST /restaurants/me/whatsapp/pairing'][2];
+
+    await expect(guard({ operatorRole: 'financeiro' }, {})).rejects.toMatchObject({ statusCode: 403 });
+    await expect(guard({ operatorRole: 'gerente' }, {})).resolves.toBeUndefined();
   });
 });

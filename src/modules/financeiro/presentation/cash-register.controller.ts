@@ -39,11 +39,11 @@ export class CashRegisterController extends BaseRouter {
   }
 
   initializeRoutes(application: Server): void {
-    // specs/0021-papeis-operador REQ-4/T006 — financeiro é `dono`/`financeiro` (sem `gerente`).
+    // Movimento e repasses de caixa: dono, gerente e caixa.
     const authenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,
-      requireOperatorRole('dono', 'financeiro'),
+      requireOperatorRole('dono', 'gerente', 'financeiro'),
     ];
 
     // specs/0127 — relatório somente leitura; repassa integralmente deliveryFee de pedidos delivery

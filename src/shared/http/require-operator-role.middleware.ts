@@ -17,8 +17,17 @@ import { OperatorRole } from '../../modules/restaurant-operators/domain/entities
  */
 export function requireOperatorRole(...roles: OperatorRole[]) {
   return async function operatorRoleGuard(req: Request): Promise<void> {
-    if (!req.operatorRole || !roles.includes(req.operatorRole)) {
+    const hasGrantedFullAccess = req.operatorRole === 'gerente' && req.hasFullAccess === true;
+    if (!hasGrantedFullAccess && (!req.operatorRole || !roles.includes(req.operatorRole))) {
       throw new ForbiddenError('Papel do operador não tem acesso a este módulo');
+    }
+  };
+}
+
+export function requireOwnerRole() {
+  return async function ownerRoleGuard(req: Request): Promise<void> {
+    if (req.operatorRole !== 'dono') {
+      throw new ForbiddenError('Esta ação só pode ser executada pelo dono');
     }
   };
 }

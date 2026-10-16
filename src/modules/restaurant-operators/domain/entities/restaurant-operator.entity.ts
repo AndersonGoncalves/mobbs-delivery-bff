@@ -28,6 +28,7 @@ export interface IRestaurantOperator {
   // existir não têm nome; UI usa `email` como fallback onde precisar exibir algo.
   name?: string;
   role: OperatorRole;
+  hasFullAccess?: boolean;
   isActive: boolean;
   createdAt: Date;
 }
