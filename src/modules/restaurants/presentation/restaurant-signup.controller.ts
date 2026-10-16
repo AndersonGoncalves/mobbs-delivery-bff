@@ -50,7 +50,7 @@ export class RestaurantSignupController extends BaseRouter {
 
   initializeRoutes(application: Server): void {
     application.post('/restaurants/signup', firebaseAuthMiddleware, async (req: Request, res: Response) => {
-      const { name, whatsapp, businessType } = parseBody(signupSchema, req.body);
+      const { name, ownerName, whatsapp, businessType } = parseBody(signupSchema, req.body);
       const email = req.user!.email;
       if (!email) {
         throw new ForbiddenError('Conta sem e-mail associado');
@@ -91,7 +91,7 @@ export class RestaurantSignupController extends BaseRouter {
         deliveryFeeCents: 0,
         welcomeMessage: buildDefaultWelcomeMessage(businessType),
       });
-      await this.restaurantOperatorRepository.create(restaurant.id, email, 'dono');
+      await this.restaurantOperatorRepository.create(restaurant.id, email, 'dono', ownerName);
       if (referrerCustomerId) {
         await this.referralRepository.create({
           referrerCustomerId,

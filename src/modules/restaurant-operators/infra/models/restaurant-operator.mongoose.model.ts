@@ -6,8 +6,10 @@ const restaurantOperatorSchema = new Schema(
     _id: { type: String, default: () => randomUUID() },
     restaurantId: { type: String, required: true },
     email: { type: String, required: true },
-    // (ajuste, pedido explícito do usuário) — opcional: nome de exibição, além do e-mail.
+    // Opcional para manter compatibilidade com operadores históricos; novos cadastros exigem nome.
     name: { type: String },
+    whatsapp: { type: String },
+    photoUrl: { type: String },
     // specs/0021-papeis-operador REQ-1/REQ-7 — `required: true` só é seguro porque
     // `migrateOperatorRolesToDono` (infra/migrations/) roda no bootstrap do servidor, antes de
     // qualquer rota aceitar tráfego, preenchendo `role` em todo documento pré-existente sem o

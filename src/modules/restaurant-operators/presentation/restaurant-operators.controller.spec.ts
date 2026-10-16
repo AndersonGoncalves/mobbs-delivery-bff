@@ -81,32 +81,59 @@ describe('RestaurantOperatorsController', () => {
     expect(json).toHaveBeenCalledWith(200, [expect.objectContaining({ email: 'ana@example.com' })]);
   });
 
-  it('AC-12: POST /restaurants/me/operators adiciona um e-mail à allowlist com um papel', async () => {
+  it('AC-12: POST /restaurants/me/operators cria operador com nome e papel', async () => {
     const { repository, routes } = setup();
     const json = jest.fn();
 
     await runChain(
       routes['POST /restaurants/me/operators'],
-      { body: { email: 'novo@example.com', role: 'gerente' } },
+      { body: { email: 'novo@example.com', role: 'gerente', name: 'João' } },
       { json, send: jest.fn() },
     );
 
-    expect(repository.create).toHaveBeenCalledWith('r-1', 'novo@example.com', 'gerente', undefined);
+    expect(repository.create).toHaveBeenCalledWith('r-1', 'novo@example.com', 'gerente', 'João', undefined, undefined);
     expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ email: 'novo@example.com', role: 'gerente' }));
   });
 
-  // (ajuste, pedido explícito do usuário) — `name` opcional no corpo, repassado pro repositório.
-  it('POST /restaurants/me/operators aceita um nome opcional, junto do e-mail e papel', async () => {
+  it('POST /restaurants/me/operators persiste WhatsApp normalizado e foto', async () => {
     const { repository, routes } = setup();
     const json = jest.fn();
 
     await runChain(
       routes['POST /restaurants/me/operators'],
-      { body: { email: 'novo@example.com', role: 'garcom', name: 'João' } },
+      {
+        body: {
+          email: 'novo@example.com',
+          role: 'garcom',
+          name: 'João',
+          whatsapp: '(11)99999-9999',
+          photoUrl: 'https://images.example.com/operator.jpg',
+        },
+      },
       { json, send: jest.fn() },
     );
 
-    expect(repository.create).toHaveBeenCalledWith('r-1', 'novo@example.com', 'garcom', 'João');
+    expect(repository.create).toHaveBeenCalledWith(
+      'r-1',
+      'novo@example.com',
+      'garcom',
+      'João',
+      '5511999999999',
+      'https://images.example.com/operator.jpg',
+    );
+  });
+
+  it('rejeita cadastro de operador sem nome', async () => {
+    const { repository, routes } = setup();
+
+    await expect(
+      runChain(
+        routes['POST /restaurants/me/operators'],
+        { body: { email: 'novo@example.com', role: 'gerente' } },
+        { json: jest.fn(), send: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(repository.create).not.toHaveBeenCalled();
   });
 
   // specs/0095-isolamento-cadastro-operadores REQ-1/REQ-2.
@@ -116,7 +143,7 @@ describe('RestaurantOperatorsController', () => {
     });
 
     await expect(
-      runChain(routes['POST /restaurants/me/operators'], { body: { email: 'ana@example.com', role: 'gerente' } }, { json: jest.fn(), send: jest.fn() }),
+      runChain(routes['POST /restaurants/me/operators'], { body: { email: 'ana@example.com', role: 'gerente', name: 'Ana' } }, { json: jest.fn(), send: jest.fn() }),
     ).rejects.toMatchObject({ statusCode: 409 });
 
     expect(repository.findActiveByEmailInOtherRestaurant).toHaveBeenCalledWith('ana@example.com', 'r-1');
@@ -127,9 +154,9 @@ describe('RestaurantOperatorsController', () => {
     const { repository, routes } = setup();
     const json = jest.fn();
 
-    await runChain(routes['POST /restaurants/me/operators'], { body: { email: 'novo@example.com', role: 'gerente' } }, { json, send: jest.fn() });
+    await runChain(routes['POST /restaurants/me/operators'], { body: { email: 'novo@example.com', role: 'gerente', name: 'João' } }, { json, send: jest.fn() });
 
-    expect(repository.create).toHaveBeenCalledWith('r-1', 'novo@example.com', 'gerente', undefined);
+    expect(repository.create).toHaveBeenCalledWith('r-1', 'novo@example.com', 'gerente', 'João', undefined, undefined);
   });
 
   it('rejeita POST /restaurants/me/operators com e-mail inválido', async () => {
@@ -199,7 +226,7 @@ describe('RestaurantOperatorsController', () => {
 
     await runChain(
       routes['POST /restaurants/me/operators'],
-      { body: { email: 'novo@example.com', role: 'gerente' } },
+      { body: { email: 'novo@example.com', role: 'gerente', name: 'João' } },
       { json: jest.fn(), send: jest.fn() },
     );
     expect(repository.create).toHaveBeenCalled();
@@ -211,7 +238,7 @@ describe('RestaurantOperatorsController', () => {
     await expect(
       runChain(
         routes['POST /restaurants/me/operators'],
-        { body: { email: 'novo@example.com', role: 'dono' } },
+        { body: { email: 'novo@example.com', role: 'dono', name: 'João' } },
         { json: jest.fn(), send: jest.fn() },
       ),
     ).rejects.toMatchObject({ statusCode: 403 });

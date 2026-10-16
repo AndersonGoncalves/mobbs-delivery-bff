@@ -99,7 +99,7 @@ export class RestaurantOperatorsController extends BaseRouter {
     );
 
     application.post('/restaurants/me/operators', ...operatorManagementAuthenticated, async (req: Request, res: Response) => {
-      const { email, role, name } = parseBody(addOperatorSchema, req.body);
+      const { email, role, name, whatsapp, photoUrl } = parseBody(addOperatorSchema, req.body);
       if (req.operatorRole === 'gerente' && role === 'dono') {
         throw new ForbiddenError('Gerentes não podem cadastrar operadores com papel de dono');
       }
@@ -109,7 +109,7 @@ export class RestaurantOperatorsController extends BaseRouter {
       if (activeElsewhere) {
         throw new ConflictError('Este e-mail já está associado a outro restaurante');
       }
-      const operator = await this.operatorRepository.create(req.restaurantId!, email, role, name);
+      const operator = await this.operatorRepository.create(req.restaurantId!, email, role, name, whatsapp, photoUrl);
       res.json(201, operator);
     });
 

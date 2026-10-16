@@ -24,9 +24,10 @@ export interface IRestaurantOperator {
   id: string;
   restaurantId: string;
   email: string;
-  // (ajuste, pedido explícito do usuário) — opcional: operadores criados antes deste campo
-  // existir não têm nome; UI usa `email` como fallback onde precisar exibir algo.
+  // Opcional apenas para operadores históricos anteriores à exigência no cadastro.
   name?: string;
+  whatsapp?: string;
+  photoUrl?: string;
   role: OperatorRole;
   hasFullAccess?: boolean;
   isActive: boolean;

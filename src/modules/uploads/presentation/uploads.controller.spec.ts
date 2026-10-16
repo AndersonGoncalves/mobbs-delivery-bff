@@ -77,6 +77,21 @@ describe('UploadsController', () => {
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ publicUrl: expect.stringContaining('restaurants/r-1/raw-materials/') }));
   });
 
+  it('aceita kind "operatorPhoto"', async () => {
+    const { routes } = setup();
+    const json = jest.fn();
+
+    await runAuthenticatedChain(
+      routes['POST /restaurants/me/uploads/presign'],
+      { body: { kind: 'operatorPhoto', filename: 'perfil.png' } },
+      { json },
+    );
+
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({
+      publicUrl: expect.stringContaining('restaurants/r-1/operators/'),
+    }));
+  });
+
   it('rejeita com 400 quando kind não é um dos valores aceitos', async () => {
     const { routes } = setup();
 

@@ -22,6 +22,11 @@ describe('RestaurantOperatorModel', () => {
     expect(namePath.instance).toBe('String');
   });
 
+  it('schema tem campos opcionais de WhatsApp e foto', () => {
+    expect(RestaurantOperatorModel.schema.path('whatsapp')?.instance).toBe('String');
+    expect(RestaurantOperatorModel.schema.path('photoUrl')?.instance).toBe('String');
+  });
+
   it('schema persiste "hasFullAccess" com valor padrão falso', () => {
     const operator = new RestaurantOperatorModel({
       restaurantId: 'r-1',

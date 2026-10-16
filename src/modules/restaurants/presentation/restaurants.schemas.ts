@@ -213,6 +213,7 @@ export const setActiveSchema = z.object({ isActive: z.boolean() });
 // decide o catálogo inicial (REQ-9), sempre pedido no formulário de cadastro.
 export const signupSchema = z.object({
   name: z.string().min(1),
+  ownerName: z.string().trim().min(1),
   // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-3.
   whatsapp: z.string().min(1).transform(normalizePhoneNumber),
   businessType: z.enum(BUSINESS_TYPES),
@@ -231,7 +232,13 @@ export const updateSlugSchema = z.object({
 // specs/0137-papeis-garcom-motoboy REQ-2/REQ-3 — `garcom`/`motoboy` adicionados ao mesmo enum.
 export const operatorRoleSchema = z.enum(['dono', 'gerente', 'financeiro', 'garcom', 'motoboy']);
 
-export const addOperatorSchema = z.object({ email: z.string().email(), role: operatorRoleSchema, name: z.string().trim().min(1).optional() });
+export const addOperatorSchema = z.object({
+  email: z.string().email(),
+  role: operatorRoleSchema,
+  name: z.string().trim().min(1),
+  whatsapp: z.string().trim().min(1).transform(normalizePhoneNumber).optional(),
+  photoUrl: z.string().url().optional(),
+});
 
 // specs/0021-papeis-operador REQ-8 — troca do papel de um operador já cadastrado.
 export const updateOperatorRoleSchema = z.object({ role: operatorRoleSchema });

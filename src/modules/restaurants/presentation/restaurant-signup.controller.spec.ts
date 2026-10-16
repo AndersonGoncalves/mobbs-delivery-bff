@@ -119,7 +119,7 @@ describe('RestaurantSignupController', () => {
     await runAuthenticatedChain(
       routes['POST /restaurants/signup'],
       {
-        body: { name: 'Pizzaria do João', whatsapp: '11999999999', businessType: 'pizzaria' },
+        body: { name: 'Pizzaria do João', ownerName: 'João da Silva', whatsapp: '11999999999', businessType: 'pizzaria' },
         query: { ref: 'abc123' },
         user: { email: 'joao@exemplo.com' },
       },
@@ -139,7 +139,7 @@ describe('RestaurantSignupController', () => {
 
     await runAuthenticatedChain(
       routes['POST /restaurants/signup'],
-      { body: { name: 'Pizzaria do João', whatsapp: '11999999999', businessType: 'pizzaria' }, query: { ref: 'NAOEXISTE' }, user: { email: 'joao@exemplo.com' } },
+      { body: { name: 'Pizzaria do João', ownerName: 'João da Silva', whatsapp: '11999999999', businessType: 'pizzaria' }, query: { ref: 'NAOEXISTE' }, user: { email: 'joao@exemplo.com' } },
       { json: jest.fn() },
     );
 
@@ -152,7 +152,7 @@ describe('RestaurantSignupController', () => {
 
     await runAuthenticatedChain(
       routes['POST /restaurants/signup'],
-      { body: { name: 'Pizzaria do João', whatsapp: '11999999999', businessType: 'pizzaria' }, user: { email: 'joao@exemplo.com' } },
+      { body: { name: 'Pizzaria do João', ownerName: 'João da Silva', whatsapp: '11999999999', businessType: 'pizzaria' }, user: { email: 'joao@exemplo.com' } },
       { json },
     );
 
@@ -161,7 +161,7 @@ describe('RestaurantSignupController', () => {
       // frente antes de chegar aqui (validado no zod schema, `signupSchema`).
       expect.objectContaining({ name: 'Pizzaria do João', slug: 'pizzaria-do-joao', phone: '5511999999999', category: 'pizzaria' }),
     );
-    expect(operatorRepository.create).toHaveBeenCalledWith('r-1', 'joao@exemplo.com', 'dono');
+    expect(operatorRepository.create).toHaveBeenCalledWith('r-1', 'joao@exemplo.com', 'dono', 'João da Silva');
     expect(json).toHaveBeenCalledWith(201, { restaurantId: 'r-1', slug: 'pizzaria-do-joao' });
   });
 
@@ -172,7 +172,7 @@ describe('RestaurantSignupController', () => {
 
     await runAuthenticatedChain(
       routes['POST /restaurants/signup'],
-      { body: { name: 'Pastelaria do João', whatsapp: '11999999999', businessType: 'pastelaria' }, user: { email: 'joao@exemplo.com' } },
+      { body: { name: 'Pastelaria do João', ownerName: 'João da Silva', whatsapp: '11999999999', businessType: 'pastelaria' }, user: { email: 'joao@exemplo.com' } },
       { json: jest.fn() },
     );
 
@@ -185,7 +185,7 @@ describe('RestaurantSignupController', () => {
 
     await runAuthenticatedChain(
       routes['POST /restaurants/signup'],
-      { body: { name: 'Pizzaria do João', whatsapp: '11999999999', businessType: 'pizzaria' }, user: { email: 'joao@exemplo.com' } },
+      { body: { name: 'Pizzaria do João', ownerName: 'João da Silva', whatsapp: '11999999999', businessType: 'pizzaria' }, user: { email: 'joao@exemplo.com' } },
       { json },
     );
 
@@ -213,7 +213,7 @@ describe('RestaurantSignupController', () => {
 
     await runAuthenticatedChain(
       routes['POST /restaurants/signup'],
-      { body: { name: 'Pizzaria do João', whatsapp: '11999999999', businessType: 'pizzaria' }, user: { email: 'joao@exemplo.com' } },
+      { body: { name: 'Pizzaria do João', ownerName: 'João da Silva', whatsapp: '11999999999', businessType: 'pizzaria' }, user: { email: 'joao@exemplo.com' } },
       { json },
     );
 
@@ -229,7 +229,7 @@ describe('RestaurantSignupController', () => {
 
     await runAuthenticatedChain(
       routes['POST /restaurants/signup'],
-      { body: { name: 'Pizzaria do João', whatsapp: '11999999999', businessType: 'pizzaria' }, user: { email: 'joao@exemplo.com' } },
+      { body: { name: 'Pizzaria do João', ownerName: 'João da Silva', whatsapp: '11999999999', businessType: 'pizzaria' }, user: { email: 'joao@exemplo.com' } },
       { json },
     );
 
@@ -247,7 +247,7 @@ describe('RestaurantSignupController', () => {
 
     await runAuthenticatedChain(
       routes['POST /restaurants/signup'],
-      { body: { name: 'Pizzaria do João', whatsapp: '11999999999', businessType: 'pizzaria' }, user: { email: 'outro@exemplo.com' } },
+      { body: { name: 'Pizzaria do João', ownerName: 'João da Silva', whatsapp: '11999999999', businessType: 'pizzaria' }, user: { email: 'outro@exemplo.com' } },
       { json },
     );
 
@@ -265,7 +265,7 @@ describe('RestaurantSignupController', () => {
 
     await runAuthenticatedChain(
       routes['POST /restaurants/signup'],
-      { body: { name: 'Painel', whatsapp: '11999999999', businessType: 'lanches_gerais' }, user: { email: 'dono@exemplo.com' } },
+      { body: { name: 'Painel', ownerName: 'Nome do Dono', whatsapp: '11999999999', businessType: 'lanches_gerais' }, user: { email: 'dono@exemplo.com' } },
       { json },
     );
 
@@ -281,7 +281,7 @@ describe('RestaurantSignupController', () => {
     await expect(
       runAuthenticatedChain(
         routes['POST /restaurants/signup'],
-        { body: { name: 'Pizzaria do João', whatsapp: '11999999999', businessType: 'pizzaria' }, user: { email: 'joao@exemplo.com' } },
+        { body: { name: 'Pizzaria do João', ownerName: 'João da Silva', whatsapp: '11999999999', businessType: 'pizzaria' }, user: { email: 'joao@exemplo.com' } },
         { json: jest.fn() },
       ),
     ).rejects.toMatchObject({ statusCode: 409 });
@@ -296,7 +296,26 @@ describe('RestaurantSignupController', () => {
     await expect(
       runAuthenticatedChain(
         routes['POST /restaurants/signup'],
-        { body: { name: '', whatsapp: '11999999999', businessType: 'pizzaria' }, user: { email: 'joao@exemplo.com' } },
+        { body: { name: '', ownerName: 'João da Silva', whatsapp: '11999999999', businessType: 'pizzaria' }, user: { email: 'joao@exemplo.com' } },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('rejeita com 400 quando o nome do responsável está ausente ou vazio', async () => {
+    const { routes } = setup();
+
+    await expect(
+      runAuthenticatedChain(
+        routes['POST /restaurants/signup'],
+        { body: { name: 'Pizzaria do João', ownerName: '   ', whatsapp: '11999999999', businessType: 'pizzaria' }, user: { email: 'joao@exemplo.com' } },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+    await expect(
+      runAuthenticatedChain(
+        routes['POST /restaurants/signup'],
+        { body: { name: 'Pizzaria do João', whatsapp: '11999999999', businessType: 'pizzaria' }, user: { email: 'joao@exemplo.com' } },
         { json: jest.fn() },
       ),
     ).rejects.toMatchObject({ statusCode: 400 });
@@ -308,7 +327,7 @@ describe('RestaurantSignupController', () => {
     await expect(
       runAuthenticatedChain(
         routes['POST /restaurants/signup'],
-        { body: { name: 'Pizzaria do João', whatsapp: '11999999999', businessType: 'invalido' }, user: { email: 'joao@exemplo.com' } },
+        { body: { name: 'Pizzaria do João', ownerName: 'João da Silva', whatsapp: '11999999999', businessType: 'invalido' }, user: { email: 'joao@exemplo.com' } },
         { json: jest.fn() },
       ),
     ).rejects.toMatchObject({ statusCode: 400 });
@@ -320,7 +339,7 @@ describe('RestaurantSignupController', () => {
     await expect(
       runAuthenticatedChain(
         routes['POST /restaurants/signup'],
-        { body: { name: 'Pizzaria do João', whatsapp: '11999999999', businessType: 'pizzaria' }, user: {} },
+        { body: { name: 'Pizzaria do João', ownerName: 'João da Silva', whatsapp: '11999999999', businessType: 'pizzaria' }, user: {} },
         { json: jest.fn() },
       ),
     ).rejects.toMatchObject({ statusCode: 403 });
