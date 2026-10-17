@@ -8,7 +8,7 @@ BFF (Node.js + Restify + MongoDB/Mongoose) do ecossistema mobbs-delivery — con
 - `npm run dev` — sobe em modo desenvolvimento (`ts-node-dev`, com reload automático).
 - `npm run build` / `npm start` — build de produção (`tsc` + `node dist/main.js`).
 - `npm run lint` — ESLint.
-- `npm test` — Jest.
+- `npm test` — Jest (guia completo, cobertura e VS Code em [`TESTES.md`](./TESTES.md)).
 - `docker compose -f docker-compose.yml -f docker-compose.local.yml up --build` — compila a
   imagem local e sobe `api` + `mongo:7`.
 - `docker compose -f docker-compose.yml -f docker-compose.local.yml -f docker-compose.debug.yml up --build`
