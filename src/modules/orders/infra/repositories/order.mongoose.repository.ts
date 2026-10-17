@@ -271,28 +271,24 @@ export class OrderMongooseRepository implements IOrderRepository {
   }
 
   /**
-   * specs/0143-correcao-gatilho-impressao-automatica REQ-1/REQ-2/REQ-3 — gatilho não é mais
-   * `Order.status`: imprime assim que o pedido é criado (não cancelado), exceto Pix, que espera
-   * o `Payment` correspondente ficar `aprovado` (checado direto, não mais via status do pedido).
+   * specs/0164-impressao-automatica-so-confirmado REQ-1/REQ-2 (revisa specs/0143) — gatilho volta a
+   * ser o pedido **confirmado**: só entra na fila quem tem `confirmado` no `statusHistory` e não
+   * está cancelado. Pix não precisa de checagem à parte: o pedido Pix só chega a `confirmado`
+   * depois do pagamento (confirmação manual do operador ou automática, specs/0151).
    */
   async findPendingAutoPrint(restaurantId: string, maxAgeMinutes: number): Promise<IOrder[]> {
-    // specs/0156-filtro-idade-impressao-automatica REQ-1 — pedido mais velho que isso nunca mais
-    // entra aqui (a idade dele só cresce com o tempo), mesmo que nunca tenha sido impresso.
+    // specs/0164 REQ-3 (revisa specs/0156 REQ-1) — a janela de idade conta desde a CONFIRMAÇÃO, não
+    // desde `createdAt`: senão um pedido confirmado manualmente depois da janela nunca imprimiria.
     const cutoff = new Date(Date.now() - maxAgeMinutes * 60_000);
-    const docs = await OrderModel.aggregate<OrderLeanDocument>([
-      {
-        $match: {
-          restaurantId,
-          orderType: { $in: ['delivery', 'pickup'] },
-          status: { $ne: 'cancelado' },
-          autoPrintStatus: { $ne: 'printed' },
-          createdAt: { $gte: cutoff },
-        },
-      },
-      { $lookup: { from: 'payment', localField: '_id', foreignField: 'orderId', as: 'payment' } },
-      { $match: { $or: [{ paymentMethod: { $ne: 'pix' } }, { 'payment.status': 'aprovado' }] } },
-      { $sort: { createdAt: 1 } },
-    ]);
+    const docs = await OrderModel.find({
+      restaurantId,
+      orderType: { $in: ['delivery', 'pickup'] },
+      status: { $ne: 'cancelado' },
+      autoPrintStatus: { $ne: 'printed' },
+      statusHistory: { $elemMatch: { status: 'confirmado', changedAt: { $gte: cutoff } } },
+    })
+      .sort({ createdAt: 1 })
+      .lean<OrderLeanDocument[]>();
     return docs.map(toEntity);
   }
 

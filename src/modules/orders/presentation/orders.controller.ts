@@ -667,7 +667,7 @@ export class OrdersController extends BaseRouter {
   }
 
   /** specs/0020-pix-no-app T006 — usado nas listagens (`GET /restaurants/me/orders`): só `payment.status`, sem `pixCode` (fica só no detalhe, REQ-2). */
-  /** specs/0156-filtro-idade-impressao-automatica REQ-3 — calculado na hora de responder, nunca
+  /** specs/0156-filtro-idade-impressao-automatica REQ-3 (+ specs/0164: só conta pedido já confirmado, janela desde a confirmação) — calculado na hora de responder, nunca
    * gravado no banco: sempre consistente com `autoPrintMaxAgeMinutes` vigente, mesmo que o
    * restaurante reconfigure esse valor depois (um valor persistido ficaria preso à config antiga). */
   private attachAutoPrintMissed<T extends IOrder>(orders: T[], restaurant: IRestaurant): (T & { autoPrintMissed: boolean })[] {
@@ -678,8 +678,15 @@ export class OrdersController extends BaseRouter {
         order.autoPrintStatus !== 'printed' &&
         order.status !== 'cancelado' &&
         (order.orderType === 'delivery' || order.orderType === 'pickup') &&
-        new Date(order.createdAt).getTime() < cutoff,
+        this.confirmedAtMs(order) !== undefined &&
+        this.confirmedAtMs(order)! < cutoff,
     }));
+  }
+
+  /** specs/0164 REQ-3 — instante (ms) da confirmação do pedido, ou `undefined` se ainda não foi confirmado. */
+  private confirmedAtMs(order: IOrder): number | undefined {
+    const entry = order.statusHistory.find((history) => history.status === 'confirmado');
+    return entry ? new Date(entry.changedAt).getTime() : undefined;
   }
 
   private async attachPaymentSummaries(orders: IOrder[]): Promise<(IOrder & { payment?: Pick<IPayment, 'method' | 'status'> })[]> {

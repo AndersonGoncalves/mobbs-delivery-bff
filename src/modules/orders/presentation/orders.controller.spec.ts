@@ -974,11 +974,14 @@ describe('OrdersController', () => {
   // specs/0156-filtro-idade-impressao-automatica REQ-3.
   it('specs/0156 AC-4: GET /restaurants/me/orders inclui autoPrintMissed certo por pedido', async () => {
     const tooOld = new Date(Date.now() - 10 * 60_000).toISOString();
+    const confirmedAt = (changedAt: string) => ({ status: 'confirmado', changedAt });
     const orders = [
-      buildOrder({ id: 'o-missed', createdAt: tooOld }),
-      buildOrder({ id: 'o-fresh', createdAt: new Date().toISOString() }),
-      buildOrder({ id: 'o-already-printed', createdAt: tooOld, autoPrintStatus: 'printed' }),
-      buildOrder({ id: 'o-cancelled', createdAt: tooOld, status: 'cancelado' }),
+      buildOrder({ id: 'o-missed', status: 'confirmado', statusHistory: [confirmedAt(tooOld)] }),
+      buildOrder({ id: 'o-fresh', status: 'confirmado', statusHistory: [confirmedAt(new Date().toISOString())] }),
+      // specs/0164 — pedido velho mas ainda não confirmado não é "perdido": ainda nem era elegível.
+      buildOrder({ id: 'o-unconfirmed', createdAt: tooOld }),
+      buildOrder({ id: 'o-already-printed', status: 'confirmado', statusHistory: [confirmedAt(tooOld)], autoPrintStatus: 'printed' }),
+      buildOrder({ id: 'o-cancelled', status: 'cancelado', statusHistory: [confirmedAt(tooOld)] }),
     ];
     const { routes } = setup({ orderRepository: { findActiveByRestaurant: jest.fn().mockResolvedValue(orders) } });
     const json = jest.fn();
@@ -988,6 +991,7 @@ describe('OrdersController', () => {
     expect(json).toHaveBeenCalledWith(200, [
       expect.objectContaining({ id: 'o-missed', autoPrintMissed: true }),
       expect.objectContaining({ id: 'o-fresh', autoPrintMissed: false }),
+      expect.objectContaining({ id: 'o-unconfirmed', autoPrintMissed: false }),
       expect.objectContaining({ id: 'o-already-printed', autoPrintMissed: false }),
       expect.objectContaining({ id: 'o-cancelled', autoPrintMissed: false }),
     ]);
@@ -1029,7 +1033,7 @@ describe('OrdersController', () => {
   // specs/0156-filtro-idade-impressao-automatica REQ-3.
   it('specs/0156 AC-4: GET /restaurants/me/orders/map inclui autoPrintMissed: true num pedido velho e nunca impresso', async () => {
     const tooOld = new Date(Date.now() - 10 * 60_000).toISOString();
-    const orders = [buildOrder({ id: 'o-missed', createdAt: tooOld })];
+    const orders = [buildOrder({ id: 'o-missed', status: 'confirmado', statusHistory: [{ status: 'confirmado', changedAt: tooOld }] })];
     const { routes } = setup({ orderRepository: { findByRestaurantBetween: jest.fn().mockResolvedValue(orders) } });
     const json = jest.fn();
 

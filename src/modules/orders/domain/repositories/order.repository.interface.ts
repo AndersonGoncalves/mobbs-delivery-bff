@@ -149,9 +149,11 @@ export interface IOrderRepository {
    * ainda não impressos pelo bridge (`autoPrintStatus !== 'printed'`), mais antigos primeiro.
    * Calculado ao vivo a cada chamada (não é uma fila persistida) — um pedido cancelado depois de
    * `confirmado` simplesmente deixa de aparecer na próxima consulta.
-   * specs/0156-filtro-idade-impressao-automatica REQ-1 — `maxAgeMinutes` exclui pedido mais velho
-   * que isso (desde `createdAt`), evita despejar pedidos represados quando o bridge volta a ficar
-   * online depois de ficar fora do ar.
+   * specs/0164-impressao-automatica-so-confirmado — pedido `aguardandoConfirmacao` nunca entra; o
+   * gatilho é a confirmação (manual ou automática).
+   * specs/0156-filtro-idade-impressao-automatica REQ-1 — `maxAgeMinutes` exclui pedido confirmado há
+   * mais tempo que isso (desde a confirmação, specs/0164 REQ-3), evita despejar pedidos represados
+   * quando o bridge volta a ficar online depois de ficar fora do ar.
    */
   findPendingAutoPrint(restaurantId: string, maxAgeMinutes: number): Promise<IOrder[]>;
 
