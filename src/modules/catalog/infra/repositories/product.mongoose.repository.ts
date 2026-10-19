@@ -51,7 +51,7 @@ function toEntity(doc: ProductLeanDocument): IProduct {
     name: doc.name,
     description: doc.description,
     imageUrl: doc.imageUrl,
-    images: doc.images,
+    images: doc.images?.length ? doc.images : doc.imageUrl ? [doc.imageUrl] : [],
     price: doc.price,
     isAvailable: doc.isAvailable,
     additionalGroups: doc.additionalGroups ?? [],
@@ -124,6 +124,7 @@ interface LinkedRawMaterialLeanDocument {
   name: string;
   priceDelta: number;
   description?: string;
+  imageUrl?: string;
   tracksStock?: boolean;
   currentStock?: number;
 }
@@ -146,6 +147,7 @@ export function resolveOptionLinkedRawMaterial(
     name: linked.name,
     priceDelta: linked.priceDelta,
     description: option.description ?? linked.description,
+    imageUrl: option.imageUrl || linked.imageUrl,
     stockAvailable: !linked.tracksStock || (linked.currentStock ?? 0) > 0,
     nestedAdditionalGroups,
   };
@@ -177,7 +179,7 @@ async function resolveLinkedRawMaterials(docs: ProductLeanDocument[]): Promise<v
   if (rawMaterialIds.size === 0) return;
 
   const rawMaterials = await RawMaterialModel.find({ _id: { $in: [...rawMaterialIds] } })
-    .select('_id name priceDelta description tracksStock currentStock')
+    .select('_id name priceDelta description imageUrl tracksStock currentStock')
     .lean<LinkedRawMaterialLeanDocument[]>();
   const rawMaterialsById = new Map(rawMaterials.map((rawMaterial) => [rawMaterial._id, rawMaterial]));
 

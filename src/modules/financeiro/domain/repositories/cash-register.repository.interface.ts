@@ -4,8 +4,10 @@ export interface NewCashMovementInput {
   type: CashMovementType;
   amount: number;
   description: string;
-  /** REQ-5 — preenchido só no lançamento automático (pedido pago via Pix), nunca no manual (REQ-6). */
+  /** Preenchido no lançamento automático de uma venda, nunca no manual. */
   orderId?: string;
+  paymentMethod?: string;
+  paymentId?: string;
 }
 
 export interface CloseCashRegisterResult {

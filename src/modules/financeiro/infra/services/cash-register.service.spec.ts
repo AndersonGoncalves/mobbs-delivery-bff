@@ -63,7 +63,7 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
       ...overrides.restaurantRepository,
     };
     const orderRepository: Partial<IOrderRepository> = {
-      findByRestaurantBetween: jest.fn().mockResolvedValue([]),
+      findReceivedSalesBetween: jest.fn().mockResolvedValue([]),
       ...overrides.orderRepository,
     };
     const service = new CashRegisterService(
@@ -75,31 +75,52 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
   }
 
   describe('addAutomaticEntry', () => {
-    it('AC-5: pedido pago via Pix com sessão de caixa aberta lança entrada automática vinculada ao pedido', async () => {
-      const { cashRegisterRepository, service } = setup();
-
-      await service.addAutomaticEntry({ restaurantId: 'r-1', orderId: 'o-1', orderNumber: 42, amount: 55, paymentMethod: 'pix' });
-
-      expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-1', {
-        type: 'entrada',
-        amount: 55,
-        description: 'Venda #42 (Pix)',
-        orderId: 'o-1',
-      });
-    });
-
-    it('AC-5: pedido pago em dinheiro/cartão/transferência nunca lança automaticamente', async () => {
-      for (const paymentMethod of ['cash', 'creditCard', 'debitCard', 'bankTransfer']) {
+    it('pedido pago em qualquer forma, com sessão aberta, lança entrada automática', async () => {
+      for (const paymentMethod of ['pix', 'cash', 'creditCard', 'debitCard', 'bankTransfer']) {
         const { cashRegisterRepository, service } = setup();
 
-        await service.addAutomaticEntry({ restaurantId: 'r-1', orderId: 'o-1', orderNumber: 1, amount: 10, paymentMethod });
+        await service.addAutomaticEntry({ restaurantId: 'r-1', orderId: 'o-1', orderNumber: 42, amount: 55, paymentMethod });
 
-        expect(cashRegisterRepository.findOpenSessionByRestaurant).not.toHaveBeenCalled();
-        expect(cashRegisterRepository.addMovement).not.toHaveBeenCalled();
+        expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-1', expect.objectContaining({
+          type: 'entrada',
+          amount: 55,
+          orderId: 'o-1',
+          paymentMethod,
+        }));
       }
     });
 
-    it('REQ-5: pedido Pix sem sessão de caixa aberta não lança nada (não força abertura)', async () => {
+    it('pagamento de mesa lança uma entrada por pagamento, sem repetir o mesmo paymentId', async () => {
+      const { cashRegisterRepository, service } = setup({
+        cashRegisterRepository: {
+          listMovements: jest.fn().mockResolvedValue([
+            { id: 'mv-1', cashRegisterSessionId: 'cr-1', type: 'entrada', amount: 10, description: 'Mesa/balcão #7 (Dinheiro)', orderId: 'o-1', paymentId: 'pay-1', paymentMethod: 'cash', createdAt: '2026-09-09T09:00:00.000Z' },
+          ]),
+        },
+      });
+
+      await service.addAutomaticEntry({ restaurantId: 'r-1', orderId: 'o-1', orderNumber: 7, amount: 10, paymentMethod: 'cash', paymentId: 'pay-1' });
+      await service.addAutomaticEntry({ restaurantId: 'r-1', orderId: 'o-1', orderNumber: 7, amount: 6, paymentMethod: 'pix', paymentId: 'pay-2' });
+
+      expect(cashRegisterRepository.addMovement).toHaveBeenCalledTimes(1);
+      expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-1', expect.objectContaining({ paymentId: 'pay-2', paymentMethod: 'pix', amount: 6 }));
+    });
+
+    it('pagamento de mesa não duplica um lançamento antigo do pedido inteiro', async () => {
+      const { cashRegisterRepository, service } = setup({
+        cashRegisterRepository: {
+          listMovements: jest.fn().mockResolvedValue([
+            { id: 'mv-1', cashRegisterSessionId: 'cr-1', type: 'entrada', amount: 16, description: 'Venda #7 (Pix)', orderId: 'o-1', createdAt: '2026-09-09T09:00:00.000Z' },
+          ]),
+        },
+      });
+
+      await service.addAutomaticEntry({ restaurantId: 'r-1', orderId: 'o-1', orderNumber: 7, amount: 16, paymentMethod: 'pix', paymentId: 'pay-1' });
+
+      expect(cashRegisterRepository.addMovement).not.toHaveBeenCalled();
+    });
+
+    it('pedido sem sessão de caixa aberta não lança nada (não força abertura)', async () => {
       const { cashRegisterRepository, service } = setup({ cashRegisterRepository: { findOpenSessionByRestaurant: jest.fn().mockResolvedValue(null) } });
 
       await service.addAutomaticEntry({ restaurantId: 'r-1', orderId: 'o-1', orderNumber: 1, amount: 10, paymentMethod: 'pix' });
@@ -207,7 +228,7 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
     it('AC-6: 2 vendas Pix (R$ 50 cada) e 1 venda dinheiro (R$ 30) aparecem separadas por forma de pagamento', async () => {
       const { service } = setup({
         orderRepository: {
-          findByRestaurantBetween: jest.fn().mockResolvedValue([
+          findReceivedSalesBetween: jest.fn().mockResolvedValue([
             buildDeliveredOrder({ id: 'o-1', paymentMethod: 'pix', total: 50 }),
             buildDeliveredOrder({ id: 'o-2', paymentMethod: 'pix', total: 50 }),
             buildDeliveredOrder({ id: 'o-3', paymentMethod: 'cash', total: 30 }),
@@ -223,7 +244,7 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
     it('pedidos não entregues não entram na soma', async () => {
       const { service } = setup({
         orderRepository: {
-          findByRestaurantBetween: jest.fn().mockResolvedValue([
+          findReceivedSalesBetween: jest.fn().mockResolvedValue([
             buildDeliveredOrder({ id: 'o-1', status: 'aguardandoConfirmacao', paymentMethod: 'pix', total: 50 }),
           ]),
         },
@@ -234,10 +255,61 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
       expect(balance.pix).toBe(0);
     });
 
+    it('pagamento de mesa entra pela forma de cada pagamento recebido na sessão', async () => {
+      const { service } = setup({
+        orderRepository: {
+          findReceivedSalesBetween: jest.fn().mockResolvedValue([
+            buildDeliveredOrder({
+              id: 'o-mesa',
+              orderType: 'table',
+              status: 'confirmado',
+              paymentMethod: 'pix',
+              total: 115,
+              tablePayments: [
+                { id: 'pay-cash', method: 'cash', amount: 4, paidAt: '2026-09-09T10:00:00.000Z' },
+                { id: 'pay-card', method: 'creditCard', amount: 12, paidAt: '2026-09-09T11:00:00.000Z' },
+                { id: 'pay-old', method: 'debitCard', amount: 99, paidAt: '2026-09-08T10:00:00.000Z' },
+              ],
+            }),
+          ]),
+        },
+      });
+
+      const balance = await service.getBalanceByPaymentMethod('cr-1');
+
+      expect(balance).toMatchObject({ cash: 4, creditCard: 12, debitCard: 0, pix: 0, bankTransfer: 0 });
+    });
+
+    it('syncOpenSession lança movimento para pagamento de mesa e para delivery ainda não lançados', async () => {
+      const { cashRegisterRepository, service } = setup({
+        orderRepository: {
+          findReceivedSalesBetween: jest.fn().mockResolvedValue([
+            buildDeliveredOrder({
+              id: 'o-mesa',
+              orderNumber: 8,
+              orderType: 'table',
+              tablePayments: [{ id: 'pay-1', method: 'cash', amount: 16, paidAt: '2026-09-09T10:00:00.000Z' }],
+            }),
+            buildDeliveredOrder({ id: 'o-delivery', orderNumber: 9, orderType: 'delivery', paymentMethod: 'creditCard', total: 4 }),
+          ]),
+        },
+      });
+
+      await service.syncOpenSession('r-1');
+
+      expect(cashRegisterRepository.addMovement).toHaveBeenCalledTimes(2);
+      expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-1', expect.objectContaining({
+        type: 'entrada', amount: 16, paymentId: 'pay-1', paymentMethod: 'cash', orderId: 'o-mesa',
+      }));
+      expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-1', expect.objectContaining({
+        type: 'entrada', amount: 4, paymentMethod: 'creditCard', orderId: 'o-delivery',
+      }));
+    });
+
     it('movimento manual (sangria) sem orderId reduz a forma "dinheiro", sem duplicar venda automática de Pix', async () => {
       const { service } = setup({
         orderRepository: {
-          findByRestaurantBetween: jest.fn().mockResolvedValue([buildDeliveredOrder({ id: 'o-1', paymentMethod: 'pix', total: 50 })]),
+          findReceivedSalesBetween: jest.fn().mockResolvedValue([buildDeliveredOrder({ id: 'o-1', paymentMethod: 'pix', total: 50 })]),
         },
         cashRegisterRepository: {
           listMovements: jest.fn().mockResolvedValue([

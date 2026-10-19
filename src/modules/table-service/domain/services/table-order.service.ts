@@ -11,6 +11,7 @@ import { IRestaurantTableRepository } from '../repositories/table.repository.int
 import { ITableWaiterRepository } from '../repositories/waiter.repository.interface';
 import { ITableMapLayoutRepository } from '../repositories/table-map-layout.repository.interface';
 import { IRestaurantOperatorRepository } from '../../../restaurant-operators/domain/repositories/restaurant-operator.repository.interface';
+import { ICashRegisterService } from '../../../financeiro/domain/services/i-cash-register.service';
 
 type SelectionInput = { groupName: string; optionName: string; nestedSelections?: SelectionInput[] };
 type Adjustment = NonNullable<IOrder['tableAdjustment']>;
@@ -76,6 +77,7 @@ export class TableOrderService {
     // specs/0137-papeis-garcom-motoboy REQ-7 — seletor de garçom da mesa passa a listar
     // `RestaurantOperator` com papel `garcom`, não mais `TableWaiter`.
     private readonly restaurantOperatorRepository: IRestaurantOperatorRepository,
+    private readonly cashRegisterService?: ICashRegisterService,
   ) {}
 
   async getFloor(restaurantId: string) {
@@ -288,10 +290,12 @@ export class TableOrderService {
     const order = await this.findOpenOrder(restaurantId, orderId);
     const balance = this.balanceDue(order);
     if (amount >= balance) throw new BadRequestError('O pagamento parcial deve ser menor que o saldo em aberto');
+    const paymentId = randomUUID();
     const updated = await this.orderRepository.addTablePayment(order.id, restaurantId, {
-      id: randomUUID(), method, amount, paidAt: new Date().toISOString(), paidBy: operatorId,
+      id: paymentId, method, amount, paidAt: new Date().toISOString(), paidBy: operatorId,
     });
     if (!updated) throw new ConflictError('O pedido não está mais aberto');
+    await this.recordTablePayment(updated, method, amount, paymentId);
     return updated;
   }
 
@@ -309,16 +313,34 @@ export class TableOrderService {
     const now = new Date().toISOString();
     let updated: IOrder | null = order;
     for (const payment of payments) {
+      const paymentId = randomUUID();
       updated = await this.orderRepository.addTablePayment(order.id, restaurantId, {
-        id: randomUUID(), method: payment.method, amount: payment.amount, paidAt: now, paidBy: operatorId,
+        id: paymentId, method: payment.method, amount: payment.amount, paidAt: now, paidBy: operatorId,
       });
       if (!updated) throw new ConflictError('O pedido não está mais aberto');
+      await this.recordTablePayment(updated, payment.method, payment.amount, paymentId);
     }
     updated = await this.orderRepository.updateTableOrder(order.id, restaurantId, { tableClosedAt: now });
     if (!updated) throw new ConflictError('O pedido não está mais aberto');
     const closed = await this.orderRepository.updateStatus(order.id, 'entregue', restaurantId);
     if (order.tableId) await this.tableRepository.releaseFromOrder(order.tableId, restaurantId, order.id);
     return closed;
+  }
+
+  private async recordTablePayment(order: IOrder, method: IOrder['paymentMethod'], amount: number, paymentId: string) {
+    if (!this.cashRegisterService || !(amount > 0)) return;
+    try {
+      await this.cashRegisterService.addAutomaticEntry({
+        restaurantId: order.restaurantId,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        amount,
+        paymentMethod: method,
+        paymentId,
+      });
+    } catch (error) {
+      console.error(`[financeiro] erro lançando movimento de caixa do pedido de mesa ${order.id}:`, error);
+    }
   }
 
   async transferOrder(restaurantId: string, orderId: string, targetTableId: string) {

@@ -15,6 +15,7 @@ import { IOrderRepository } from '../../orders/domain/repositories/order.reposit
 import { StockReservationService } from '../../orders/domain/services/stock-reservation.service';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IRestaurantOperatorRepository } from '../../restaurant-operators/domain/repositories/restaurant-operator.repository.interface';
+import { ICashRegisterService } from '../../financeiro/domain/services/i-cash-register.service';
 import { TableOrderService } from '../domain/services/table-order.service';
 import {
   addTableOrderItemSchema,
@@ -48,11 +49,12 @@ export class TableServiceController extends BaseRouter {
     // specs/0137-papeis-garcom-motoboy REQ-7 — seletor de garçom da mesa passa a listar
     // `RestaurantOperator` com papel `garcom`.
     restaurantOperatorRepository: IRestaurantOperatorRepository,
+    private readonly cashRegisterService?: ICashRegisterService,
   ) {
     super();
     this.tableOrders = new TableOrderService(
       orderRepository, tableRepository, waiterRepository, layoutRepository, productRepository, customerRepository,
-      restaurantRepository, stockReservationService, restaurantOperatorRepository,
+      restaurantRepository, stockReservationService, restaurantOperatorRepository, cashRegisterService,
     );
   }
 

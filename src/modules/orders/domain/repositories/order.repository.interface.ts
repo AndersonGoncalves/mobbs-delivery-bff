@@ -98,6 +98,13 @@ export interface IOrderRepository {
   getTableSalesBetween(restaurantId: string, from: Date, to: Date): Promise<number>;
 
   /**
+   * Vendas cujo dinheiro entrou no intervalo: delivery/retirada marcados como entregues nesse
+   * período, e pedidos de mesa que receberam `tablePayments` nesse período (mesmo que o pedido
+   * tenha sido aberto antes).
+   */
+  findReceivedSalesBetween(restaurantId: string, from: Date, to: Date): Promise<IOrder[]>;
+
+  /**
    * specs/0016-clientes-retaguarda REQ-3 — histórico de pedidos de um cliente **só neste
    * restaurante** (nunca cruza com pedidos do mesmo `Customer` em outro restaurante, já que
    * `Customer` é global — `docs/architecture/data-model.md`); mais recente primeiro, mesmo

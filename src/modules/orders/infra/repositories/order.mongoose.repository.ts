@@ -362,6 +362,27 @@ export class OrderMongooseRepository implements IOrderRepository {
     return result?.total ?? 0;
   }
 
+  async findReceivedSalesBetween(restaurantId: string, from: Date, to: Date): Promise<IOrder[]> {
+    const fromIso = from.toISOString();
+    const toIso = to.toISOString();
+    const docs = await OrderModel.find({
+      restaurantId,
+      tableMergedIntoOrderId: { $exists: false },
+      $or: [
+        {
+          orderType: { $ne: 'table' },
+          status: 'entregue',
+          statusHistory: { $elemMatch: { status: 'entregue', changedAt: { $gte: from, $lt: to } } },
+        },
+        {
+          orderType: 'table',
+          'tablePayments.paidAt': { $gte: fromIso, $lt: toIso },
+        },
+      ],
+    }).lean<OrderLeanDocument[]>();
+    return docs.map(toEntity);
+  }
+
   /** specs/0022-cupons-desconto REQ-6. */
   async countByCustomerAndCoupon(restaurantId: string, customerId: string, couponCode: string): Promise<number> {
     return OrderModel.countDocuments({ restaurantId, customerId, couponCode });

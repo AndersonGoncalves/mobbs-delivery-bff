@@ -14,6 +14,14 @@ import {
 // `Order.paymentMethod`/`Payment.method`.
 const ALL_PAYMENT_METHODS: PaymentMethod[] = ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'];
 
+const PAYMENT_LABEL: Record<string, string> = {
+  cash: 'Dinheiro',
+  pix: 'Pix',
+  creditCard: 'Crédito',
+  debitCard: 'Débito',
+  bankTransfer: 'Transferência',
+};
+
 // specs/0118-controle-caixa-automatico-redes-sociais REQ-3/REQ-4 — identifica `openedBy`/
 // `closedBy` de um ciclo automático (não um id de operador de verdade, `req.user.uid`).
 const AUTOMATIC_ACTOR = 'automatico';
@@ -25,9 +33,9 @@ function zeroBalanceByPaymentMethod(): Record<PaymentMethod, number> {
 /**
  * specs/0014-financeiro REQ-5 — chamado pelo `OrdersController` ao marcar um pedido como
  * entregue/retirado (`docs/architecture/data-model.md`, único status que cobre os dois casos).
- * Regra completa fica **aqui** (não no controller de orders), pra manter as duas condições de
- * REQ-5 num único lugar testável: só `pix` lança automaticamente, e só se houver sessão de caixa
- * aberta (nunca força abertura).
+ * Regra completa fica **aqui** (não no controller de orders): qualquer forma de pagamento lança
+ * uma entrada, e só se houver sessão de caixa aberta (nunca força abertura). Pedido de mesa entra
+ * por pagamento (`paymentId`), delivery/retirada entra uma vez ao ser marcado como entregue.
  *
  * specs/0118-controle-caixa-automatico-redes-sociais — ganhou `ensureAutomaticSchedule` (REQ-3/
  * REQ-4/REQ-6, chamado pelo `CashRegisterController` no início de toda rota que lê/muda o caixa)
@@ -44,17 +52,62 @@ export class CashRegisterService implements ICashRegisterService {
   ) {}
 
   async addAutomaticEntry(input: AutomaticCashEntryInput): Promise<void> {
-    if (input.paymentMethod !== 'pix') return;
+    if (!(input.amount > 0)) return;
 
     const session = await this.cashRegisterRepository.findOpenSessionByRestaurant(input.restaurantId);
     if (!session) return;
 
+    const movements = await this.cashRegisterRepository.listMovements(session.id);
+    const alreadyRecorded = input.paymentId
+      ? movements.some((movement) => movement.paymentId === input.paymentId || (movement.orderId === input.orderId && !movement.paymentId))
+      : movements.some((movement) => movement.orderId === input.orderId && !movement.paymentId);
+    if (alreadyRecorded) return;
+
+    const methodLabel = PAYMENT_LABEL[input.paymentMethod] ?? input.paymentMethod;
     await this.cashRegisterRepository.addMovement(session.id, {
       type: 'entrada',
       amount: input.amount,
-      description: `Venda #${input.orderNumber} (Pix)`,
+      description: input.paymentId
+        ? `Mesa/balcão #${input.orderNumber} (${methodLabel})`
+        : `Venda #${input.orderNumber} (${methodLabel})`,
       orderId: input.orderId,
+      paymentMethod: input.paymentMethod,
+      paymentId: input.paymentId,
     });
+  }
+
+  async syncOpenSession(restaurantId: string): Promise<void> {
+    const session = await this.cashRegisterRepository.findOpenSessionByRestaurant(restaurantId);
+    if (!session) return;
+
+    const from = new Date(session.openedAt);
+    const to = new Date();
+    const orders = await this.orderRepository.findReceivedSalesBetween(restaurantId, from, to);
+    for (const order of orders) {
+      if (order.orderType === 'table') {
+        for (const payment of order.tablePayments ?? []) {
+          const paidAt = new Date(payment.paidAt);
+          if (paidAt < from || paidAt >= to) continue;
+          await this.addAutomaticEntry({
+            restaurantId,
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            amount: payment.amount,
+            paymentMethod: payment.method,
+            paymentId: payment.id,
+          });
+        }
+        continue;
+      }
+      if (order.status !== 'entregue') continue;
+      await this.addAutomaticEntry({
+        restaurantId,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        amount: order.total,
+        paymentMethod: order.paymentMethod,
+      });
+    }
   }
 
   /**
@@ -96,13 +149,10 @@ export class CashRegisterService implements ICashRegisterService {
   }
 
   /**
-   * REQ-9 — soma `Order.total` (status `entregue`) do restaurante no intervalo da sessão
-   * (`openedAt` até `closedAt`, ou "agora" se ainda aberta), agrupado por `paymentMethod`; os
-   * `CashMovementEntry` manuais (sem `orderId` — REQ-6) entram na forma "dinheiro", mesmo
-   * raciocínio de sangria/suprimento de um caixa físico. As entradas automáticas de Pix (com
-   * `orderId`, `addAutomaticEntry` acima) **não** são somadas de novo aqui — o pedido Pix já foi
-   * contado na soma de `Order.total` acima, somar o `CashMovementEntry` dele também duplicaria o
-   * valor.
+   * REQ-9 — delivery/retirada entram pelo total ao serem entregues no período da sessão. Mesa e
+   * balcão entram por cada `tablePayment` recebido no período (a forma real do pagamento, não o
+   * `paymentMethod` único do pedido). Movimento automático (com `orderId`) não é somado de novo:
+   * o pedido ou o pagamento já entrou acima. Movimento manual (sem `orderId`) ajusta o dinheiro.
    */
   async getClosingSummary(sessionId: string): Promise<CashClosingSummary> {
     const session = await this.cashRegisterRepository.findById(sessionId);
@@ -111,11 +161,22 @@ export class CashRegisterService implements ICashRegisterService {
     }
 
     const periodEnd = session.closedAt ? new Date(session.closedAt) : new Date();
-    const orders = await this.orderRepository.findByRestaurantBetween(session.restaurantId, new Date(session.openedAt), periodEnd);
+    const orders = await this.orderRepository.findReceivedSalesBetween(session.restaurantId, new Date(session.openedAt), periodEnd);
 
     const salesByPaymentMethod = zeroBalanceByPaymentMethod();
     let totalSales = 0;
     for (const order of orders) {
+      if (order.orderType === 'table') {
+        for (const payment of order.tablePayments ?? []) {
+          const paidAt = new Date(payment.paidAt);
+          if (paidAt < new Date(session.openedAt) || paidAt >= periodEnd) continue;
+          const method = payment.method as PaymentMethod;
+          if (!(method in salesByPaymentMethod)) continue;
+          salesByPaymentMethod[method] += payment.amount;
+          totalSales += payment.amount;
+        }
+        continue;
+      }
       if (order.status !== 'entregue') continue;
       salesByPaymentMethod[order.paymentMethod] += order.total;
       totalSales += order.total;

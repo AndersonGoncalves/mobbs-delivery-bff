@@ -313,6 +313,7 @@ server
       new StockReservationService(productRepository, rawMaterialRepository, stockMovementRepository),
       restaurantOperatorMiddleware,
       restaurantOperatorRepository,
+      cashRegisterService,
     ),
     new SuppliersController(new SupplierMongooseRepository(), restaurantOperatorMiddleware),
     new MotoboysController(new MotoboyMongooseRepository(), restaurantOperatorMiddleware),

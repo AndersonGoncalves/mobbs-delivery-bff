@@ -33,6 +33,8 @@ interface MovementLeanDocument {
   amount: number;
   description: string;
   orderId?: string;
+  paymentMethod?: string;
+  paymentId?: string;
   createdAt: Date;
 }
 
@@ -60,6 +62,8 @@ function toMovementEntity(doc: MovementLeanDocument): ICashMovementEntry {
     amount: doc.amount,
     description: doc.description,
     orderId: doc.orderId,
+    paymentMethod: doc.paymentMethod,
+    paymentId: doc.paymentId,
     createdAt: doc.createdAt.toISOString(),
   };
 }
@@ -99,6 +103,8 @@ export class CashRegisterMongooseRepository implements ICashRegisterRepository {
       amount: input.amount,
       description: input.description,
       orderId: input.orderId,
+      paymentMethod: input.paymentMethod,
+      paymentId: input.paymentId,
     });
     return toMovementEntity(doc.toObject() as MovementLeanDocument);
   }

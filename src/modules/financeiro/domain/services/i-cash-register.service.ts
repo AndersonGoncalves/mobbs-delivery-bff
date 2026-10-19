@@ -20,6 +20,8 @@ export interface AutomaticCashEntryInput {
    * `PaymentMethod` de `orders/domain/entities`) justamente pra não importar esse módulo aqui.
    */
   paymentMethod: string;
+  /** Id do pagamento de mesa/balcão. Sem ele, a venda (delivery/retirada) é uma entrada por pedido. */
+  paymentId?: string;
 }
 
 /**
@@ -44,15 +46,21 @@ export interface CashClosingSummary {
 }
 
 /**
- * REQ-5 (`addAutomaticEntry`) — nunca lança pro chamador: se o método de pagamento não for
- * `pix`, ou não houver sessão de caixa aberta no restaurante, simplesmente não lança nada (não
- * força abertura automática de caixa, decisão confirmada em `spec.md`).
+ * REQ-5 (`addAutomaticEntry`) — nunca lança pro chamador: sem sessão de caixa aberta, simplesmente
+ * não lança nada (não força abertura). Vale para qualquer forma de pagamento, no delivery, na
+ * retirada e na mesa.
+ *
+ * `syncOpenSession` recria as entradas que faltam na sessão aberta (pagamentos recebidos antes
+ * desta regra, ou com a sessão já aberta).
  *
  * specs/0118-controle-caixa-automatico-redes-sociais — `ensureAutomaticSchedule`/
  * `getBalanceByPaymentMethod`/`getClosingSummary` adicionados pra REQ-3/REQ-4/REQ-9/REQ-10/REQ-11.
  */
 export interface ICashRegisterService {
   addAutomaticEntry(input: AutomaticCashEntryInput): Promise<void>;
+
+  /** Garante um movimento para cada pagamento já recebido na sessão aberta. */
+  syncOpenSession(restaurantId: string): Promise<void>;
 
   /**
    * REQ-3/REQ-4/REQ-6 — "cron" lazy: chamado no início de toda rota de `CashRegisterController`

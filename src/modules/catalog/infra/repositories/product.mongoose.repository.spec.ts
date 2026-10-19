@@ -327,6 +327,20 @@ describe('resolveOptionLinkedRawMaterial (specs/0079-adicional-materia-prima-som
     expect(resolveOptionLinkedRawMaterial(option, rawMaterialsById).description).toBe('Só 2 colheres');
   });
 
+  it('foto: opção sem foto própria herda a da matéria-prima', () => {
+    const option = buildOption({ rawMaterialId: 'rm-queijo', imageUrl: undefined });
+    const rawMaterialsById = new Map([['rm-queijo', { _id: 'rm-queijo', name: 'Queijo', priceDelta: 4, imageUrl: 'https://cdn.example.com/queijo.jpg' }]]);
+
+    expect(resolveOptionLinkedRawMaterial(option, rawMaterialsById).imageUrl).toBe('https://cdn.example.com/queijo.jpg');
+  });
+
+  it('foto: a foto própria da opção vence a da matéria-prima', () => {
+    const option = buildOption({ rawMaterialId: 'rm-queijo', imageUrl: 'https://cdn.example.com/propria.png' });
+    const rawMaterialsById = new Map([['rm-queijo', { _id: 'rm-queijo', name: 'Queijo', priceDelta: 4, imageUrl: 'https://cdn.example.com/queijo.jpg' }]]);
+
+    expect(resolveOptionLinkedRawMaterial(option, rawMaterialsById).imageUrl).toBe('https://cdn.example.com/propria.png');
+  });
+
   it('resolve recursivamente dentro de nestedAdditionalGroups (produto composto)', () => {
     const option = buildOption({
       rawMaterialId: undefined,

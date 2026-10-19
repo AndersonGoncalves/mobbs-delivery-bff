@@ -400,18 +400,16 @@ export class OrdersController extends BaseRouter {
           console.error(`[whatsapp] erro inesperado enviando atualização de status do pedido ${updated.id}:`, error);
         });
 
-        // specs/0014-financeiro REQ-5 — só ao chegar em "entregue" (cobre tanto delivery quanto
-        // retirada, `docs/architecture/data-model.md` não tem status separado pros dois); a
-        // regra de "só Pix" e "só com sessão de caixa aberta" fica inteira dentro do serviço
-        // (`CashRegisterService`), não aqui. `await`ado (não fire-and-forget como o WhatsApp
-        // acima) mas protegido por try/catch: uma falha na contabilização automática nunca
-        // reverte nem falha a resposta da mudança de status, que já foi persistida.
+        // specs/0014-financeiro REQ-5 — delivery e retirada lançam o movimento ao chegar em
+        // "entregue" (não há status separado pros dois). Pedido de mesa lança um movimento por
+        // pagamento, no `TableOrderService`, e não de novo aqui. Sem sessão aberta o serviço
+        // não grava nada. Protegido por try/catch: falha na contabilização não reverte o status.
         if (status === 'entregue' && this.recomputeRestaurantBilling) {
           void this.recomputeRestaurantBilling.call(updated.restaurantId).catch((error) => {
             console.error(`[billing] falha ao recalcular faturamento do restaurante ${updated.restaurantId}:`, error);
           });
         }
-        if (status === 'entregue') {
+        if (status === 'entregue' && updated.orderType !== 'table') {
           try {
             await this.cashRegisterService.addAutomaticEntry({
               restaurantId: updated.restaurantId,

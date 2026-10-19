@@ -147,6 +147,7 @@ export class CashRegisterController extends BaseRouter {
     // pagamento (REQ-9), pra tela de caixa montar tudo numa única chamada.
     application.get('/restaurants/me/cash-register/open', ...authenticated, async (req: Request, res: Response) => {
       await this.cashRegisterService.ensureAutomaticSchedule(req.restaurantId!);
+      await this.cashRegisterService.syncOpenSession(req.restaurantId!);
       const session = await this.cashRegisterRepository.findOpenSessionByRestaurant(req.restaurantId!);
       if (!session) {
         res.json(200, { session: null, movements: [], calculatedBalance: 0, tableSales: 0, balanceByPaymentMethod: {} });

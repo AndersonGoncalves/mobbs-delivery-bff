@@ -9,6 +9,8 @@ const cashMovementEntrySchema = new Schema(
     amount: { type: Number, required: true },
     description: { type: String, required: true },
     orderId: { type: String },
+    paymentMethod: { type: String },
+    paymentId: { type: String },
   },
   { _id: false, timestamps: { createdAt: true, updatedAt: false } },
 );

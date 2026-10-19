@@ -39,5 +39,9 @@ export interface ICashMovementEntry {
   amount: number;
   description: string;
   orderId?: string;
+  /** Forma do pagamento que gerou a entrada automática. Ausente no lançamento manual (conta como dinheiro). */
+  paymentMethod?: string;
+  /** Id do `tablePayment` quando a entrada veio de um pagamento de mesa/balcão. */
+  paymentId?: string;
   createdAt: string;
 }

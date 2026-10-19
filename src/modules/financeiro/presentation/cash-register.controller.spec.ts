@@ -109,6 +109,7 @@ describe('CashRegisterController', () => {
     // cobertura própria em `cash-register.service.spec.ts`.
     const cashRegisterService: Partial<ICashRegisterService> = {
       ensureAutomaticSchedule: jest.fn().mockResolvedValue(undefined),
+      syncOpenSession: jest.fn().mockResolvedValue(undefined),
       getBalanceByPaymentMethod: jest.fn().mockResolvedValue({}),
       getClosingSummary: jest.fn().mockResolvedValue({
         session: buildSession({ status: 'fechado' }),
