@@ -126,6 +126,7 @@ describe('CatalogController', () => {
     };
     const restaurantRepository: Partial<IRestaurantRepository> = {
       findById: jest.fn().mockResolvedValue({ id: 'r-1', stockControlEnabled: false }),
+      findBySlug: jest.fn().mockResolvedValue({ id: 'r-1', name: 'Pizzaria Teste', slug: 'pizzaria-teste', stockControlEnabled: false }),
       ...overrides.restaurantRepository,
     };
     const restaurantOperatorMiddleware = jest.fn(async () => {});
@@ -1342,5 +1343,67 @@ describe('CatalogController', () => {
     );
 
     expect(productRepository.reorderCartSuggestions).toHaveBeenCalledWith('r-1', ['p-2', 'p-1']);
+  });
+
+  // Pedido explícito do usuário — "QR Code de mesa": cardápio público por slug, sem nenhum
+  // middleware de autenticação (a rota tem um único handler na chain, por isso chamada direto,
+  // sem passar por `runAuthenticatedChain`/`runOperatorChain`, que pulam os primeiros handlers
+  // assumindo uma chain autenticada).
+  describe('GET /restaurants/resolve/:slug/table-menu', () => {
+    it('restaurante existente: 200 com categorias ativas e produtos disponíveis', async () => {
+      const category = {
+        id: 'c-1',
+        restaurantId: 'r-1',
+        name: 'Lanches',
+        sortOrder: 0,
+        isActive: true,
+        products: [
+          buildProduct({ id: 'p-1', name: 'Pizza', description: 'Pizza grande', price: 50, imageUrl: 'https://a.jpg', isAvailable: true }),
+          buildProduct({ id: 'p-2', name: 'Esgotado', isAvailable: false }),
+        ],
+      };
+      const inactiveCategory = { id: 'c-2', restaurantId: 'r-1', name: 'Sazonal', sortOrder: 1, isActive: false, products: [] };
+      const { routes } = setup({
+        menuCategoryRepository: { listByRestaurant: jest.fn().mockResolvedValue([category, inactiveCategory]) },
+      });
+      const json = jest.fn();
+
+      await routes['GET /restaurants/resolve/:slug/table-menu'][0]({ params: { slug: 'pizzaria-teste' } }, { json });
+
+      expect(json).toHaveBeenCalledWith(200, {
+        restaurant: { name: 'Pizzaria Teste', slug: 'pizzaria-teste', defaultProductImageUrl: undefined },
+        categories: [
+          { id: 'c-1', name: 'Lanches', products: [{ id: 'p-1', name: 'Pizza', description: 'Pizza grande', price: 50, imageUrl: 'https://a.jpg' }] },
+        ],
+      });
+    });
+
+    it('não expõe campos sensíveis (custo/estoque interno) do produto', async () => {
+      const category = {
+        id: 'c-1',
+        restaurantId: 'r-1',
+        name: 'Lanches',
+        sortOrder: 0,
+        isActive: true,
+        products: [buildProduct({ id: 'p-1', name: 'Pizza', price: 50, isAvailable: true, cost: 20, stockQuantity: 3, tracksStock: true })],
+      };
+      const { routes } = setup({
+        menuCategoryRepository: { listByRestaurant: jest.fn().mockResolvedValue([category]) },
+      });
+      const json = jest.fn();
+
+      await routes['GET /restaurants/resolve/:slug/table-menu'][0]({ params: { slug: 'pizzaria-teste' } }, { json });
+
+      const body = json.mock.calls[0][1];
+      expect(body.categories[0].products[0]).toEqual({ id: 'p-1', name: 'Pizza', description: undefined, price: 50, imageUrl: undefined });
+    });
+
+    it('restaurante inexistente: 404, sem exigir token de autenticação', async () => {
+      const { routes } = setup({ restaurantRepository: { findBySlug: jest.fn().mockResolvedValue(null) } });
+
+      await expect(
+        routes['GET /restaurants/resolve/:slug/table-menu'][0]({ params: { slug: 'nao-existe' } }, { json: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 404 });
+    });
   });
 });

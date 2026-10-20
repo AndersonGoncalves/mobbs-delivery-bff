@@ -299,8 +299,8 @@ server
       new AddressMongooseRepository(),
     ),
     new WhatsAppConnectionController(whatsAppConnectionService, restaurantOperatorMiddleware),
-    new AccountsPayableController(new AccountPayableMongooseRepository(), restaurantOperatorMiddleware),
-    new AccountsReceivableController(new AccountReceivableMongooseRepository(), restaurantOperatorMiddleware),
+    new AccountsPayableController(new AccountPayableMongooseRepository(), cashRegisterRepository, restaurantOperatorMiddleware),
+    new AccountsReceivableController(new AccountReceivableMongooseRepository(), cashRegisterRepository, restaurantOperatorMiddleware),
     new CashRegisterController(cashRegisterRepository, orderRepository, cashRegisterService, restaurantOperatorMiddleware),
     new TableServiceController(
       new RestaurantTableMongooseRepository(),

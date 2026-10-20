@@ -19,15 +19,25 @@ export const saveAccountReceivableSchema = z.object({
   value: z.number().positive('Valor deve ser maior que zero'),
 });
 
-/** REQ-2 — `paidAt` é opcional no corpo (default "agora" se omitido). */
+/**
+ * REQ-2 — `paidAt` é opcional no corpo (default "agora" se omitido).
+ *
+ * Pedido explícito do usuário — `affectsCashRegister` opcional (default `true` se omitido,
+ * decidido no controller): até então liquidar um título a pagar/receber não gerava NENHUM
+ * lançamento no Movimento de Caixa (`CashRegisterController`/`CashRegisterService` só conhecem
+ * pagamentos de pedido via `addAutomaticEntry`); este campo liga/desliga esse lançamento manual
+ * quando a sessão de caixa está aberta, sem nunca forçar abertura de sessão.
+ */
 export const markAccountPayablePaidSchema = z.object({
   paidValue: z.number().positive('Valor pago deve ser maior que zero'),
   paidAt: isoDateString.optional(),
+  affectsCashRegister: z.boolean().optional(),
 });
 
 export const markAccountReceivablePaidSchema = z.object({
   receivedValue: z.number().positive('Valor recebido deve ser maior que zero'),
   receivedAt: isoDateString.optional(),
+  affectsCashRegister: z.boolean().optional(),
 });
 
 /** REQ-4 — valor inicial não pode ser negativo (pode ser zero, ex.: sem troco inicial). */

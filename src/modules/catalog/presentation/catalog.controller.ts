@@ -197,6 +197,41 @@ export class CatalogController extends BaseRouter {
       },
     );
 
+    // Pedido explícito do usuário — "QR Code de mesa": cardápio público pra exibição em página
+    // web simples (sem app/login), aberto ao escanear o QR colado na mesa. Diferente das rotas
+    // públicas acima (`/restaurants/:id/menu-categories` etc.), que exigem `Customer` logado
+    // (`firebaseAuthMiddleware`) — aqui o cliente na mesa não tem sessão nenhuma, por isso
+    // resolve direto pelo `slug` (mesmo padrão de `GET /restaurants/resolve/:slug`,
+    // `RestaurantsController`) em vez de receber `restaurantId` já resolvido. Reaproveita
+    // `filterPublicCategories` (mesma filtragem de estoque das rotas públicas de cima), e só
+    // expõe os campos necessários pra exibir o cardápio (nome/descrição/preço/foto) — nunca
+    // custo, estoque interno ou qualquer outro campo de retaguarda.
+    application.get('/restaurants/resolve/:slug/table-menu', async (req: Request, res: Response) => {
+      const restaurant = await this.restaurantRepository.findBySlug(req.params.slug);
+      if (!restaurant) throw new NotFoundError('Restaurante não encontrado');
+
+      const categories = await this.menuCategoryRepository.listByRestaurant(restaurant.id);
+      const filtered = await this.filterPublicCategories(restaurant.id, categories);
+      const tableMenuCategories = filtered
+        .filter((category) => category.isActive)
+        .map((category) => ({
+          id: category.id,
+          name: category.name,
+          products: category.products
+            .filter((product) => product.isAvailable)
+            .map(({ id, name, description, price, imageUrl }) => ({ id, name, description, price, imageUrl })),
+        }));
+
+      res.json(200, {
+        restaurant: {
+          name: restaurant.name,
+          slug: restaurant.slug,
+          defaultProductImageUrl: restaurant.defaultProductImageUrl,
+        },
+        categories: tableMenuCategories,
+      });
+    });
+
     // specs/0021-papeis-operador REQ-3/T005 — cardápio é `dono`/`gerente` (sem `financeiro`).
     const authenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,

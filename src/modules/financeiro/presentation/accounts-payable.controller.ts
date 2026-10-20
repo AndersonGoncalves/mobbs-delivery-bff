@@ -6,6 +6,7 @@ import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
 import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { IAccountPayableRepository } from '../domain/repositories/account-payable.repository.interface';
+import { ICashRegisterRepository } from '../domain/repositories/cash-register.repository.interface';
 import { markAccountPayablePaidSchema, saveAccountPayableSchema } from './financeiro.schemas';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
@@ -14,10 +15,17 @@ type AsyncHandler = (req: Request, res: Response) => Promise<void>;
  * specs/0014-financeiro REQ-1/REQ-2 — títulos a pagar do restaurante do operador logado, mesmo
  * padrão de isolamento de `restaurants.me.*` (`restaurantOperatorMiddleware`, injetado por fora,
  * ver `main.ts`) já usado em `raw-materials`/`orders`.
+ *
+ * Pedido explícito do usuário — `affectsCashRegister` (default `true` quando omitido) no corpo de
+ * `.../pay`: quando `true` e existe uma sessão de caixa aberta, lança uma saída manual no Caixa
+ * (mesmo `ICashRegisterRepository.addMovement` usado pelo lançamento manual de
+ * `CashRegisterController`); quando `false`, ou sem sessão aberta, só marca o título como pago,
+ * sem tocar no caixa (nunca força abertura de sessão).
  */
 export class AccountsPayableController extends BaseRouter {
   constructor(
     private readonly accountPayableRepository: IAccountPayableRepository,
+    private readonly cashRegisterRepository: ICashRegisterRepository,
     private readonly restaurantOperatorMiddleware: AsyncHandler,
   ) {
     super();
@@ -61,13 +69,23 @@ export class AccountsPayableController extends BaseRouter {
       '/restaurants/me/accounts-payable/:id/pay',
       ...authenticated,
       async (req: Request, res: Response) => {
-        const { paidValue, paidAt } = parseBody(markAccountPayablePaidSchema, req.body);
-        await this.findOwnedAccount(req.params.id, req.restaurantId!);
+        const { paidValue, paidAt, affectsCashRegister } = parseBody(markAccountPayablePaidSchema, req.body);
+        const existingAccount = await this.findOwnedAccount(req.params.id, req.restaurantId!);
         const account = await this.accountPayableRepository.markAsPaid(
           req.params.id,
           paidValue,
           paidAt ? new Date(paidAt) : new Date(),
         );
+        if (affectsCashRegister ?? true) {
+          const session = await this.cashRegisterRepository.findOpenSessionByRestaurant(req.restaurantId!);
+          if (session) {
+            await this.cashRegisterRepository.addMovement(session.id, {
+              type: 'saida',
+              amount: paidValue,
+              description: `Pagamento: ${existingAccount.description}`,
+            });
+          }
+        }
         res.json(200, account);
       },
     );

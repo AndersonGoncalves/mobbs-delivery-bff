@@ -5,7 +5,7 @@ import type { Request, Response, Server } from 'restify';
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
-import { requireOperatorRole, requireOwnerRole } from '../../../shared/http/require-operator-role.middleware';
+import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { IRestaurantRepository } from '../domain/repositories/restaurant.repository.interface';
 import {
   restaurantProfileSchema,
@@ -66,10 +66,13 @@ export class RestaurantsController extends BaseRouter {
     });
 
     const authenticated: AsyncHandler[] = [firebaseAuthMiddleware, this.restaurantOperatorMiddleware];
-    const ownerAuthenticated: AsyncHandler[] = [
+    // specs/0162-topbar-busca-breadcrumb REQ-5 — revoga, só pra este botão, a exceção
+    // "somente Dono" da specs/0161: dono, gerente e financeiro ("Caixa") podem abrir/fechar o
+    // restaurante manualmente agora.
+    const openCloseAuthenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,
-      requireOwnerRole(),
+      requireOperatorRole('dono', 'gerente', 'financeiro'),
     ];
     const ownerOrManagerAuthenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
@@ -109,7 +112,7 @@ export class RestaurantsController extends BaseRouter {
       },
     );
 
-    application.patch('/restaurants/me/active', ...ownerAuthenticated, async (req: Request, res: Response) => {
+    application.patch('/restaurants/me/active', ...openCloseAuthenticated, async (req: Request, res: Response) => {
       const { isActive } = parseBody(setActiveSchema, req.body);
       const restaurant = await this.restaurantRepository.setActive(req.restaurantId!, isActive);
       res.json(200, restaurant);

@@ -6,14 +6,22 @@ import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
 import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { IAccountReceivableRepository } from '../domain/repositories/account-receivable.repository.interface';
+import { ICashRegisterRepository } from '../domain/repositories/cash-register.repository.interface';
 import { markAccountReceivablePaidSchema, saveAccountReceivableSchema } from './financeiro.schemas';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
-/** specs/0014-financeiro REQ-3 — mesma forma de `AccountsPayableController`, pra recebimentos. */
+/**
+ * specs/0014-financeiro REQ-3 — mesma forma de `AccountsPayableController`, pra recebimentos.
+ *
+ * Pedido explícito do usuário — `affectsCashRegister` (default `true` quando omitido) no corpo de
+ * `.../receive`: mesma regra de `AccountsPayableController` (ver comentário lá), só que lança uma
+ * entrada manual no Caixa em vez de saída.
+ */
 export class AccountsReceivableController extends BaseRouter {
   constructor(
     private readonly accountReceivableRepository: IAccountReceivableRepository,
+    private readonly cashRegisterRepository: ICashRegisterRepository,
     private readonly restaurantOperatorMiddleware: AsyncHandler,
   ) {
     super();
@@ -57,13 +65,23 @@ export class AccountsReceivableController extends BaseRouter {
       '/restaurants/me/accounts-receivable/:id/receive',
       ...authenticated,
       async (req: Request, res: Response) => {
-        const { receivedValue, receivedAt } = parseBody(markAccountReceivablePaidSchema, req.body);
-        await this.findOwnedAccount(req.params.id, req.restaurantId!);
+        const { receivedValue, receivedAt, affectsCashRegister } = parseBody(markAccountReceivablePaidSchema, req.body);
+        const existingAccount = await this.findOwnedAccount(req.params.id, req.restaurantId!);
         const account = await this.accountReceivableRepository.markAsReceived(
           req.params.id,
           receivedValue,
           receivedAt ? new Date(receivedAt) : new Date(),
         );
+        if (affectsCashRegister ?? true) {
+          const session = await this.cashRegisterRepository.findOpenSessionByRestaurant(req.restaurantId!);
+          if (session) {
+            await this.cashRegisterRepository.addMovement(session.id, {
+              type: 'entrada',
+              amount: receivedValue,
+              description: `Recebimento: ${existingAccount.description}`,
+            });
+          }
+        }
         res.json(200, account);
       },
     );

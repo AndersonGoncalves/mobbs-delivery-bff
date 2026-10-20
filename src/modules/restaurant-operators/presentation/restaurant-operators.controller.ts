@@ -69,6 +69,9 @@ export class RestaurantOperatorsController extends BaseRouter {
     // `name` (o seletor de motoboy de `ActiveOrdersPanel` continua funcionando sem mudar nada lá).
     // `email` também vai junto, cru, pra quem precisar mostrar os dois juntos (ex. a página
     // "Cadastro de motoboys", agora só leitura, lista operadores `motoboy`).
+    // `whatsapp` (ajuste, pedido explícito do usuário) — alimenta o ícone de WhatsApp da mesma
+    // página; vem cru (com DDI, igual é salvo pelo BFF em `addOperator`/`updateOperatorProfile`),
+    // undefined quando o motoboy não tem WhatsApp cadastrado.
     application.get(
       '/restaurants/me/operators/motoboys',
       firebaseAuthMiddleware,
@@ -78,7 +81,12 @@ export class RestaurantOperatorsController extends BaseRouter {
         const operators = await this.operatorRepository.listByRestaurant(req.restaurantId!);
         const motoboys = operators
           .filter((operator) => operator.role === 'motoboy' && operator.isActive)
-          .map((operator) => ({ id: operator.id, name: operator.name || operator.email, email: operator.email }));
+          .map((operator) => ({
+            id: operator.id,
+            name: operator.name || operator.email,
+            email: operator.email,
+            whatsapp: operator.whatsapp,
+          }));
         res.json(200, motoboys);
       },
     );

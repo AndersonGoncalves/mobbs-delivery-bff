@@ -607,21 +607,55 @@ describe('RestaurantsController', () => {
       expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ isActive: false }));
     });
 
-    it('somente o dono pode abrir ou fechar o restaurante', async () => {
-      const managerMiddleware = async (req: FakeRequest) => {
+    // specs/0162-topbar-busca-breadcrumb REQ-5/AC-5 — revoga, só pra esta rota, a exceção
+    // "somente Dono" da specs/0161: dono, gerente e financeiro ("Caixa") agora abrem/fecham.
+    it.each(['dono', 'gerente', 'financeiro'])(
+      'AC-5: %s pode abrir ou fechar o restaurante (200)',
+      async (operatorRole) => {
+        const roleMiddleware = async (req: FakeRequest) => {
+          req.restaurantId = '1';
+          req.operatorRole = operatorRole as FakeRequest['operatorRole'];
+        };
+        const { repository, routes } = (() => {
+          const repository: Partial<IRestaurantRepository> = {
+            setActive: jest.fn().mockResolvedValue(buildRestaurant({ isActive: false })),
+          };
+          const { application, routes } = buildFakeApplication();
+          new RestaurantsController(
+            repository as IRestaurantRepository,
+            roleMiddleware as unknown as (req: Request, res: Response) => Promise<void>,
+          ).initializeRoutes(application);
+          return { repository, routes };
+        })();
+        const json = jest.fn();
+
+        await runAuthenticatedChain(
+          routes['PATCH /restaurants/me/active'],
+          { body: { isActive: false }, operatorRole: operatorRole as FakeRequest['operatorRole'] },
+          { json },
+        );
+
+        expect(repository.setActive).toHaveBeenCalledWith('1', false);
+        expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ isActive: false }));
+      },
+    );
+
+    // specs/0162-topbar-busca-breadcrumb REQ-5/AC-6 — garçom e motoboy continuam sem acesso.
+    it.each(['garcom', 'motoboy'])('AC-6: %s não pode abrir ou fechar o restaurante (403)', async (operatorRole) => {
+      const roleMiddleware = async (req: FakeRequest) => {
         req.restaurantId = '1';
-        req.operatorRole = 'gerente';
+        req.operatorRole = operatorRole as FakeRequest['operatorRole'];
       };
       const { application, routes } = buildFakeApplication();
       new RestaurantsController(
         { setActive: jest.fn() } as unknown as IRestaurantRepository,
-        managerMiddleware as unknown as (req: Request, res: Response) => Promise<void>,
+        roleMiddleware as unknown as (req: Request, res: Response) => Promise<void>,
       ).initializeRoutes(application);
 
       await expect(
         runAuthenticatedChain(
           routes['PATCH /restaurants/me/active'],
-          { body: { isActive: false }, operatorRole: 'gerente' },
+          { body: { isActive: false }, operatorRole: operatorRole as FakeRequest['operatorRole'] },
           { json: jest.fn() },
         ),
       ).rejects.toMatchObject({ statusCode: 403 });

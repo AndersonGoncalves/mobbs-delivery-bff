@@ -268,7 +268,9 @@ describe('RestaurantOperatorsController', () => {
     await runChain(routes['GET /restaurants/me/operators/motoboys'], {}, { json, send: jest.fn() });
 
     expect(repository.listByRestaurant).toHaveBeenCalledWith('r-1');
-    expect(json).toHaveBeenCalledWith(200, [{ id: 'op-1', name: 'carlos@example.com', email: 'carlos@example.com' }]);
+    expect(json).toHaveBeenCalledWith(200, [
+      { id: 'op-1', name: 'carlos@example.com', email: 'carlos@example.com', whatsapp: undefined },
+    ]);
   });
 
   // (ajuste, pedido explícito do usuário) — nome de verdade, quando cadastrado, em vez do e-mail.
@@ -282,7 +284,26 @@ describe('RestaurantOperatorsController', () => {
 
     await runChain(routes['GET /restaurants/me/operators/motoboys'], {}, { json, send: jest.fn() });
 
-    expect(json).toHaveBeenCalledWith(200, [{ id: 'op-1', name: 'Carlos', email: 'carlos@example.com' }]);
+    expect(json).toHaveBeenCalledWith(200, [
+      { id: 'op-1', name: 'Carlos', email: 'carlos@example.com', whatsapp: undefined },
+    ]);
+  });
+
+  // (ajuste, pedido explícito do usuário) — WhatsApp do motoboy vai junto, pro ícone de ação na
+  // web (`MotoboyListPage`); undefined quando o motoboy não tem WhatsApp cadastrado.
+  it('GET /restaurants/me/operators/motoboys inclui o WhatsApp do motoboy quando cadastrado', async () => {
+    const { routes } = setup({
+      listByRestaurant: jest.fn().mockResolvedValue([
+        buildOperator({ id: 'op-1', email: 'carlos@example.com', whatsapp: '5585986404604', role: 'motoboy', isActive: true }),
+      ]),
+    }, buildPassthroughOperatorMiddleware('gerente'));
+    const json = jest.fn();
+
+    await runChain(routes['GET /restaurants/me/operators/motoboys'], {}, { json, send: jest.fn() });
+
+    expect(json).toHaveBeenCalledWith(200, [
+      { id: 'op-1', name: 'carlos@example.com', email: 'carlos@example.com', whatsapp: '5585986404604' },
+    ]);
   });
 
   it('caixa pode listar operadores motoboy', async () => {

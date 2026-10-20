@@ -1,6 +1,7 @@
 import type { Request, Response, Server } from 'restify';
 
 import { IAccountPayableRepository } from '../domain/repositories/account-payable.repository.interface';
+import { ICashRegisterRepository } from '../domain/repositories/cash-register.repository.interface';
 import { AccountsPayableController } from './accounts-payable.controller';
 
 type FakeRequest = Partial<Pick<Request, 'params' | 'body'>> & { restaurantId?: string };
@@ -46,7 +47,12 @@ function buildAccount(overrides: Record<string, unknown> = {}) {
 }
 
 describe('AccountsPayableController', () => {
-  function setup(overrides: { accountPayableRepository?: Partial<IAccountPayableRepository> } = {}) {
+  function setup(
+    overrides: {
+      accountPayableRepository?: Partial<IAccountPayableRepository>;
+      cashRegisterRepository?: Partial<ICashRegisterRepository>;
+    } = {},
+  ) {
     const accountPayableRepository: Partial<IAccountPayableRepository> = {
       listByRestaurant: jest.fn().mockResolvedValue([buildAccount()]),
       findById: jest.fn().mockResolvedValue(buildAccount()),
@@ -55,12 +61,19 @@ describe('AccountsPayableController', () => {
       markAsPaid: jest.fn().mockResolvedValue(buildAccount({ status: 'pago', paidValue: 1500, paidAt: '2026-09-09T00:00:00.000Z' })),
       ...overrides.accountPayableRepository,
     };
+    const cashRegisterRepository: Partial<ICashRegisterRepository> = {
+      findOpenSessionByRestaurant: jest.fn().mockResolvedValue({ id: 'cr-1', restaurantId: 'r-1', status: 'aberto' }),
+      addMovement: jest.fn().mockResolvedValue({ id: 'mv-1' }),
+      ...overrides.cashRegisterRepository,
+    };
     const restaurantOperatorMiddleware = jest.fn(async () => {});
     const { application, routes } = buildFakeApplication();
-    new AccountsPayableController(accountPayableRepository as IAccountPayableRepository, restaurantOperatorMiddleware).initializeRoutes(
-      application,
-    );
-    return { accountPayableRepository, routes };
+    new AccountsPayableController(
+      accountPayableRepository as IAccountPayableRepository,
+      cashRegisterRepository as ICashRegisterRepository,
+      restaurantOperatorMiddleware,
+    ).initializeRoutes(application);
+    return { accountPayableRepository, cashRegisterRepository, routes };
   }
 
   it('AC-1: GET /restaurants/me/accounts-payable lista os títulos a pagar do restaurante do operador', async () => {
@@ -135,6 +148,53 @@ describe('AccountsPayableController', () => {
 
     expect(accountPayableRepository.markAsPaid).toHaveBeenCalledWith('ap-1', 1500, new Date('2026-09-09T00:00:00.000Z'));
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ status: 'pago' }));
+  });
+
+  // Pedido explícito do usuário — liquidar um título a pagar pode opcionalmente lançar uma saída
+  // no Movimento de Caixa, quando há sessão aberta. Default (campo omitido) é `true`.
+  it('AC-2: PATCH .../pay sem affectsCashRegister (default true) lança uma saída no caixa aberto', async () => {
+    const { cashRegisterRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/accounts-payable/:id/pay'],
+      { restaurantId: 'r-1', params: { id: 'ap-1' }, body: { paidValue: 1500 } },
+      { json },
+    );
+
+    expect(cashRegisterRepository.findOpenSessionByRestaurant).toHaveBeenCalledWith('r-1');
+    expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith(
+      'cr-1',
+      expect.objectContaining({ type: 'saida', amount: 1500, description: expect.stringContaining('Aluguel setembro') }),
+    );
+  });
+
+  it('AC-2: PATCH .../pay com affectsCashRegister: false não lança nada no caixa', async () => {
+    const { cashRegisterRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/accounts-payable/:id/pay'],
+      { restaurantId: 'r-1', params: { id: 'ap-1' }, body: { paidValue: 1500, affectsCashRegister: false } },
+      { json },
+    );
+
+    expect(cashRegisterRepository.addMovement).not.toHaveBeenCalled();
+  });
+
+  it('AC-2: PATCH .../pay com affectsCashRegister: true mas sem sessão de caixa aberta não lança nada (não força abertura)', async () => {
+    const { cashRegisterRepository, routes } = setup({
+      cashRegisterRepository: { findOpenSessionByRestaurant: jest.fn().mockResolvedValue(null) },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/accounts-payable/:id/pay'],
+      { restaurantId: 'r-1', params: { id: 'ap-1' }, body: { paidValue: 1500, affectsCashRegister: true } },
+      { json },
+    );
+
+    expect(cashRegisterRepository.addMovement).not.toHaveBeenCalled();
   });
 
   it('lança 404 ao operar sobre um título de outro restaurante', async () => {
