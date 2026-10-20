@@ -37,7 +37,9 @@ export interface ICashRegisterRepository {
   /** specs/0118-controle-caixa-automatico-redes-sociais REQ-10 — fechamentos (`status: 'fechado'`)
    * cujo `closedAt` cai dentro de `[from, to]`, mais antigo primeiro. */
   findClosedSessionsBetween(restaurantId: string, from: Date, to: Date): Promise<ICashRegisterSession[]>;
-  /** specs/0118-controle-caixa-automatico-redes-sociais REQ-11 — só `CashMovementEntry` manuais
-   * (sem `orderId`) de qualquer sessão deste restaurante, com `createdAt` em `[from, to]`. */
-  findManualMovementsByRestaurantBetween(restaurantId: string, from: Date, to: Date): Promise<ICashMovementEntry[]>;
+  /** (ajuste, pedido explícito do usuário) — era só manuais (sem `orderId`); "Entradas e saídas"
+   * do Histórico escondia as vendas automáticas (mesa/balcão, delivery) do período, mostrando só
+   * sangria/suprimento. Agora todo `CashMovementEntry` de qualquer sessão deste restaurante, com
+   * `createdAt` em `[from, to]` — manual ou automático. */
+  findMovementsByRestaurantBetween(restaurantId: string, from: Date, to: Date): Promise<ICashMovementEntry[]>;
 }

@@ -220,12 +220,14 @@ export class CashRegisterController extends BaseRouter {
       res.json(200, { from, to, closings });
     });
 
-    // REQ-11 — só os `CashMovementEntry` manuais (sangria/suprimento), separados das vendas
-    // automáticas, no período filtrado.
+    // (ajuste, pedido explícito do usuário) — era só manuais (REQ-11 original); "Entradas e
+    // saídas" do Histórico escondia as vendas automáticas (mesa/balcão, delivery) do período,
+    // mostrando só sangria/suprimento. Agora todo `CashMovementEntry` do período, manual ou
+    // automático.
     application.get('/restaurants/me/cash-register/movements', ...authenticated, async (req: Request, res: Response) => {
       await this.cashRegisterService.ensureAutomaticSchedule(req.restaurantId!);
       const { from, to } = parseBody(cashRegisterPeriodSchema, req.query);
-      const movements = await this.cashRegisterRepository.findManualMovementsByRestaurantBetween(
+      const movements = await this.cashRegisterRepository.findMovementsByRestaurantBetween(
         req.restaurantId!,
         new Date(from),
         new Date(to),

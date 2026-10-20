@@ -95,7 +95,7 @@ describe('CashRegisterController', () => {
       getCalculatedBalance: jest.fn().mockResolvedValue(150),
       close: jest.fn().mockResolvedValue({ session: buildSession({ status: 'fechado', closingBalance: 150 }), calculatedBalance: 150, difference: 0 }),
       findClosedSessionsBetween: jest.fn().mockResolvedValue([]),
-      findManualMovementsByRestaurantBetween: jest.fn().mockResolvedValue([]),
+      findMovementsByRestaurantBetween: jest.fn().mockResolvedValue([]),
       ...overrides.cashRegisterRepository,
     };
     const orderRepository: Partial<IOrderRepository> = {
@@ -419,23 +419,26 @@ describe('CashRegisterController', () => {
     });
   });
 
-  describe('GET /restaurants/me/cash-register/movements (REQ-11)', () => {
-    it('AC-8: devolve só os movimentos manuais (sem orderId) do período, não as vendas automáticas', async () => {
+  describe('GET /restaurants/me/cash-register/movements', () => {
+    // (ajuste, pedido explícito do usuário) — era só manuais; agora inclui também as vendas
+    // automáticas (com `orderId`) no período.
+    it('devolve todos os movimentos do período, manuais e automáticos (com orderId)', async () => {
       const from = '2026-10-01T00:00:00.000Z';
       const to = '2026-10-31T23:59:59.000Z';
-      const manualMovements = [
+      const movements = [
         buildMovement({ id: 'mv-entrada', type: 'entrada', description: 'Suprimento' }),
         buildMovement({ id: 'mv-saida', type: 'saida', description: 'Sangria' }),
+        buildMovement({ id: 'mv-venda', type: 'entrada', description: 'Mesa/balcão #8', orderId: 'order-1' }),
       ];
       const { cashRegisterRepository, routes } = setup({
-        cashRegisterRepository: { findManualMovementsByRestaurantBetween: jest.fn().mockResolvedValue(manualMovements) },
+        cashRegisterRepository: { findMovementsByRestaurantBetween: jest.fn().mockResolvedValue(movements) },
       });
       const json = jest.fn();
 
       await runOperatorChain(routes['GET /restaurants/me/cash-register/movements'], { restaurantId: 'r-1', query: { from, to } }, { json });
 
-      expect(cashRegisterRepository.findManualMovementsByRestaurantBetween).toHaveBeenCalledWith('r-1', new Date(from), new Date(to));
-      expect(json).toHaveBeenCalledWith(200, { from, to, movements: manualMovements });
+      expect(cashRegisterRepository.findMovementsByRestaurantBetween).toHaveBeenCalledWith('r-1', new Date(from), new Date(to));
+      expect(json).toHaveBeenCalledWith(200, { from, to, movements });
     });
 
     it('rejeita período inválido', async () => {

@@ -161,14 +161,13 @@ export class CashRegisterMongooseRepository implements ICashRegisterRepository {
   /** specs/0118-controle-caixa-automatico-redes-sociais REQ-11 — resolve as sessões do
    * restaurante primeiro (`CashMovementEntry` não tem `restaurantId` próprio, só
    * `cashRegisterSessionId`), depois filtra os movimentos manuais (`orderId` ausente) no período. */
-  async findManualMovementsByRestaurantBetween(restaurantId: string, from: Date, to: Date): Promise<ICashMovementEntry[]> {
+  async findMovementsByRestaurantBetween(restaurantId: string, from: Date, to: Date): Promise<ICashMovementEntry[]> {
     const sessions = await CashRegisterSessionModel.find({ restaurantId }, { _id: 1 }).lean<{ _id: string }[]>();
     const sessionIds = sessions.map((session) => session._id);
     if (sessionIds.length === 0) return [];
 
     const docs = await CashMovementEntryModel.find({
       cashRegisterSessionId: { $in: sessionIds },
-      orderId: { $exists: false },
       createdAt: { $gte: from, $lte: to },
     })
       .sort({ createdAt: 1 })
