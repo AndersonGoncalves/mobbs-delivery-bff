@@ -93,9 +93,15 @@ export const restaurantProfileSchema = z
     // a partir de primaryColor (false, default).
     useWhiteBackground: z.boolean(),
     // Pedido explícito do usuário — mesmo raciocínio de useWhiteBackground, pra barra de
-    // navegação inferior e barra de sistema/navegador. Default true (branco fixo) em cada um.
+    // navegação inferior. Default true (branco fixo).
     useWhiteBottomNavBar: z.boolean(),
-    useWhiteStatusBar: z.boolean(),
+    // Pedido explícito do usuário (2º follow-up) — era boolean, virou enum de 3 opções (a 3ª usa
+    // `primaryColor` direto, não um tom calculado).
+    statusBarColorMode: z.enum(['white', 'theme', 'primary']),
+    // Pedido explícito do usuário (2º follow-up) — mesmo raciocínio de useWhiteBackground, pros
+    // campos de texto e a caixa de busca da home do app cliente.
+    useWhiteTextFieldColor: z.boolean(),
+    useWhiteSearchFieldColor: z.boolean(),
     // specs/0028-destaques-vendidos-banners REQ-1, REQ-4, REQ-10.
     showBestSellers: z.boolean(),
     showHighlights: z.boolean(),

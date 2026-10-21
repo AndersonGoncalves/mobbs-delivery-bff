@@ -393,6 +393,59 @@ describe('RestaurantsController', () => {
       expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ productImageOnRight: false }));
     });
 
+    // Pedido explícito do usuário — "Identidade visual": toggles de cor da barra de navegação
+    // inferior/campos de texto/caixa de busca, e o enum de 3 opções da barra de status (gap de
+    // cobertura pré-existente: nenhum teste de persistência de verdade cobria estes campos).
+    it('PUT /restaurants/me aceita e persiste useWhiteBottomNavBar', async () => {
+      const { repository, routes } = setup({
+        updateProfile: jest.fn().mockResolvedValue(buildRestaurant({ useWhiteBottomNavBar: false })),
+      });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['PUT /restaurants/me'], { body: { useWhiteBottomNavBar: false } }, { json });
+
+      expect(repository.updateProfile).toHaveBeenCalledWith('1', { useWhiteBottomNavBar: false });
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ useWhiteBottomNavBar: false }));
+    });
+
+    it('PUT /restaurants/me aceita e persiste statusBarColorMode', async () => {
+      const { repository, routes } = setup({
+        updateProfile: jest.fn().mockResolvedValue(buildRestaurant({ statusBarColorMode: 'primary' })),
+      });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['PUT /restaurants/me'], { body: { statusBarColorMode: 'primary' } }, { json });
+
+      expect(repository.updateProfile).toHaveBeenCalledWith('1', { statusBarColorMode: 'primary' });
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ statusBarColorMode: 'primary' }));
+    });
+
+    it('PUT /restaurants/me rejeita (400) statusBarColorMode fora do enum', async () => {
+      const { repository, routes } = setup();
+
+      await expect(
+        runAuthenticatedChain(routes['PUT /restaurants/me'], { body: { statusBarColorMode: 'rainbow' } }, { json: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 400 });
+
+      expect(repository.updateProfile).not.toHaveBeenCalled();
+    });
+
+    it('PUT /restaurants/me aceita e persiste useWhiteTextFieldColor e useWhiteSearchFieldColor', async () => {
+      const { repository, routes } = setup({
+        updateProfile: jest.fn().mockResolvedValue(buildRestaurant({ useWhiteTextFieldColor: true, useWhiteSearchFieldColor: true })),
+      });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(
+        routes['PUT /restaurants/me'],
+        { body: { useWhiteTextFieldColor: true, useWhiteSearchFieldColor: true } },
+        { json },
+      );
+
+      expect(repository.updateProfile).toHaveBeenCalledWith('1', { useWhiteTextFieldColor: true, useWhiteSearchFieldColor: true });
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ useWhiteTextFieldColor: true, useWhiteSearchFieldColor: true }));
+    });
+
     it('PUT /restaurants/me aceita e persiste onPrimaryColor', async () => {
       const onPrimaryColor = '#000000';
       const { repository, routes } = setup({ updateProfile: jest.fn().mockResolvedValue(buildRestaurant({ onPrimaryColor })) });

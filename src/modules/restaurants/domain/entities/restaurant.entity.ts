@@ -113,12 +113,27 @@ export interface IRestaurant {
    * branco fixo, `false` (default) = tom calculado a partir de `primaryColor`. */
   useWhiteBackground: boolean;
   /** Pedido explícito do usuário — mesmo raciocínio de `useWhiteBackground`, mas pra barra de
-   * navegação inferior (`AppBottomNavScaffold`) e pra barra de sistema (status bar do app nativo
-   * / barra de endereço do navegador no Flutter Web, via `theme-color`). Default `true` (branco
-   * fixo) preserva o comportamento visual que já existia antes deste campo existir — diferente de
+   * navegação inferior (`AppBottomNavScaffold`). Default `true` (branco fixo) preserva o
+   * comportamento visual que já existia antes deste campo existir — diferente de
    * `useWhiteBackground`, cujo default é o tom calculado. */
   useWhiteBottomNavBar: boolean;
-  useWhiteStatusBar: boolean;
+  /**
+   * Pedido explícito do usuário (2º follow-up) — a barra de sistema (status bar do app nativo /
+   * barra de endereço do navegador no Flutter Web, via `theme-color`) tinha só 2 opções
+   * (`useWhiteStatusBar` boolean: branca ou tom calculado) e precisava de uma 3ª, a cor primária
+   * de verdade (`primaryColor`), não o tom calculado a partir dela — por isso virou enum em vez
+   * de boolean. Default `'white'` preserva o `useWhiteStatusBar: true` de antes.
+   */
+  statusBarColorMode: 'white' | 'theme' | 'primary';
+  /** Pedido explícito do usuário (2º follow-up) — mesmo raciocínio de `useWhiteBackground`, mas
+   * pro preenchimento dos campos de texto do app (`AppTextField.fillColor`, `mobbs_ui_kit`):
+   * `true` = branco fixo, `false` (default) = `colorScheme.surface` (tom do tema, comportamento
+   * que já existia antes deste campo, `specs/0167` T012 — só não era configurável ainda). */
+  useWhiteTextFieldColor: boolean;
+  /** Pedido explícito do usuário (2º follow-up) — mesmo raciocínio acima, mas pro preenchimento
+   * da caixa de busca da home (`AppSearchField.fillColor`): `true` = branco, `false` (default) =
+   * cinza claro fixo (`0xFFF3F3F4`, a cor que o campo de busca já usa hoje). */
+  useWhiteSearchFieldColor: boolean;
   /** specs/0028-destaques-vendidos-banners REQ-1 — liga/desliga a seção "Mais vendidos" no
    * cardápio do cliente. Desde specs/0117-vitrine-manual-e-ajustes-formularios, os produtos
    * exibidos são curados manualmente (`Product.isBestSeller`) — este campo só decide se a seção

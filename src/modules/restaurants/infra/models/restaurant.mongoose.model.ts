@@ -83,9 +83,18 @@ const restaurantSchema = new Schema(
     // a partir de primaryColor (false, default).
     useWhiteBackground: { type: Boolean, required: true, default: false },
     // Pedido explícito do usuário — default `true` (branco fixo) preserva o comportamento visual
-    // de antes destes 2 campos existirem.
+    // de antes deste campo existir.
     useWhiteBottomNavBar: { type: Boolean, required: true, default: true },
-    useWhiteStatusBar: { type: Boolean, required: true, default: true },
+    // Pedido explícito do usuário (2º follow-up) — era boolean (`useWhiteStatusBar`), virou enum
+    // de 3 opções (a 3ª, `primary`, usa `primaryColor` direto, não um tom calculado a partir
+    // dela). Default `'white'` preserva o `useWhiteStatusBar: true` de antes.
+    statusBarColorMode: { type: String, enum: ['white', 'theme', 'primary'], required: true, default: 'white' },
+    // Pedido explícito do usuário (2º follow-up) — mesmo raciocínio de useWhiteBackground, pro
+    // preenchimento dos campos de texto (`AppTextField`) e da caixa de busca da home
+    // (`AppSearchField`) do app cliente. Default `false` em ambos preserva o comportamento visual
+    // que cada um já tinha antes destes campos existirem (tema/cinza, respectivamente).
+    useWhiteTextFieldColor: { type: Boolean, required: true, default: false },
+    useWhiteSearchFieldColor: { type: Boolean, required: true, default: false },
     // specs/0028-destaques-vendidos-banners REQ-1, REQ-4, REQ-5, REQ-10.
     showBestSellers: { type: Boolean, required: true, default: false },
     showHighlights: { type: Boolean, required: true, default: true },
