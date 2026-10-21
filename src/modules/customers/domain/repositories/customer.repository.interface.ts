@@ -1,4 +1,5 @@
 import { ICustomer } from '../entities/customer.entity';
+import { PaymentMethod } from '../../../orders/domain/entities/order.entity';
 
 /**
  * `email`/`photoUrl` sempre inclusos (mesmo quando só `phone`/`document` mudam) — necessário pro
@@ -18,6 +19,14 @@ export interface ICustomerRepository {
 
   /** Foto própria removida pelo cliente: tira `photoUrl` do documento (volta a valer a foto da conta). */
   removePhoto(id: string): Promise<ICustomer | null>;
+
+  /**
+   * specs/0171-meios-pagamento-por-cliente REQ-4 — só a retaguarda chama isto
+   * (`CustomerPaymentMethodsController`, dono/gerente), nunca o fluxo do próprio cliente. Método
+   * dedicado, não reusa `upsertProfile`: nunca cria o `Customer` (`null` se o id não existir).
+   * `null`/array vazio limpa `allowedPaymentMethods` (volta a "sem restrição própria", REQ-1).
+   */
+  updateAllowedPaymentMethods(id: string, allowedPaymentMethods: PaymentMethod[] | null): Promise<ICustomer | null>;
 
   /** REQ-1 (`specs/0011-perfil-cliente`) — cria se ainda não existir, atualiza se existir. */
   upsertProfile(id: string, patch: CustomerProfileUpsert): Promise<ICustomer>;

@@ -1,5 +1,6 @@
 import { ICustomer } from '../../domain/entities/customer.entity';
 import { CustomerProfileUpsert, ICustomerRepository } from '../../domain/repositories/customer.repository.interface';
+import { PaymentMethod } from '../../../orders/domain/entities/order.entity';
 import { CustomerModel } from '../models/customer.mongoose.model';
 
 interface CustomerLeanDocument {
@@ -11,6 +12,7 @@ interface CustomerLeanDocument {
   document?: string;
   termsAcceptedAt?: Date;
   termsVersionAccepted?: string;
+  allowedPaymentMethods?: PaymentMethod[];
   deletedAt?: Date;
 }
 
@@ -24,6 +26,7 @@ function toEntity(doc: CustomerLeanDocument): ICustomer {
     document: doc.document,
     termsAcceptedAt: doc.termsAcceptedAt?.toISOString(),
     termsVersionAccepted: doc.termsVersionAccepted,
+    allowedPaymentMethods: doc.allowedPaymentMethods,
     deletedAt: doc.deletedAt?.toISOString(),
   };
 }
@@ -67,6 +70,21 @@ export class CustomerMongooseRepository implements ICustomerRepository {
       { new: true, upsert: true },
     ).lean<CustomerLeanDocument>();
     return toEntity(doc as CustomerLeanDocument);
+  }
+
+  /**
+   * specs/0171-meios-pagamento-por-cliente REQ-4 — método dedicado (não reusa `upsertProfile`,
+   * que é do fluxo do próprio cliente): nunca cria o documento (`upsert` ausente — a retaguarda só
+   * edita um `Customer` que já existe, listado em `customers-summary` por já ter pedido).
+   * `null`/array vazio limpa a restrição própria (`$unset`, mesmo motivo de `removePhoto`/
+   * `anonymize` — `$set: undefined` o Mongoose ignora silenciosamente).
+   */
+  async updateAllowedPaymentMethods(id: string, allowedPaymentMethods: PaymentMethod[] | null): Promise<ICustomer | null> {
+    const update = allowedPaymentMethods && allowedPaymentMethods.length > 0
+      ? { $set: { allowedPaymentMethods } }
+      : { $unset: { allowedPaymentMethods: '' } };
+    const doc = await CustomerModel.findByIdAndUpdate(id, update, { new: true }).lean<CustomerLeanDocument>();
+    return doc ? toEntity(doc) : null;
   }
 
   /** REQ-6 — `$unset` (não `$set: undefined`, que o Mongoose ignora silenciosamente) pra

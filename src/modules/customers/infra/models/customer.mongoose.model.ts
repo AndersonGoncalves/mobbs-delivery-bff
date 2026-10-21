@@ -12,6 +12,8 @@ const customerSchema = new Schema(
     document: { type: String },
     termsAcceptedAt: { type: Date },
     termsVersionAccepted: { type: String },
+    // specs/0171-meios-pagamento-por-cliente REQ-1 — ausente/`null` = sem restrição própria.
+    allowedPaymentMethods: { type: [String] },
     deletedAt: { type: Date },
   },
   { _id: false, timestamps: true },

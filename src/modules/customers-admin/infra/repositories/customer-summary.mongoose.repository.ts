@@ -1,6 +1,7 @@
 import type { PipelineStage } from 'mongoose';
 
 import { OrderModel } from '../../../orders/infra/models/order.mongoose.model';
+import { PaymentMethod } from '../../../orders/domain/entities/order.entity';
 import { ICustomerSummary } from '../../domain/entities/customer-summary.entity';
 import { ICustomerSummaryRepository } from '../../domain/repositories/customer-summary.repository.interface';
 
@@ -9,7 +10,7 @@ interface CustomerSummaryAggregationResult {
   totalOrders: number;
   totalSpent: number;
   lastOrderAt: Date;
-  customer: { name: string; phone?: string };
+  customer: { name: string; phone?: string; allowedPaymentMethods?: PaymentMethod[] };
 }
 
 // Escapa caracteres especiais de regex antes de usar `search` num `$regex` — sem isso, um cliente
@@ -69,6 +70,9 @@ export class CustomerSummaryMongooseRepository implements ICustomerSummaryReposi
       totalOrders: result.totalOrders,
       totalSpent: result.totalSpent,
       lastOrderAt: result.lastOrderAt?.toISOString(),
+      // specs/0171-meios-pagamento-por-cliente — `$lookup` acima já traz o documento completo do
+      // `Customer` (sem `$project` próprio), então `allowedPaymentMethods` já está disponível aqui.
+      allowedPaymentMethods: result.customer.allowedPaymentMethods,
     }));
   }
 }

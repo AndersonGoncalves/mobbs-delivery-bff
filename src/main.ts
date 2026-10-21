@@ -59,6 +59,7 @@ import { FavoriteMongooseRepository } from './modules/customers/infra/repositori
 import { CustomersController } from './modules/customers/presentation/customers.controller';
 import { CustomerSummaryMongooseRepository } from './modules/customers-admin/infra/repositories/customer-summary.mongoose.repository';
 import { CustomersSummaryController } from './modules/customers-admin/presentation/customers-summary.controller';
+import { CustomerPaymentMethodsController } from './modules/customers-admin/presentation/customer-payment-methods.controller';
 import { WhatsAppNotificationService } from './modules/notifications/infra/whatsapp-notification.service';
 import { AdditionalGroupTemplateMongooseRepository } from './modules/additional-group-templates/infra/repositories/additional-group-template.mongoose.repository';
 import { AdditionalGroupTemplatesController } from './modules/additional-group-templates/presentation/additional-group-templates.controller';
@@ -298,6 +299,7 @@ server
       restaurantOperatorMiddleware,
       new AddressMongooseRepository(),
     ),
+    new CustomerPaymentMethodsController(customerRepository, restaurantRepository, restaurantOperatorMiddleware),
     new WhatsAppConnectionController(whatsAppConnectionService, restaurantOperatorMiddleware),
     new AccountsPayableController(new AccountPayableMongooseRepository(), cashRegisterRepository, restaurantOperatorMiddleware),
     new AccountsReceivableController(new AccountReceivableMongooseRepository(), cashRegisterRepository, restaurantOperatorMiddleware),

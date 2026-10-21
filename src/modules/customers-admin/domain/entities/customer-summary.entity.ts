@@ -1,3 +1,5 @@
+import { PaymentMethod } from '../../../orders/domain/entities/order.entity';
+
 /**
  * docs/architecture/data-model.md §CustomerSummary — não é uma entidade nova de verdade, é uma
  * **agregação** de `Customer` + `Order` escopada ao `restaurantId` do operador logado (o
@@ -17,4 +19,11 @@ export interface ICustomerSummary {
   /** REQ-1 — soma de `Order.total` **neste** restaurante. */
   totalSpent: number;
   lastOrderAt?: string;
+  /**
+   * specs/0171-meios-pagamento-por-cliente — snapshot de `Customer.allowedPaymentMethods`,
+   * exposto aqui pra `CustomerDetailPage` não precisar de uma segunda chamada só pra ler o estado
+   * atual da restrição (a mesma lista já alimenta a tela de detalhe via `useCustomerSummaries`).
+   * Editado por outra rota (`CustomerPaymentMethodsController`), nunca por este agregado.
+   */
+  allowedPaymentMethods?: PaymentMethod[] | null;
 }

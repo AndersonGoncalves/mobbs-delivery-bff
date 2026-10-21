@@ -303,6 +303,27 @@ describe('CustomersController', () => {
     );
   });
 
+  // specs/0171-meios-pagamento-por-cliente REQ-4/AC-4 — o próprio cliente nunca consegue alterar
+  // `allowedPaymentMethods` por `PUT /customers/me`: `updateCustomerProfileSchema` é uma allowlist
+  // explícita (name/phone/document/email/photoUrl), então o campo simplesmente nunca chega no
+  // patch montado pro repositório, mesmo se enviado no corpo da requisição.
+  it('specs/0171: PUT /customers/me ignora allowedPaymentMethods enviado pelo próprio cliente', async () => {
+    const { customerRepository, routes } = setup({
+      customerRepository: {
+        findById: jest.fn().mockResolvedValue(buildCustomer({ phone: '11888888888', document: '52998224725' })),
+      },
+    });
+
+    await runAuthenticatedChain(
+      routes['PUT /customers/me'],
+      { user: { uid: 'c-1' }, body: { name: 'Ana Nova', allowedPaymentMethods: ['pix'] } },
+      { json: jest.fn() },
+    );
+
+    const patch = (customerRepository.upsertProfile as jest.Mock).mock.calls[0][1];
+    expect(patch).not.toHaveProperty('allowedPaymentMethods');
+  });
+
   // specs/0077 — o "Salvar" do perfil (app antigo) mandava `document: ""` sem CPF e levava 400.
   it('specs/0077: PUT /customers/me com campos em branco (CPF/telefone vazios) NÃO falha e preserva os existentes', async () => {
     const { customerRepository, routes } = setup({

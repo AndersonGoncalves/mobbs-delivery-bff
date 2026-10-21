@@ -1,3 +1,5 @@
+import { PaymentMethod } from '../../../orders/domain/entities/order.entity';
+
 /**
  * docs/architecture/data-model.md §Customer — `id` é o UID do Firebase Auth (nunca gerado pelo
  * BFF). Sem registro server-side no primeiro login (`specs/0002-autenticacao`, `AuthService`
@@ -15,6 +17,13 @@ export interface ICustomer {
   /** specs/0017-lgpd-privacidade REQ-2/REQ-4. */
   termsAcceptedAt?: string;
   termsVersionAccepted?: string;
+  /**
+   * specs/0171-meios-pagamento-por-cliente REQ-1 — restrição própria do cliente, editável só
+   * pela retaguarda (`CustomerPaymentMethodsController`, nunca por `PUT /customers/me`).
+   * `undefined`/`null` (default) = "sem restrição própria", o app libera todos os meios que
+   * `Restaurant.acceptedPaymentMethods` aceita (REQ-3, interseção calculada no app, não aqui).
+   */
+  allowedPaymentMethods?: PaymentMethod[] | null;
   /** REQ-6 — presente só depois de anonimizado (`anonymize()`); `Order`s vinculados permanecem
    * intactos (REQ-7), só o `Customer` perde os dados de identificação. */
   deletedAt?: string;
