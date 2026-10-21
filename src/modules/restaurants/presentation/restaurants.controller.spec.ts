@@ -73,6 +73,36 @@ describe('RestaurantsController', () => {
       expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ slug: 'primepizza' }));
     });
 
+    // Achado real (pedido explícito do usuário, auditoria de segurança) — essa rota é pública,
+    // sem nenhuma autenticação; nenhuma chave/segredo pode aparecer na resposta.
+    it('nunca devolve chaves/segredos do restaurante (autoPrintApiKey, paymentWebhookApiKey, asaasApiKey, asaasWebhookToken, mercadoPagoAccessToken, mercadoPagoRefreshToken)', async () => {
+      const repository: Partial<IRestaurantRepository> = {
+        findBySlug: jest.fn().mockResolvedValue(buildRestaurant({
+          autoPrintApiKey: 'segredo-print',
+          paymentWebhookApiKey: 'segredo-webhook',
+          asaasApiKey: 'segredo-asaas',
+          asaasWebhookToken: 'segredo-asaas-webhook',
+          mercadoPagoAccessToken: 'segredo-mp-access',
+          mercadoPagoRefreshToken: 'segredo-mp-refresh',
+        })),
+      };
+      const { application, routes } = buildFakeApplication();
+      new RestaurantsController(repository as IRestaurantRepository, passthroughOperatorMiddleware).initializeRoutes(application);
+      const json = jest.fn();
+
+      await routes['GET /restaurants/resolve/:slug'][0]({ params: { slug: 'primepizza' } }, { json });
+
+      const [, payload] = json.mock.calls[0] as [number, Record<string, unknown>];
+      expect(payload).not.toHaveProperty('autoPrintApiKey');
+      expect(payload).not.toHaveProperty('paymentWebhookApiKey');
+      expect(payload).not.toHaveProperty('asaasApiKey');
+      expect(payload).not.toHaveProperty('asaasWebhookToken');
+      expect(payload).not.toHaveProperty('mercadoPagoAccessToken');
+      expect(payload).not.toHaveProperty('mercadoPagoRefreshToken');
+      // confirma que não é só um objeto vazio por engano — os campos públicos continuam lá.
+      expect(payload).toMatchObject({ id: '1', slug: 'primepizza', name: 'Prime Pizza' });
+    });
+
     it('AC-2/AC-6: lança erro 404 quando o slug não corresponde a nenhum restaurante', async () => {
       const repository: Partial<IRestaurantRepository> = { findBySlug: jest.fn().mockResolvedValue(null) };
       const { application, routes } = buildFakeApplication();
@@ -185,6 +215,34 @@ describe('RestaurantsController', () => {
 
       expect(repository.findById).toHaveBeenCalledWith('1');
       expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ slug: 'primepizza' }));
+    });
+
+    // Achado real (pedido explícito do usuário, auditoria de segurança) — diferente da rota
+    // pública, aqui o operador PODE ver `autoPrintApiKey` (a UI mostra/copia de propósito,
+    // `AutoPrintSettingsPage.tsx`), mas não os outros segredos (nunca têm tela pra exibir o
+    // valor bruto, só confirmar "vinculado"/"ativo").
+    it('GET /restaurants/me devolve autoPrintApiKey, mas nunca paymentWebhookApiKey/asaasApiKey/asaasWebhookToken/mercadoPagoAccessToken/mercadoPagoRefreshToken', async () => {
+      const { routes } = setup({
+        findById: jest.fn().mockResolvedValue(buildRestaurant({
+          autoPrintApiKey: 'chave-print-visivel',
+          paymentWebhookApiKey: 'segredo-webhook',
+          asaasApiKey: 'segredo-asaas',
+          asaasWebhookToken: 'segredo-asaas-webhook',
+          mercadoPagoAccessToken: 'segredo-mp-access',
+          mercadoPagoRefreshToken: 'segredo-mp-refresh',
+        })),
+      });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['GET /restaurants/me'], { restaurantId: undefined }, { json });
+
+      const [, payload] = json.mock.calls[0] as [number, Record<string, unknown>];
+      expect(payload).toMatchObject({ autoPrintApiKey: 'chave-print-visivel' });
+      expect(payload).not.toHaveProperty('paymentWebhookApiKey');
+      expect(payload).not.toHaveProperty('asaasApiKey');
+      expect(payload).not.toHaveProperty('asaasWebhookToken');
+      expect(payload).not.toHaveProperty('mercadoPagoAccessToken');
+      expect(payload).not.toHaveProperty('mercadoPagoRefreshToken');
     });
 
     // specs/0083-modalidade-entrega-retirada-restaurante REQ-2/REQ-3/AC-2.

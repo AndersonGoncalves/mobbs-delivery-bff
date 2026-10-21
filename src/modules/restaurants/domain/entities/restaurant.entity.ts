@@ -284,6 +284,15 @@ export interface IRestaurant {
   asaasWalletId?: string;
   asaasApiKey?: string;
   asaasWebhookToken?: string;
+  /** specs/0170-integracao-mercado-pago — vínculo OAuth da conta Mercado Pago do restaurante
+   * (modelo diferente do Asaas: não é subconta/KYC criada por nós, é a própria conta do
+   * restaurante autorizando nossa aplicação). `mercadoPagoAccessToken`/`mercadoPagoRefreshToken`
+   * nunca devem aparecer numa resposta de API (nem pro operador — ver `toOperatorRestaurant`),
+   * só `mercadoPagoUserId`/`mercadoPagoTokenExpiresAt`, que não são segredo. */
+  mercadoPagoAccessToken?: string;
+  mercadoPagoRefreshToken?: string;
+  mercadoPagoUserId?: string;
+  mercadoPagoTokenExpiresAt?: string;
 }
 
 export type CashRegisterMode = 'manual' | 'automatic';

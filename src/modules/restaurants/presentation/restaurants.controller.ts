@@ -7,6 +7,7 @@ import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
 import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { IRestaurantRepository } from '../domain/repositories/restaurant.repository.interface';
+import { toOperatorRestaurant, toPublicRestaurant } from './restaurant-serializers';
 import {
   restaurantProfileSchema,
   businessHoursSchema,
@@ -51,7 +52,7 @@ export class RestaurantsController extends BaseRouter {
         return;
       }
       const resolved = this.render(restaurant);
-      res.json(200, resolved);
+      res.json(200, toPublicRestaurant(resolved));
     });
 
     // specs/0032-ajustes-diversos-rating-taxa-entrega REQ-10 — pública (igual a `/resolve/:slug`):
@@ -82,7 +83,7 @@ export class RestaurantsController extends BaseRouter {
 
     application.get('/restaurants/me', ...authenticated, async (req: Request, res: Response) => {
       const restaurant = await this.restaurantRepository.findById(req.restaurantId!);
-      res.json(200, this.render(restaurant));
+      res.json(200, toOperatorRestaurant(this.render(restaurant)));
     });
 
     application.put('/restaurants/me', ...authenticated, async (req: Request, res: Response) => {
@@ -99,7 +100,7 @@ export class RestaurantsController extends BaseRouter {
         await requireOperatorRole('dono', 'gerente')(req);
       }
       const restaurant = await this.restaurantRepository.updateProfile(req.restaurantId!, patch);
-      res.json(200, restaurant);
+      res.json(200, toOperatorRestaurant(restaurant));
     });
 
     application.put(
@@ -108,14 +109,14 @@ export class RestaurantsController extends BaseRouter {
       async (req: Request, res: Response) => {
         const businessHours = parseBody(businessHoursSchema, req.body);
         const restaurant = await this.restaurantRepository.updateBusinessHours(req.restaurantId!, businessHours);
-        res.json(200, restaurant);
+        res.json(200, toOperatorRestaurant(restaurant));
       },
     );
 
     application.patch('/restaurants/me/active', ...openCloseAuthenticated, async (req: Request, res: Response) => {
       const { isActive } = parseBody(setActiveSchema, req.body);
       const restaurant = await this.restaurantRepository.setActive(req.restaurantId!, isActive);
-      res.json(200, restaurant);
+      res.json(200, toOperatorRestaurant(restaurant));
     });
 
     application.get('/restaurants/me/onboarding', ...authenticated, async (req: Request, res: Response) => {
@@ -132,7 +133,7 @@ export class RestaurantsController extends BaseRouter {
     application.put('/restaurants/me/slug', ...authenticated, async (req: Request, res: Response) => {
       const { slug } = parseBody(updateSlugSchema, req.body);
       const restaurant = await this.restaurantRepository.updateSlug(req.restaurantId!, slug);
-      res.json(200, restaurant);
+      res.json(200, toOperatorRestaurant(restaurant));
     });
   }
 }
