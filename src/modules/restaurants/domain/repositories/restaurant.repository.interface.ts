@@ -19,6 +19,7 @@ export type RestaurantProfileUpdate = Partial<
     | 'pixKeyType'
     | 'pixBeneficiaryName'
     | 'productImageOnRight'
+    | 'useWhiteBackground'
     | 'showBestSellers'
     | 'showHighlights'
     | 'showBanners'

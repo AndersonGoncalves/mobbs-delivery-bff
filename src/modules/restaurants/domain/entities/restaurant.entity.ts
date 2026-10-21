@@ -109,6 +109,9 @@ export interface IRestaurant {
    * restaurante, não por produto/categoria.
    */
   productImageOnRight: boolean;
+  /** toggle visual análogo a `productImageOnRight`: `true` = pages do app cliente usam fundo
+   * branco fixo, `false` (default) = tom calculado a partir de `primaryColor`. */
+  useWhiteBackground: boolean;
   /** specs/0028-destaques-vendidos-banners REQ-1 — liga/desliga a seção "Mais vendidos" no
    * cardápio do cliente. Desde specs/0117-vitrine-manual-e-ajustes-formularios, os produtos
    * exibidos são curados manualmente (`Product.isBestSeller`) — este campo só decide se a seção

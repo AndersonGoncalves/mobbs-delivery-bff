@@ -79,6 +79,9 @@ const restaurantSchema = new Schema(
     pixBeneficiaryName: { type: String },
     whatsappConnected: { type: Boolean, required: true, default: false },
     productImageOnRight: { type: Boolean, required: true, default: true },
+    // toggle visual análogo a productImageOnRight: fundo branco fixo (true) vs. tom calculado
+    // a partir de primaryColor (false, default).
+    useWhiteBackground: { type: Boolean, required: true, default: false },
     // specs/0028-destaques-vendidos-banners REQ-1, REQ-4, REQ-5, REQ-10.
     showBestSellers: { type: Boolean, required: true, default: false },
     showHighlights: { type: Boolean, required: true, default: true },

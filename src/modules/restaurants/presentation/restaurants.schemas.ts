@@ -89,6 +89,9 @@ export const restaurantProfileSchema = z
     pixBeneficiaryName: z.string(),
     // specs/0029-ajustes-carrinho-perfil-restaurante-diversos REQ-8.
     productImageOnRight: z.boolean(),
+    // toggle visual análogo a productImageOnRight: fundo branco fixo (true) vs. tom calculado
+    // a partir de primaryColor (false, default).
+    useWhiteBackground: z.boolean(),
     // specs/0028-destaques-vendidos-banners REQ-1, REQ-4, REQ-10.
     showBestSellers: z.boolean(),
     showHighlights: z.boolean(),

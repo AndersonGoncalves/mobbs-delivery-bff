@@ -43,6 +43,7 @@ interface RestaurantLeanDocument {
   pixBeneficiaryName?: string;
   whatsappConnected?: boolean;
   productImageOnRight?: boolean;
+  useWhiteBackground?: boolean;
   showBestSellers?: boolean;
   showHighlights?: boolean;
   showBanners?: boolean;
@@ -123,6 +124,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     pixBeneficiaryName: doc.pixBeneficiaryName,
     whatsappConnected: doc.whatsappConnected ?? false,
     productImageOnRight: doc.productImageOnRight ?? true,
+    useWhiteBackground: doc.useWhiteBackground ?? false,
     showBestSellers: doc.showBestSellers ?? false,
     showHighlights: doc.showHighlights ?? true,
     showBanners: doc.showBanners ?? true,
