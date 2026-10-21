@@ -24,6 +24,7 @@ import { OrderMongooseRepository } from './modules/orders/infra/repositories/ord
 import { StockReservationService } from './modules/orders/domain/services/stock-reservation.service';
 import { PaymentMongooseRepository } from './modules/orders/infra/repositories/payment.mongoose.repository';
 import { OrdersController } from './modules/orders/presentation/orders.controller';
+import { PaymentWebhookController } from './modules/orders/presentation/payment-webhook.controller';
 import { CouponMongooseRepository } from './modules/coupons/infra/repositories/coupon.mongoose.repository';
 import { CouponsController } from './modules/coupons/presentation/coupons.controller';
 import { PromotionMongooseRepository } from './modules/promotions/infra/repositories/promotion.mongoose.repository';
@@ -55,6 +56,7 @@ import { BlockedCustomerMongooseRepository } from './modules/customer-blocking/i
 import { CustomerBlockingController } from './modules/customer-blocking/presentation/customer-blocking.controller';
 import { AutoPrintController } from './modules/auto-print/presentation/auto-print.controller';
 import { buildPrintApiKeyMiddleware } from './shared/http/print-api-key.middleware';
+import { buildPaymentWebhookApiKeyMiddleware } from './shared/http/payment-webhook-api-key.middleware';
 import { FavoriteMongooseRepository } from './modules/customers/infra/repositories/favorite.mongoose.repository';
 import { CustomersController } from './modules/customers/presentation/customers.controller';
 import { CustomerSummaryMongooseRepository } from './modules/customers-admin/infra/repositories/customer-summary.mongoose.repository';
@@ -252,6 +254,15 @@ server
       restaurantRepository,
       customerRepository,
       buildPrintApiKeyMiddleware(restaurantRepository),
+      restaurantOperatorMiddleware,
+    ),
+    // specs/0140-confirmacao-automatica-pix REQ-1b — webhook gateway-agnóstico de confirmação de Pix.
+    new PaymentWebhookController(
+      orderRepository,
+      paymentRepository,
+      restaurantRepository,
+      whatsAppNotificationService,
+      buildPaymentWebhookApiKeyMiddleware(restaurantRepository),
       restaurantOperatorMiddleware,
     ),
     // specs/0106 — painel da plataforma, restrito à lista PLATFORM_ADMIN_EMAILS.

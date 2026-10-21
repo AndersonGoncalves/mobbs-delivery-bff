@@ -128,6 +128,8 @@ const restaurantSchema = new Schema(
     // specs/0156-filtro-idade-impressao-automatica REQ-1/REQ-2 — default 5 min preserva um corte
     // razoável pra todo restaurante já existente sem precisar configurar nada.
     autoPrintMaxAgeMinutes: { type: Number, default: 5, min: 1, max: 60 },
+    // specs/0140-confirmacao-automatica-pix REQ-1b.
+    paymentWebhookApiKey: { type: String },
     // Pedido explícito do usuário — tempo médio de atendimento mostrado no app do cliente, por
     // modalidade; defaults vindos do exemplo mostrado (40-60min delivery, 20-40min balcão).
     deliveryTimeMinMinutes: { type: Number, required: true, default: 40 },

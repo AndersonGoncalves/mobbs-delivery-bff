@@ -267,6 +267,11 @@ export interface IRestaurant {
    * sido impresso — evita despejar uma pilha de pedidos represados quando o bridge volta a ficar
    * online depois de ficar fora do ar. Default 5 minutos quando não configurado. */
   autoPrintMaxAgeMinutes?: number;
+  /** specs/0140-confirmacao-automatica-pix REQ-1b — chave de API por restaurante pra um
+   * futuro webhook de gateway/PSP (`specs/0101`/`specs/0170`) avisar que um Pix foi confirmado,
+   * sem token Firebase nem operador logado (mesmo raciocínio de `autoPrintApiKey`, gerada sob
+   * demanda, nunca em branco depois da primeira geração — ver `PaymentWebhookController`). */
+  paymentWebhookApiKey?: string;
 }
 
 export type CashRegisterMode = 'manual' | 'automatic';

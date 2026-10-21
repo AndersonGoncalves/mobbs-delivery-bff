@@ -133,4 +133,14 @@ export interface IRestaurantRepository {
    * bridge (`X-Print-Api-Key`); usado pelo middleware de autenticação do bridge, não por operador
    * logado. */
   findByAutoPrintApiKey(apiKey: string): Promise<IRestaurant | null>;
+
+  /** specs/0140-confirmacao-automatica-pix REQ-1b — mesmo raciocínio de
+   * `regenerateAutoPrintApiKey`: gera e grava uma chave nova, fora de `RestaurantProfileUpdate`
+   * de propósito (só por este método dedicado). */
+  regeneratePaymentWebhookApiKey(id: string): Promise<IRestaurant>;
+
+  /** specs/0140-confirmacao-automatica-pix REQ-1b — resolve o restaurante dono da chave de API
+   * do webhook de pagamento (`X-Payment-Webhook-Api-Key`); usado pelo middleware de autenticação
+   * do webhook, não por operador logado. */
+  findByPaymentWebhookApiKey(apiKey: string): Promise<IRestaurant | null>;
 }

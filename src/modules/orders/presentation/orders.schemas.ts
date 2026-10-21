@@ -98,6 +98,18 @@ export const cancelOrderWithReasonSchema = z.object({
   reason: z.string().min(1, 'Motivo do cancelamento é obrigatório'),
 });
 
+/**
+ * specs/0140-confirmacao-automatica-pix REQ-1b — contrato mínimo, gateway-agnóstico: identificador
+ * do pedido + status do pagamento. `status` é uma string livre (não um enum fechado) de propósito
+ * — cada provedor tem seu próprio vocabulário de status; o controller só reage a `'aprovado'`,
+ * qualquer outro valor é um no-op (204). Validar o vocabulário específico de um provedor é escopo
+ * da spec de gateway que for integrá-lo (`specs/0101`/`specs/0170`), não desta.
+ */
+export const pixConfirmedWebhookSchema = z.object({
+  orderId: z.string().min(1),
+  status: z.string().min(1),
+});
+
 const isoDateString = z.string().refine((value) => !Number.isNaN(Date.parse(value)), 'Data inválida');
 
 /** REQ-4 — período do painel de vendas, vindo de query params (`GET /restaurants/me/sales-summary?from=...&to=...`). */

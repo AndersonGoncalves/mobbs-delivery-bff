@@ -94,6 +94,7 @@ interface RestaurantLeanDocument {
   autoPrintIntervalSeconds?: number;
   autoPrintMaxAgeMinutes?: number;
   autoPrintApiKey?: string;
+  paymentWebhookApiKey?: string;
 }
 
 const ALL_PAYMENT_METHODS: PaymentMethod[] = ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'];
@@ -175,6 +176,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     autoPrintIntervalSeconds: doc.autoPrintIntervalSeconds ?? 10,
     autoPrintMaxAgeMinutes: doc.autoPrintMaxAgeMinutes ?? 5,
     autoPrintApiKey: doc.autoPrintApiKey,
+    paymentWebhookApiKey: doc.paymentWebhookApiKey,
   };
 }
 
@@ -279,6 +281,18 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
 
   async findByAutoPrintApiKey(apiKey: string): Promise<IRestaurant | null> {
     const doc = await RestaurantModel.findOne({ autoPrintApiKey: apiKey }).lean<RestaurantLeanDocument>();
+    return doc ? toEntity(doc) : null;
+  }
+
+  // specs/0140-confirmacao-automatica-pix REQ-1b.
+  async regeneratePaymentWebhookApiKey(id: string): Promise<IRestaurant> {
+    const apiKey = randomBytes(24).toString('hex');
+    const doc = await RestaurantModel.findByIdAndUpdate(id, { $set: { paymentWebhookApiKey: apiKey } }, { new: true }).lean<RestaurantLeanDocument>();
+    return toEntity(doc as RestaurantLeanDocument);
+  }
+
+  async findByPaymentWebhookApiKey(apiKey: string): Promise<IRestaurant | null> {
+    const doc = await RestaurantModel.findOne({ paymentWebhookApiKey: apiKey }).lean<RestaurantLeanDocument>();
     return doc ? toEntity(doc) : null;
   }
 }

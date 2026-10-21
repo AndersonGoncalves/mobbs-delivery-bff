@@ -23,6 +23,7 @@ import { isRestaurantOpenNow } from '../../restaurants/domain/is-restaurant-open
 import { IRestaurant } from '../../restaurants/domain/entities/restaurant.entity';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IOrder, IOrderItem, IPayment } from '../domain/entities/order.entity';
+import { ConfirmPixPaymentService } from '../domain/services/confirm-pix-payment.service';
 import { StockReservationService } from '../domain/services/stock-reservation.service';
 import { isOrderCancellable, isValidOrderStatusTransition } from '../domain/order-status-transitions';
 import { buildOrderPixCode } from '../domain/build-order-pix-code';
@@ -514,27 +515,16 @@ export class OrdersController extends BaseRouter {
           throw new ConflictError('Pagamento não pode ser confirmado');
         }
 
-        const updatedPayment = await this.paymentRepository.markAsApproved(order.id);
-
-        // specs/0064-notificacao-whatsapp-pix-confirmado REQ-3 — fire-and-forget, mesmo padrão dos
-        // outros disparos de WhatsApp deste arquivo: nunca bloqueia nem reverte a confirmação.
-        void this.whatsAppNotificationService.sendPaymentConfirmedMessage(order).catch((error) => {
-          console.error(`[whatsapp] erro inesperado enviando confirmação de pagamento do pedido ${order.id}:`, error);
-        });
-
-        // specs/0151-confirmacao-automatica-por-forma-pagamento REQ-4 (finalmente REQ-1a de
-        // specs/0140) — Pix confirmado automaticamente avança o pedido direto pra `confirmado`,
-        // na mesma chamada, se "Pix" estiver configurado pra isso.
-        let updatedOrder = order;
-        if (order.status === 'aguardandoConfirmacao') {
-          const restaurant = await this.restaurantRepository.findById(order.restaurantId);
-          if (restaurant?.autoConfirmPaymentMethods?.includes('pix')) {
-            updatedOrder = await this.orderRepository.updateStatus(order.id, 'confirmado', req.restaurantId);
-            void this.whatsAppNotificationService.sendOrderStatusUpdate(updatedOrder).catch((error) => {
-              console.error(`[whatsapp] erro inesperado enviando confirmação automática do pedido ${updatedOrder.id}:`, error);
-            });
-          }
-        }
+        // specs/0140-confirmacao-automatica-pix REQ-1/REQ-1a — mesma lógica de confirmação
+        // (marcar aprovado + avançar status se configurado + notificar) usada pelo webhook
+        // gateway-agnóstico (REQ-1b, `PaymentWebhookController`), extraída pra
+        // `ConfirmPixPaymentService` pra garantir o mesmo comportamento nas duas origens.
+        const { order: updatedOrder, payment: updatedPayment } = await new ConfirmPixPaymentService(
+          this.paymentRepository,
+          this.orderRepository,
+          this.restaurantRepository,
+          this.whatsAppNotificationService,
+        ).confirm(order);
 
         res.json(200, { ...updatedOrder, payment: this.toPaymentSummary(updatedPayment) });
       },
