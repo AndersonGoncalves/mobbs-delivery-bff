@@ -5,7 +5,7 @@ const paymentSchema = new Schema(
   {
     _id: { type: String, default: () => randomUUID() },
     orderId: { type: String, required: true },
-    method: { type: String, enum: ['creditCard', 'creditCardOnline', 'debitCard', 'pix', 'cash', 'bankTransfer'], required: true },
+    method: { type: String, enum: ['creditCard', 'creditCardOnline', 'debitCard', 'pix', 'cash'], required: true },
     cardBrand: { type: String },
     status: { type: String, enum: ['pendente', 'aprovado', 'recusado', 'estornado'], required: true, default: 'pendente' },
     amount: { type: Number, required: true },

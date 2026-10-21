@@ -171,22 +171,21 @@ const restaurantSchema = new Schema(
     businessHoursReviewedAt: { type: Date },
     // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-10 — default (mesmo raciocínio
     // de `RestaurantSignupController` passar explicitamente no create, mas como default de schema
-    // cobre também qualquer outro caminho de criação). Pedido explícito do usuário (follow-up):
-    // "Transferência bancária" não deve vir marcada por padrão — continua no `enum` pra o operador
-    // ligar manualmente em `PaymentMethodsForm`, só sai do `default`.
+    // cobre também qualquer outro caminho de criação). Pedido explícito do usuário — `bankTransfer`
+    // removido de todo o app (saiu do `enum`).
     acceptedPaymentMethods: {
       type: [String],
       // specs/0170-integracao-mercado-pago — `creditCardOnline` no enum (validação), nunca no
       // `default` (nenhum restaurante "aceita" cobrança online sem antes vincular um gateway,
       // `Restaurant.mercadoPagoAccessToken`/`asaasApiKey` — ver `OrdersController.create`).
-      enum: ['creditCard', 'creditCardOnline', 'debitCard', 'pix', 'cash', 'bankTransfer'],
+      enum: ['creditCard', 'creditCardOnline', 'debitCard', 'pix', 'cash'],
       default: ['creditCard', 'debitCard', 'pix', 'cash'],
     },
     // specs/0151-confirmacao-automatica-por-forma-pagamento REQ-1 — default vazio (opt-in
     // explícito, preserva o comportamento de hoje pra quem nunca configurar nada).
     autoConfirmPaymentMethods: {
       type: [String],
-      enum: ['creditCard', 'creditCardOnline', 'debitCard', 'pix', 'cash', 'bankTransfer'],
+      enum: ['creditCard', 'creditCardOnline', 'debitCard', 'pix', 'cash'],
       default: [],
     },
     // specs/0083-modalidade-entrega-retirada-restaurante REQ-1 — default "ambos" (retrocompatível).

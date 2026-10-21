@@ -2,8 +2,10 @@ export type OrderType = 'delivery' | 'pickup' | 'table';
 
 /** `creditCardOnline` — specs/0101 REQ-9/specs/0170: pagamento com cartão cobrado online pelo
  * app (gateway real, Asaas ou Mercado Pago), distinto de `creditCard` (cartão combinado,
- * cobrado fora da plataforma na entrega/maquininha). */
-export type PaymentMethod = 'creditCard' | 'creditCardOnline' | 'debitCard' | 'pix' | 'cash' | 'bankTransfer';
+ * cobrado fora da plataforma na entrega/maquininha).
+ * Pedido explícito do usuário — `bankTransfer` removido de todo o app (nunca foi usado de
+ * verdade, sem pagamento real por trás). */
+export type PaymentMethod = 'creditCard' | 'creditCardOnline' | 'debitCard' | 'pix' | 'cash';
 
 export type OrderStatus = 'aguardandoConfirmacao' | 'confirmado' | 'emPreparo' | 'saiuParaEntrega' | 'entregue' | 'cancelado';
 

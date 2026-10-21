@@ -133,11 +133,22 @@ describe('buildOrderReceiptMessage', () => {
     const cardMessage = buildOrderReceiptMessage(
       buildInput({ order: buildOrder({ paymentMethod: 'creditCard', orderType: 'pickup' }), cardBrand: 'Visa' }),
     );
-    const bankTransferMessage = buildOrderReceiptMessage(buildInput({ order: buildOrder({ paymentMethod: 'bankTransfer' }) }));
+    const debitCardMessage = buildOrderReceiptMessage(buildInput({ order: buildOrder({ paymentMethod: 'debitCard' }) }));
 
     expect(cashMessage).toContain('O pagamento é feito na entrega, não pelo app.');
     expect(cardMessage).toContain('O pagamento é feito na retirada, não pelo app.');
-    expect(bankTransferMessage).toContain('não pelo app');
+    expect(debitCardMessage).toContain('não pelo app');
+  });
+
+  // Pedido explícito do usuário — Cartão de Crédito Online é pago pelo próprio app (Mercado
+  // Pago/Asaas), mesmo tratamento do Pix acima: nunca mostra a frase de "pago na entrega/retirada".
+  it('specs/0170-integracao-mercado-pago: Cartão de Crédito Online também não mostra "pagamento é feito na entrega/retirada, não pelo app"', () => {
+    const message = buildOrderReceiptMessage(
+      buildInput({ order: buildOrder({ paymentMethod: 'creditCardOnline', orderType: 'delivery' }) }),
+    );
+
+    expect(message).toContain('Forma: Cartão de crédito (pago pelo app)');
+    expect(message).not.toContain('não pelo app');
   });
 
   it('AC-7: bloco de pagamento com cartão mostra a operadora informada', () => {

@@ -76,7 +76,7 @@ describe('CustomerPaymentMethodsController', () => {
     await expect(
       runOperatorChain(
         routes['PUT /restaurants/me/customers/:customerId/payment-methods'],
-        { restaurantId: 'r-1', params: { customerId: 'c-1' }, body: { allowedPaymentMethods: ['bankTransfer'] } },
+        { restaurantId: 'r-1', params: { customerId: 'c-1' }, body: { allowedPaymentMethods: ['debitCard'] } },
         { json: jest.fn(), send: jest.fn() },
       ),
     ).rejects.toMatchObject({ statusCode: 400 });

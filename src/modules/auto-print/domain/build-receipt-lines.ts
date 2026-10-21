@@ -14,7 +14,6 @@ const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   creditCard: 'Cartao de credito',
   creditCardOnline: 'Cartao de credito (pago online)',
   debitCard: 'Cartao de debito',
-  bankTransfer: 'Transferencia bancaria',
 };
 
 const ORDER_TYPE_LABELS: Record<IOrder['orderType'], string> = {

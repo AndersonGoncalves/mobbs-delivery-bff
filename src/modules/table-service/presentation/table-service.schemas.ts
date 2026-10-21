@@ -82,7 +82,7 @@ export const tableOrderAdjustmentsSchema = z.object({
 });
 
 const tablePaymentSchema = z.object({
-  method: z.enum(['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer']),
+  method: z.enum(['creditCard', 'debitCard', 'pix', 'cash']),
   amount: z.number().positive(),
 });
 

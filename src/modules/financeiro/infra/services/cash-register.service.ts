@@ -12,7 +12,7 @@ import {
 
 // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-10 — mesmo enum de
 // `Order.paymentMethod`/`Payment.method`.
-const ALL_PAYMENT_METHODS: PaymentMethod[] = ['creditCard', 'creditCardOnline', 'debitCard', 'pix', 'cash', 'bankTransfer'];
+const ALL_PAYMENT_METHODS: PaymentMethod[] = ['creditCard', 'creditCardOnline', 'debitCard', 'pix', 'cash'];
 
 const PAYMENT_LABEL: Record<string, string> = {
   cash: 'Dinheiro',
@@ -20,7 +20,6 @@ const PAYMENT_LABEL: Record<string, string> = {
   creditCard: 'Crédito',
   creditCardOnline: 'Cartão (online)',
   debitCard: 'Débito',
-  bankTransfer: 'Transferência',
 };
 
 // specs/0118-controle-caixa-automatico-redes-sociais REQ-3/REQ-4 — identifica `openedBy`/

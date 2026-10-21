@@ -102,8 +102,8 @@ export function paymentMethodLabel(method: PaymentMethod): string {
       return 'Cartão de débito';
     case 'cash':
       return 'Dinheiro';
-    case 'bankTransfer':
-      return 'Transferência bancária';
+    case 'creditCardOnline':
+      return 'Cartão de crédito (pago pelo app)';
   }
 }
 
@@ -131,12 +131,14 @@ export function buildPaymentBlock(input: PaymentBlockInput): string {
     case 'cash':
       lines.push('Forma: Dinheiro');
       break;
-    case 'bankTransfer':
-      lines.push('Forma: Transferência bancária');
+    case 'creditCardOnline':
+      // Pedido explícito do usuário — Pix e Cartão de Crédito Online são pagos pelo próprio app,
+      // nunca na entrega/retirada; mesmo tratamento do Pix abaixo (sem a linha de reforço).
+      lines.push('Forma: Cartão de crédito (pago pelo app)');
       break;
   }
 
-  if (order.paymentMethod !== 'pix') {
+  if (order.paymentMethod !== 'pix' && order.paymentMethod !== 'creditCardOnline') {
     lines.push(`O pagamento é feito na ${order.orderType === 'delivery' ? 'entrega' : 'retirada'}, não pelo app.`);
   }
   return lines.join('\n');

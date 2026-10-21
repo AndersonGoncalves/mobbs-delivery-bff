@@ -66,7 +66,7 @@ const tableAdjustmentSchema = new Schema(
 const tableOrderPaymentSchema = new Schema(
   {
     id: { type: String, required: true },
-    method: { type: String, enum: ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'], required: true },
+    method: { type: String, enum: ['creditCard', 'debitCard', 'pix', 'cash'], required: true },
     amount: { type: Number, required: true, min: 0.01 },
     paidAt: { type: String, required: true },
     paidBy: { type: String, required: true },
@@ -127,7 +127,7 @@ const orderSchema = new Schema(
     total: { type: Number, required: true },
     // specs/0022-cupons-desconto REQ-2/REQ-4 — código do cupom aplicado, se algum (ver `IOrder.couponCode`).
     couponCode: { type: String },
-    paymentMethod: { type: String, enum: ['creditCard', 'creditCardOnline', 'debitCard', 'pix', 'cash', 'bankTransfer'], required: true },
+    paymentMethod: { type: String, enum: ['creditCard', 'creditCardOnline', 'debitCard', 'pix', 'cash'], required: true },
     // specs/0080-troco-pagamento-dinheiro-checkout REQ-2 (ver `IOrder.cashChangeFor`).
     cashChangeFor: { type: Number },
     estimatedDeliveryAt: { type: Date },

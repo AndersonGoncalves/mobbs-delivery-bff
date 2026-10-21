@@ -93,7 +93,7 @@ function buildRestaurant(
     newOrderRestaurantWhatsAppTemplate: string;
     customerBlockingEnabled: boolean;
     // specs/0151-confirmacao-automatica-por-forma-pagamento REQ-1.
-    autoConfirmPaymentMethods: ('creditCard' | 'debitCard' | 'pix' | 'cash' | 'bankTransfer')[];
+    autoConfirmPaymentMethods: ('creditCard' | 'debitCard' | 'pix' | 'cash')[];
     // specs/0101-integracao-asaas (fase 1).
     onlinePaymentsEnabled: boolean;
     asaasApiKey: string;

@@ -73,7 +73,7 @@ describe('buildNewOrderRestaurantMessage', () => {
     expect(buildNewOrderRestaurantMessage(buildInput({ template, order: buildOrder({ paymentMethod: 'creditCard' }) }))).toBe('Pagamento: Cartão de crédito');
     expect(buildNewOrderRestaurantMessage(buildInput({ template, order: buildOrder({ paymentMethod: 'debitCard' }) }))).toBe('Pagamento: Cartão de débito');
     expect(buildNewOrderRestaurantMessage(buildInput({ template, order: buildOrder({ paymentMethod: 'cash' }) }))).toBe('Pagamento: Dinheiro');
-    expect(buildNewOrderRestaurantMessage(buildInput({ template, order: buildOrder({ paymentMethod: 'bankTransfer' }) }))).toBe('Pagamento: Transferência bancária');
+    expect(buildNewOrderRestaurantMessage(buildInput({ template, order: buildOrder({ paymentMethod: 'creditCardOnline' }) }))).toBe('Pagamento: Cartão de crédito (pago pelo app)');
   });
 
   it('template customizado (restaurante editou na retaguarda) também tem os placeholders substituídos', () => {

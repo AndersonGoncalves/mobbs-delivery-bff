@@ -108,7 +108,7 @@ interface RestaurantLeanDocument {
   mercadoPagoTokenExpiresAt?: string;
 }
 
-const ALL_PAYMENT_METHODS: PaymentMethod[] = ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'];
+const ALL_PAYMENT_METHODS: PaymentMethod[] = ['creditCard', 'debitCard', 'pix', 'cash'];
 
 function toEntity(doc: RestaurantLeanDocument): IRestaurant {
   return {

@@ -76,7 +76,7 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
 
   describe('addAutomaticEntry', () => {
     it('pedido pago em qualquer forma, com sessão aberta, lança entrada automática', async () => {
-      for (const paymentMethod of ['pix', 'cash', 'creditCard', 'debitCard', 'bankTransfer']) {
+      for (const paymentMethod of ['pix', 'cash', 'creditCard', 'creditCardOnline', 'debitCard']) {
         const { cashRegisterRepository, service } = setup();
 
         await service.addAutomaticEntry({ restaurantId: 'r-1', orderId: 'o-1', orderNumber: 42, amount: 55, paymentMethod });
@@ -238,7 +238,7 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
 
       const balance = await service.getBalanceByPaymentMethod('cr-1');
 
-      expect(balance).toMatchObject({ pix: 100, cash: 30, creditCard: 0, debitCard: 0, bankTransfer: 0 });
+      expect(balance).toMatchObject({ pix: 100, cash: 30, creditCard: 0, debitCard: 0 });
     });
 
     it('pedidos não entregues não entram na soma', async () => {
@@ -277,7 +277,7 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
 
       const balance = await service.getBalanceByPaymentMethod('cr-1');
 
-      expect(balance).toMatchObject({ cash: 4, creditCard: 12, debitCard: 0, pix: 0, bankTransfer: 0 });
+      expect(balance).toMatchObject({ cash: 4, creditCard: 12, debitCard: 0, pix: 0 });
     });
 
     it('syncOpenSession lança movimento para pagamento de mesa e para delivery ainda não lançados', async () => {
