@@ -27,6 +27,8 @@ import { OrdersController } from './modules/orders/presentation/orders.controlle
 import { PaymentWebhookController } from './modules/orders/presentation/payment-webhook.controller';
 import { AsaasOnboardingController } from './modules/payments-asaas/presentation/asaas-onboarding.controller';
 import { AsaasWebhookController } from './modules/payments-asaas/presentation/asaas-webhook.controller';
+import { MercadoPagoOAuthController } from './modules/payments-mercadopago/presentation/mercado-pago-oauth.controller';
+import { MercadoPagoWebhookController } from './modules/payments-mercadopago/presentation/mercado-pago-webhook.controller';
 import { CouponMongooseRepository } from './modules/coupons/infra/repositories/coupon.mongoose.repository';
 import { CouponsController } from './modules/coupons/presentation/coupons.controller';
 import { PromotionMongooseRepository } from './modules/promotions/infra/repositories/promotion.mongoose.repository';
@@ -270,6 +272,9 @@ server
     // specs/0101-integracao-asaas (fase 1) — cobrança de Pix via gateway real.
     new AsaasOnboardingController(restaurantRepository, restaurantOperatorMiddleware),
     new AsaasWebhookController(orderRepository, paymentRepository, restaurantRepository, whatsAppNotificationService),
+    // specs/0170-integracao-mercado-pago — cobrança de cartão de crédito via Checkout Pro.
+    new MercadoPagoOAuthController(restaurantRepository, restaurantOperatorMiddleware),
+    new MercadoPagoWebhookController(orderRepository, paymentRepository, restaurantRepository, whatsAppNotificationService),
     // specs/0106 — painel da plataforma, restrito à lista PLATFORM_ADMIN_EMAILS.
     new PlatformController(
       restaurantRepository,

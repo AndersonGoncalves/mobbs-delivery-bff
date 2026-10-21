@@ -2,6 +2,13 @@ services:
   api:
     image: ghcr.io/andersongoncalves/mobbs-delivery-bff:${IMAGE_TAG:-latest}
     restart: always
+    # 2026-10-21 — a EC2 (t3.micro, 908MiB de RAM, sem swap até então) travou por completo (não só
+    # o container: systemd/journald/snapd pararam de responder aos próprios watchdogs, nginx teve
+    # workers mortos por SIGKILL — assinatura clássica do OOM-killer do kernel) depois de um pico
+    # de memória sem teto nenhum. `mem_limit` contém qualquer vazamento/pico a ESTE container
+    # (vira um restart isolado via `restart: always`, não um travamento do host inteiro). Ver
+    # também o swapfile de 2GB adicionado na instância (fora deste repo, `/etc/fstab`).
+    mem_limit: 300m
     ports: ["3001:3001"]
     environment:
       - DB_URL=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongo:27017/mobbs-delivery?authSource=admin
@@ -34,6 +41,12 @@ services:
     restart: always
     # O mongod (PID 1) não faz reap dos `mongosh` do healthcheck — viravam zumbis até esgotar o limite de processos.
     init: true
+    # 2026-10-21 — mesmo raciocínio do `mem_limit` do `api` acima. `wiredTigerCacheSizeGB` fixo
+    # (em vez do auto-cálculo padrão do WiredTiger, que mira ~50% da RAM "disponível" e pode não
+    # enxergar o teto do cgroup corretamente) garante que o mongod nunca tenta crescer o cache
+    # além do que o container tem margem pra usar.
+    command: ["mongod", "--auth", "--bind_ip_all", "--wiredTigerCacheSizeGB", "0.25"]
+    mem_limit: 350m
     ports: ["27017:27017"]
     environment:
       - MONGO_INITDB_ROOT_USERNAME=${MONGO_USER}

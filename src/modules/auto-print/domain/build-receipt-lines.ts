@@ -12,6 +12,7 @@ const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   cash: 'Dinheiro',
   pix: 'Pix',
   creditCard: 'Cartao de credito',
+  creditCardOnline: 'Cartao de credito (pago online)',
   debitCard: 'Cartao de debito',
   bankTransfer: 'Transferencia bancaria',
 };

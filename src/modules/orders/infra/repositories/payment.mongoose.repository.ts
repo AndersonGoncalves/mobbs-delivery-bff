@@ -11,6 +11,7 @@ interface PaymentLeanDocument {
   amount: number;
   externalReference?: string;
   pixPayload?: string;
+  checkoutUrl?: string;
 }
 
 function toEntity(doc: PaymentLeanDocument): IPayment {
@@ -23,6 +24,7 @@ function toEntity(doc: PaymentLeanDocument): IPayment {
     amount: doc.amount,
     externalReference: doc.externalReference,
     pixPayload: doc.pixPayload,
+    checkoutUrl: doc.checkoutUrl,
   };
 }
 
@@ -59,6 +61,12 @@ export class PaymentMongooseRepository implements IPaymentRepository {
       { $set: { status: 'estornado' } },
       { new: true },
     ).lean<PaymentLeanDocument>();
+    return toEntity(doc as PaymentLeanDocument);
+  }
+
+  // specs/0170-integracao-mercado-pago.
+  async setMercadoPagoCheckoutDetails(orderId: string, data: { externalReference: string; checkoutUrl: string }): Promise<IPayment> {
+    const doc = await PaymentModel.findOneAndUpdate({ orderId }, { $set: data }, { new: true }).lean<PaymentLeanDocument>();
     return toEntity(doc as PaymentLeanDocument);
   }
 }

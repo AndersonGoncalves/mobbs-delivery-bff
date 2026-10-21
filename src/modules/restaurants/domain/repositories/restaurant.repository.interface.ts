@@ -151,4 +151,12 @@ export interface IRestaurantRepository {
     id: string,
     data: { asaasAccountId: string; asaasWalletId: string; asaasApiKey: string; asaasWebhookToken: string },
   ): Promise<IRestaurant>;
+
+  /** specs/0170-integracao-mercado-pago — persiste o resultado da troca OAuth do restaurante
+   * com o Mercado Pago (`MercadoPagoOAuthController`); fora de `RestaurantProfileUpdate` de
+   * propósito, mesmo raciocínio de `saveAsaasSubaccount`. */
+  saveMercadoPagoTokens(
+    id: string,
+    data: { mercadoPagoAccessToken: string; mercadoPagoRefreshToken: string; mercadoPagoUserId: string; mercadoPagoTokenExpiresAt: string },
+  ): Promise<IRestaurant>;
 }

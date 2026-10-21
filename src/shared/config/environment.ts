@@ -46,4 +46,24 @@ export const environment = {
     apiKey: process.env.ASAAS_API_KEY,
     baseUrl: process.env.ASAAS_BASE_URL || 'https://api-sandbox.asaas.com/v3',
   },
+  /** specs/0170-integracao-mercado-pago — `clientId`/`clientSecret` são da aplicação registrada
+   * na plataforma Mercado Pago Developers (não por restaurante — diferente do Asaas, aqui o
+   * vínculo é OAuth: cada restaurante autoriza ESTA aplicação e a gente recebe um
+   * `access_token`/`refresh_token` DELE, salvos em `Restaurant.mercadoPagoAccessToken`/
+   * `mercadoPagoRefreshToken`). `webhookSecret` também é por aplicação (não por restaurante,
+   * ver plan.md), usado pra validar a assinatura `x-signature` de `POST /webhooks/mercadopago`.
+   * `redirectUri` é a URL de callback da retaguarda (mobbs-delivery-web) que recebe o `code` do
+   * OAuth e repassa pro BFF — precisa casar exatamente com a cadastrada na aplicação MP. */
+  mercadoPago: {
+    clientId: process.env.MERCADOPAGO_CLIENT_ID,
+    clientSecret: process.env.MERCADOPAGO_CLIENT_SECRET,
+    webhookSecret: process.env.MERCADOPAGO_WEBHOOK_SECRET,
+    redirectUri: process.env.MERCADOPAGO_REDIRECT_URI,
+    baseUrl: process.env.MERCADOPAGO_BASE_URL || 'https://api.mercadopago.com',
+    /** `Access Token` da própria aplicação (painel "Credenciais" do Mercado Pago Developers —
+     * não é obtido via OAuth, diferente de `clientId`/`clientSecret`). Usado só pra resolver
+     * `GET /v1/payments/{id}` na recepção do webhook (`MercadoPagoWebhookController`), quando
+     * ainda não sabemos de qual restaurante é o pagamento — ver plan.md. */
+    platformAccessToken: process.env.MERCADOPAGO_PLATFORM_ACCESS_TOKEN,
+  },
 };

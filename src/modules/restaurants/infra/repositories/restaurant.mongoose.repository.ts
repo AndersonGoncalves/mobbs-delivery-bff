@@ -100,6 +100,10 @@ interface RestaurantLeanDocument {
   asaasWalletId?: string;
   asaasApiKey?: string;
   asaasWebhookToken?: string;
+  mercadoPagoAccessToken?: string;
+  mercadoPagoRefreshToken?: string;
+  mercadoPagoUserId?: string;
+  mercadoPagoTokenExpiresAt?: string;
 }
 
 const ALL_PAYMENT_METHODS: PaymentMethod[] = ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'];
@@ -187,6 +191,10 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     asaasWalletId: doc.asaasWalletId,
     asaasApiKey: doc.asaasApiKey,
     asaasWebhookToken: doc.asaasWebhookToken,
+    mercadoPagoAccessToken: doc.mercadoPagoAccessToken,
+    mercadoPagoRefreshToken: doc.mercadoPagoRefreshToken,
+    mercadoPagoUserId: doc.mercadoPagoUserId,
+    mercadoPagoTokenExpiresAt: doc.mercadoPagoTokenExpiresAt,
   };
 }
 
@@ -312,6 +320,15 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
     data: { asaasAccountId: string; asaasWalletId: string; asaasApiKey: string; asaasWebhookToken: string },
   ): Promise<IRestaurant> {
     const doc = await RestaurantModel.findByIdAndUpdate(id, { $set: { ...data, onlinePaymentsEnabled: true } }, { new: true }).lean<RestaurantLeanDocument>();
+    return toEntity(doc as RestaurantLeanDocument);
+  }
+
+  // specs/0170-integracao-mercado-pago.
+  async saveMercadoPagoTokens(
+    id: string,
+    data: { mercadoPagoAccessToken: string; mercadoPagoRefreshToken: string; mercadoPagoUserId: string; mercadoPagoTokenExpiresAt: string },
+  ): Promise<IRestaurant> {
+    const doc = await RestaurantModel.findByIdAndUpdate(id, { $set: data }, { new: true }).lean<RestaurantLeanDocument>();
     return toEntity(doc as RestaurantLeanDocument);
   }
 }

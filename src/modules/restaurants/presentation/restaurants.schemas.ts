@@ -7,7 +7,7 @@ import { BUSINESS_TYPES } from '../domain/business-type';
 // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-10 — reaproveita o mesmo enum já
 // usado em `Order.paymentMethod`/`Payment.method` (`modules/orders/domain/entities/order.entity.ts`),
 // não redefine um novo.
-export const paymentMethodSchema = z.enum(['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer']);
+export const paymentMethodSchema = z.enum(['creditCard', 'creditCardOnline', 'debitCard', 'pix', 'cash', 'bankTransfer']);
 
 // specs/0028-destaques-vendidos-banners REQ-5, REQ-6 — mesmo padrão de
 // `productAdditionalGroupSchema`/`type`: o campo de destino exigido depende de `linkType`,

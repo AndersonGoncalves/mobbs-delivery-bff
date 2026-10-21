@@ -53,7 +53,7 @@ export const createOrderSchema = z
     // Bairro do endereço escolhido: no modo de taxa por bairro, é a chave da zona que define a taxa cobrada.
     deliveryNeighborhood: optionalString(z.string().min(1)),
     notes: optionalString(z.string()),
-    paymentMethod: z.enum(['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer']),
+    paymentMethod: z.enum(['creditCard', 'creditCardOnline', 'debitCard', 'pix', 'cash', 'bankTransfer']),
     cardBrand: optionalString(z.string().min(1)),
     // specs/0080-troco-pagamento-dinheiro-checkout REQ-2 — opcional mesmo em dinheiro ("se não
     // precisar, deixe em branco"); sem validação de negócio (fora de escopo — é só informativo

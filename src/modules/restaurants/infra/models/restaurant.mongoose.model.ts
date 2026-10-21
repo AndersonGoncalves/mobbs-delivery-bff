@@ -137,6 +137,11 @@ const restaurantSchema = new Schema(
     asaasWalletId: { type: String },
     asaasApiKey: { type: String },
     asaasWebhookToken: { type: String },
+    // specs/0170-integracao-mercado-pago — vínculo OAuth (não subconta/KYC como o Asaas acima).
+    mercadoPagoAccessToken: { type: String },
+    mercadoPagoRefreshToken: { type: String },
+    mercadoPagoUserId: { type: String },
+    mercadoPagoTokenExpiresAt: { type: String },
     // Pedido explícito do usuário — tempo médio de atendimento mostrado no app do cliente, por
     // modalidade; defaults vindos do exemplo mostrado (40-60min delivery, 20-40min balcão).
     deliveryTimeMinMinutes: { type: Number, required: true, default: 40 },
@@ -167,14 +172,17 @@ const restaurantSchema = new Schema(
     // ligar manualmente em `PaymentMethodsForm`, só sai do `default`.
     acceptedPaymentMethods: {
       type: [String],
-      enum: ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'],
+      // specs/0170-integracao-mercado-pago — `creditCardOnline` no enum (validação), nunca no
+      // `default` (nenhum restaurante "aceita" cobrança online sem antes vincular um gateway,
+      // `Restaurant.mercadoPagoAccessToken`/`asaasApiKey` — ver `OrdersController.create`).
+      enum: ['creditCard', 'creditCardOnline', 'debitCard', 'pix', 'cash', 'bankTransfer'],
       default: ['creditCard', 'debitCard', 'pix', 'cash'],
     },
     // specs/0151-confirmacao-automatica-por-forma-pagamento REQ-1 — default vazio (opt-in
     // explícito, preserva o comportamento de hoje pra quem nunca configurar nada).
     autoConfirmPaymentMethods: {
       type: [String],
-      enum: ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'],
+      enum: ['creditCard', 'creditCardOnline', 'debitCard', 'pix', 'cash', 'bankTransfer'],
       default: [],
     },
     // specs/0083-modalidade-entrega-retirada-restaurante REQ-1 — default "ambos" (retrocompatível).

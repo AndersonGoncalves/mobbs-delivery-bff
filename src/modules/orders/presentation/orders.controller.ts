@@ -25,7 +25,8 @@ import { IRestaurant } from '../../restaurants/domain/entities/restaurant.entity
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IOrder, IOrderItem, IPayment } from '../domain/entities/order.entity';
 import { AsaasClient } from '../../payments-asaas/infra/asaas-client';
-import { ConfirmPixPaymentService } from '../domain/services/confirm-pix-payment.service';
+import { MercadoPagoClient } from '../../payments-mercadopago/infra/mercado-pago-client';
+import { ConfirmOnlinePaymentService } from '../domain/services/confirm-online-payment.service';
 import { StockReservationService } from '../domain/services/stock-reservation.service';
 import { isOrderCancellable, isValidOrderStatusTransition } from '../domain/order-status-transitions';
 import { buildOrderPixCode } from '../domain/build-order-pix-code';
@@ -140,6 +141,12 @@ export class OrdersController extends BaseRouter {
         throw new BadRequestError('Restaurante não tem chave Pix cadastrada');
       }
 
+      // specs/0170-integracao-mercado-pago REQ-3 — mesmo raciocínio do Pix acima: o app já
+      // esconde a opção sem vínculo, isto é defesa em profundidade.
+      if (payload.paymentMethod === 'creditCardOnline' && !restaurant.mercadoPagoAccessToken) {
+        throw new BadRequestError('Restaurante não tem Mercado Pago vinculado');
+      }
+
       const subtotal = payload.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
       // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-1 — 'free' nunca cobra,
       // independente do que estiver em `deliveryFeeCents` (o restaurante pode ter mudado de modo
@@ -171,8 +178,12 @@ export class OrdersController extends BaseRouter {
       // specs/0151-confirmacao-automatica-por-forma-pagamento REQ-3 — Pix nunca nasce confirmado
       // aqui (só confirma depois do pagamento aprovado, REQ-4); as demais formas nascem
       // `confirmado` direto se estiverem na configuração de auto-confirmação do restaurante.
+      // specs/0170-integracao-mercado-pago — `creditCardOnline` tem a mesma restrição do Pix,
+      // mesmo motivo: também só confirma depois do pagamento aprovado (webhook).
       const initialStatus =
-        payload.paymentMethod !== 'pix' && restaurant.autoConfirmPaymentMethods?.includes(payload.paymentMethod)
+        payload.paymentMethod !== 'pix' &&
+        payload.paymentMethod !== 'creditCardOnline' &&
+        restaurant.autoConfirmPaymentMethods?.includes(payload.paymentMethod)
           ? 'confirmado'
           : undefined;
 
@@ -224,6 +235,14 @@ export class OrdersController extends BaseRouter {
       // `attachPaymentDetails`) sem derrubar a criação do pedido, que já aconteceu.
       if (payload.paymentMethod === 'pix' && restaurant.onlinePaymentsEnabled && restaurant.asaasApiKey) {
         await this.tryChargeOrderPixViaAsaas(order, restaurant);
+      }
+
+      // specs/0170-integracao-mercado-pago (REQ-2) — mesmo raciocínio de `tryChargeOrderPixViaAsaas`
+      // acima, mas SEM fallback local: se a criação da preferência falhar, `checkoutUrl` simplesmente
+      // não é preenchido (o pedido já foi criado, e `attachPaymentDetails`/o app precisam lidar com a
+      // ausência — diferente do Pix, aqui não existe um "cartão local" equivalente ao BR Code pra cair).
+      if (payload.paymentMethod === 'creditCardOnline' && restaurant.mercadoPagoAccessToken) {
+        await this.tryCreateMercadoPagoPreference(order, restaurant);
       }
 
       // specs/0013-notificacoes-whatsapp REQ-1/REQ-4 — fire-and-forget: nunca bloqueia a
@@ -318,6 +337,7 @@ export class OrdersController extends BaseRouter {
         await this.requireStockReservationService().releaseOrderReservations(order.restaurantId, order.id, order.items);
       }
       await this.tryRefundOrderPixViaAsaas(order);
+      await this.tryRefundOrderCardOnlineViaMercadoPago(order);
 
       void this.whatsAppNotificationService.sendOrderStatusUpdate(updated).catch((error) => {
         console.error(`[whatsapp] erro inesperado enviando atualização de status do pedido ${updated.id}:`, error);
@@ -498,6 +518,7 @@ export class OrdersController extends BaseRouter {
           await this.tableRepository?.releaseFromOrder(order.tableId, req.restaurantId!, order.id);
         }
         await this.tryRefundOrderPixViaAsaas(order);
+        await this.tryRefundOrderCardOnlineViaMercadoPago(order);
 
         void this.whatsAppNotificationService.sendOrderStatusUpdate(updated, reason).catch((error) => {
           console.error(`[whatsapp] erro inesperado enviando atualização de status do pedido ${updated.id}:`, error);
@@ -535,8 +556,8 @@ export class OrdersController extends BaseRouter {
         // specs/0140-confirmacao-automatica-pix REQ-1/REQ-1a — mesma lógica de confirmação
         // (marcar aprovado + avançar status se configurado + notificar) usada pelo webhook
         // gateway-agnóstico (REQ-1b, `PaymentWebhookController`), extraída pra
-        // `ConfirmPixPaymentService` pra garantir o mesmo comportamento nas duas origens.
-        const { order: updatedOrder, payment: updatedPayment } = await new ConfirmPixPaymentService(
+        // `ConfirmOnlinePaymentService` pra garantir o mesmo comportamento nas duas origens.
+        const { order: updatedOrder, payment: updatedPayment } = await new ConfirmOnlinePaymentService(
           this.paymentRepository,
           this.orderRepository,
           this.restaurantRepository,
@@ -658,7 +679,7 @@ export class OrdersController extends BaseRouter {
    * confirmado (REQ-5), o código some da resposta (não só da tela) pra evitar pagamento
    * duplicado por engano.
    */
-  private async attachPaymentDetails(order: IOrder): Promise<IOrder & { payment?: Pick<IPayment, 'method' | 'status'>; pixCode?: string }> {
+  private async attachPaymentDetails(order: IOrder): Promise<IOrder & { payment?: Pick<IPayment, 'method' | 'status'>; pixCode?: string; checkoutUrl?: string }> {
     const payment = await this.paymentRepository.findByOrderId(order.id);
     if (!payment) return order;
 
@@ -676,7 +697,11 @@ export class OrdersController extends BaseRouter {
       }
     }
 
-    return { ...order, payment: this.toPaymentSummary(payment), pixCode };
+    // specs/0170-integracao-mercado-pago (REQ-2) — some da resposta depois de aprovado, mesmo
+    // raciocínio do `pixCode` acima (evita reabrir a WebView de um pagamento já concluído).
+    const checkoutUrl = order.paymentMethod === 'creditCardOnline' && payment.status === 'pendente' ? payment.checkoutUrl : undefined;
+
+    return { ...order, payment: this.toPaymentSummary(payment), pixCode, checkoutUrl };
   }
 
   /** specs/0101-integracao-asaas (fase 1) — tenta cobrar o Pix de verdade no Asaas (cliente
@@ -722,6 +747,47 @@ export class OrdersController extends BaseRouter {
       await this.paymentRepository.markAsRefunded(order.id);
     } catch (error) {
       console.error(`[asaas] erro inesperado estornando o Pix do pedido ${order.id} — cancelamento já efetivado, resolver manualmente:`, error);
+    }
+  }
+
+  /** specs/0170-integracao-mercado-pago (REQ-2) — cria a preferência de Checkout Pro em nome do
+   * restaurante (`accessToken` DELE, não nosso) e persiste `checkoutUrl`/`externalReference` no
+   * `Payment` já criado. Qualquer falha (token expirado, rede, API do Mercado Pago fora) é
+   * logada e engolida — nunca propaga: o pedido já foi criado, e SEM fallback local (diferente
+   * do Pix) — `checkoutUrl` simplesmente fica ausente, cabendo ao app reportar ao cliente. */
+  private async tryCreateMercadoPagoPreference(order: IOrder, restaurant: IRestaurant): Promise<void> {
+    try {
+      const client = new MercadoPagoClient(environment.mercadoPago.clientId ?? '', environment.mercadoPago.clientSecret ?? '', environment.mercadoPago.baseUrl);
+      const trackingUrl = `${environment.publicApp.baseUrl}/${restaurant.slug}/pedidos/${order.id}`;
+      const preference = await client.createPreference(restaurant.mercadoPagoAccessToken!, {
+        orderId: order.id,
+        items: order.items.map((item) => ({ title: item.productName, quantity: item.quantity, unitPrice: item.unitPrice })),
+        notificationUrl: `${environment.server.publicBaseUrl}/webhooks/mercadopago`,
+        backUrls: { success: trackingUrl, failure: trackingUrl, pending: trackingUrl },
+      });
+
+      await this.paymentRepository.setMercadoPagoCheckoutDetails(order.id, { externalReference: preference.id, checkoutUrl: preference.initPoint });
+    } catch (error) {
+      console.error(`[mercadopago] erro inesperado criando a preferência de checkout do pedido ${order.id}:`, error);
+    }
+  }
+
+  /** specs/0170-integracao-mercado-pago (REQ-7) — estorna no Mercado Pago um pedido cancelado
+   * cujo cartão online já tinha sido aprovado por lá. Mesmo padrão de `tryRefundOrderPixViaAsaas`. */
+  private async tryRefundOrderCardOnlineViaMercadoPago(order: IOrder): Promise<void> {
+    if (order.paymentMethod !== 'creditCardOnline') return;
+    const payment = await this.paymentRepository.findByOrderId(order.id);
+    if (!payment || payment.status !== 'aprovado' || !payment.externalReference) return;
+
+    const restaurant = await this.restaurantRepository.findById(order.restaurantId);
+    if (!restaurant?.mercadoPagoAccessToken) return;
+
+    try {
+      const client = new MercadoPagoClient(environment.mercadoPago.clientId ?? '', environment.mercadoPago.clientSecret ?? '', environment.mercadoPago.baseUrl);
+      await client.refundPayment(restaurant.mercadoPagoAccessToken, payment.externalReference);
+      await this.paymentRepository.markAsRefunded(order.id);
+    } catch (error) {
+      console.error(`[mercadopago] erro inesperado estornando o cartão online do pedido ${order.id} — cancelamento já efetivado, resolver manualmente:`, error);
     }
   }
 

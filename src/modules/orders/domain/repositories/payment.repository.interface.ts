@@ -26,4 +26,8 @@ export interface IPaymentRepository {
   /** specs/0101-integracao-asaas (fase 1) — cancelamento de um pedido cujo Pix via Asaas já
    * tinha sido aprovado (`OrdersController`, os 2 handlers de cancelamento). */
   markAsRefunded(orderId: string): Promise<IPayment>;
+
+  /** specs/0170-integracao-mercado-pago — persiste o id da preferência e a URL de checkout
+   * devolvidos pelo Mercado Pago na criação do pedido (`OrdersController.create`). */
+  setMercadoPagoCheckoutDetails(orderId: string, data: { externalReference: string; checkoutUrl: string }): Promise<IPayment>;
 }

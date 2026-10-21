@@ -12,7 +12,10 @@ import { IRestaurant } from '../domain/entities/restaurant.entity';
  * campo secreto novo adicionado depois (ex. `mercadoPagoAccessToken` desta mesma sessão) fica de
  * fora automaticamente, sem precisar lembrar de negá-lo explicitamente. Lista conferida contra
  * `RestaurantResponseDTO.fromMap` (`mobbs-delivery-app/src/shared/api`) — são exatamente os
- * campos que o app do cliente já lê hoje, nem um a mais.
+ * campos que o app do cliente já lê hoje, nem um a mais (exceto `mercadoPagoLinked`, campo NOVO
+ * desta sessão, specs/0170-integracao-mercado-pago REQ-3 — o app precisa saber se mostra ou não
+ * "Cartão de crédito (cobrar agora)" no checkout, mas `mercadoPagoAccessToken` em si é secreto;
+ * por isso aqui é só o booleano calculado, nunca o token).
  */
 export function toPublicRestaurant(restaurant: IRestaurant) {
   return {

@@ -12,12 +12,13 @@ import {
 
 // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-10 — mesmo enum de
 // `Order.paymentMethod`/`Payment.method`.
-const ALL_PAYMENT_METHODS: PaymentMethod[] = ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'];
+const ALL_PAYMENT_METHODS: PaymentMethod[] = ['creditCard', 'creditCardOnline', 'debitCard', 'pix', 'cash', 'bankTransfer'];
 
 const PAYMENT_LABEL: Record<string, string> = {
   cash: 'Dinheiro',
   pix: 'Pix',
   creditCard: 'Crédito',
+  creditCardOnline: 'Cartão (online)',
   debitCard: 'Débito',
   bankTransfer: 'Transferência',
 };

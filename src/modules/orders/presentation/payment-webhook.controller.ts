@@ -8,7 +8,7 @@ import { requireOperatorRole } from '../../../shared/http/require-operator-role.
 import { IWhatsAppNotificationService } from '../../notifications/domain/services/i-whatsapp-notification.service';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IPayment } from '../domain/entities/order.entity';
-import { ConfirmPixPaymentService } from '../domain/services/confirm-pix-payment.service';
+import { ConfirmOnlinePaymentService } from '../domain/services/confirm-online-payment.service';
 import { IOrderRepository } from '../domain/repositories/order.repository.interface';
 import { IPaymentRepository } from '../domain/repositories/payment.repository.interface';
 import { pixConfirmedWebhookSchema } from './orders.schemas';
@@ -19,7 +19,7 @@ type AsyncHandler = (req: Request, res: Response) => Promise<void>;
  * specs/0140-confirmacao-automatica-pix REQ-1b — rota gateway-agnóstica que um futuro provedor
  * de PSP (`specs/0101-integracao-asaas`, `specs/0170-integracao-mercado-pago`) vai chamar quando
  * confirmar um Pix, acionando exatamente a mesma lógica da confirmação manual
- * (`OrdersController.payment/confirm`, REQ-1a) via `ConfirmPixPaymentService`. Autenticada por
+ * (`OrdersController.payment/confirm`, REQ-1a) via `ConfirmOnlinePaymentService`. Autenticada por
  * chave de API por restaurante (`X-Payment-Webhook-Api-Key`, `paymentWebhookApiKeyMiddleware`),
  * não por token Firebase/operador logado — quem chama é um provedor externo, sem sessão humana.
  * REQ-5: enquanto nenhum restaurante tiver uma chave gerada/configurada num gateway real, esta
@@ -80,7 +80,7 @@ export class PaymentWebhookController extends BaseRouter {
         throw new ConflictError('Pagamento não pode ser confirmado');
       }
 
-      const { order: updatedOrder, payment: updatedPayment } = await new ConfirmPixPaymentService(
+      const { order: updatedOrder, payment: updatedPayment } = await new ConfirmOnlinePaymentService(
         this.paymentRepository,
         this.orderRepository,
         this.restaurantRepository,

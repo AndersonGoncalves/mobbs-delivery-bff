@@ -1,6 +1,9 @@
 export type OrderType = 'delivery' | 'pickup' | 'table';
 
-export type PaymentMethod = 'creditCard' | 'debitCard' | 'pix' | 'cash' | 'bankTransfer';
+/** `creditCardOnline` — specs/0101 REQ-9/specs/0170: pagamento com cartão cobrado online pelo
+ * app (gateway real, Asaas ou Mercado Pago), distinto de `creditCard` (cartão combinado,
+ * cobrado fora da plataforma na entrega/maquininha). */
+export type PaymentMethod = 'creditCard' | 'creditCardOnline' | 'debitCard' | 'pix' | 'cash' | 'bankTransfer';
 
 export type OrderStatus = 'aguardandoConfirmacao' | 'confirmado' | 'emPreparo' | 'saiuParaEntrega' | 'entregue' | 'cancelado';
 
@@ -162,6 +165,11 @@ export interface IPayment {
    * pra recalcular a cada `GET`. `attachPaymentDetails`/`whatsapp-confirmation-message` preferem
    * este valor sobre `buildOrderPixCode` quando presente. */
   pixPayload?: string;
+  /** specs/0170-integracao-mercado-pago — URL de checkout hospedado (`init_point` do Mercado
+   * Pago Checkout Pro) pro app abrir numa WebView quando `method === 'creditCardOnline'`.
+   * Genérico de propósito (não "mercadoPagoInitPoint"): qualquer gateway futuro baseado em
+   * checkout hospedado pode reaproveitar o mesmo campo. */
+  checkoutUrl?: string;
 }
 
 /**

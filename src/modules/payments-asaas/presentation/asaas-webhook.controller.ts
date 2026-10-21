@@ -5,7 +5,7 @@ import { BaseRouter } from '../../../shared/router/base.router';
 import { IWhatsAppNotificationService } from '../../notifications/domain/services/i-whatsapp-notification.service';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IPayment } from '../../orders/domain/entities/order.entity';
-import { ConfirmPixPaymentService } from '../../orders/domain/services/confirm-pix-payment.service';
+import { ConfirmOnlinePaymentService } from '../../orders/domain/services/confirm-online-payment.service';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { IPaymentRepository } from '../../orders/domain/repositories/payment.repository.interface';
 
@@ -78,7 +78,7 @@ export class AsaasWebhookController extends BaseRouter {
         throw new ConflictError('Pagamento não pode ser confirmado');
       }
 
-      const { order: updatedOrder, payment: updatedPayment } = await new ConfirmPixPaymentService(
+      const { order: updatedOrder, payment: updatedPayment } = await new ConfirmOnlinePaymentService(
         this.paymentRepository,
         this.orderRepository,
         this.restaurantRepository,
