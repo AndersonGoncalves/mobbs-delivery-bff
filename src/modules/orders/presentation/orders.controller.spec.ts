@@ -13,7 +13,13 @@ import { IOrderRepository } from '../domain/repositories/order.repository.interf
 import { IPaymentRepository } from '../domain/repositories/payment.repository.interface';
 import { IRestaurantTableRepository } from '../../table-service/domain/repositories/table.repository.interface';
 import { IBlockedCustomerRepository } from '../../customer-blocking/domain/repositories/blocked-customer.repository.interface';
+import { AsaasClient } from '../../payments-asaas/infra/asaas-client';
 import { OrdersController } from './orders.controller';
+
+// specs/0101-integracao-asaas (fase 1) — `tryChargeOrderPixViaAsaas`/`tryRefundOrderPixViaAsaas`
+// instanciam `AsaasClient` direto (não injetado via construtor, diferente dos repositórios),
+// então o jeito de controlar o comportamento nos testes é mockar a classe inteira.
+jest.mock('../../payments-asaas/infra/asaas-client');
 
 type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & {
   user?: { uid: string; email?: string };
@@ -84,6 +90,9 @@ function buildRestaurant(
     customerBlockingEnabled: boolean;
     // specs/0151-confirmacao-automatica-por-forma-pagamento REQ-1.
     autoConfirmPaymentMethods: ('creditCard' | 'debitCard' | 'pix' | 'cash' | 'bankTransfer')[];
+    // specs/0101-integracao-asaas (fase 1).
+    onlinePaymentsEnabled: boolean;
+    asaasApiKey: string;
   }> = {},
 ) {
   return {
@@ -259,6 +268,9 @@ describe('OrdersController', () => {
       findByOrderId: jest.fn().mockResolvedValue(null),
       findManyByOrderIds: jest.fn().mockResolvedValue([]),
       markAsApproved: jest.fn().mockImplementation(async (orderId) => ({ ...buildPayment({ orderId }), status: 'aprovado' })),
+      // specs/0101-integracao-asaas (fase 1).
+      setAsaasPixDetails: jest.fn().mockImplementation(async (orderId, data) => ({ ...buildPayment({ orderId }), ...data })),
+      markAsRefunded: jest.fn().mockImplementation(async (orderId) => ({ ...buildPayment({ orderId }), status: 'estornado' })),
       ...overrides.paymentRepository,
     };
     const couponRepository: Partial<ICouponRepository> = {
@@ -1766,6 +1778,127 @@ describe('OrdersController', () => {
       );
 
       expect(orderRepository.create).toHaveBeenCalledWith(expect.objectContaining({ discount: 25, total: 5 }));
+    });
+  });
+
+  describe('specs/0101-integracao-asaas (fase 1)', () => {
+    const MockedAsaasClient = AsaasClient as jest.MockedClass<typeof AsaasClient>;
+
+    beforeEach(() => {
+      MockedAsaasClient.mockClear();
+      MockedAsaasClient.prototype.createCustomer = jest.fn().mockResolvedValue({ id: 'cus_1' });
+      MockedAsaasClient.prototype.createPixCharge = jest.fn().mockResolvedValue({ id: 'pay_1', status: 'PENDING' });
+      MockedAsaasClient.prototype.getPixQrCode = jest.fn().mockResolvedValue({ payload: '00020126...copia-e-cola-asaas' });
+      MockedAsaasClient.prototype.refundCharge = jest.fn().mockResolvedValue(undefined);
+    });
+
+    it('POST /orders: restaurante com Asaas habilitado e cliente com CPF cria a cobrança real e persiste no Payment', async () => {
+      const { paymentRepository, routes } = setup({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ onlinePaymentsEnabled: true, asaasApiKey: 'key-subconta' })) },
+        customerRepository: { findById: jest.fn().mockResolvedValue({ id: 'customer-1', name: 'Ana', email: 'ana@exemplo.com', phone: '85984224877', document: '12345678900' }) },
+      });
+
+      await runAuthenticatedChain(
+        routes['POST /orders'],
+        { body: buildValidBody({ paymentMethod: 'pix' }), user: { uid: 'customer-1' } },
+        { json: jest.fn() },
+      );
+
+      expect(MockedAsaasClient.prototype.createCustomer).toHaveBeenCalledWith('Ana', '12345678900');
+      expect(MockedAsaasClient.prototype.createPixCharge).toHaveBeenCalledWith('cus_1', expect.any(Number), expect.any(String), 'o-1');
+      expect(paymentRepository.setAsaasPixDetails).toHaveBeenCalledWith('o-1', { externalReference: 'pay_1', pixPayload: '00020126...copia-e-cola-asaas' });
+    });
+
+    it('POST /orders: restaurante sem Asaas habilitado nunca chama o AsaasClient', async () => {
+      const { paymentRepository, routes } = setup({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ pixKey: '11999999999' })) },
+      });
+
+      await runAuthenticatedChain(
+        routes['POST /orders'],
+        { body: buildValidBody({ paymentMethod: 'pix' }), user: { uid: 'customer-1' } },
+        { json: jest.fn() },
+      );
+
+      expect(MockedAsaasClient.prototype.createCustomer).not.toHaveBeenCalled();
+      expect(paymentRepository.setAsaasPixDetails).not.toHaveBeenCalled();
+    });
+
+    it('POST /orders: cliente sem CPF/CNPJ cai no fallback do Pix local, sem chamar o Asaas', async () => {
+      const { paymentRepository, routes } = setup({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ onlinePaymentsEnabled: true, asaasApiKey: 'key-subconta', pixKey: '11999999999' })) },
+        customerRepository: { findById: jest.fn().mockResolvedValue({ id: 'customer-1', name: 'Ana', email: 'ana@exemplo.com', phone: '85984224877' }) },
+      });
+
+      await runAuthenticatedChain(
+        routes['POST /orders'],
+        { body: buildValidBody({ paymentMethod: 'pix' }), user: { uid: 'customer-1' } },
+        { json: jest.fn() },
+      );
+
+      expect(MockedAsaasClient.prototype.createCustomer).not.toHaveBeenCalled();
+      expect(paymentRepository.setAsaasPixDetails).not.toHaveBeenCalled();
+    });
+
+    it('POST /orders: falha do Asaas (rede/API) cai no fallback do Pix local, sem derrubar a criação do pedido', async () => {
+      jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      MockedAsaasClient.prototype.createCustomer = jest.fn().mockRejectedValue(new Error('Asaas API respondeu 500'));
+      const { paymentRepository, routes } = setup({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ onlinePaymentsEnabled: true, asaasApiKey: 'key-subconta', pixKey: '11999999999' })) },
+        customerRepository: { findById: jest.fn().mockResolvedValue({ id: 'customer-1', name: 'Ana', email: 'ana@exemplo.com', phone: '85984224877', document: '12345678900' }) },
+      });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(
+        routes['POST /orders'],
+        { body: buildValidBody({ paymentMethod: 'pix' }), user: { uid: 'customer-1' } },
+        { json },
+      );
+
+      expect(paymentRepository.setAsaasPixDetails).not.toHaveBeenCalled();
+      expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ id: 'o-1' }));
+    });
+
+    it('GET /orders/:id prefere o pixPayload persistido (Asaas) sobre o BR Code local', async () => {
+      const { routes } = setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ paymentMethod: 'pix' })) },
+        paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ pixPayload: '00020126...copia-e-cola-asaas' })) },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ pixKey: '11999999999' })) },
+      });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['GET /orders/:id'], { params: { id: 'o-1' }, user: { uid: 'customer-1' } }, { json });
+
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ pixCode: '00020126...copia-e-cola-asaas' }));
+    });
+
+    it('PATCH /orders/:id/cancel: Pix Asaas já aprovado dispara estorno e marca o Payment como estornado', async () => {
+      const { paymentRepository, routes } = setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ paymentMethod: 'pix' })) },
+        paymentRepository: {
+          findByOrderId: jest.fn().mockResolvedValue(buildPayment({ status: 'aprovado', externalReference: 'pay_1' })),
+          markAsRefunded: jest.fn().mockResolvedValue(buildPayment({ status: 'estornado' })),
+        },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ onlinePaymentsEnabled: true, asaasApiKey: 'key-subconta' })) },
+      });
+
+      await runAuthenticatedChain(routes['PATCH /orders/:id/cancel'], { params: { id: 'o-1' }, user: { uid: 'customer-1' } }, { json: jest.fn() });
+
+      expect(MockedAsaasClient.prototype.refundCharge).toHaveBeenCalledWith('pay_1');
+      expect(paymentRepository.markAsRefunded).toHaveBeenCalledWith('o-1');
+    });
+
+    it('PATCH /orders/:id/cancel: Pix ainda pendente (nunca pago) não tenta estornar', async () => {
+      const { paymentRepository, routes } = setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ paymentMethod: 'pix' })) },
+        paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ status: 'pendente' })) },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ onlinePaymentsEnabled: true, asaasApiKey: 'key-subconta' })) },
+      });
+
+      await runAuthenticatedChain(routes['PATCH /orders/:id/cancel'], { params: { id: 'o-1' }, user: { uid: 'customer-1' } }, { json: jest.fn() });
+
+      expect(MockedAsaasClient.prototype.refundCharge).not.toHaveBeenCalled();
+      expect(paymentRepository.markAsRefunded).not.toHaveBeenCalled();
     });
   });
 });

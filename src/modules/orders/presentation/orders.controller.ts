@@ -20,9 +20,11 @@ import { IWhatsAppNotificationService } from '../../notifications/domain/service
 import { IStockMovementRepository } from '../../raw-materials/domain/repositories/stock-movement.repository.interface';
 import { IRawMaterialRepository } from '../../raw-materials/domain/repositories/raw-material.repository.interface';
 import { isRestaurantOpenNow } from '../../restaurants/domain/is-restaurant-open-now';
+import { environment } from '../../../shared/config/environment';
 import { IRestaurant } from '../../restaurants/domain/entities/restaurant.entity';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IOrder, IOrderItem, IPayment } from '../domain/entities/order.entity';
+import { AsaasClient } from '../../payments-asaas/infra/asaas-client';
 import { ConfirmPixPaymentService } from '../domain/services/confirm-pix-payment.service';
 import { StockReservationService } from '../domain/services/stock-reservation.service';
 import { isOrderCancellable, isValidOrderStatusTransition } from '../domain/order-status-transitions';
@@ -132,7 +134,9 @@ export class OrdersController extends BaseRouter {
       // specs/0020-pix-no-app REQ-3 — Pix só é uma opção válida quando o restaurante tem chave
       // cadastrada; o app já esconde a opção nesse caso (defesa em profundidade, nunca confiar só
       // no client — mesmo raciocínio de `cardBrand` obrigatório pra cartão, no schema acima).
-      if (payload.paymentMethod === 'pix' && !restaurant.pixKey) {
+      // specs/0101-integracao-asaas (fase 1) — com Asaas habilitado, a chave direta deixa de ser
+      // obrigatória: a cobrança passa a ser pelo gateway, não por um Pix combinado manualmente.
+      if (payload.paymentMethod === 'pix' && !restaurant.pixKey && !(restaurant.onlinePaymentsEnabled && restaurant.asaasApiKey)) {
         throw new BadRequestError('Restaurante não tem chave Pix cadastrada');
       }
 
@@ -213,6 +217,15 @@ export class OrdersController extends BaseRouter {
         throw error;
       }
 
+      // specs/0101-integracao-asaas (fase 1) — pedido/pagamento já criados (acima); cobra o Pix
+      // de verdade no Asaas antes de responder (o cliente precisa do código pra pagar na mesma
+      // tela de revisão, não dá pra ser fire-and-forget como o WhatsApp abaixo). Qualquer falha
+      // (sem CPF, rede, API do Asaas fora) cai no fallback do Pix local (`buildOrderPixCode`,
+      // `attachPaymentDetails`) sem derrubar a criação do pedido, que já aconteceu.
+      if (payload.paymentMethod === 'pix' && restaurant.onlinePaymentsEnabled && restaurant.asaasApiKey) {
+        await this.tryChargeOrderPixViaAsaas(order, restaurant);
+      }
+
       // specs/0013-notificacoes-whatsapp REQ-1/REQ-4 — fire-and-forget: nunca bloqueia a
       // resposta HTTP nem reverte a criação do pedido se o envio falhar (o serviço já engole
       // qualquer exceção internamente, `.catch`/try-catch aqui é só uma segunda rede de
@@ -277,6 +290,8 @@ export class OrdersController extends BaseRouter {
         throw new NotFoundError('Aviso de pedido novo via WhatsApp não está disponível');
       }
       const customer = await this.customerRepository.findById(order.customerId);
+      // specs/0101-integracao-asaas (fase 1) — mesma preferência de `attachPaymentDetails`.
+      const payment = await this.paymentRepository.findByOrderId(order.id);
 
       const text = buildNewOrderRestaurantMessage({
         template: restaurant.newOrderRestaurantWhatsAppTemplate ?? DEFAULT_NEW_ORDER_RESTAURANT_TEMPLATE,
@@ -284,7 +299,7 @@ export class OrdersController extends BaseRouter {
         customerName: customer?.name ?? 'Cliente',
         customerPhone: customer?.phone,
         restaurantSlug: restaurant.slug,
-        pixCode: buildOrderPixCode(restaurant, order),
+        pixCode: payment?.pixPayload ?? buildOrderPixCode(restaurant, order),
       });
 
       res.json(200, { text, restaurantPhone: restaurant.phone });
@@ -302,6 +317,7 @@ export class OrdersController extends BaseRouter {
       if (order.items.some((item) => (item.stockReservations?.length ?? 0) > 0)) {
         await this.requireStockReservationService().releaseOrderReservations(order.restaurantId, order.id, order.items);
       }
+      await this.tryRefundOrderPixViaAsaas(order);
 
       void this.whatsAppNotificationService.sendOrderStatusUpdate(updated).catch((error) => {
         console.error(`[whatsapp] erro inesperado enviando atualização de status do pedido ${updated.id}:`, error);
@@ -481,6 +497,7 @@ export class OrdersController extends BaseRouter {
         if (order.orderType === 'table' && order.tableId) {
           await this.tableRepository?.releaseFromOrder(order.tableId, req.restaurantId!, order.id);
         }
+        await this.tryRefundOrderPixViaAsaas(order);
 
         void this.whatsAppNotificationService.sendOrderStatusUpdate(updated, reason).catch((error) => {
           console.error(`[whatsapp] erro inesperado enviando atualização de status do pedido ${updated.id}:`, error);
@@ -647,11 +664,65 @@ export class OrdersController extends BaseRouter {
 
     let pixCode: string | undefined;
     if (order.paymentMethod === 'pix' && payment.status === 'pendente') {
-      const restaurant = await this.restaurantRepository.findById(order.restaurantId);
-      if (restaurant) pixCode = buildOrderPixCode(restaurant, order);
+      // specs/0101-integracao-asaas (fase 1) — `pixPayload` (persistido na criação do pedido,
+      // `tryChargeOrderPixViaAsaas`) tem prioridade sobre o BR Code local: só existe quando a
+      // cobrança real no Asaas deu certo, e um recalculado (`buildOrderPixCode`) não teria
+      // relação com ela.
+      if (payment.pixPayload) {
+        pixCode = payment.pixPayload;
+      } else {
+        const restaurant = await this.restaurantRepository.findById(order.restaurantId);
+        if (restaurant) pixCode = buildOrderPixCode(restaurant, order);
+      }
     }
 
     return { ...order, payment: this.toPaymentSummary(payment), pixCode };
+  }
+
+  /** specs/0101-integracao-asaas (fase 1) — tenta cobrar o Pix de verdade no Asaas (cliente
+   * Asaas + cobrança + QR), persistindo o resultado no `Payment` já criado. Qualquer falha
+   * (sem CPF do cliente, rede, erro da API do Asaas) é logada e engolida — nunca propaga: o
+   * pedido já foi criado, e `attachPaymentDetails` cai sozinho no Pix local
+   * (`buildOrderPixCode`) quando `pixPayload` não existe. */
+  private async tryChargeOrderPixViaAsaas(order: IOrder, restaurant: IRestaurant): Promise<void> {
+    try {
+      const customer = await this.customerRepository.findById(order.customerId);
+      if (!customer?.document) {
+        console.warn(`[asaas] pedido ${order.id}: cliente sem CPF/CNPJ cadastrado, caindo no Pix local`);
+        return;
+      }
+
+      const client = new AsaasClient(restaurant.asaasApiKey!, environment.asaas.baseUrl);
+      const asaasCustomer = await client.createCustomer(customer.name, customer.document);
+      const dueDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const charge = await client.createPixCharge(asaasCustomer.id, order.total, dueDate, order.id);
+      const qrCode = await client.getPixQrCode(charge.id);
+
+      await this.paymentRepository.setAsaasPixDetails(order.id, { externalReference: charge.id, pixPayload: qrCode.payload });
+    } catch (error) {
+      console.error(`[asaas] erro inesperado cobrando o Pix do pedido ${order.id} — caindo no Pix local:`, error);
+    }
+  }
+
+  /** specs/0101-integracao-asaas (fase 1, REQ-6) — estorna no Asaas um pedido cancelado cujo Pix
+   * já tinha sido aprovado por lá. Fire-and-forget com log (mesmo padrão dos disparos de
+   * WhatsApp): uma falha no estorno nunca desfaz o cancelamento em si, que já aconteceu — fica
+   * pro operador resolver manualmente no painel do Asaas se isso acontecer. */
+  private async tryRefundOrderPixViaAsaas(order: IOrder): Promise<void> {
+    if (order.paymentMethod !== 'pix') return;
+    const payment = await this.paymentRepository.findByOrderId(order.id);
+    if (!payment || payment.status !== 'aprovado' || !payment.externalReference) return;
+
+    const restaurant = await this.restaurantRepository.findById(order.restaurantId);
+    if (!restaurant?.asaasApiKey) return;
+
+    try {
+      const client = new AsaasClient(restaurant.asaasApiKey, environment.asaas.baseUrl);
+      await client.refundCharge(payment.externalReference);
+      await this.paymentRepository.markAsRefunded(order.id);
+    } catch (error) {
+      console.error(`[asaas] erro inesperado estornando o Pix do pedido ${order.id} — cancelamento já efetivado, resolver manualmente:`, error);
+    }
   }
 
   /** specs/0020-pix-no-app T006 — usado nas listagens (`GET /restaurants/me/orders`): só `payment.status`, sem `pixCode` (fica só no detalhe, REQ-2). */

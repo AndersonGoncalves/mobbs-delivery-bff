@@ -153,7 +153,15 @@ export interface IPayment {
   cardBrand?: string;
   status: PaymentStatus;
   amount: number;
+  /** specs/0101-integracao-asaas (fase 1) — id da cobrança no Asaas (`pay_...`), quando o Pix
+   * foi cobrado via gateway em vez de BR Code local com chave direta. */
   externalReference?: string;
+  /** specs/0101-integracao-asaas (fase 1) — copia-e-cola Pix devolvido pelo Asaas na criação da
+   * cobrança (`GET /payments/:id/pixQrCode`), persistido porque (diferente do BR Code local,
+   * `buildOrderPixCode`, calculado on-demand) só existe depois de uma chamada de API — não dá
+   * pra recalcular a cada `GET`. `attachPaymentDetails`/`whatsapp-confirmation-message` preferem
+   * este valor sobre `buildOrderPixCode` quando presente. */
+  pixPayload?: string;
 }
 
 /**

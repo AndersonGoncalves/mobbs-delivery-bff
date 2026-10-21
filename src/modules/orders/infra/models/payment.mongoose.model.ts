@@ -10,6 +10,8 @@ const paymentSchema = new Schema(
     status: { type: String, enum: ['pendente', 'aprovado', 'recusado', 'estornado'], required: true, default: 'pendente' },
     amount: { type: Number, required: true },
     externalReference: { type: String },
+    // specs/0101-integracao-asaas (fase 1).
+    pixPayload: { type: String },
   },
   { _id: false, timestamps: true },
 );

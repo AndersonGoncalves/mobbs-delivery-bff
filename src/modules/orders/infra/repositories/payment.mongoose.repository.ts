@@ -10,6 +10,7 @@ interface PaymentLeanDocument {
   status: PaymentStatus;
   amount: number;
   externalReference?: string;
+  pixPayload?: string;
 }
 
 function toEntity(doc: PaymentLeanDocument): IPayment {
@@ -21,6 +22,7 @@ function toEntity(doc: PaymentLeanDocument): IPayment {
     status: doc.status,
     amount: doc.amount,
     externalReference: doc.externalReference,
+    pixPayload: doc.pixPayload,
   };
 }
 
@@ -40,6 +42,21 @@ export class PaymentMongooseRepository implements IPaymentRepository {
     const doc = await PaymentModel.findOneAndUpdate(
       { orderId },
       { $set: { status: 'aprovado' } },
+      { new: true },
+    ).lean<PaymentLeanDocument>();
+    return toEntity(doc as PaymentLeanDocument);
+  }
+
+  // specs/0101-integracao-asaas (fase 1).
+  async setAsaasPixDetails(orderId: string, data: { externalReference: string; pixPayload: string }): Promise<IPayment> {
+    const doc = await PaymentModel.findOneAndUpdate({ orderId }, { $set: data }, { new: true }).lean<PaymentLeanDocument>();
+    return toEntity(doc as PaymentLeanDocument);
+  }
+
+  async markAsRefunded(orderId: string): Promise<IPayment> {
+    const doc = await PaymentModel.findOneAndUpdate(
+      { orderId },
+      { $set: { status: 'estornado' } },
       { new: true },
     ).lean<PaymentLeanDocument>();
     return toEntity(doc as PaymentLeanDocument);

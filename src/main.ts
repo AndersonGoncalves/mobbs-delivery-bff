@@ -25,6 +25,8 @@ import { StockReservationService } from './modules/orders/domain/services/stock-
 import { PaymentMongooseRepository } from './modules/orders/infra/repositories/payment.mongoose.repository';
 import { OrdersController } from './modules/orders/presentation/orders.controller';
 import { PaymentWebhookController } from './modules/orders/presentation/payment-webhook.controller';
+import { AsaasOnboardingController } from './modules/payments-asaas/presentation/asaas-onboarding.controller';
+import { AsaasWebhookController } from './modules/payments-asaas/presentation/asaas-webhook.controller';
 import { CouponMongooseRepository } from './modules/coupons/infra/repositories/coupon.mongoose.repository';
 import { CouponsController } from './modules/coupons/presentation/coupons.controller';
 import { PromotionMongooseRepository } from './modules/promotions/infra/repositories/promotion.mongoose.repository';
@@ -265,6 +267,9 @@ server
       buildPaymentWebhookApiKeyMiddleware(restaurantRepository),
       restaurantOperatorMiddleware,
     ),
+    // specs/0101-integracao-asaas (fase 1) — cobrança de Pix via gateway real.
+    new AsaasOnboardingController(restaurantRepository, restaurantOperatorMiddleware),
+    new AsaasWebhookController(orderRepository, paymentRepository, restaurantRepository, whatsAppNotificationService),
     // specs/0106 — painel da plataforma, restrito à lista PLATFORM_ADMIN_EMAILS.
     new PlatformController(
       restaurantRepository,

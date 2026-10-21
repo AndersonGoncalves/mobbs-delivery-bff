@@ -3,7 +3,13 @@ import * as dotenv from 'dotenv';
 dotenv.config({ path: '.env' });
 
 export const environment = {
-  server: { port: Number(process.env.SERVER_PORT) || 3001 },
+  server: {
+    port: Number(process.env.SERVER_PORT) || 3001,
+    /** specs/0101-integracao-asaas (fase 1) — URL pública do próprio BFF (não `publicApp`, que é
+     * a origem do app do cliente), usada pra montar a URL de webhook registrada no Asaas na
+     * criação da subconta (`/webhooks/asaas/:restaurantId`). */
+    publicBaseUrl: process.env.BFF_PUBLIC_BASE_URL || 'https://api.bsdelivery.com.br',
+  },
   db: { url: process.env.DB_URL || 'mongodb://localhost:27017/mobbs-delivery' },
   /** specs/0069 — origem pública do app do cliente (Flutter Web em `<origem>/<slug>`), usada nos links
    * de acompanhamento enviados por WhatsApp. */
@@ -29,5 +35,15 @@ export const environment = {
    * lança erro claro em runtime (REQ-8), nunca derruba o resto do painel da plataforma. */
   googleMaps: {
     placesApiKey: process.env.GOOGLE_PLACES_API_KEY,
+  },
+  /** specs/0101-integracao-asaas (fase 1, só Pix) — `apiKey` é da conta MÃE/plataforma, usada só
+   * pra criar a subconta de cada restaurante (`POST /v3/accounts`); depois disso, toda chamada
+   * em nome de um restaurante (criar cliente/cobrança, consultar QR, estornar) usa a própria
+   * chave da subconta dele (`Restaurant.asaasApiKey`, devolvida uma única vez na criação), nunca
+   * esta. Sem `apiKey` configurada, a criação de subconta falha com erro claro — nenhum
+   * restaurante sem Asaas habilitado é afetado (REQ-5 da spec: fluxo manual continua sozinho). */
+  asaas: {
+    apiKey: process.env.ASAAS_API_KEY,
+    baseUrl: process.env.ASAAS_BASE_URL || 'https://api-sandbox.asaas.com/v3',
   },
 };

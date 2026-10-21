@@ -272,6 +272,18 @@ export interface IRestaurant {
    * sem token Firebase nem operador logado (mesmo raciocínio de `autoPrintApiKey`, gerada sob
    * demanda, nunca em branco depois da primeira geração — ver `PaymentWebhookController`). */
   paymentWebhookApiKey?: string;
+  /** specs/0101-integracao-asaas (fase 1, só Pix) — subconta Asaas do restaurante (modelo de
+   * conta decidido: cada restaurante tem a própria subconta, dinheiro cai direto pra ele, taxa
+   * do Asaas é dele). `asaasApiKey` é a chave da PRÓPRIA subconta (devolvida uma única vez na
+   * criação, `AsaasOnboardingController`) — nunca a mesma chave da conta mãe
+   * (`environment.asaas.apiKey`), e nunca exposta numa resposta de API pro operador (mesmo
+   * cuidado de `autoPrintApiKey`/`paymentWebhookApiKey`). `asaasWebhookToken` valida o header
+   * `asaas-access-token` que o Asaas envia no webhook (`AsaasWebhookController`). */
+  onlinePaymentsEnabled?: boolean;
+  asaasAccountId?: string;
+  asaasWalletId?: string;
+  asaasApiKey?: string;
+  asaasWebhookToken?: string;
 }
 
 export type CashRegisterMode = 'manual' | 'automatic';

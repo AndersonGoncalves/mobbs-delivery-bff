@@ -18,4 +18,12 @@ export interface IPaymentRepository {
    * `IOrderRepository.updateStatus` — este método só aplica a mudança.
    */
   markAsApproved(orderId: string): Promise<IPayment>;
+
+  /** specs/0101-integracao-asaas (fase 1) — persiste o id da cobrança e o copia-e-cola devolvidos
+   * pelo Asaas na criação do pedido (`OrdersController.create`). */
+  setAsaasPixDetails(orderId: string, data: { externalReference: string; pixPayload: string }): Promise<IPayment>;
+
+  /** specs/0101-integracao-asaas (fase 1) — cancelamento de um pedido cujo Pix via Asaas já
+   * tinha sido aprovado (`OrdersController`, os 2 handlers de cancelamento). */
+  markAsRefunded(orderId: string): Promise<IPayment>;
 }

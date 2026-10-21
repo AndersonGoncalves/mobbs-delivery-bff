@@ -1,0 +1,82 @@
+import { AsaasClient } from './asaas-client';
+
+function mockFetchOnce(status: number, body: unknown) {
+  global.fetch = jest.fn().mockResolvedValue({
+    ok: status >= 200 && status < 300,
+    status,
+    json: jest.fn().mockResolvedValue(body),
+    text: jest.fn().mockResolvedValue(JSON.stringify(body)),
+  }) as unknown as typeof fetch;
+}
+
+describe('AsaasClient (specs/0101-integracao-asaas, fase 1)', () => {
+  const client = new AsaasClient('key-1', 'https://api-sandbox.asaas.com/v3');
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('createSubaccount: POST /accounts com webhook embutido, devolve apiKey da subconta', async () => {
+    mockFetchOnce(200, { id: 'acc_1', walletId: 'wallet_1', accessToken: { apiKey: 'key-subconta' } });
+
+    const result = await client.createSubaccount(
+      { name: 'Prime Pizza', email: 'contato@primepizza.com', cpfCnpj: '12345678000190', mobilePhone: '11999999999', incomeValue: 5000, address: 'Rua A', addressNumber: '10', province: 'Centro', postalCode: '01000000' },
+      'https://api.bsdelivery.com.br/webhooks/asaas/r-1',
+      'webhook-token-1',
+    );
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://api-sandbox.asaas.com/v3/accounts',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ access_token: 'key-1' }),
+      }),
+    );
+    const [, options] = (global.fetch as jest.Mock).mock.calls[0];
+    const sentBody = JSON.parse(options.body);
+    expect(sentBody.webhooks[0]).toMatchObject({ url: 'https://api.bsdelivery.com.br/webhooks/asaas/r-1', authToken: 'webhook-token-1', events: ['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED'] });
+    expect(result).toEqual({ id: 'acc_1', walletId: 'wallet_1', apiKey: 'key-subconta' });
+  });
+
+  it('createCustomer: POST /customers com name e cpfCnpj', async () => {
+    mockFetchOnce(200, { id: 'cus_1' });
+
+    const result = await client.createCustomer('Ana', '12345678900');
+
+    expect(global.fetch).toHaveBeenCalledWith('https://api-sandbox.asaas.com/v3/customers', expect.objectContaining({ method: 'POST' }));
+    const [, options] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(JSON.parse(options.body)).toEqual({ name: 'Ana', cpfCnpj: '12345678900' });
+    expect(result).toEqual({ id: 'cus_1' });
+  });
+
+  it('createPixCharge: POST /payments com billingType PIX e externalReference', async () => {
+    mockFetchOnce(200, { id: 'pay_1', status: 'PENDING' });
+
+    const result = await client.createPixCharge('cus_1', 30, '2026-10-22', 'o-1');
+
+    const [, options] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(JSON.parse(options.body)).toEqual({ customer: 'cus_1', billingType: 'PIX', value: 30, dueDate: '2026-10-22', externalReference: 'o-1' });
+    expect(result).toEqual({ id: 'pay_1', status: 'PENDING' });
+  });
+
+  it('getPixQrCode: GET /payments/:id/pixQrCode devolve só o payload', async () => {
+    mockFetchOnce(200, { payload: '00020126...copia-e-cola', encodedImage: 'base64...', expirationDate: '2026-10-23 23:59:59' });
+
+    const result = await client.getPixQrCode('pay_1');
+
+    expect(global.fetch).toHaveBeenCalledWith('https://api-sandbox.asaas.com/v3/payments/pay_1/pixQrCode', expect.objectContaining({ method: 'GET' }));
+    expect(result).toEqual({ payload: '00020126...copia-e-cola' });
+  });
+
+  it('refundCharge: POST /payments/:id/refund sem corpo (estorno total)', async () => {
+    mockFetchOnce(200, { status: 'PENDING' });
+
+    await client.refundCharge('pay_1');
+
+    expect(global.fetch).toHaveBeenCalledWith('https://api-sandbox.asaas.com/v3/payments/pay_1/refund', expect.objectContaining({ method: 'POST' }));
+  });
+
+  it('lança erro com status e corpo quando a API responde com erro', async () => {
+    mockFetchOnce(400, { errors: [{ code: 'invalid_cpfCnpj', description: 'CPF/CNPJ inválido' }] });
+
+    await expect(client.createCustomer('Ana', '000')).rejects.toThrow(/400/);
+  });
+});

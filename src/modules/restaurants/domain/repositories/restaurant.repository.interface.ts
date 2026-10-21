@@ -143,4 +143,12 @@ export interface IRestaurantRepository {
    * do webhook de pagamento (`X-Payment-Webhook-Api-Key`); usado pelo middleware de autenticação
    * do webhook, não por operador logado. */
   findByPaymentWebhookApiKey(apiKey: string): Promise<IRestaurant | null>;
+
+  /** specs/0101-integracao-asaas (fase 1) — persiste os dados da subconta criada no Asaas
+   * (`AsaasOnboardingController`); fora de `RestaurantProfileUpdate` de propósito — o `apiKey`
+   * da subconta nunca deve ser setável por um PUT de perfil comum, só por este método dedicado. */
+  saveAsaasSubaccount(
+    id: string,
+    data: { asaasAccountId: string; asaasWalletId: string; asaasApiKey: string; asaasWebhookToken: string },
+  ): Promise<IRestaurant>;
 }

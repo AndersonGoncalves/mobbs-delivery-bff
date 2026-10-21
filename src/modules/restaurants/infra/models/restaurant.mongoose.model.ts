@@ -130,6 +130,13 @@ const restaurantSchema = new Schema(
     autoPrintMaxAgeMinutes: { type: Number, default: 5, min: 1, max: 60 },
     // specs/0140-confirmacao-automatica-pix REQ-1b.
     paymentWebhookApiKey: { type: String },
+    // specs/0101-integracao-asaas (fase 1) — default desligado preserva o comportamento atual
+    // (Pix com chave direta, sem gateway) de todo restaurante já existente.
+    onlinePaymentsEnabled: { type: Boolean, required: true, default: false },
+    asaasAccountId: { type: String },
+    asaasWalletId: { type: String },
+    asaasApiKey: { type: String },
+    asaasWebhookToken: { type: String },
     // Pedido explícito do usuário — tempo médio de atendimento mostrado no app do cliente, por
     // modalidade; defaults vindos do exemplo mostrado (40-60min delivery, 20-40min balcão).
     deliveryTimeMinMinutes: { type: Number, required: true, default: 40 },

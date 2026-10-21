@@ -95,6 +95,11 @@ interface RestaurantLeanDocument {
   autoPrintMaxAgeMinutes?: number;
   autoPrintApiKey?: string;
   paymentWebhookApiKey?: string;
+  onlinePaymentsEnabled?: boolean;
+  asaasAccountId?: string;
+  asaasWalletId?: string;
+  asaasApiKey?: string;
+  asaasWebhookToken?: string;
 }
 
 const ALL_PAYMENT_METHODS: PaymentMethod[] = ['creditCard', 'debitCard', 'pix', 'cash', 'bankTransfer'];
@@ -177,6 +182,11 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     autoPrintMaxAgeMinutes: doc.autoPrintMaxAgeMinutes ?? 5,
     autoPrintApiKey: doc.autoPrintApiKey,
     paymentWebhookApiKey: doc.paymentWebhookApiKey,
+    onlinePaymentsEnabled: doc.onlinePaymentsEnabled ?? false,
+    asaasAccountId: doc.asaasAccountId,
+    asaasWalletId: doc.asaasWalletId,
+    asaasApiKey: doc.asaasApiKey,
+    asaasWebhookToken: doc.asaasWebhookToken,
   };
 }
 
@@ -294,5 +304,14 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
   async findByPaymentWebhookApiKey(apiKey: string): Promise<IRestaurant | null> {
     const doc = await RestaurantModel.findOne({ paymentWebhookApiKey: apiKey }).lean<RestaurantLeanDocument>();
     return doc ? toEntity(doc) : null;
+  }
+
+  // specs/0101-integracao-asaas (fase 1).
+  async saveAsaasSubaccount(
+    id: string,
+    data: { asaasAccountId: string; asaasWalletId: string; asaasApiKey: string; asaasWebhookToken: string },
+  ): Promise<IRestaurant> {
+    const doc = await RestaurantModel.findByIdAndUpdate(id, { $set: { ...data, onlinePaymentsEnabled: true } }, { new: true }).lean<RestaurantLeanDocument>();
+    return toEntity(doc as RestaurantLeanDocument);
   }
 }
