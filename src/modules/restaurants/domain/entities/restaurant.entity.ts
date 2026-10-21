@@ -112,6 +112,13 @@ export interface IRestaurant {
   /** toggle visual análogo a `productImageOnRight`: `true` = pages do app cliente usam fundo
    * branco fixo, `false` (default) = tom calculado a partir de `primaryColor`. */
   useWhiteBackground: boolean;
+  /** Pedido explícito do usuário — mesmo raciocínio de `useWhiteBackground`, mas pra barra de
+   * navegação inferior (`AppBottomNavScaffold`) e pra barra de sistema (status bar do app nativo
+   * / barra de endereço do navegador no Flutter Web, via `theme-color`). Default `true` (branco
+   * fixo) preserva o comportamento visual que já existia antes deste campo existir — diferente de
+   * `useWhiteBackground`, cujo default é o tom calculado. */
+  useWhiteBottomNavBar: boolean;
+  useWhiteStatusBar: boolean;
   /** specs/0028-destaques-vendidos-banners REQ-1 — liga/desliga a seção "Mais vendidos" no
    * cardápio do cliente. Desde specs/0117-vitrine-manual-e-ajustes-formularios, os produtos
    * exibidos são curados manualmente (`Product.isBestSeller`) — este campo só decide se a seção

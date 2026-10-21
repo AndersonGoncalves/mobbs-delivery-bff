@@ -82,6 +82,10 @@ const restaurantSchema = new Schema(
     // toggle visual análogo a productImageOnRight: fundo branco fixo (true) vs. tom calculado
     // a partir de primaryColor (false, default).
     useWhiteBackground: { type: Boolean, required: true, default: false },
+    // Pedido explícito do usuário — default `true` (branco fixo) preserva o comportamento visual
+    // de antes destes 2 campos existirem.
+    useWhiteBottomNavBar: { type: Boolean, required: true, default: true },
+    useWhiteStatusBar: { type: Boolean, required: true, default: true },
     // specs/0028-destaques-vendidos-banners REQ-1, REQ-4, REQ-5, REQ-10.
     showBestSellers: { type: Boolean, required: true, default: false },
     showHighlights: { type: Boolean, required: true, default: true },

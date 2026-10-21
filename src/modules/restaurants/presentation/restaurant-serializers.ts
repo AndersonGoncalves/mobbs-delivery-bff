@@ -40,6 +40,8 @@ export function toPublicRestaurant(restaurant: IRestaurant) {
     pixKey: restaurant.pixKey,
     productImageOnRight: restaurant.productImageOnRight,
     useWhiteBackground: restaurant.useWhiteBackground,
+    useWhiteBottomNavBar: restaurant.useWhiteBottomNavBar,
+    useWhiteStatusBar: restaurant.useWhiteStatusBar,
     showBestSellers: restaurant.showBestSellers,
     showHighlights: restaurant.showHighlights,
     showBanners: restaurant.showBanners,

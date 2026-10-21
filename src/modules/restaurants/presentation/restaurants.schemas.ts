@@ -92,6 +92,10 @@ export const restaurantProfileSchema = z
     // toggle visual análogo a productImageOnRight: fundo branco fixo (true) vs. tom calculado
     // a partir de primaryColor (false, default).
     useWhiteBackground: z.boolean(),
+    // Pedido explícito do usuário — mesmo raciocínio de useWhiteBackground, pra barra de
+    // navegação inferior e barra de sistema/navegador. Default true (branco fixo) em cada um.
+    useWhiteBottomNavBar: z.boolean(),
+    useWhiteStatusBar: z.boolean(),
     // specs/0028-destaques-vendidos-banners REQ-1, REQ-4, REQ-10.
     showBestSellers: z.boolean(),
     showHighlights: z.boolean(),

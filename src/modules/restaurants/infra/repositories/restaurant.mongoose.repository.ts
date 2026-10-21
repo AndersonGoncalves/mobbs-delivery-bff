@@ -44,6 +44,8 @@ interface RestaurantLeanDocument {
   whatsappConnected?: boolean;
   productImageOnRight?: boolean;
   useWhiteBackground?: boolean;
+  useWhiteBottomNavBar?: boolean;
+  useWhiteStatusBar?: boolean;
   showBestSellers?: boolean;
   showHighlights?: boolean;
   showBanners?: boolean;
@@ -135,6 +137,8 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     whatsappConnected: doc.whatsappConnected ?? false,
     productImageOnRight: doc.productImageOnRight ?? true,
     useWhiteBackground: doc.useWhiteBackground ?? false,
+    useWhiteBottomNavBar: doc.useWhiteBottomNavBar ?? true,
+    useWhiteStatusBar: doc.useWhiteStatusBar ?? true,
     showBestSellers: doc.showBestSellers ?? false,
     showHighlights: doc.showHighlights ?? true,
     showBanners: doc.showBanners ?? true,
