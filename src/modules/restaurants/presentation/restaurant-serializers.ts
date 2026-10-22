@@ -41,7 +41,6 @@ export function toPublicRestaurant(restaurant: IRestaurant) {
     productImageOnRight: restaurant.productImageOnRight,
     useWhiteBackground: restaurant.useWhiteBackground,
     useWhiteBottomNavBar: restaurant.useWhiteBottomNavBar,
-    statusBarColorMode: restaurant.statusBarColorMode,
     useWhiteTextFieldColor: restaurant.useWhiteTextFieldColor,
     useWhiteSearchFieldColor: restaurant.useWhiteSearchFieldColor,
     // Achado real (pedido explícito do usuário) — o comentário acima já dizia que este campo

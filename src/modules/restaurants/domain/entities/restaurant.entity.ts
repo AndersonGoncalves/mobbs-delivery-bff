@@ -117,14 +117,12 @@ export interface IRestaurant {
    * comportamento visual que já existia antes deste campo existir — diferente de
    * `useWhiteBackground`, cujo default é o tom calculado. */
   useWhiteBottomNavBar: boolean;
-  /**
-   * Pedido explícito do usuário (2º follow-up) — a barra de sistema (status bar do app nativo /
-   * barra de endereço do navegador no Flutter Web, via `theme-color`) tinha só 2 opções
-   * (`useWhiteStatusBar` boolean: branca ou tom calculado) e precisava de uma 3ª, a cor primária
-   * de verdade (`primaryColor`), não o tom calculado a partir dela — por isso virou enum em vez
-   * de boolean. Default `'white'` preserva o `useWhiteStatusBar: true` de antes.
-   */
-  statusBarColorMode: 'white' | 'theme' | 'primary';
+  /** Pedido explícito do usuário (3º follow-up) — a barra de sistema (status bar do app nativo /
+   * barra de endereço do navegador no Flutter Web) deixou de ter campo próprio (era
+   * `statusBarColorMode`, enum de 3 opções, specs/0167 2º follow-up): sempre segue a mesma cor de
+   * `useWhiteBackground` (branca junto com fundo branco, tom calculado junto com fundo colorido),
+   * sem opção à parte. Removido daqui — ver `app.dart` (`statusBarColor = theme.
+   * scaffoldBackgroundColor`, igual o próprio fundo das pages). */
   /** Pedido explícito do usuário (2º follow-up) — mesmo raciocínio de `useWhiteBackground`, mas
    * pro preenchimento dos campos de texto do app (`AppTextField.fillColor`, `mobbs_ui_kit`):
    * `true` = branco fixo, `false` (default) = `colorScheme.surface` (tom do tema, comportamento

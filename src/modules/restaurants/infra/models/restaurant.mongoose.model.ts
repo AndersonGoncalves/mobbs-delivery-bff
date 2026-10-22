@@ -85,10 +85,9 @@ const restaurantSchema = new Schema(
     // Pedido explícito do usuário — default `true` (branco fixo) preserva o comportamento visual
     // de antes deste campo existir.
     useWhiteBottomNavBar: { type: Boolean, required: true, default: true },
-    // Pedido explícito do usuário (2º follow-up) — era boolean (`useWhiteStatusBar`), virou enum
-    // de 3 opções (a 3ª, `primary`, usa `primaryColor` direto, não um tom calculado a partir
-    // dela). Default `'white'` preserva o `useWhiteStatusBar: true` de antes.
-    statusBarColorMode: { type: String, enum: ['white', 'theme', 'primary'], required: true, default: 'white' },
+    // Pedido explícito do usuário (3º follow-up) — `statusBarColorMode` (2º follow-up) removido
+    // daqui: a barra de status não é mais escolhível à parte, sempre segue useWhiteBackground.
+    // Restaurantes que já salvaram um valor antigo (campo fora do schema) simplesmente o ignoram.
     // Pedido explícito do usuário (2º follow-up) — mesmo raciocínio de useWhiteBackground, pro
     // preenchimento dos campos de texto (`AppTextField`) e da caixa de busca da home
     // (`AppSearchField`) do app cliente. Default `false` em ambos preserva o comportamento visual

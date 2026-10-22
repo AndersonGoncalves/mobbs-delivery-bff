@@ -95,9 +95,8 @@ export const restaurantProfileSchema = z
     // Pedido explícito do usuário — mesmo raciocínio de useWhiteBackground, pra barra de
     // navegação inferior. Default true (branco fixo).
     useWhiteBottomNavBar: z.boolean(),
-    // Pedido explícito do usuário (2º follow-up) — era boolean, virou enum de 3 opções (a 3ª usa
-    // `primaryColor` direto, não um tom calculado).
-    statusBarColorMode: z.enum(['white', 'theme', 'primary']),
+    // Pedido explícito do usuário (3º follow-up) — `statusBarColorMode` (enum, 2º follow-up)
+    // removido: a barra de status não é mais escolhível à parte, sempre segue useWhiteBackground.
     // Pedido explícito do usuário (2º follow-up) — mesmo raciocínio de useWhiteBackground, pros
     // campos de texto e a caixa de busca da home do app cliente.
     useWhiteTextFieldColor: z.boolean(),

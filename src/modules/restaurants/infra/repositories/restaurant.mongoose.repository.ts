@@ -45,7 +45,6 @@ interface RestaurantLeanDocument {
   productImageOnRight?: boolean;
   useWhiteBackground?: boolean;
   useWhiteBottomNavBar?: boolean;
-  statusBarColorMode?: 'white' | 'theme' | 'primary';
   useWhiteTextFieldColor?: boolean;
   useWhiteSearchFieldColor?: boolean;
   showBestSellers?: boolean;
@@ -140,7 +139,6 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     productImageOnRight: doc.productImageOnRight ?? true,
     useWhiteBackground: doc.useWhiteBackground ?? false,
     useWhiteBottomNavBar: doc.useWhiteBottomNavBar ?? true,
-    statusBarColorMode: doc.statusBarColorMode ?? 'white',
     useWhiteTextFieldColor: doc.useWhiteTextFieldColor ?? false,
     useWhiteSearchFieldColor: doc.useWhiteSearchFieldColor ?? false,
     showBestSellers: doc.showBestSellers ?? false,

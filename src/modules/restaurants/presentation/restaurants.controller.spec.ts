@@ -462,26 +462,24 @@ describe('RestaurantsController', () => {
       expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ useWhiteBottomNavBar: false }));
     });
 
-    it('PUT /restaurants/me aceita e persiste statusBarColorMode', async () => {
+    // Pedido explícito do usuário (3º follow-up) — `statusBarColorMode` saiu do schema: a barra
+    // de status não é mais escolhível à parte, sempre segue `useWhiteBackground`. Enviar o campo
+    // (cliente desatualizado, por ex.) não dá erro — o zod `.partial()` sem `.strict()` só ignora
+    // chaves desconhecidas, e o resto do payload continua sendo salvo normalmente.
+    it('PUT /restaurants/me ignora statusBarColorMode (campo removido), sem rejeitar o resto do payload', async () => {
       const { repository, routes } = setup({
-        updateProfile: jest.fn().mockResolvedValue(buildRestaurant({ statusBarColorMode: 'primary' })),
+        updateProfile: jest.fn().mockResolvedValue(buildRestaurant({ useWhiteBottomNavBar: false })),
       });
       const json = jest.fn();
 
-      await runAuthenticatedChain(routes['PUT /restaurants/me'], { body: { statusBarColorMode: 'primary' } }, { json });
+      await runAuthenticatedChain(
+        routes['PUT /restaurants/me'],
+        { body: { useWhiteBottomNavBar: false, statusBarColorMode: 'primary' } },
+        { json },
+      );
 
-      expect(repository.updateProfile).toHaveBeenCalledWith('1', { statusBarColorMode: 'primary' });
-      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ statusBarColorMode: 'primary' }));
-    });
-
-    it('PUT /restaurants/me rejeita (400) statusBarColorMode fora do enum', async () => {
-      const { repository, routes } = setup();
-
-      await expect(
-        runAuthenticatedChain(routes['PUT /restaurants/me'], { body: { statusBarColorMode: 'rainbow' } }, { json: jest.fn() }),
-      ).rejects.toMatchObject({ statusCode: 400 });
-
-      expect(repository.updateProfile).not.toHaveBeenCalled();
+      expect(repository.updateProfile).toHaveBeenCalledWith('1', { useWhiteBottomNavBar: false });
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ useWhiteBottomNavBar: false }));
     });
 
     it('PUT /restaurants/me aceita e persiste useWhiteTextFieldColor e useWhiteSearchFieldColor', async () => {
