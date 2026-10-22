@@ -44,6 +44,12 @@ export function toPublicRestaurant(restaurant: IRestaurant) {
     statusBarColorMode: restaurant.statusBarColorMode,
     useWhiteTextFieldColor: restaurant.useWhiteTextFieldColor,
     useWhiteSearchFieldColor: restaurant.useWhiteSearchFieldColor,
+    // Achado real (pedido explícito do usuário) — o comentário acima já dizia que este campo
+    // devia estar aqui (`specs/0170-integracao-mercado-pago` REQ-3), mas nunca foi de fato
+    // adicionado ao `return`: `checkout_page.dart` sempre recebia a chave ausente, caía no
+    // default `false` do DTO, e "Cartão de Crédito Online" nunca aparecia no checkout pro
+    // cliente, mesmo com o Mercado Pago vinculado de verdade.
+    mercadoPagoLinked: Boolean(restaurant.mercadoPagoAccessToken),
     showBestSellers: restaurant.showBestSellers,
     showHighlights: restaurant.showHighlights,
     showBanners: restaurant.showBanners,

@@ -103,6 +103,42 @@ describe('RestaurantsController', () => {
       expect(payload).toMatchObject({ id: '1', slug: 'primepizza', name: 'Prime Pizza' });
     });
 
+    // Achado real (pedido explícito do usuário) — `mercadoPagoLinked` (specs/0170 REQ-3) nunca
+    // tinha sido de fato adicionado ao `toPublicRestaurant`, só documentado em comentário:
+    // `checkout_page.dart` sempre recebia a chave ausente (default `false`), e "Cartão de Crédito
+    // Online" nunca aparecia no checkout, mesmo com o Mercado Pago vinculado de verdade.
+    it('mercadoPagoLinked reflete se mercadoPagoAccessToken está preenchido, sem nunca devolver o token em si', async () => {
+      const repository: Partial<IRestaurantRepository> = {
+        findBySlug: jest.fn().mockResolvedValue(buildRestaurant({ mercadoPagoAccessToken: 'segredo-mp-access' })),
+      };
+      const { application, routes } = buildFakeApplication();
+      new RestaurantsController(repository as IRestaurantRepository, passthroughOperatorMiddleware).initializeRoutes(
+        application,
+      );
+
+      const json = jest.fn();
+      await routes['GET /restaurants/resolve/:slug'][0]({ params: { slug: 'primepizza' } }, { json });
+
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ mercadoPagoLinked: true }));
+      const [, payload] = json.mock.calls[0] as [number, Record<string, unknown>];
+      expect(payload).not.toHaveProperty('mercadoPagoAccessToken');
+    });
+
+    it('mercadoPagoLinked é false quando o restaurante não tem mercadoPagoAccessToken', async () => {
+      const repository: Partial<IRestaurantRepository> = {
+        findBySlug: jest.fn().mockResolvedValue(buildRestaurant()),
+      };
+      const { application, routes } = buildFakeApplication();
+      new RestaurantsController(repository as IRestaurantRepository, passthroughOperatorMiddleware).initializeRoutes(
+        application,
+      );
+
+      const json = jest.fn();
+      await routes['GET /restaurants/resolve/:slug'][0]({ params: { slug: 'primepizza' } }, { json });
+
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ mercadoPagoLinked: false }));
+    });
+
     it('AC-2/AC-6: lança erro 404 quando o slug não corresponde a nenhum restaurante', async () => {
       const repository: Partial<IRestaurantRepository> = { findBySlug: jest.fn().mockResolvedValue(null) };
       const { application, routes } = buildFakeApplication();
