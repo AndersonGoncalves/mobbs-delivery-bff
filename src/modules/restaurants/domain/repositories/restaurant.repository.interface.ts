@@ -149,8 +149,18 @@ export interface IRestaurantRepository {
    * da subconta nunca deve ser setável por um PUT de perfil comum, só por este método dedicado. */
   saveAsaasSubaccount(
     id: string,
-    data: { asaasAccountId: string; asaasWalletId: string; asaasApiKey: string; asaasWebhookToken: string },
+    data: {
+      asaasAccountId: string;
+      asaasWalletId: string;
+      asaasApiKey: string;
+      asaasWebhookToken: string;
+      subaccountData: IRestaurant['asaasSubaccountData'];
+    },
   ): Promise<IRestaurant>;
+
+  /** Pedido explícito do usuário (follow-up) — "desvincular" a subconta: limpa credenciais,
+   * mantém `asaasSubaccountData` (ver implementação). */
+  clearAsaasSubaccount(id: string): Promise<IRestaurant>;
 
   /** specs/0170-integracao-mercado-pago — persiste o resultado da troca OAuth do restaurante
    * com o Mercado Pago (`MercadoPagoOAuthController`); fora de `RestaurantProfileUpdate` de

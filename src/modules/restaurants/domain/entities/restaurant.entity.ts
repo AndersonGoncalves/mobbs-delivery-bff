@@ -304,6 +304,22 @@ export interface IRestaurant {
   asaasWalletId?: string;
   asaasApiKey?: string;
   asaasWebhookToken?: string;
+  /** Pedido explícito do usuário (follow-up) — dados comerciais submetidos na criação da
+   * subconta, guardados (sem segredo nenhum aqui, é a mesma coisa que o operador digitou no
+   * formulário) pra a retaguarda conseguir reexibir os campos preenchidos/desabilitados depois
+   * de vinculado, em vez de perder tudo a cada reload. */
+  asaasSubaccountData?: {
+    name: string;
+    email: string;
+    cpfCnpj: string;
+    birthDate: string;
+    mobilePhone: string;
+    incomeValue: number;
+    address: string;
+    addressNumber: string;
+    province: string;
+    postalCode: string;
+  };
   /** specs/0170-integracao-mercado-pago — vínculo OAuth da conta Mercado Pago do restaurante
    * (modelo diferente do Asaas: não é subconta/KYC criada por nós, é a própria conta do
    * restaurante autorizando nossa aplicação). `mercadoPagoAccessToken`/`mercadoPagoRefreshToken`

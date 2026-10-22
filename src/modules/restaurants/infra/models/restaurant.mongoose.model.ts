@@ -28,6 +28,24 @@ const addressSchema = new Schema(
   { _id: false },
 );
 
+// Pedido explícito do usuário (follow-up specs/0101) — dados comerciais submetidos na criação
+// da subconta Asaas, guardados pra reexibir no formulário (desabilitado) depois de vinculado.
+const asaasSubaccountDataSchema = new Schema(
+  {
+    name: { type: String, required: true },
+    email: { type: String, required: true },
+    cpfCnpj: { type: String, required: true },
+    birthDate: { type: String, required: true },
+    mobilePhone: { type: String, required: true },
+    incomeValue: { type: Number, required: true },
+    address: { type: String, required: true },
+    addressNumber: { type: String, required: true },
+    province: { type: String, required: true },
+    postalCode: { type: String, required: true },
+  },
+  { _id: false },
+);
+
 // specs/0028-destaques-vendidos-banners REQ-5.
 const bannerSchema = new Schema(
   {
@@ -149,6 +167,7 @@ const restaurantSchema = new Schema(
     asaasWalletId: { type: String },
     asaasApiKey: { type: String },
     asaasWebhookToken: { type: String },
+    asaasSubaccountData: { type: asaasSubaccountDataSchema },
     // specs/0170-integracao-mercado-pago — vínculo OAuth (não subconta/KYC como o Asaas acima).
     mercadoPagoAccessToken: { type: String },
     mercadoPagoRefreshToken: { type: String },

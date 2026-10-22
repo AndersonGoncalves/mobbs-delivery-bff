@@ -16,7 +16,10 @@ type RouteHandler = (req: FakeRequest, res: FakeResponse) => Promise<void>;
 
 function buildApp() {
   const routes: Record<string, RouteHandler[]> = {};
-  const application = { post: (path: string, ...handlers: RouteHandler[]) => { routes[`POST ${path}`] = handlers; } };
+  const application = {
+    post: (path: string, ...handlers: RouteHandler[]) => { routes[`POST ${path}`] = handlers; },
+    del: (path: string, ...handlers: RouteHandler[]) => { routes[`DEL ${path}`] = handlers; },
+  };
   return { application: application as unknown as Server, routes };
 }
 
@@ -44,6 +47,7 @@ describe('AsaasOnboardingController (specs/0101-integracao-asaas, fase 1)', () =
   function setup(overrides: { restaurantRepository?: Partial<IRestaurantRepository> } = {}) {
     const restaurantRepository: Partial<IRestaurantRepository> = {
       saveAsaasSubaccount: jest.fn().mockResolvedValue({ id: 'r-1', onlinePaymentsEnabled: true, asaasAccountId: 'acc_1' }),
+      clearAsaasSubaccount: jest.fn().mockResolvedValue({ id: 'r-1', onlinePaymentsEnabled: false }),
       ...overrides.restaurantRepository,
     };
     const { application, routes } = buildApp();
@@ -66,6 +70,7 @@ describe('AsaasOnboardingController (specs/0101-integracao-asaas, fase 1)', () =
       asaasWalletId: 'wallet_1',
       asaasApiKey: 'key-subconta',
       asaasWebhookToken: expect.any(String),
+      subaccountData: buildSubaccountInput(),
     });
     const [, payload] = json.mock.calls[0] as [number, Record<string, unknown>];
     expect(payload).not.toHaveProperty('asaasApiKey');
@@ -111,5 +116,17 @@ describe('AsaasOnboardingController (specs/0101-integracao-asaas, fase 1)', () =
       runOperatorChain(routes['POST /restaurants/me/asaas/subaccount'], { restaurantId: 'r-1', body: invalidBody }, { json: jest.fn(), send: jest.fn() }),
     ).rejects.toMatchObject({ statusCode: 400 });
     expect(MockedAsaasClient.prototype.createSubaccount).not.toHaveBeenCalled();
+  });
+
+  // Pedido explícito do usuário (follow-up) — "desvincular" a subconta, mesmo padrão de
+  // `DELETE /restaurants/me/whatsapp`.
+  it('DELETE /restaurants/me/asaas/subaccount desvincula (limpa credenciais, 204)', async () => {
+    const { restaurantRepository, routes } = setup();
+    const send = jest.fn();
+
+    await runOperatorChain(routes['DEL /restaurants/me/asaas/subaccount'], { restaurantId: 'r-1' }, { json: jest.fn(), send });
+
+    expect(restaurantRepository.clearAsaasSubaccount).toHaveBeenCalledWith('r-1');
+    expect(send).toHaveBeenCalledWith(204);
   });
 });

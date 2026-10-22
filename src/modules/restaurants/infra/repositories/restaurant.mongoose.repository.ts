@@ -103,6 +103,18 @@ interface RestaurantLeanDocument {
   asaasWalletId?: string;
   asaasApiKey?: string;
   asaasWebhookToken?: string;
+  asaasSubaccountData?: {
+    name: string;
+    email: string;
+    cpfCnpj: string;
+    birthDate: string;
+    mobilePhone: string;
+    incomeValue: number;
+    address: string;
+    addressNumber: string;
+    province: string;
+    postalCode: string;
+  };
   mercadoPagoAccessToken?: string;
   mercadoPagoRefreshToken?: string;
   mercadoPagoUserId?: string;
@@ -197,6 +209,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     asaasWalletId: doc.asaasWalletId,
     asaasApiKey: doc.asaasApiKey,
     asaasWebhookToken: doc.asaasWebhookToken,
+    asaasSubaccountData: doc.asaasSubaccountData,
     mercadoPagoAccessToken: doc.mercadoPagoAccessToken,
     mercadoPagoRefreshToken: doc.mercadoPagoRefreshToken,
     mercadoPagoUserId: doc.mercadoPagoUserId,
@@ -320,12 +333,40 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
     return doc ? toEntity(doc) : null;
   }
 
-  // specs/0101-integracao-asaas (fase 1).
+  // specs/0101-integracao-asaas (fase 1). `subaccountData` adicionado num follow-up — dados
+  // comerciais submetidos, sem segredo nenhum, pra retaguarda reexibir o formulário preenchido.
   async saveAsaasSubaccount(
     id: string,
-    data: { asaasAccountId: string; asaasWalletId: string; asaasApiKey: string; asaasWebhookToken: string },
+    data: {
+      asaasAccountId: string;
+      asaasWalletId: string;
+      asaasApiKey: string;
+      asaasWebhookToken: string;
+      subaccountData: RestaurantLeanDocument['asaasSubaccountData'];
+    },
   ): Promise<IRestaurant> {
-    const doc = await RestaurantModel.findByIdAndUpdate(id, { $set: { ...data, onlinePaymentsEnabled: true } }, { new: true }).lean<RestaurantLeanDocument>();
+    const { subaccountData, ...rest } = data;
+    const doc = await RestaurantModel.findByIdAndUpdate(
+      id,
+      { $set: { ...rest, asaasSubaccountData: subaccountData, onlinePaymentsEnabled: true } },
+      { new: true },
+    ).lean<RestaurantLeanDocument>();
+    return toEntity(doc as RestaurantLeanDocument);
+  }
+
+  // Pedido explícito do usuário (follow-up) — "desvincular" a subconta: limpa as credenciais
+  // (chave/webhook/ids), mas mantém `asaasSubaccountData` (os dados digitados) pra não obrigar o
+  // operador a redigitar tudo se reativar depois — mesmo raciocínio de um form que lembra o que
+  // você já preencheu.
+  async clearAsaasSubaccount(id: string): Promise<IRestaurant> {
+    const doc = await RestaurantModel.findByIdAndUpdate(
+      id,
+      {
+        $set: { onlinePaymentsEnabled: false },
+        $unset: { asaasAccountId: '', asaasWalletId: '', asaasApiKey: '', asaasWebhookToken: '' },
+      },
+      { new: true },
+    ).lean<RestaurantLeanDocument>();
     return toEntity(doc as RestaurantLeanDocument);
   }
 

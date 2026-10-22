@@ -52,10 +52,19 @@ export class AsaasOnboardingController extends BaseRouter {
         asaasWalletId: subaccount.walletId,
         asaasApiKey: subaccount.apiKey,
         asaasWebhookToken: webhookToken,
+        subaccountData: input,
       });
 
       // Nunca devolve `asaasApiKey`/`webhookToken` — só confirmação de que a subconta existe.
       res.json(200, { onlinePaymentsEnabled: true, asaasAccountId: subaccount.id });
+    });
+
+    // Pedido explícito do usuário (follow-up) — "desvincular", mesmo padrão de
+    // `DELETE /restaurants/me/whatsapp`: limpa as credenciais locais, sem chamar o Asaas pra
+    // apagar nada lá (a subconta em si continua existindo no Asaas, só paramos de usá-la).
+    application.del('/restaurants/me/asaas/subaccount', ...operatorAuthenticated, async (req: Request, res: Response) => {
+      await this.restaurantRepository.clearAsaasSubaccount(req.restaurantId!);
+      res.send(204);
     });
   }
 }
