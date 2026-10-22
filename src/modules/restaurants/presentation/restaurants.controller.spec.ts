@@ -316,6 +316,24 @@ describe('RestaurantsController', () => {
       expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ autoConfirmPaymentMethods: ['cash'] }));
     });
 
+    // Pedido explícito do usuário — "Cartão de Crédito Online" (specs/0173) não estava salvando
+    // em "Formas de Pagamento".
+    it('specs/0173: PUT /restaurants/me aceita e persiste acceptedPaymentMethods com creditCardOnline', async () => {
+      const { repository, routes } = setup({
+        updateProfile: jest.fn().mockResolvedValue(buildRestaurant({ acceptedPaymentMethods: ['cash', 'creditCardOnline'] })),
+      });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(
+        routes['PUT /restaurants/me'],
+        { body: { acceptedPaymentMethods: ['cash', 'creditCardOnline'] } },
+        { json },
+      );
+
+      expect(repository.updateProfile).toHaveBeenCalledWith('1', { acceptedPaymentMethods: ['cash', 'creditCardOnline'] });
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ acceptedPaymentMethods: ['cash', 'creditCardOnline'] }));
+    });
+
     it('specs/0151 AC-1: PUT /restaurants/me rejeita (400) autoConfirmPaymentMethods com forma fora de acceptedPaymentMethods', async () => {
       const { routes } = setup();
 
