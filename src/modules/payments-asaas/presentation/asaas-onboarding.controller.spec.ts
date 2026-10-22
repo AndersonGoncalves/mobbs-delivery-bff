@@ -153,7 +153,26 @@ describe('AsaasOnboardingController (specs/0101-integracao-asaas, fase 1)', () =
 
     expect(MockedAsaasClient.prototype.createSubaccount).not.toHaveBeenCalled();
     expect(restaurantRepository.saveAsaasSubaccount).not.toHaveBeenCalled();
-    expect(restaurantRepository.reactivateAsaasSubaccount).toHaveBeenCalledWith('r-1');
+    expect(restaurantRepository.reactivateAsaasSubaccount).toHaveBeenCalledWith('r-1', buildSubaccountInput());
     expect(json).toHaveBeenCalledWith(200, { onlinePaymentsEnabled: true, asaasAccountId: 'acc-antiga' });
+  });
+
+  // Achado real (pedido explícito do usuário) — restaurantes vinculados ANTES de
+  // `asaasSubaccountData` existir nunca tiveram esse campo salvo (formulário aparecia vazio,
+  // mesmo com a subconta ativa). Reconectar salva os dados digitados agora, preenchendo o gap.
+  it('POST com subconta já existente salva asaasSubaccountData mesmo sem chamar o Asaas (preenche o gap de restaurantes antigos)', async () => {
+    const { restaurantRepository, routes } = setup({
+      restaurantRepository: {
+        findById: jest.fn().mockResolvedValue({ id: 'r-1', onlinePaymentsEnabled: false, asaasAccountId: 'acc-antiga' }),
+      },
+    });
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/asaas/subaccount'],
+      { restaurantId: 'r-1', body: buildSubaccountInput({ name: 'Outro Nome' }) },
+      { json: jest.fn(), send: jest.fn() },
+    );
+
+    expect(restaurantRepository.reactivateAsaasSubaccount).toHaveBeenCalledWith('r-1', buildSubaccountInput({ name: 'Outro Nome' }));
   });
 });

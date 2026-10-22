@@ -40,10 +40,13 @@ export class AsaasOnboardingController extends BaseRouter {
       // Achado real (pedido explícito do usuário) — se já existe uma subconta vinculada antes
       // (mesmo que "desvinculada" agora), reconecta sem chamar o Asaas de novo: tentar CRIAR
       // outra com o mesmo CPF/e-mail falharia com "já está em uso" — a subconta antiga nunca é
-      // apagada no Asaas quando o operador desvincula (ver `disconnectAsaasSubaccount`).
+      // apagada no Asaas quando o operador desvincula (ver `disconnectAsaasSubaccount`). Salva
+      // `input` como `asaasSubaccountData` mesmo nesse caminho — necessário pra restaurantes
+      // vinculados ANTES desse campo existir (nunca tiveram `asaasSubaccountData` salvo) e,
+      // de qualquer forma, reflete o que o operador acabou de digitar/conferir na tela.
       const existing = await this.restaurantRepository.findById(req.restaurantId!);
       if (existing?.asaasAccountId) {
-        await this.restaurantRepository.reactivateAsaasSubaccount(req.restaurantId!);
+        await this.restaurantRepository.reactivateAsaasSubaccount(req.restaurantId!, input);
         res.json(200, { onlinePaymentsEnabled: true, asaasAccountId: existing.asaasAccountId });
         return;
       }

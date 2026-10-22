@@ -165,8 +165,9 @@ export interface IRestaurantRepository {
   disconnectAsaasSubaccount(id: string): Promise<IRestaurant>;
 
   /** Achado real (pedido explícito do usuário) — reconecta uma subconta já existente sem
-   * chamar o Asaas de novo (ver `disconnectAsaasSubaccount`). */
-  reactivateAsaasSubaccount(id: string): Promise<IRestaurant>;
+   * chamar o Asaas de novo (ver `disconnectAsaasSubaccount`). `subaccountData` é salvo também
+   * aqui — necessário pra restaurantes vinculados antes desse campo existir. */
+  reactivateAsaasSubaccount(id: string, subaccountData: IRestaurant['asaasSubaccountData']): Promise<IRestaurant>;
 
   /** specs/0170-integracao-mercado-pago — persiste o resultado da troca OAuth do restaurante
    * com o Mercado Pago (`MercadoPagoOAuthController`); fora de `RestaurantProfileUpdate` de

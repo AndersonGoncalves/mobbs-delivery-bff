@@ -367,9 +367,15 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
 
   // Achado real (pedido explícito do usuário) — reconecta uma subconta que já existe (tem
   // `asaasAccountId` salvo) sem chamar o Asaas de novo — usado quando o operador "ativa" de novo
-  // depois de ter "desvinculado" antes, mesmo CPF/e-mail de sempre.
-  async reactivateAsaasSubaccount(id: string): Promise<IRestaurant> {
-    const doc = await RestaurantModel.findByIdAndUpdate(id, { $set: { onlinePaymentsEnabled: true } }, { new: true }).lean<RestaurantLeanDocument>();
+  // depois de ter "desvinculado" antes, mesmo CPF/e-mail de sempre. Salva `subaccountData`
+  // também aqui — necessário pra restaurantes vinculados antes desse campo existir (nunca
+  // tiveram `asaasSubaccountData` salvo, formulário aparecia vazio mesmo já vinculados).
+  async reactivateAsaasSubaccount(id: string, subaccountData: RestaurantLeanDocument['asaasSubaccountData']): Promise<IRestaurant> {
+    const doc = await RestaurantModel.findByIdAndUpdate(
+      id,
+      { $set: { onlinePaymentsEnabled: true, asaasSubaccountData: subaccountData } },
+      { new: true },
+    ).lean<RestaurantLeanDocument>();
     return toEntity(doc as RestaurantLeanDocument);
   }
 
