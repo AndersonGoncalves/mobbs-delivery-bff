@@ -26,6 +26,16 @@ services:
       # specs/0123-prospeccao-restaurantes-google-maps — chave de SERVIDOR (Places API New). Sem ela,
       # a busca de prospects lança erro claro (REQ-8), o resto do BFF continua funcionando normalmente.
       - GOOGLE_PLACES_API_KEY=${GOOGLE_PLACES_API_KEY}
+      # specs/0101-integracao-asaas — chave da conta MÃE/plataforma (cria subcontas por
+      # restaurante, nunca a chave de um restaurante específico). Sem ela, o cadastro de
+      # subconta falha com erro claro (AsaasOnboardingController). O valor em `.env` precisa
+      # escapar `$` como `$$` (sintaxe de interpolação do Compose) — achado real 2026-10-22: um
+      # token Asaas começa com `$` literal, e sem escapar o Compose tentava resolvê-lo como
+      # variável e mandava string vazia pro container, sem erro nenhum visível.
+      - ASAAS_API_KEY=${ASAAS_API_KEY}
+      # Default já é sandbox no código (`environment.ts`) se isto ficar vazio — só precisa virar
+      # a URL de produção (`https://api.asaas.com/v3`) quando a conta mãe virar uma PJ real.
+      - ASAAS_BASE_URL=${ASAAS_BASE_URL}
       # Firebase Admin SDK (verificação dos tokens do app) — chave de service account baixada no
       # Console (Configurações do projeto > Contas de serviço > Gerar nova chave privada), salva
       # como ./firebase-service-account.json (mesma pasta deste arquivo, já no .gitignore).
