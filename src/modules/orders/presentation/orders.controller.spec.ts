@@ -1570,9 +1570,14 @@ describe('OrdersController', () => {
       expect(whatsAppNotificationService.sendOrderStatusUpdate).toHaveBeenCalledWith(expect.objectContaining({ id: 'o-1', status: 'confirmado' }));
     });
 
-    it('specs/0151 AC-4: sem "pix" em autoConfirmPaymentMethods, confirmar o Pix só aprova o pagamento (sem mudança)', async () => {
-      const { orderRepository, routes } = setup({
+    // Achado real (pedido explícito do usuário) — "Pix recebido" é um clique manual do operador,
+    // já é por si só uma confirmação: sempre avança o pedido, mesmo sem "pix" em
+    // `autoConfirmPaymentMethods` (que agora só controla o caminho automático/webhook). Antes
+    // desse achado, este teste (specs/0151 AC-4) cobria o comportamento OPOSTO — corrigido aqui.
+    it('mesmo sem "pix" em autoConfirmPaymentMethods, confirmar o Pix avança o pedido (clique manual já é confirmação)', async () => {
+      const { orderRepository, restaurantRepository, routes } = setup({
         paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ method: 'pix', status: 'pendente' })) },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ autoConfirmPaymentMethods: [] })) },
       });
       const json = jest.fn();
 
@@ -1582,9 +1587,11 @@ describe('OrdersController', () => {
         { json },
       );
 
-      expect(orderRepository.updateStatus).not.toHaveBeenCalled();
+      expect(orderRepository.updateStatus).toHaveBeenCalledWith('o-1', 'confirmado', 'r-1');
       const [, payload] = json.mock.calls[0] as [number, Record<string, unknown>];
-      expect(payload).toMatchObject({ status: 'aguardandoConfirmacao', payment: { status: 'aprovado' } });
+      expect(payload).toMatchObject({ status: 'confirmado', payment: { status: 'aprovado' } });
+      // Curto-circuito (`options.manual`) — nem precisa consultar o restaurante.
+      expect(restaurantRepository.findById).not.toHaveBeenCalled();
     });
 
     it('specs/0151: pedido já confirmado antes do Pix ser aprovado não chama updateStatus de novo', async () => {

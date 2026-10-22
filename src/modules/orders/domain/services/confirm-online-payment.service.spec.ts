@@ -111,4 +111,39 @@ describe('ConfirmOnlinePaymentService', () => {
 
     expect(orderRepository.updateStatus).not.toHaveBeenCalled();
   });
+
+  // Achado real (pedido explícito do usuário) — "Pix recebido" é um clique manual do operador,
+  // já é por si só um ato de confirmação: sempre avança o pedido, mesmo sem
+  // `autoConfirmPaymentMethods` configurado (diferente do caminho automático/webhook).
+  describe('options.manual', () => {
+    it('avança o pedido mesmo sem o método em autoConfirmPaymentMethods', async () => {
+      const { service, orderRepository } = setup({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue({ id: 'r-1', autoConfirmPaymentMethods: [] }) },
+      });
+
+      const { order } = await service.confirm(buildOrder({ status: 'aguardandoConfirmacao' }), { manual: true });
+
+      expect(orderRepository.updateStatus).toHaveBeenCalledWith('o-1', 'confirmado', 'r-1');
+      expect(order.status).toBe('confirmado');
+    });
+
+    it('nem consulta o restaurante — curto-circuita antes de precisar de autoConfirmPaymentMethods', async () => {
+      const { service, restaurantRepository } = setup();
+
+      await service.confirm(buildOrder({ status: 'aguardandoConfirmacao' }), { manual: true });
+
+      expect(restaurantRepository.findById).not.toHaveBeenCalled();
+    });
+
+    it('sem manual (webhook), continua respeitando autoConfirmPaymentMethods como antes', async () => {
+      const { service, orderRepository } = setup({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue({ id: 'r-1', autoConfirmPaymentMethods: [] }) },
+      });
+
+      const { order } = await service.confirm(buildOrder({ status: 'aguardandoConfirmacao' }));
+
+      expect(orderRepository.updateStatus).not.toHaveBeenCalled();
+      expect(order.status).toBe('aguardandoConfirmacao');
+    });
+  });
 });

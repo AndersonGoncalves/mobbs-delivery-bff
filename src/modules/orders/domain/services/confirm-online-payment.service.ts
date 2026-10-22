@@ -19,6 +19,16 @@ import { IWhatsAppNotificationService } from '../../../notifications/domain/serv
  * `Payment.status === 'pendente'`) — o que varia por origem é a resposta de erro quando isso não
  * vale (manual: 409 imediato; webhook: idempotente em cima de reentrega), não a confirmação em
  * si, por isso essa validação fica fora deste serviço.
+ *
+ * Achado real (pedido explícito do usuário) — `options.manual` distingue quem está confirmando:
+ * clique manual do operador ("Pix recebido", `OrdersController`) é, por si só, um ato consciente
+ * de confirmação — sempre avança o pedido pra `confirmado`, **independente** de
+ * `autoConfirmPaymentMethods`. Essa configuração continua controlando só o caminho **automático**
+ * (webhook sem humano envolvido — `PaymentWebhookController`/`AsaasWebhookController`/
+ * `MercadoPagoWebhookController`, que chamam `confirm()` sem essa opção). Antes, os dois caminhos
+ * usavam a mesma regra, e o operador precisava confirmar o pagamento E DEPOIS confirmar o pedido
+ * de novo (botão "Confirmar" separado) quando `autoConfirmPaymentMethods` não incluía o método —
+ * dois cliques pra uma ação que já era uma confirmação só.
  */
 export class ConfirmOnlinePaymentService {
   constructor(
@@ -28,7 +38,7 @@ export class ConfirmOnlinePaymentService {
     private readonly whatsAppNotificationService: IWhatsAppNotificationService,
   ) {}
 
-  async confirm(order: IOrder): Promise<{ order: IOrder; payment: IPayment }> {
+  async confirm(order: IOrder, options: { manual?: boolean } = {}): Promise<{ order: IOrder; payment: IPayment }> {
     const updatedPayment = await this.paymentRepository.markAsApproved(order.id);
 
     // specs/0064-notificacao-whatsapp-pix-confirmado REQ-3 — mensagem específica de "Pix
@@ -44,8 +54,9 @@ export class ConfirmOnlinePaymentService {
 
     let updatedOrder = order;
     if (order.status === 'aguardandoConfirmacao') {
-      const restaurant = await this.restaurantRepository.findById(order.restaurantId);
-      if (restaurant?.autoConfirmPaymentMethods?.includes(order.paymentMethod)) {
+      // `options.manual` evita a consulta ao restaurante quando nem precisa dela (curto-circuito).
+      const shouldAdvance = options.manual || !!(await this.restaurantRepository.findById(order.restaurantId))?.autoConfirmPaymentMethods?.includes(order.paymentMethod);
+      if (shouldAdvance) {
         updatedOrder = await this.orderRepository.updateStatus(order.id, 'confirmado', order.restaurantId);
         void this.whatsAppNotificationService.sendOrderStatusUpdate(updatedOrder).catch((error) => {
           console.error(`[whatsapp] erro inesperado enviando confirmação automática do pedido ${updatedOrder.id}:`, error);

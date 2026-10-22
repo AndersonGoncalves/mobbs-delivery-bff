@@ -554,15 +554,18 @@ export class OrdersController extends BaseRouter {
         }
 
         // specs/0140-confirmacao-automatica-pix REQ-1/REQ-1a — mesma lógica de confirmação
-        // (marcar aprovado + avançar status se configurado + notificar) usada pelo webhook
-        // gateway-agnóstico (REQ-1b, `PaymentWebhookController`), extraída pra
-        // `ConfirmOnlinePaymentService` pra garantir o mesmo comportamento nas duas origens.
+        // (marcar aprovado + avançar status + notificar) usada pelo webhook gateway-agnóstico
+        // (REQ-1b, `PaymentWebhookController`), extraída pra `ConfirmOnlinePaymentService` pra
+        // garantir o mesmo comportamento nas duas origens. Achado real (pedido explícito do
+        // usuário) — `manual: true` porque este é um clique humano do operador ("Pix recebido"):
+        // sempre avança o pedido, independente de `autoConfirmPaymentMethods` (essa config só
+        // controla o caminho automático — webhook sem ninguém olhando).
         const { order: updatedOrder, payment: updatedPayment } = await new ConfirmOnlinePaymentService(
           this.paymentRepository,
           this.orderRepository,
           this.restaurantRepository,
           this.whatsAppNotificationService,
-        ).confirm(order);
+        ).confirm(order, { manual: true });
 
         res.json(200, { ...updatedOrder, payment: this.toPaymentSummary(updatedPayment) });
       },
