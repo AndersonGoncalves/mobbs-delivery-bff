@@ -18,7 +18,7 @@ describe('AsaasClient (specs/0101-integracao-asaas, fase 1)', () => {
     mockFetchOnce(200, { id: 'acc_1', walletId: 'wallet_1', accessToken: { apiKey: 'key-subconta' } });
 
     const result = await client.createSubaccount(
-      { name: 'Prime Pizza', email: 'contato@primepizza.com', cpfCnpj: '12345678000190', mobilePhone: '11999999999', incomeValue: 5000, address: 'Rua A', addressNumber: '10', province: 'Centro', postalCode: '01000000' },
+      { name: 'Prime Pizza', email: 'contato@primepizza.com', cpfCnpj: '12345678000190', birthDate: '1980-01-19', mobilePhone: '11999999999', incomeValue: 5000, address: 'Rua A', addressNumber: '10', province: 'Centro', postalCode: '01000000' },
       'https://api.bsdelivery.com.br/webhooks/asaas/r-1',
       'webhook-token-1',
     );
@@ -32,6 +32,9 @@ describe('AsaasClient (specs/0101-integracao-asaas, fase 1)', () => {
     );
     const [, options] = (global.fetch as jest.Mock).mock.calls[0];
     const sentBody = JSON.parse(options.body);
+    // Achado real (pedido explícito do usuário) — birthDate precisa chegar no Asaas intacto
+    // (exigido por eles pra pessoa física, ver comentário em `asaas-client.ts`).
+    expect(sentBody.birthDate).toBe('1980-01-19');
     expect(sentBody.webhooks[0]).toMatchObject({ url: 'https://api.bsdelivery.com.br/webhooks/asaas/r-1', authToken: 'webhook-token-1', events: ['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED'] });
     expect(result).toEqual({ id: 'acc_1', walletId: 'wallet_1', apiKey: 'key-subconta' });
   });

@@ -6,6 +6,9 @@ export const createAsaasSubaccountSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
   cpfCnpj: z.string().min(11),
+  // Achado real (pedido explícito do usuário) — exigido pelo Asaas pra pessoa física, ausente
+  // desde a implementação original desta spec (ver "Achado real" em tasks.md).
+  birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   mobilePhone: z.string().min(10),
   incomeValue: z.number().positive(),
   address: z.string().min(1),

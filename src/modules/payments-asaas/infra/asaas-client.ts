@@ -16,6 +16,10 @@ export interface AsaasSubaccountInput {
   name: string;
   email: string;
   cpfCnpj: string;
+  // Achado real (pedido explícito do usuário) — exigido pelo Asaas quando o titular da subconta
+  // é pessoa física (docs.asaas.com/docs/criacao-de-subcontas); este fluxo nunca expõe
+  // `companyType` pro operador escolher, então é implicitamente sempre pessoa física.
+  birthDate: string;
   mobilePhone: string;
   incomeValue: number;
   address: string;

@@ -27,7 +27,7 @@ async function runOperatorChain(handlers: RouteHandler[], req: FakeRequest, res:
 
 function buildSubaccountInput(overrides: Record<string, unknown> = {}) {
   return {
-    name: 'Prime Pizza', email: 'contato@primepizza.com', cpfCnpj: '12345678000190', mobilePhone: '11999999999',
+    name: 'Prime Pizza', email: 'contato@primepizza.com', cpfCnpj: '12345678000190', birthDate: '1980-01-19', mobilePhone: '11999999999',
     incomeValue: 5000, address: 'Rua A', addressNumber: '10', province: 'Centro', postalCode: '01000000',
     ...overrides,
   };
@@ -93,6 +93,19 @@ describe('AsaasOnboardingController (specs/0101-integracao-asaas, fase 1)', () =
     const { routes } = setup();
     const invalidBody = buildSubaccountInput();
     delete (invalidBody as Record<string, unknown>).cpfCnpj;
+
+    await expect(
+      runOperatorChain(routes['POST /restaurants/me/asaas/subaccount'], { restaurantId: 'r-1', body: invalidBody }, { json: jest.fn(), send: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(MockedAsaasClient.prototype.createSubaccount).not.toHaveBeenCalled();
+  });
+
+  // Achado real (pedido explícito do usuário) — `birthDate` ausente desde a implementação
+  // original desta spec; o Asaas exige pra pessoa física (ver "Achado real" em tasks.md).
+  it('payload sem birthDate é rejeitado antes de chamar o Asaas', async () => {
+    const { routes } = setup();
+    const invalidBody = buildSubaccountInput();
+    delete (invalidBody as Record<string, unknown>).birthDate;
 
     await expect(
       runOperatorChain(routes['POST /restaurants/me/asaas/subaccount'], { restaurantId: 'r-1', body: invalidBody }, { json: jest.fn(), send: jest.fn() }),
