@@ -354,19 +354,22 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
     return toEntity(doc as RestaurantLeanDocument);
   }
 
-  // Pedido explícito do usuário (follow-up) — "desvincular" a subconta: limpa as credenciais
-  // (chave/webhook/ids), mas mantém `asaasSubaccountData` (os dados digitados) pra não obrigar o
-  // operador a redigitar tudo se reativar depois — mesmo raciocínio de um form que lembra o que
-  // você já preencheu.
-  async clearAsaasSubaccount(id: string): Promise<IRestaurant> {
-    const doc = await RestaurantModel.findByIdAndUpdate(
-      id,
-      {
-        $set: { onlinePaymentsEnabled: false },
-        $unset: { asaasAccountId: '', asaasWalletId: '', asaasApiKey: '', asaasWebhookToken: '' },
-      },
-      { new: true },
-    ).lean<RestaurantLeanDocument>();
+  // Achado real (pedido explícito do usuário) — "desvincular" NÃO apaga as credenciais
+  // (`asaasAccountId`/`asaasWalletId`/`asaasApiKey`/`asaasWebhookToken`): a subconta continua
+  // existindo no Asaas (não chamamos nada lá pra apagar), e o CPF/e-mail dela já está "em uso"
+  // por ela mesma — se limpássemos as credenciais aqui, reativar com os mesmos dados tentaria
+  // CRIAR uma subconta nova e bateria de novo no erro "CPF/e-mail já está em uso". Só pausa
+  // (`onlinePaymentsEnabled: false`); `reactivateAsaasSubaccount` reconecta sem recriar nada.
+  async disconnectAsaasSubaccount(id: string): Promise<IRestaurant> {
+    const doc = await RestaurantModel.findByIdAndUpdate(id, { $set: { onlinePaymentsEnabled: false } }, { new: true }).lean<RestaurantLeanDocument>();
+    return toEntity(doc as RestaurantLeanDocument);
+  }
+
+  // Achado real (pedido explícito do usuário) — reconecta uma subconta que já existe (tem
+  // `asaasAccountId` salvo) sem chamar o Asaas de novo — usado quando o operador "ativa" de novo
+  // depois de ter "desvinculado" antes, mesmo CPF/e-mail de sempre.
+  async reactivateAsaasSubaccount(id: string): Promise<IRestaurant> {
+    const doc = await RestaurantModel.findByIdAndUpdate(id, { $set: { onlinePaymentsEnabled: true } }, { new: true }).lean<RestaurantLeanDocument>();
     return toEntity(doc as RestaurantLeanDocument);
   }
 

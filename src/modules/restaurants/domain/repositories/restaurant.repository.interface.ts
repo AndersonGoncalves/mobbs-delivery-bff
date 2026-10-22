@@ -158,9 +158,15 @@ export interface IRestaurantRepository {
     },
   ): Promise<IRestaurant>;
 
-  /** Pedido explícito do usuário (follow-up) — "desvincular" a subconta: limpa credenciais,
-   * mantém `asaasSubaccountData` (ver implementação). */
-  clearAsaasSubaccount(id: string): Promise<IRestaurant>;
+  /** Achado real (pedido explícito do usuário) — "desvincular" só pausa
+   * (`onlinePaymentsEnabled: false`), NUNCA apaga `asaasAccountId`/`asaasApiKey`/etc. — a
+   * subconta continua existindo no Asaas, e apagar essas credenciais impediria reconectar sem
+   * recriar (e recriar com o mesmo CPF/e-mail falha, "já está em uso"). */
+  disconnectAsaasSubaccount(id: string): Promise<IRestaurant>;
+
+  /** Achado real (pedido explícito do usuário) — reconecta uma subconta já existente sem
+   * chamar o Asaas de novo (ver `disconnectAsaasSubaccount`). */
+  reactivateAsaasSubaccount(id: string): Promise<IRestaurant>;
 
   /** specs/0170-integracao-mercado-pago — persiste o resultado da troca OAuth do restaurante
    * com o Mercado Pago (`MercadoPagoOAuthController`); fora de `RestaurantProfileUpdate` de

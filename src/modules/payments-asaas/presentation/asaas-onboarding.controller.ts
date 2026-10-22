@@ -37,6 +37,17 @@ export class AsaasOnboardingController extends BaseRouter {
     application.post('/restaurants/me/asaas/subaccount', ...operatorAuthenticated, async (req: Request, res: Response) => {
       const input = parseBody(createAsaasSubaccountSchema, req.body);
 
+      // Achado real (pedido explícito do usuário) — se já existe uma subconta vinculada antes
+      // (mesmo que "desvinculada" agora), reconecta sem chamar o Asaas de novo: tentar CRIAR
+      // outra com o mesmo CPF/e-mail falharia com "já está em uso" — a subconta antiga nunca é
+      // apagada no Asaas quando o operador desvincula (ver `disconnectAsaasSubaccount`).
+      const existing = await this.restaurantRepository.findById(req.restaurantId!);
+      if (existing?.asaasAccountId) {
+        await this.restaurantRepository.reactivateAsaasSubaccount(req.restaurantId!);
+        res.json(200, { onlinePaymentsEnabled: true, asaasAccountId: existing.asaasAccountId });
+        return;
+      }
+
       if (!environment.asaas.apiKey) {
         throw new Error('ASAAS_API_KEY não configurada — cobrança via Asaas indisponível até a chave da conta mãe ser definida.');
       }
@@ -60,10 +71,11 @@ export class AsaasOnboardingController extends BaseRouter {
     });
 
     // Pedido explícito do usuário (follow-up) — "desvincular", mesmo padrão de
-    // `DELETE /restaurants/me/whatsapp`: limpa as credenciais locais, sem chamar o Asaas pra
-    // apagar nada lá (a subconta em si continua existindo no Asaas, só paramos de usá-la).
+    // `DELETE /restaurants/me/whatsapp`: só pausa (ver `disconnectAsaasSubaccount` — NÃO apaga
+    // credenciais), sem chamar o Asaas pra apagar nada lá (a subconta continua existindo lá, só
+    // paramos de usá-la).
     application.del('/restaurants/me/asaas/subaccount', ...operatorAuthenticated, async (req: Request, res: Response) => {
-      await this.restaurantRepository.clearAsaasSubaccount(req.restaurantId!);
+      await this.restaurantRepository.disconnectAsaasSubaccount(req.restaurantId!);
       res.send(204);
     });
   }

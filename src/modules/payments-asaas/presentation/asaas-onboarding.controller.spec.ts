@@ -46,8 +46,12 @@ describe('AsaasOnboardingController (specs/0101-integracao-asaas, fase 1)', () =
 
   function setup(overrides: { restaurantRepository?: Partial<IRestaurantRepository> } = {}) {
     const restaurantRepository: Partial<IRestaurantRepository> = {
+      // `null` por padrão = "nunca teve subconta" — exercita o caminho de criação de verdade;
+      // testes de reconexão sobrescrevem isso pra devolver um restaurante com `asaasAccountId`.
+      findById: jest.fn().mockResolvedValue(null),
       saveAsaasSubaccount: jest.fn().mockResolvedValue({ id: 'r-1', onlinePaymentsEnabled: true, asaasAccountId: 'acc_1' }),
-      clearAsaasSubaccount: jest.fn().mockResolvedValue({ id: 'r-1', onlinePaymentsEnabled: false }),
+      disconnectAsaasSubaccount: jest.fn().mockResolvedValue({ id: 'r-1', onlinePaymentsEnabled: false }),
+      reactivateAsaasSubaccount: jest.fn().mockResolvedValue({ id: 'r-1', onlinePaymentsEnabled: true }),
       ...overrides.restaurantRepository,
     };
     const { application, routes } = buildApp();
@@ -120,13 +124,36 @@ describe('AsaasOnboardingController (specs/0101-integracao-asaas, fase 1)', () =
 
   // Pedido explícito do usuário (follow-up) — "desvincular" a subconta, mesmo padrão de
   // `DELETE /restaurants/me/whatsapp`.
-  it('DELETE /restaurants/me/asaas/subaccount desvincula (limpa credenciais, 204)', async () => {
+  it('DELETE /restaurants/me/asaas/subaccount desvincula (pausa, 204)', async () => {
     const { restaurantRepository, routes } = setup();
     const send = jest.fn();
 
     await runOperatorChain(routes['DEL /restaurants/me/asaas/subaccount'], { restaurantId: 'r-1' }, { json: jest.fn(), send });
 
-    expect(restaurantRepository.clearAsaasSubaccount).toHaveBeenCalledWith('r-1');
+    expect(restaurantRepository.disconnectAsaasSubaccount).toHaveBeenCalledWith('r-1');
     expect(send).toHaveBeenCalledWith(204);
+  });
+
+  // Achado real (pedido explícito do usuário) — "desvincular" não apaga a subconta no Asaas;
+  // reativar com os mesmos dados tentaria CRIAR outra e falharia ("CPF/e-mail já está em uso").
+  // Reconectar não deve chamar o Asaas de novo.
+  it('POST com subconta já existente (desvinculada antes) reconecta sem chamar o Asaas de novo', async () => {
+    const { restaurantRepository, routes } = setup({
+      restaurantRepository: {
+        findById: jest.fn().mockResolvedValue({ id: 'r-1', onlinePaymentsEnabled: false, asaasAccountId: 'acc-antiga' }),
+      },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/asaas/subaccount'],
+      { restaurantId: 'r-1', body: buildSubaccountInput() },
+      { json, send: jest.fn() },
+    );
+
+    expect(MockedAsaasClient.prototype.createSubaccount).not.toHaveBeenCalled();
+    expect(restaurantRepository.saveAsaasSubaccount).not.toHaveBeenCalled();
+    expect(restaurantRepository.reactivateAsaasSubaccount).toHaveBeenCalledWith('r-1');
+    expect(json).toHaveBeenCalledWith(200, { onlinePaymentsEnabled: true, asaasAccountId: 'acc-antiga' });
   });
 });
