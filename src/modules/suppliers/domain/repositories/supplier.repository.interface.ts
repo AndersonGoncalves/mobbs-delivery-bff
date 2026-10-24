@@ -1,10 +1,11 @@
-import { ISupplier } from '../entities/supplier.entity';
+import { ISupplier, ISupplierAddress } from '../entities/supplier.entity';
 
 export interface SupplierInput {
   name: string;
   document?: string;
   phone?: string;
   email?: string;
+  address?: ISupplierAddress;
 }
 
 export interface ISupplierRepository {

@@ -1,4 +1,4 @@
-import { ISupplier } from '../../domain/entities/supplier.entity';
+import { ISupplier, ISupplierAddress } from '../../domain/entities/supplier.entity';
 import { ISupplierRepository, SupplierInput } from '../../domain/repositories/supplier.repository.interface';
 import { SupplierModel } from '../models/supplier.mongoose.model';
 
@@ -9,6 +9,7 @@ interface SupplierLeanDocument {
   document?: string;
   phone?: string;
   email?: string;
+  address?: ISupplierAddress;
   isActive: boolean;
 }
 
@@ -20,6 +21,7 @@ function toEntity(doc: SupplierLeanDocument): ISupplier {
     document: doc.document,
     phone: doc.phone,
     email: doc.email,
+    address: doc.address,
     isActive: doc.isActive,
   };
 }

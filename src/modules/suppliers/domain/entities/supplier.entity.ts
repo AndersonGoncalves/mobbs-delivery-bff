@@ -3,6 +3,16 @@
  * (specs/0015-estoque-compras REQ-1). Cadastro simples, sem validação de dígito de
  * documento/histórico de cotação (fora de escopo, spec.md).
  */
+export interface ISupplierAddress {
+  zipCode?: string;
+  street?: string;
+  number?: string;
+  complement?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
+}
+
 export interface ISupplier {
   id: string;
   restaurantId: string;
@@ -10,5 +20,6 @@ export interface ISupplier {
   document?: string;
   phone?: string;
   email?: string;
+  address?: ISupplierAddress;
   isActive: boolean;
 }

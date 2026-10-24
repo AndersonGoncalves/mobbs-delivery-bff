@@ -93,6 +93,27 @@ describe('SuppliersController (specs/0015-estoque-compras REQ-1)', () => {
     ).rejects.toMatchObject({ statusCode: 400 });
   });
 
+  it('cria e edita endereço opcional completo, normalizando UF', async () => {
+    const { supplierRepository, routes } = setup();
+    const address = { zipCode: '60000000', street: 'Rua Central', number: '10', complement: 'Sala 1', neighborhood: 'Centro', city: 'Fortaleza', state: 'ce' };
+    await runOperatorChain(routes['POST /restaurants/me/suppliers'], {
+      restaurantId: 'r-1', body: { name: 'Fornecedor', address },
+    }, { json: jest.fn() });
+    expect(supplierRepository.create).toHaveBeenCalledWith('r-1', { name: 'Fornecedor', address: { ...address, state: 'CE' } });
+    await runOperatorChain(routes['PUT /restaurants/me/suppliers/:id'], {
+      restaurantId: 'r-1', params: { id: 'sup-1' }, body: { name: 'Fornecedor', address: { ...address, complement: '' } },
+    }, { json: jest.fn() });
+    expect(supplierRepository.update).toHaveBeenCalledWith('sup-1', expect.objectContaining({ address: { ...address, state: 'CE', complement: '' } }));
+  });
+
+  it.each([{ zipCode: '123' }, { zipCode: 'ABCDE123' }, { state: 'C' }])('rejeita endereço inválido %p', async (address) => {
+    const { supplierRepository, routes } = setup();
+    await expect(runOperatorChain(routes['POST /restaurants/me/suppliers'], {
+      restaurantId: 'r-1', body: { name: 'Fornecedor', address },
+    }, { json: jest.fn() })).rejects.toMatchObject({ statusCode: 400 });
+    expect(supplierRepository.create).not.toHaveBeenCalled();
+  });
+
   it('REQ-1: PUT /restaurants/me/suppliers/:id edita um fornecedor existente', async () => {
     const { supplierRepository, routes } = setup();
     const json = jest.fn();

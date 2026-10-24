@@ -9,6 +9,18 @@ const supplierSchema = new Schema(
     document: { type: String },
     phone: { type: String },
     email: { type: String },
+    address: {
+      type: new Schema({
+        zipCode: String,
+        street: String,
+        number: String,
+        complement: String,
+        neighborhood: String,
+        city: String,
+        state: String,
+      }, { _id: false }),
+      required: false,
+    },
     isActive: { type: Boolean, required: true, default: true },
   },
   { _id: false, timestamps: true },
