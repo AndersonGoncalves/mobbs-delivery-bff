@@ -1,5 +1,7 @@
 import { Server } from './shared/http/server';
 import { SupportController } from './modules/support/presentation/support.controller';
+import { SuggestionRepository } from './modules/suggestions/infra/suggestion.repository';
+import { SuggestionsController } from './modules/suggestions/presentation/suggestions.controller';
 import { buildRestaurantOperatorMiddleware } from './shared/http/restaurant-operator.middleware';
 import { RestaurantMongooseRepository } from './modules/restaurants/infra/repositories/restaurant.mongoose.repository';
 import { RestaurantsController } from './modules/restaurants/presentation/restaurants.controller';
@@ -198,6 +200,12 @@ const prospectOutreachService = new ProspectOutreachService(prospectRepository, 
 server
   .bootstrap([
     new SupportController(),
+    new SuggestionsController(
+      new SuggestionRepository(),
+      restaurantRepository,
+      restaurantOperatorMiddleware,
+      buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
+    ),
     new RestaurantsController(restaurantRepository, restaurantOperatorMiddleware),
     new RestaurantSignupController(
       restaurantRepository,

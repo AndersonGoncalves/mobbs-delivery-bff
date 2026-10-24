@@ -14,6 +14,31 @@ depois `npm start`). `docker compose up -d mongo` sobe somente o banco.
 **`docker compose up -d` sozinho não compila seu código**: a API do Compose usa imagem GHCR.
 Não é necessário pipeline, push ou acesso à EC2 para desenvolver localmente.
 
+## Sugestões dos usuários — 0179
+
+Todos os operadores ativos podem enviar e acompanhar sugestões da própria loja:
+
+- `GET /restaurants/me/suggestions?page=1&pageSize=20&status=received`: `{ items, total }`.
+- `POST /restaurants/me/suggestions`: `{ title, description }`; nasce `received`, revisão 0.
+  Título de 3 a 150 caracteres; descrição de 10 a 5000 caracteres.
+- `GET /restaurants/me/suggestions/:id`: detalhes e histórico da plataforma.
+- `GET /restaurants/me/suggestions/unread`: `{ count }` de sugestões atualizadas não lidas
+  pelo operador autenticado (não apenas a quantidade da página atual).
+- `POST /restaurants/me/suggestions/:id/read`: `{ revision }`, retorna 204. Marca somente
+  a revisão visualizada; ler não apaga o aviso dos demais operadores da loja.
+
+Administração, com Firebase + `PLATFORM_ADMIN_EMAILS` (não exige vínculo com restaurante):
+
+- `GET /platform/suggestions`: mesma paginação/filtro, todas as lojas.
+- `GET /platform/suggestions/:id`: detalhes.
+- `PATCH /platform/suggestions/:id`: `{ status, reply, revision }`; exige resposta ou mudança
+  de status. Conflito de revisão retorna 409; recarregue antes de salvar novamente.
+
+Status: `received`, `under_review`, `in_development`, `implemented`, `declined`.
+Cada resposta/mudança acumula histórico datado e incrementa a revisão atomicamente.
+Coleções `suggestion` e `suggestion_read`, com índices Mongoose; não é necessário seed.
+Falhas de persistência são propagadas pelo tratamento HTTP padrão.
+
 ## Contratos — ajustes 0176
 
 - `GET /support/public` é público e retorna exclusivamente
