@@ -3,13 +3,6 @@ import * as dotenv from 'dotenv';
 dotenv.config({ path: '.env' });
 
 export const environment = {
-  support: {
-    whatsapp: process.env.SUPPORT_WHATSAPP || '5585986404604',
-    email: process.env.SUPPORT_EMAIL || '',
-    businessHours: process.env.SUPPORT_BUSINESS_HOURS || 'Horário comercial',
-    trainingPriceCents: Number(process.env.SUPPORT_TRAINING_PRICE_CENTS ?? 4990),
-    trainingUnlimitedItems: process.env.SUPPORT_TRAINING_UNLIMITED_ITEMS !== 'false',
-  },
   server: {
     port: Number(process.env.SERVER_PORT) || 3001,
     /** specs/0101-integracao-asaas (fase 1) — URL pública do próprio BFF (não `publicApp`, que é

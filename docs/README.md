@@ -50,15 +50,23 @@ sem depender de `VITE_MERCADOPAGO_CLIENT_ID`.
 ## Contratos — ajustes 0176
 
 - `GET /support/public` é público e retorna exclusivamente
-  `{ whatsapp, email, businessHours, trainingPriceCents, trainingUnlimitedItems }`.
-  Configure `SUPPORT_WHATSAPP` (DDI/DDD, somente dígitos), `SUPPORT_EMAIL`,
-  `SUPPORT_BUSINESS_HOURS`, `SUPPORT_TRAINING_PRICE_CENTS` (inteiro em centavos)
-  e `SUPPORT_TRAINING_UNLIMITED_ITEMS` (`true`/`false`).
-  O WhatsApp público padrão é `5585986404604`, confirmado pelo proprietário; `SUPPORT_WHATSAPP`
-  permite alterá-lo. E-mail não configurado fica vazio. A oferta padrão
-  custa 4990 centavos, sem limite de itens; horário padrão: “Horário comercial”.
-  Os três setores (suporte/comercial/financeiro) usam os mesmos contatos.
-  `.env.example` contém placeholders; configure contatos reais apenas no ambiente privado.
+  `{ whatsapp, commercialWhatsapp, financialWhatsapp, email, businessHours, trainingPriceCents,
+  trainingUnlimitedItems, trainingIncludedItems, trainingExtraItemPriceCents }`.
+  `whatsapp` é o contato técnico; os outros dois são comercial/financeiro.
+  A configuração agora vem do singleton Mongo `supportSettings`, não de variáveis `SUPPORT_*`.
+  Na home de `https://painel.bsdelivery.com.br/`, use **Suporte e treinamento**.
+  `GET` e `PUT /platform/support-settings` exigem Firebase + administrador
+  em `PLATFORM_ADMIN_EMAILS`. PUT exige os nove campos, sem campos extras.
+  WhatsApps: DDI/DDD, somente dígitos (10–15); e-mail válido; horário não vazio até 500
+  caracteres; valores em centavos inteiros não negativos; quantidade inteira não negativa.
+  Antes da primeira gravação, os três setores usam `5585986404604`, e-mail
+  `anndersonn.gonncalves@gmail.com`, “Horário comercial” e treinamento de 4990 centavos
+  sem limite de itens. Se desativar itens ilimitados, os padrões são 50 incluídos e
+  100 centavos por excedente; quantidade/adicional também são editáveis.
+  Falhas de banco são propagadas, nunca substituídas por uma oferta padrão.
+  Salvar persiste sem reiniciar/recompilar; outras abas recebem a atualização na próxima
+  consulta/foco. Remova as cinco variáveis antigas dos ambientes de execução/deploy.
+  Esta oferta não gera cobrança automática nem limita o cadastro de produtos.
 - `POST /restaurants/me/orders/:id/printed`: corpo vazio, resposta `204`, idempotente,
   exige autenticação de operador dono/gerente/financeiro e pedido do mesmo restaurante.
   Chamar somente após sucesso do bridge ou confirmação explícita do operador de que
