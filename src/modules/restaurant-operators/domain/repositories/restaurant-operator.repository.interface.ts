@@ -37,5 +37,5 @@ export interface IRestaurantOperatorRepository {
   updateRole(id: string, role: OperatorRole): Promise<void>;
   updateFullAccess(id: string, hasFullAccess: boolean): Promise<void>;
   /** (ajuste, pedido explícito do usuário) — edita nome/WhatsApp/foto; nunca o e-mail. */
-  updateProfile(id: string, profile: { name: string; whatsapp?: string; photoUrl?: string }): Promise<void>;
+  updateProfile(id: string, profile: { name: string; whatsapp?: string; photoUrl?: string | null }): Promise<void>;
 }

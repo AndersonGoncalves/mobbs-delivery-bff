@@ -3,6 +3,38 @@
 BFF (Node.js + Restify + MongoDB/Mongoose) do ecossistema mobbs-delivery — consumido por
 `mobbs-delivery-app` (Flutter) e `mobbs-delivery-web` (React).
 
+## Contratos — ajustes 0176
+
+- `GET /support/public` é público e retorna exclusivamente
+  `{ whatsapp, email, businessHours, trainingPriceCents, trainingUnlimitedItems }`.
+  Configure `SUPPORT_WHATSAPP` (DDI/DDD, somente dígitos), `SUPPORT_EMAIL`,
+  `SUPPORT_BUSINESS_HOURS`, `SUPPORT_TRAINING_PRICE_CENTS` (inteiro em centavos)
+  e `SUPPORT_TRAINING_UNLIMITED_ITEMS` (`true`/`false`).
+  Contatos não configurados ficam vazios, sem contato ou link fictício. A oferta padrão
+  custa 4990 centavos, sem limite de itens; horário padrão: “Horário comercial”.
+  Os três setores (suporte/comercial/financeiro) usam os mesmos contatos.
+  `.env.example` contém placeholders; configure contatos reais apenas no ambiente privado.
+- `POST /restaurants/me/orders/:id/printed`: corpo vazio, resposta `204`, idempotente,
+  exige autenticação de operador dono/gerente/financeiro e pedido do mesmo restaurante.
+  Chamar somente após sucesso do bridge ou confirmação explícita do operador de que
+  imprimiu pelo navegador, nunca por abrir/fechar o diálogo. Registra o mesmo
+  `autoPrintStatus: 'printed'` da fila automática, impedindo impressão automática duplicada
+  e removendo o aviso `autoPrintMissed` nas próximas consultas. Registros históricos não são inferidos.
+- `PUT /customers/me`: `document` (CPF) continua opcional, validado quando preenchido;
+  omitido, `null` ou branco preservam o documento anterior. Somente o perfil autenticado
+  e a exportação do próprio titular expõem esse campo; pedidos administrativos/públicos
+  não o incluem. O CPF persistido é enviado sem máscara ao Asaas quando disponível;
+  sem CPF o pedido continua permitido e usa o fallback Pix existente.
+- `PATCH /restaurants/me/orders/:id/cancel`: operador autorizado pode cancelar também
+  `saiuParaEntrega`, com motivo obrigatório e os mesmos efeitos de estoque/estorno.
+  `PATCH /orders/:id/cancel` do consumidor continua limitado a `aguardandoConfirmacao`.
+- `PATCH /restaurants/me/operators/:id/profile`: `photoUrl: null` remove a foto;
+  `photoUrl` omitido preserva a foto. Nome e WhatsApp continuam independentes da remoção.
+  Nome continua obrigatório nesse contrato de atualização.
+- Listagens administrativas de pedidos incluem `deliveryMotoboy.whatsapp` opcional,
+  obtido somente do operador do mesmo restaurante, inclusive se estiver inativo.
+  Esse enriquecimento não se aplica às rotas de cliente ou de acompanhamento público.
+
 ## Comandos
 
 - `npm run dev` — sobe em modo desenvolvimento (`ts-node-dev`, com reload automático).

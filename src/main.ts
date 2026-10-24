@@ -1,4 +1,5 @@
 import { Server } from './shared/http/server';
+import { SupportController } from './modules/support/presentation/support.controller';
 import { buildRestaurantOperatorMiddleware } from './shared/http/restaurant-operator.middleware';
 import { RestaurantMongooseRepository } from './modules/restaurants/infra/repositories/restaurant.mongoose.repository';
 import { RestaurantsController } from './modules/restaurants/presentation/restaurants.controller';
@@ -196,6 +197,7 @@ const prospectOutreachService = new ProspectOutreachService(prospectRepository, 
 
 server
   .bootstrap([
+    new SupportController(),
     new RestaurantsController(restaurantRepository, restaurantOperatorMiddleware),
     new RestaurantSignupController(
       restaurantRepository,

@@ -382,6 +382,18 @@ describe('CustomersController', () => {
     expect(customerRepository.upsertProfile).not.toHaveBeenCalled();
   });
 
+  it('0176: document null preserva CPF existente do próprio cliente', async () => {
+    const { customerRepository, routes } = setup({
+      customerRepository: { findById: jest.fn().mockResolvedValue(buildCustomer({ document: '529.982.247-25' })) },
+    });
+    await runAuthenticatedChain(
+      routes['PUT /customers/me'],
+      { user: { uid: 'c-1' }, body: { document: null } },
+      { json: jest.fn() },
+    );
+    expect(customerRepository.upsertProfile).toHaveBeenCalledWith('c-1', expect.objectContaining({ document: '529.982.247-25' }));
+  });
+
   it('AC-11: PUT /customers/me aceita CPF com dígito verificador válido', async () => {
     const { routes } = setup();
 

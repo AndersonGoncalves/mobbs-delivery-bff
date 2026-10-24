@@ -11,8 +11,14 @@ import {
 } from '../../domain/repositories/cash-register.repository.interface';
 import { CashMovementEntryModel } from '../models/cash-movement-entry.mongoose.model';
 import { CashRegisterSessionModel } from '../models/cash-register-session.mongoose.model';
+import { ConflictError } from 'restify-errors';
+import { cashRegisterDate, cashRegisterDayBounds, cashRegisterPeriodEnd } from '../../domain/cash-register-date';
 
 interface SessionLeanDocument {
+  movementVersion?: number;
+  movementWrites?: number;
+  businessDate?: string;
+  accountingEndAt?: Date;
   _id: string;
   restaurantId: string;
   openedAt: Date;
@@ -40,6 +46,8 @@ interface MovementLeanDocument {
 
 function toSessionEntity(doc: SessionLeanDocument): ICashRegisterSession {
   return {
+    businessDate: doc.businessDate,
+    accountingEndAt: doc.accountingEndAt?.toISOString(),
     id: doc._id,
     restaurantId: doc.restaurantId,
     openedAt: doc.openedAt.toISOString(),
@@ -70,8 +78,23 @@ function toMovementEntity(doc: MovementLeanDocument): ICashMovementEntry {
 
 export class CashRegisterMongooseRepository implements ICashRegisterRepository {
   async findOpenSessionByRestaurant(restaurantId: string): Promise<ICashRegisterSession | null> {
-    const doc = await CashRegisterSessionModel.findOne({ restaurantId, status: 'aberto' }).lean<SessionLeanDocument>();
+    const session = await this.findSessionByDate(restaurantId, cashRegisterDate());
+    return session?.status === 'aberto' ? session : null;
+  }
+
+  async findSessionByDate(restaurantId: string, date: string): Promise<ICashRegisterSession | null> {
+    const { from, to } = cashRegisterDayBounds(date);
+    const doc = await CashRegisterSessionModel.findOne({
+      restaurantId,
+      $or: [{ businessDate: date }, { businessDate: { $exists: false }, openedAt: { $gte: from, $lt: to } }],
+    }).lean<SessionLeanDocument>();
     return doc ? toSessionEntity(doc) : null;
+  }
+
+  async findPendingSessions(restaurantId: string): Promise<ICashRegisterSession[]> {
+    const docs = await CashRegisterSessionModel.find({ restaurantId, status: 'aberto' })
+      .sort({ openedAt: 1 }).lean<SessionLeanDocument[]>();
+    return docs.map(toSessionEntity);
   }
 
   async findById(id: string): Promise<ICashRegisterSession | null> {
@@ -84,29 +107,58 @@ export class CashRegisterMongooseRepository implements ICashRegisterRepository {
     openingBalance: number,
     openedBy?: string,
     openedAutomatically?: boolean,
+    now: Date = new Date(),
   ): Promise<ICashRegisterSession> {
-    const doc = await CashRegisterSessionModel.create({
-      restaurantId,
-      openedAt: new Date(),
-      openingBalance,
-      status: 'aberto',
-      openedBy,
-      openedAutomatically,
-    });
-    return toSessionEntity(doc.toObject() as SessionLeanDocument);
+    const businessDate = cashRegisterDate(now);
+    if (await this.findSessionByDate(restaurantId, businessDate)) {
+      throw new ConflictError('Já existe um caixa para esta data');
+    }
+    try {
+      const doc = await CashRegisterSessionModel.create({
+        _id: `daily:${restaurantId}:${businessDate}`,
+        restaurantId,
+        businessDate,
+        openedAt: now,
+        openingBalance,
+        status: 'aberto',
+        openedBy,
+        openedAutomatically,
+      });
+      return toSessionEntity(doc.toObject() as SessionLeanDocument);
+    } catch (error) {
+      if ((error as { code?: number }).code === 11000) throw new ConflictError('Já existe um caixa para esta data');
+      throw error;
+    }
   }
 
   async addMovement(sessionId: string, input: NewCashMovementInput): Promise<ICashMovementEntry> {
-    const doc = await CashMovementEntryModel.create({
-      cashRegisterSessionId: sessionId,
-      type: input.type,
-      amount: input.amount,
-      description: input.description,
-      orderId: input.orderId,
-      paymentMethod: input.paymentMethod,
-      paymentId: input.paymentId,
-    });
-    return toMovementEntity(doc.toObject() as MovementLeanDocument);
+    const id = input.orderId ? `sale:${sessionId}:${input.paymentId ?? input.orderId}` : undefined;
+    const reserved = await CashRegisterSessionModel.findOneAndUpdate(
+      { _id: sessionId, status: 'aberto' },
+      { $inc: { movementVersion: 1, movementWrites: 1 } },
+    ).lean<SessionLeanDocument>();
+    if (!reserved) throw new ConflictError('Sessão de caixa já está fechada');
+    try {
+      const doc = await CashMovementEntryModel.create({
+        ...(id ? { _id: id } : {}),
+        cashRegisterSessionId: sessionId,
+        type: input.type,
+        amount: input.amount,
+        description: input.description,
+        orderId: input.orderId,
+        paymentMethod: input.paymentMethod,
+        paymentId: input.paymentId,
+      });
+      return toMovementEntity(doc.toObject() as MovementLeanDocument);
+    } catch (error) {
+      if (id && (error as { code?: number }).code === 11000) {
+        const existing = await CashMovementEntryModel.findById(id).lean<MovementLeanDocument>();
+        if (existing) return toMovementEntity(existing);
+      }
+      throw error;
+    } finally {
+      await CashRegisterSessionModel.updateOne({ _id: sessionId }, { $inc: { movementWrites: -1 } });
+    }
   }
 
   async listMovements(sessionId: string): Promise<ICashMovementEntry[]> {
@@ -131,14 +183,23 @@ export class CashRegisterMongooseRepository implements ICashRegisterRepository {
     sessionId: string,
     countedValue: number,
     closedBy?: string,
-    closedAutomatically?: boolean,
   ): Promise<CloseCashRegisterResult> {
+    const snapshot = await CashRegisterSessionModel.findById(sessionId).lean<SessionLeanDocument>();
+    if (!snapshot || snapshot.status !== 'aberto' || snapshot.movementWrites) {
+      throw new ConflictError('Caixa fechado ou recebendo lançamentos. Atualize e confira novamente');
+    }
+    const session = toSessionEntity(snapshot);
     const calculatedBalance = await this.getCalculatedBalance(sessionId);
-    const doc = await CashRegisterSessionModel.findByIdAndUpdate(
-      sessionId,
-      { $set: { status: 'fechado', closedAt: new Date(), closingBalance: countedValue, closedBy, closedAutomatically } },
+    const doc = await CashRegisterSessionModel.findOneAndUpdate(
+      {
+        _id: sessionId, status: 'aberto',
+        movementVersion: snapshot.movementVersion === undefined ? { $exists: false } : snapshot.movementVersion,
+        movementWrites: snapshot.movementWrites === undefined ? { $exists: false } : 0,
+      },
+      { $set: { status: 'fechado', closedAt: new Date(), accountingEndAt: cashRegisterPeriodEnd(session), closingBalance: countedValue, closedBy, closedAutomatically: false } },
       { new: true },
     ).lean<SessionLeanDocument>();
+    if (!doc) throw new ConflictError('O caixa foi fechado ou recebeu novos lançamentos. Atualize e confira novamente');
     return {
       session: toSessionEntity(doc as SessionLeanDocument),
       calculatedBalance,

@@ -28,7 +28,7 @@ import { AsaasClient } from '../../payments-asaas/infra/asaas-client';
 import { MercadoPagoClient } from '../../payments-mercadopago/infra/mercado-pago-client';
 import { ConfirmOnlinePaymentService } from '../domain/services/confirm-online-payment.service';
 import { StockReservationService } from '../domain/services/stock-reservation.service';
-import { isOrderCancellable, isValidOrderStatusTransition } from '../domain/order-status-transitions';
+import { isOrderCancellableByOperator, isValidOrderStatusTransition } from '../domain/order-status-transitions';
 import { buildOrderPixCode } from '../domain/build-order-pix-code';
 import { resolveOrderItemLinkedProducts } from '../domain/resolve-order-item-linked-products';
 import { IOrderRepository } from '../domain/repositories/order.repository.interface';
@@ -498,7 +498,7 @@ export class OrdersController extends BaseRouter {
 
     // REQ-3: cancelamento pela retaguarda exige motivo (registrado na linha do tempo) e é
     // permitido num conjunto de estados mais amplo que o autocancelamento do cliente
-    // (`isOrderCancellable`, specs/0006 REQ-6 é mais restrito).
+    // (`isOrderCancellableByOperator`, specs/0006 REQ-6 é mais restrito).
     application.patch(
       '/restaurants/me/orders/:id/cancel',
       ...operatorAuthenticated,
@@ -506,7 +506,7 @@ export class OrdersController extends BaseRouter {
         const { reason } = parseBody(cancelOrderWithReasonSchema, req.body);
         const order = await this.findOwnedOrderForRestaurant(req.params.id, req.restaurantId!);
 
-        if (!isOrderCancellable(order.status)) {
+        if (!isOrderCancellableByOperator(order.status)) {
           throw new BadRequestError('Pedido não pode mais ser cancelado');
         }
 
@@ -721,7 +721,7 @@ export class OrdersController extends BaseRouter {
       }
 
       const client = new AsaasClient(restaurant.asaasApiKey!, environment.asaas.baseUrl);
-      const asaasCustomer = await client.createCustomer(customer.name, customer.document);
+      const asaasCustomer = await client.createCustomer(customer.name, customer.document.replace(/\D/g, ''));
       const dueDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       const charge = await client.createPixCharge(asaasCustomer.id, order.total, dueDate, order.id);
       const qrCode = await client.getPixQrCode(charge.id);
@@ -833,10 +833,20 @@ export class OrdersController extends BaseRouter {
     const customerIds = [...new Set(orders.map((order) => order.customerId))];
     const customers = await Promise.all(customerIds.map((id) => this.customerRepository.findById(id)));
     const customerById = new Map(customerIds.map((id, index) => [id, customers[index]]));
+    const motoboyIds = [...new Set(orders.flatMap((order) => order.deliveryMotoboy ? [order.deliveryMotoboy.id] : []))];
+    const motoboys = await Promise.all(motoboyIds.map((id) => this.restaurantOperatorRepository.findById(id)));
+    const motoboyById = new Map(motoboyIds.map((id, index) => [id, motoboys[index]]));
 
     return orders.map((order) => {
       const customer = customerById.get(order.customerId);
-      return customer ? { ...order, customer: { name: customer.name, phone: customer.phone } } : order;
+      const motoboy = order.deliveryMotoboy && motoboyById.get(order.deliveryMotoboy.id);
+      return {
+        ...order,
+        ...(customer ? { customer: { name: customer.name, phone: customer.phone } } : {}),
+        ...(motoboy?.restaurantId === order.restaurantId && motoboy.whatsapp
+          ? { deliveryMotoboy: { ...order.deliveryMotoboy, whatsapp: motoboy.whatsapp } }
+          : {}),
+      };
     });
   }
 

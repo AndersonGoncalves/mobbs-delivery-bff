@@ -46,9 +46,8 @@ export interface CashClosingSummary {
 }
 
 /**
- * REQ-5 (`addAutomaticEntry`) — nunca lança pro chamador: sem sessão de caixa aberta, simplesmente
- * não lança nada (não força abertura). Vale para qualquer forma de pagamento, no delivery, na
- * retirada e na mesa.
+ * Sem caixa da data atual, não lança em caixa pendente de outra data. Em modo automático,
+ * verifica a abertura pelo horário do restaurante antes do lançamento.
  *
  * `syncOpenSession` recria as entradas que faltam na sessão aberta (pagamentos recebidos antes
  * desta regra, ou com a sessão já aberta).
@@ -60,16 +59,11 @@ export interface ICashRegisterService {
   addAutomaticEntry(input: AutomaticCashEntryInput): Promise<void>;
 
   /** Garante um movimento para cada pagamento já recebido na sessão aberta. */
-  syncOpenSession(restaurantId: string): Promise<void>;
+  syncOpenSession(restaurantId: string, sessionId?: string): Promise<void>;
 
   /**
-   * REQ-3/REQ-4/REQ-6 — "cron" lazy: chamado no início de toda rota de `CashRegisterController`
-   * que lê ou muda o caixa (ver `plan.md`, "Mecanismo do automático"). Se
-   * `Restaurant.cashRegisterMode !== 'automatic'`, não faz nada. Em modo automático, compara
-   * `now` contra o `IBusinessHours` do dia da semana corrente: sem sessão aberta e já passou do
-   * horário de abertura (mas não do de fechamento) → abre; sessão aberta e já passou do horário
-   * de fechamento → fecha com o saldo calculado. Qualquer outro caso (inclusive dia com
-   * `isClosed: true`, ou sessão duplicada) é no-op silencioso, nunca lança erro.
+   * 0176: abertura lazy por data civil, seguindo businessHours. Nunca fecha automaticamente
+   * nem reabre uma data já fechada. Caixas de datas anteriores permanecem pendentes.
    */
   ensureAutomaticSchedule(restaurantId: string, now?: Date): Promise<void>;
 

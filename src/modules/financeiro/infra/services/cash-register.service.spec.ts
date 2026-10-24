@@ -36,6 +36,8 @@ function buildDeliveredOrder(overrides: Record<string, unknown> = {}) {
 }
 
 describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-caixa-automatico-redes-sociais)', () => {
+  beforeEach(() => { jest.useFakeTimers(); jest.setSystemTime(new Date('2026-09-09T12:00:00Z')); });
+  afterEach(() => jest.useRealTimers());
   function setup(overrides: {
     cashRegisterRepository?: Partial<ICashRegisterRepository>;
     restaurantRepository?: Partial<IRestaurantRepository>;
@@ -43,6 +45,8 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
   } = {}) {
     const cashRegisterRepository: Partial<ICashRegisterRepository> = {
       findOpenSessionByRestaurant: jest.fn().mockResolvedValue(buildSession()),
+      findSessionByDate: overrides.cashRegisterRepository?.findOpenSessionByRestaurant ?? jest.fn().mockResolvedValue(buildSession()),
+      findPendingSessions: jest.fn().mockResolvedValue([]),
       findById: jest.fn().mockResolvedValue(buildSession()),
       open: jest.fn().mockResolvedValue(buildSession()),
       close: jest.fn().mockResolvedValue({ session: buildSession({ status: 'fechado' }), calculatedBalance: 0, difference: 0 }),
@@ -75,6 +79,13 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
   }
 
   describe('addAutomaticEntry', () => {
+    it('0176: nunca lança uma venda de hoje no caixa pendente de ontem', async () => {
+      const { service, cashRegisterRepository } = setup({
+        cashRegisterRepository: { findOpenSessionByRestaurant: jest.fn().mockResolvedValue(buildSession({ openedAt: '2026-09-08T12:00:00Z' })) },
+      });
+      await service.addAutomaticEntry({ restaurantId: 'r-1', orderId: 'today', orderNumber: 1, amount: 10, paymentMethod: 'pix' });
+      expect(cashRegisterRepository.addMovement).not.toHaveBeenCalled();
+    });
     it('pedido pago em qualquer forma, com sessão aberta, lança entrada automática', async () => {
       for (const paymentMethod of ['pix', 'cash', 'creditCard', 'creditCardOnline', 'debitCard']) {
         const { cashRegisterRepository, service } = setup();
@@ -133,6 +144,36 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
     const MONDAY_9AM_BRT = new Date('2026-10-12T12:00:00.000Z'); // segunda, 09:00 em Brasília (UTC-3)
     const MONDAY_11PM_BRT = new Date('2026-10-13T02:00:00.000Z'); // segunda, 23:00 em Brasília
 
+    it('0176: abre o caixa da data de hoje mesmo com caixa de ontem pendente', async () => {
+      const { service, cashRegisterRepository } = setup({
+        cashRegisterRepository: { findSessionByDate: jest.fn().mockResolvedValue(null) },
+      });
+      await service.ensureAutomaticSchedule('r-1', MONDAY_9AM_BRT);
+      expect(cashRegisterRepository.open).toHaveBeenCalledWith('r-1', 0, 'automatico', true, MONDAY_9AM_BRT);
+      expect(cashRegisterRepository.close).not.toHaveBeenCalled();
+    });
+
+    it('0176: data já fechada não é reaberta automaticamente', async () => {
+      const { service, cashRegisterRepository } = setup({
+        cashRegisterRepository: { findSessionByDate: jest.fn().mockResolvedValue(buildSession({ status: 'fechado' })) },
+      });
+      await service.ensureAutomaticSchedule('r-1', MONDAY_9AM_BRT);
+      expect(cashRegisterRepository.open).not.toHaveBeenCalled();
+    });
+
+    it('0176: horário que cruza meia-noite abre outro caixa na nova data', async () => {
+      const { service, cashRegisterRepository } = setup({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({
+          businessHours: [{ dayOfWeek: 'monday', isClosed: false, openTime: '18:00', closeTime: '02:00' }],
+        })) },
+        cashRegisterRepository: { findSessionByDate: jest.fn().mockResolvedValue(null) },
+      });
+      const afterMidnight = new Date('2026-10-13T04:00:00Z');
+      await service.ensureAutomaticSchedule('r-1', afterMidnight);
+      expect(cashRegisterRepository.findSessionByDate).toHaveBeenCalledWith('r-1', '2026-10-13');
+      expect(cashRegisterRepository.open).toHaveBeenCalledWith('r-1', 0, 'automatico', true, afterMidnight);
+    });
+
     it('AC-1: modo automático não cria nenhum campo de horário novo — usa o businessHours já cadastrado (não chama open/close fora da janela)', async () => {
       const { cashRegisterRepository, service } = setup({
         cashRegisterRepository: { findOpenSessionByRestaurant: jest.fn().mockResolvedValue(null) },
@@ -151,10 +192,10 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
 
       await service.ensureAutomaticSchedule('r-1', MONDAY_9AM_BRT);
 
-      expect(cashRegisterRepository.open).toHaveBeenCalledWith('r-1', 0, 'automatico', true);
+      expect(cashRegisterRepository.open).toHaveBeenCalledWith('r-1', 0, 'automatico', true, MONDAY_9AM_BRT);
     });
 
-    it('AC-3: sessão aberta e já passou do horário de fechamento (22:00 BRT) -> fecha sozinho com o saldo calculado', async () => {
+    it('0176: horário de fechamento não fecha o caixa automaticamente', async () => {
       const { cashRegisterRepository, service } = setup({
         cashRegisterRepository: {
           findOpenSessionByRestaurant: jest.fn().mockResolvedValue(buildSession()),
@@ -164,7 +205,7 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
 
       await service.ensureAutomaticSchedule('r-1', MONDAY_11PM_BRT);
 
-      expect(cashRegisterRepository.close).toHaveBeenCalledWith('cr-1', 180, 'automatico', true);
+      expect(cashRegisterRepository.close).not.toHaveBeenCalled();
     });
 
     it('AC-4/REQ-6: modo manual nunca abre nem fecha sozinho, mesmo dentro da janela de horário', async () => {
@@ -304,6 +345,22 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
       expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-1', expect.objectContaining({
         type: 'entrada', amount: 4, paymentMethod: 'creditCard', orderId: 'o-delivery',
       }));
+    });
+
+    it('0176: conferir caixa pendente sincroniza somente os pagamentos da data daquele caixa', async () => {
+      const { service, orderRepository, cashRegisterRepository } = setup({
+        cashRegisterRepository: { findById: jest.fn().mockResolvedValue(buildSession({ openedAt: '2026-09-08T11:00:00Z' })) },
+        orderRepository: { findReceivedSalesBetween: jest.fn().mockResolvedValue([
+          buildDeliveredOrder({ orderType: 'table', tablePayments: [
+            { id: 'old', method: 'pix', amount: 10, paidAt: '2026-09-08T12:00:00Z' },
+            { id: 'today', method: 'pix', amount: 20, paidAt: '2026-09-09T10:00:00Z' },
+          ] }),
+        ]) },
+      });
+      await service.syncOpenSession('r-1', 'cr-1');
+      expect(orderRepository.findReceivedSalesBetween).toHaveBeenCalledWith('r-1', new Date('2026-09-08T11:00:00Z'), new Date('2026-09-09T03:00:00Z'));
+      expect(cashRegisterRepository.addMovement).toHaveBeenCalledTimes(1);
+      expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-1', expect.objectContaining({ paymentId: 'old', amount: 10 }));
     });
 
     it('movimento manual (sangria) sem orderId reduz a forma "dinheiro", sem duplicar venda automática de Pix', async () => {

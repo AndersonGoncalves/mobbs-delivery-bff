@@ -16,7 +16,10 @@ export const updateCustomerProfileSchema = z
   .object({
     name: z.preprocess(blankToUndefined, z.string().min(1).optional()),
     phone: z.preprocess(blankToUndefined, z.string().min(1).transform(normalizePhoneNumber).optional()),
-    document: z.preprocess(blankToUndefined, z.string().min(1).optional()),
+    document: z.preprocess(
+      (value) => value === null ? undefined : blankToUndefined(value),
+      z.string().min(1).optional(),
+    ),
     // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-6 — sessão anônima
     // (convidado) sem e-mail vindo do token Firebase; "Entrar com e-mail" manda esse campo.
     email: z.preprocess(blankToUndefined, z.string().email().optional()),

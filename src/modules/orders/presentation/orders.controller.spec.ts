@@ -1031,6 +1031,40 @@ describe('OrdersController', () => {
     ]);
   });
 
+  it.each([
+    { restaurantId: 'r-1', expectedWhatsapp: '5585999999999' },
+    { restaurantId: 'other-restaurant', expectedWhatsapp: undefined },
+  ])('0176: contato de motoboy inativo respeita isolamento de restaurante ($restaurantId)', async ({ restaurantId, expectedWhatsapp }) => {
+    const order = buildOrder({ deliveryMotoboy: { id: 'm-1', name: 'Carlos' } });
+    const { routes } = setup({
+      orderRepository: { findActiveByRestaurant: jest.fn().mockResolvedValue([order]) },
+      restaurantOperatorRepository: {
+        findById: jest.fn().mockResolvedValue({ id: 'm-1', restaurantId, isActive: false, whatsapp: '5585999999999' }),
+      },
+    });
+    const json = jest.fn();
+    await runOperatorChain(routes['GET /restaurants/me/orders'], { restaurantId: 'r-1' }, { json });
+    expect(json.mock.calls[0][1][0].deliveryMotoboy.whatsapp).toBe(expectedWhatsapp);
+    expect(json.mock.calls[0][1][0].customer.document).toBeUndefined();
+  });
+
+  it('0176: cliente e acompanhamento público não recebem contato do motoboy nem documento', async () => {
+    const order = buildOrder({ deliveryMotoboy: { id: 'm-1', name: 'Carlos' } });
+    const { routes } = setup({
+      orderRepository: { findById: jest.fn().mockResolvedValue(order), findByTrackingToken: jest.fn().mockResolvedValue(order) },
+      customerRepository: { findById: jest.fn().mockResolvedValue({ name: 'Ana', document: '52998224725' }) },
+      restaurantOperatorRepository: { findById: jest.fn().mockResolvedValue({ id: 'm-1', restaurantId: 'r-1', whatsapp: '5585999999999' }) },
+    });
+    const json = jest.fn();
+    await runAuthenticatedChain(routes['GET /orders/:id'], { user: { uid: 'customer-1' }, params: { id: 'o-1' } }, { json });
+    expect(json.mock.calls[0][1].deliveryMotoboy.whatsapp).toBeUndefined();
+    expect(json.mock.calls[0][1].document).toBeUndefined();
+    json.mockClear();
+    await runPublicChain(routes['GET /orders/track/:token'], { params: { token: 'token-1' } }, { json });
+    expect(json.mock.calls[0][1].deliveryMotoboy).toBeUndefined();
+    expect(json.mock.calls[0][1].document).toBeUndefined();
+  });
+
   it('specs/0126 AC-1: GET /restaurants/me/orders/map retorna todos os status no intervalo do restaurante', async () => {
     const orders = [buildOrder({ id: 'o-delivered', status: 'entregue' }), buildOrder({ id: 'o-cancelled', status: 'cancelado' })];
     const { orderRepository, routes } = setup({ orderRepository: { findByRestaurantBetween: jest.fn().mockResolvedValue(orders) } });
@@ -1361,11 +1395,23 @@ describe('OrdersController', () => {
     ).rejects.toMatchObject({ statusCode: 400 });
   });
 
-  it('PATCH /restaurants/me/orders/:id/cancel rejeita quando o pedido já saiu para entrega', async () => {
+  it('0176: operador cancela saiuParaEntrega com motivo', async () => {
     const { orderRepository, routes } = setup({
       orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ status: 'saiuParaEntrega' })) },
     });
 
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/cancel'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { reason: 'Cliente desistiu' } },
+      { json: jest.fn() },
+    );
+    expect(orderRepository.updateStatus).toHaveBeenCalledWith('o-1', 'cancelado', 'r-1', 'Cliente desistiu');
+  });
+
+  it.each(['entregue', 'cancelado'])('0176: operador não cancela pedido %s', async (status) => {
+    const { orderRepository, routes } = setup({
+      orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ status })) },
+    });
     await expect(
       runOperatorChain(
         routes['PATCH /restaurants/me/orders/:id/cancel'],
@@ -1373,6 +1419,26 @@ describe('OrdersController', () => {
         { json: jest.fn() },
       ),
     ).rejects.toMatchObject({ statusCode: 400 });
+    expect(orderRepository.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it('0176: consumidor não pode cancelar saiuParaEntrega', async () => {
+    const { orderRepository, routes } = setup({
+      orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ status: 'saiuParaEntrega' })) },
+    });
+    await expect(runAuthenticatedChain(
+      routes['PATCH /orders/:id/cancel'],
+      { user: { uid: 'customer-1' }, params: { id: 'o-1' } },
+      { json: jest.fn() },
+    )).rejects.toMatchObject({ statusCode: 400 });
+    expect(orderRepository.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it.each(['garcom', 'motoboy'])('0176: %s não ganha autorização para cancelamento administrativo', async (operatorRole) => {
+    const { orderRepository, routes } = setup();
+    await expect(routes['PATCH /restaurants/me/orders/:id/cancel'][2](
+      { operatorRole, restaurantId: 'r-1' }, { json: jest.fn() },
+    )).rejects.toMatchObject({ statusCode: 403 });
     expect(orderRepository.updateStatus).not.toHaveBeenCalled();
   });
 
@@ -1812,7 +1878,7 @@ describe('OrdersController', () => {
     it('POST /orders: restaurante com Asaas habilitado e cliente com CPF cria a cobrança real e persiste no Payment', async () => {
       const { paymentRepository, routes } = setup({
         restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ onlinePaymentsEnabled: true, asaasApiKey: 'key-subconta' })) },
-        customerRepository: { findById: jest.fn().mockResolvedValue({ id: 'customer-1', name: 'Ana', email: 'ana@exemplo.com', phone: '85984224877', document: '12345678900' }) },
+        customerRepository: { findById: jest.fn().mockResolvedValue({ id: 'customer-1', name: 'Ana', email: 'ana@exemplo.com', phone: '85984224877', document: '529.982.247-25' }) },
       });
 
       await runAuthenticatedChain(
@@ -1821,7 +1887,7 @@ describe('OrdersController', () => {
         { json: jest.fn() },
       );
 
-      expect(MockedAsaasClient.prototype.createCustomer).toHaveBeenCalledWith('Ana', '12345678900');
+      expect(MockedAsaasClient.prototype.createCustomer).toHaveBeenCalledWith('Ana', '52998224725');
       expect(MockedAsaasClient.prototype.createPixCharge).toHaveBeenCalledWith('cus_1', expect.any(Number), expect.any(String), 'o-1');
       expect(paymentRepository.setAsaasPixDetails).toHaveBeenCalledWith('o-1', { externalReference: 'pay_1', pixPayload: '00020126...copia-e-cola-asaas' });
     });
@@ -1887,6 +1953,28 @@ describe('OrdersController', () => {
       await runAuthenticatedChain(routes['GET /orders/:id'], { params: { id: 'o-1' }, user: { uid: 'customer-1' } }, { json });
 
       expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ pixCode: '00020126...copia-e-cola-asaas' }));
+    });
+
+    it('0176: cancelar saiuParaEntrega pelo operador devolve reservas e estorna Pix aprovado', async () => {
+      const item = {
+        ...buildItem(),
+        stockReservations: [{ resourceType: 'product', resourceId: 'p-1', unitsPerItem: 1, quantity: 1, operationId: 'reserve-1' }],
+      };
+      const { productRepository, stockMovementRepository, paymentRepository, orderRepository, routes } = setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ status: 'saiuParaEntrega', paymentMethod: 'pix', items: [item] })) },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ asaasApiKey: 'key-subconta' })) },
+        paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ status: 'aprovado', externalReference: 'pay_1' })) },
+      });
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/cancel'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { reason: 'Cliente desistiu' } },
+        { json: jest.fn() },
+      );
+      expect(orderRepository.updateStatus).toHaveBeenCalledWith('o-1', 'cancelado', 'r-1', 'Cliente desistiu');
+      expect(productRepository.restoreStock).toHaveBeenCalledWith('p-1', 1);
+      expect(stockMovementRepository.create).toHaveBeenCalledWith(expect.objectContaining({ operationId: 'reserve-1:release' }));
+      expect(MockedAsaasClient.prototype.refundCharge).toHaveBeenCalledWith('pay_1');
+      expect(paymentRepository.markAsRefunded).toHaveBeenCalledWith('o-1');
     });
 
     it('PATCH /orders/:id/cancel: Pix Asaas já aprovado dispara estorno e marca o Payment como estornado', async () => {

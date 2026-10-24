@@ -263,5 +263,5 @@ export const updateOperatorFullAccessSchema = z.object({ hasFullAccess: z.boolea
 export const updateOperatorProfileSchema = z.object({
   name: z.string().trim().min(1),
   whatsapp: z.string().trim().min(1).transform(normalizePhoneNumber).optional(),
-  photoUrl: z.string().url().optional(),
+  photoUrl: z.string().url().nullable().optional(),
 });

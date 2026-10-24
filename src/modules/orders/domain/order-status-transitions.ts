@@ -38,3 +38,7 @@ const CANCELLABLE_STATUSES: OrderStatus[] = ['aguardandoConfirmacao', 'confirmad
 export function isOrderCancellable(status: OrderStatus): boolean {
   return CANCELLABLE_STATUSES.includes(status);
 }
+
+export function isOrderCancellableByOperator(status: OrderStatus): boolean {
+  return isOrderCancellable(status) || status === 'saiuParaEntrega';
+}

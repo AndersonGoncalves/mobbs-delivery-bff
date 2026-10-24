@@ -9,6 +9,8 @@ export type CashMovementType = 'entrada' | 'saida';
  * `openingBalance` + `CashMovementEntry[]`, nunca persistido na sessão).
  */
 export interface ICashRegisterSession {
+  businessDate?: string;
+  accountingEndAt?: string;
   id: string;
   restaurantId: string;
   openedAt: string;

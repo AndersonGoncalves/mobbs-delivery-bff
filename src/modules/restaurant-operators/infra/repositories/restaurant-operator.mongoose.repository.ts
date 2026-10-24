@@ -94,7 +94,11 @@ export class RestaurantOperatorMongooseRepository implements IRestaurantOperator
     await RestaurantOperatorModel.findByIdAndUpdate(id, { $set: { hasFullAccess } });
   }
 
-  async updateProfile(id: string, profile: { name: string; whatsapp?: string; photoUrl?: string }): Promise<void> {
-    await RestaurantOperatorModel.findByIdAndUpdate(id, { $set: profile });
+  async updateProfile(id: string, profile: { name: string; whatsapp?: string; photoUrl?: string | null }): Promise<void> {
+    const { photoUrl, ...fields } = profile;
+    await RestaurantOperatorModel.findByIdAndUpdate(id, {
+      $set: { ...fields, ...(typeof photoUrl === 'string' ? { photoUrl } : {}) },
+      ...(photoUrl === null ? { $unset: { photoUrl: 1 } } : {}),
+    });
   }
 }

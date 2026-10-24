@@ -153,7 +153,7 @@ export interface IOrderRepository {
 
   /**
    * specs/0139-impressao-automatica-bridge REQ-2 — pedidos de `delivery`/`pickup` confirmados e
-   * ainda não impressos pelo bridge (`autoPrintStatus !== 'printed'`), mais antigos primeiro.
+   * ainda não impressos automática ou manualmente (`autoPrintStatus !== 'printed'`), mais antigos primeiro.
    * Calculado ao vivo a cada chamada (não é uma fila persistida) — um pedido cancelado depois de
    * `confirmado` simplesmente deixa de aparecer na próxima consulta.
    * specs/0164-impressao-automatica-so-confirmado — pedido `aguardandoConfirmacao` nunca entra; o

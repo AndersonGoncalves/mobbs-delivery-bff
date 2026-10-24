@@ -4,7 +4,7 @@ import { IOrderRepository } from '../../orders/domain/repositories/order.reposit
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { AutoPrintController } from './auto-print.controller';
 
-type FakeRequest = Partial<Pick<Request, 'params' | 'body'>> & { restaurantId?: string };
+type FakeRequest = Partial<Pick<Request, 'params' | 'body'>> & { restaurantId?: string; operatorRole?: string };
 type FakeResponse = Pick<Response, 'json' | 'send'>;
 type RouteHandler = (req: FakeRequest, res: FakeResponse) => Promise<void>;
 
@@ -73,6 +73,37 @@ describe('AutoPrintController', () => {
     ).initializeRoutes(application);
     return { orderRepository, restaurantRepository, customerRepository, routes };
   }
+
+  it.each(['dono', 'gerente', 'financeiro'])('0176: operador %s confirma impressão manual de forma idempotente sem chave do bridge', async (operatorRole) => {
+    const { orderRepository, routes } = setup();
+    const req = { restaurantId: 'r-1', operatorRole, params: { id: 'o-1' } };
+    const send = jest.fn();
+    const handlers = routes['POST /restaurants/me/orders/:id/printed'];
+    for (let attempt = 0; attempt < 2; attempt++) {
+      for (const handler of handlers.slice(2)) await handler(req, { json: jest.fn(), send });
+    }
+    expect(orderRepository.markAutoPrinted).toHaveBeenNthCalledWith(1, 'o-1', 'r-1');
+    expect(orderRepository.markAutoPrinted).toHaveBeenNthCalledWith(2, 'o-1', 'r-1');
+    expect(send).toHaveBeenCalledWith(204);
+  });
+
+  it.each(['motoboy', 'garcom'])('0176: %s não confirma impressão manual', async (operatorRole) => {
+    const { orderRepository, routes } = setup();
+    const handlers = routes['POST /restaurants/me/orders/:id/printed'];
+    await expect(handlers[2]({ restaurantId: 'r-1', operatorRole }, { json: jest.fn(), send: jest.fn() }))
+      .rejects.toMatchObject({ statusCode: 403 });
+    expect(orderRepository.markAutoPrinted).not.toHaveBeenCalled();
+  });
+
+  it.each([null, buildOrder({ restaurantId: 'other-restaurant' })])('0176: impressão manual não registra pedido ausente ou de outro tenant', async (order) => {
+    const { orderRepository, routes } = setup({ orderRepository: { findById: jest.fn().mockResolvedValue(order) } });
+    await expect(runOperatorChain(
+      routes['POST /restaurants/me/orders/:id/printed'],
+      { restaurantId: 'r-1', params: { id: 'o-1' } },
+      { json: jest.fn(), send: jest.fn() },
+    )).rejects.toMatchObject({ statusCode: 404 });
+    expect(orderRepository.markAutoPrinted).not.toHaveBeenCalled();
+  });
 
   it('GET .../print-queue/pending devolve os pedidos formatados e o intervalo de consulta', async () => {
     const { orderRepository, routes } = setup();

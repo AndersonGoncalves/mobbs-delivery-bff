@@ -8,6 +8,7 @@ import { requireOperatorRole } from '../../../shared/http/require-operator-role.
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { ICashRegisterRepository } from '../domain/repositories/cash-register.repository.interface';
 import { ICashRegisterService } from '../domain/services/i-cash-register.service';
+import { cashRegisterDate, cashRegisterPeriodEnd } from '../domain/cash-register-date';
 import {
   addCashMovementSchema,
   cashRegisterPeriodSchema,
@@ -149,27 +150,29 @@ export class CashRegisterController extends BaseRouter {
       await this.cashRegisterService.ensureAutomaticSchedule(req.restaurantId!);
       await this.cashRegisterService.syncOpenSession(req.restaurantId!);
       const session = await this.cashRegisterRepository.findOpenSessionByRestaurant(req.restaurantId!);
+      const pendingSessions = await this.cashRegisterRepository.findPendingSessions(req.restaurantId!);
       if (!session) {
-        res.json(200, { session: null, movements: [], calculatedBalance: 0, tableSales: 0, balanceByPaymentMethod: {} });
+        const todaySession = await this.cashRegisterRepository.findSessionByDate(req.restaurantId!, cashRegisterDate());
+        res.json(200, { session: null, pendingSessions, todaySession, movements: [], calculatedBalance: 0, tableSales: 0, balanceByPaymentMethod: {} });
         return;
       }
       const [movements, calculatedBalance, tableSales, balanceByPaymentMethod] = await Promise.all([
         this.cashRegisterRepository.listMovements(session.id),
         this.cashRegisterRepository.getCalculatedBalance(session.id),
-        this.orderRepository.getTableSalesBetween(req.restaurantId!, new Date(session.openedAt), new Date()),
+        this.orderRepository.getTableSalesBetween(req.restaurantId!, new Date(session.openedAt), cashRegisterPeriodEnd(session)),
         this.cashRegisterService.getBalanceByPaymentMethod(session.id),
       ]);
-      res.json(200, { session, movements, calculatedBalance, tableSales, balanceByPaymentMethod });
+      res.json(200, { session, pendingSessions, movements, calculatedBalance, tableSales, balanceByPaymentMethod });
     });
 
     // AC-4/AC-8 — REQ-8: bloqueia se já houver sessão aberta, indicando qual é.
     application.post('/restaurants/me/cash-register/open', ...authenticated, async (req: Request, res: Response) => {
       await this.cashRegisterService.ensureAutomaticSchedule(req.restaurantId!);
       const { openingBalance } = parseBody(openCashRegisterSchema, req.body);
-      const existing = await this.cashRegisterRepository.findOpenSessionByRestaurant(req.restaurantId!);
+      const existing = await this.cashRegisterRepository.findSessionByDate(req.restaurantId!, cashRegisterDate());
       if (existing) {
         throw new ConflictError(
-          `Já existe uma sessão de caixa aberta desde ${existing.openedAt} (id ${existing.id})`,
+          `Já existe uma sessão de caixa para esta data desde ${existing.openedAt} (id ${existing.id})`,
         );
       }
       const session = await this.cashRegisterRepository.open(req.restaurantId!, openingBalance, req.user?.uid);
@@ -187,6 +190,9 @@ export class CashRegisterController extends BaseRouter {
         if (session.status !== 'aberto') {
           throw new BadRequestError('Sessão de caixa já está fechada');
         }
+        if ((session.businessDate ?? cashRegisterDate(new Date(session.openedAt))) !== cashRegisterDate()) {
+          throw new BadRequestError('Lançamentos só podem ser feitos no caixa da data atual');
+        }
         const movement = await this.cashRegisterRepository.addMovement(session.id, payload);
         res.json(201, movement);
       },
@@ -203,9 +209,9 @@ export class CashRegisterController extends BaseRouter {
         if (session.status !== 'aberto') {
           throw new BadRequestError('Sessão de caixa já está fechada');
         }
-        const closedAt = new Date();
+        await this.cashRegisterService.syncOpenSession(req.restaurantId!, session.id);
         const result = await this.cashRegisterRepository.close(session.id, countedValue, req.user?.uid);
-        const tableSales = await this.orderRepository.getTableSalesBetween(req.restaurantId!, new Date(session.openedAt), closedAt);
+        const tableSales = await this.orderRepository.getTableSalesBetween(req.restaurantId!, new Date(session.openedAt), cashRegisterPeriodEnd(session));
         res.json(200, { ...result, tableSales });
       },
     );
@@ -233,6 +239,19 @@ export class CashRegisterController extends BaseRouter {
         new Date(to),
       );
       res.json(200, { from, to, movements });
+    });
+
+    application.get('/restaurants/me/cash-register/:id', ...authenticated, async (req: Request, res: Response) => {
+      const session = await this.findOwnedSession(req.params.id, req.restaurantId!);
+      await this.cashRegisterService.syncOpenSession(req.restaurantId!, session.id);
+      const [movements, calculatedBalance, balanceByPaymentMethod, pendingSessions, tableSales] = await Promise.all([
+        this.cashRegisterRepository.listMovements(session.id),
+        this.cashRegisterRepository.getCalculatedBalance(session.id),
+        this.cashRegisterService.getBalanceByPaymentMethod(session.id),
+        this.cashRegisterRepository.findPendingSessions(req.restaurantId!),
+        this.orderRepository.getTableSalesBetween(req.restaurantId!, new Date(session.openedAt), cashRegisterPeriodEnd(session)),
+      ]);
+      res.json(200, { session, pendingSessions, movements, calculatedBalance, balanceByPaymentMethod, tableSales });
     });
   }
 

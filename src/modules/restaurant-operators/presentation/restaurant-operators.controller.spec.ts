@@ -500,6 +500,26 @@ describe('RestaurantOperatorsController', () => {
     expect(json).toHaveBeenCalledWith(200, expect.anything());
   });
 
+  it('0176: PATCH .../profile aceita remoção explícita de foto', async () => {
+    const { repository, routes } = setup();
+    await runChain(
+      routes['PATCH /restaurants/me/operators/:id/profile'],
+      { params: { id: 'op-1' }, body: { name: 'Ana', photoUrl: null } },
+      { json: jest.fn(), send: jest.fn() },
+    );
+    expect(repository.updateProfile).toHaveBeenCalledWith('op-1', { name: 'Ana', photoUrl: null });
+  });
+
+  it('0176: PATCH .../profile sem photoUrl não solicita apagar a foto', async () => {
+    const { repository, routes } = setup();
+    await runChain(
+      routes['PATCH /restaurants/me/operators/:id/profile'],
+      { params: { id: 'op-1' }, body: { name: 'Ana' } },
+      { json: jest.fn(), send: jest.fn() },
+    );
+    expect(repository.updateProfile).toHaveBeenCalledWith('op-1', { name: 'Ana' });
+  });
+
   it('rejeita PATCH .../profile sem nome', async () => {
     const { repository, routes } = setup();
 

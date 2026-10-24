@@ -3,6 +3,7 @@ import { IOrderRepository } from '../../../orders/domain/repositories/order.repo
 import { getRestaurantLocalTime, minutesSinceMidnight } from '../../../restaurants/domain/is-restaurant-open-now';
 import { IRestaurantRepository } from '../../../restaurants/domain/repositories/restaurant.repository.interface';
 import { ICashRegisterRepository } from '../../domain/repositories/cash-register.repository.interface';
+import { cashRegisterDate, cashRegisterPeriodEnd } from '../../domain/cash-register-date';
 import {
   AutomaticCashEntryInput,
   CashBalanceByPaymentMethod,
@@ -22,8 +23,7 @@ const PAYMENT_LABEL: Record<string, string> = {
   debitCard: 'Débito',
 };
 
-// specs/0118-controle-caixa-automatico-redes-sociais REQ-3/REQ-4 — identifica `openedBy`/
-// `closedBy` de um ciclo automático (não um id de operador de verdade, `req.user.uid`).
+// Identifica apenas a abertura automática; fechamento exige um operador.
 const AUTOMATIC_ACTOR = 'automatico';
 
 function zeroBalanceByPaymentMethod(): Record<PaymentMethod, number> {
@@ -53,18 +53,21 @@ export class CashRegisterService implements ICashRegisterService {
 
   async addAutomaticEntry(input: AutomaticCashEntryInput): Promise<void> {
     if (!(input.amount > 0)) return;
-
+    await this.ensureAutomaticSchedule(input.restaurantId);
     const session = await this.cashRegisterRepository.findOpenSessionByRestaurant(input.restaurantId);
-    if (!session) return;
+    if (!session || cashRegisterDate(new Date(session.openedAt)) !== cashRegisterDate()) return;
+    await this.recordAutomaticEntry(session.id, input);
+  }
 
-    const movements = await this.cashRegisterRepository.listMovements(session.id);
+  private async recordAutomaticEntry(sessionId: string, input: AutomaticCashEntryInput): Promise<void> {
+    const movements = await this.cashRegisterRepository.listMovements(sessionId);
     const alreadyRecorded = input.paymentId
       ? movements.some((movement) => movement.paymentId === input.paymentId || (movement.orderId === input.orderId && !movement.paymentId))
       : movements.some((movement) => movement.orderId === input.orderId && !movement.paymentId);
     if (alreadyRecorded) return;
 
     const methodLabel = PAYMENT_LABEL[input.paymentMethod] ?? input.paymentMethod;
-    await this.cashRegisterRepository.addMovement(session.id, {
+    await this.cashRegisterRepository.addMovement(sessionId, {
       type: 'entrada',
       amount: input.amount,
       description: input.paymentId
@@ -76,19 +79,21 @@ export class CashRegisterService implements ICashRegisterService {
     });
   }
 
-  async syncOpenSession(restaurantId: string): Promise<void> {
-    const session = await this.cashRegisterRepository.findOpenSessionByRestaurant(restaurantId);
-    if (!session) return;
+  async syncOpenSession(restaurantId: string, sessionId?: string): Promise<void> {
+    const session = sessionId
+      ? await this.cashRegisterRepository.findById(sessionId)
+      : await this.cashRegisterRepository.findOpenSessionByRestaurant(restaurantId);
+    if (!session || session.restaurantId !== restaurantId || session.status !== 'aberto') return;
 
     const from = new Date(session.openedAt);
-    const to = new Date();
+    const to = cashRegisterPeriodEnd(session);
     const orders = await this.orderRepository.findReceivedSalesBetween(restaurantId, from, to);
     for (const order of orders) {
       if (order.orderType === 'table') {
         for (const payment of order.tablePayments ?? []) {
           const paidAt = new Date(payment.paidAt);
           if (paidAt < from || paidAt >= to) continue;
-          await this.addAutomaticEntry({
+          await this.recordAutomaticEntry(session.id, {
             restaurantId,
             orderId: order.id,
             orderNumber: order.orderNumber,
@@ -100,7 +105,7 @@ export class CashRegisterService implements ICashRegisterService {
         continue;
       }
       if (order.status !== 'entregue') continue;
-      await this.addAutomaticEntry({
+      await this.recordAutomaticEntry(session.id, {
         restaurantId,
         orderId: order.id,
         orderNumber: order.orderNumber,
@@ -110,38 +115,35 @@ export class CashRegisterService implements ICashRegisterService {
     }
   }
 
-  /**
-   * REQ-3/REQ-4/REQ-6 — ver `ICashRegisterService.ensureAutomaticSchedule`. Decisões do spec:
-   * dia com `isClosed: true` (ou sem `businessHours` cadastrado pro dia) é no-op; sessão
-   * duplicada (abrir já tendo uma aberta, ou fechar sem nenhuma aberta) também é no-op silencioso
-   * — nunca lança erro, nunca derruba a rota que disparou a verificação.
-   */
+  /** 0176: abre a data atual sem fechar pendências ou reabrir uma data já conferida. */
   async ensureAutomaticSchedule(restaurantId: string, now: Date = new Date()): Promise<void> {
     const restaurant = await this.restaurantRepository.findById(restaurantId);
     if (!restaurant || restaurant.cashRegisterMode !== 'automatic') return;
 
     const { dayOfWeek, minutes } = getRestaurantLocalTime(now);
     const todayHours = restaurant.businessHours.find((day) => day.dayOfWeek === dayOfWeek);
-    if (!todayHours || todayHours.isClosed || !todayHours.openTime || !todayHours.closeTime) return;
-
-    const openMinutes = minutesSinceMidnight(todayHours.openTime);
-    const closeMinutes = minutesSinceMidnight(todayHours.closeTime);
-    const session = await this.cashRegisterRepository.findOpenSessionByRestaurant(restaurantId);
-
+    const previousDay = getRestaurantLocalTime(new Date(now.getTime() - 86_400_000)).dayOfWeek;
+    const previousHours = restaurant.businessHours.find((day) => day.dayOfWeek === previousDay);
+    const withinToday = todayHours && !todayHours.isClosed && todayHours.openTime && todayHours.closeTime
+      && minutes >= minutesSinceMidnight(todayHours.openTime)
+      && (minutesSinceMidnight(todayHours.closeTime) <= minutesSinceMidnight(todayHours.openTime)
+        || minutes < minutesSinceMidnight(todayHours.closeTime));
+    const withinPreviousNight = previousHours && !previousHours.isClosed && previousHours.openTime && previousHours.closeTime
+      && minutesSinceMidnight(previousHours.closeTime) <= minutesSinceMidnight(previousHours.openTime)
+      && minutes < minutesSinceMidnight(previousHours.closeTime);
+    if (!withinToday && !withinPreviousNight) return;
+    const session = await this.cashRegisterRepository.findSessionByDate(restaurantId, cashRegisterDate(now));
     if (!session) {
-      // REQ-3 — só abre dentro da janela do dia (nunca depois do horário de fechamento: nesse
-      // caso o dia já "acabou" sem caixa, não faz sentido abrir um agora).
-      if (minutes >= openMinutes && minutes < closeMinutes) {
-        await this.cashRegisterRepository.open(restaurantId, 0, AUTOMATIC_ACTOR, true);
+      try {
+        await this.cashRegisterRepository.open(restaurantId, 0, AUTOMATIC_ACTOR, true, now);
+      } catch (error) {
+        // Outra requisição pode ter aberto o mesmo caixa enquanto consultávamos.
+        if (!(await this.cashRegisterRepository.findSessionByDate(restaurantId, cashRegisterDate(now)))) throw error;
       }
       return;
     }
 
-    // REQ-4 — sessão já aberta e o horário de fechamento já passou.
-    if (minutes >= closeMinutes) {
-      const calculatedBalance = await this.cashRegisterRepository.getCalculatedBalance(session.id);
-      await this.cashRegisterRepository.close(session.id, calculatedBalance, AUTOMATIC_ACTOR, true);
-    }
+    // Fechamento é sempre uma conferência manual, inclusive depois do horário.
   }
 
   async getBalanceByPaymentMethod(sessionId: string): Promise<CashBalanceByPaymentMethod> {
@@ -160,7 +162,7 @@ export class CashRegisterService implements ICashRegisterService {
       throw new Error(`Sessão de caixa ${sessionId} não encontrada`);
     }
 
-    const periodEnd = session.closedAt ? new Date(session.closedAt) : new Date();
+    const periodEnd = cashRegisterPeriodEnd(session);
     const orders = await this.orderRepository.findReceivedSalesBetween(session.restaurantId, new Date(session.openedAt), periodEnd);
 
     const salesByPaymentMethod = zeroBalanceByPaymentMethod();

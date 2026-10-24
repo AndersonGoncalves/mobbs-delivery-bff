@@ -75,6 +75,16 @@ export class AutoPrintController extends BaseRouter {
       res.send(204);
     });
 
+    // Só após sucesso do bridge ou confirmação explícita do operador no fallback do navegador.
+    application.post('/restaurants/me/orders/:id/printed', ...operatorAuthenticated, async (req: Request, res: Response) => {
+      const order = await this.orderRepository.findById(req.params.id);
+      if (!order || order.restaurantId !== req.restaurantId) {
+        throw new NotFoundError('Pedido não encontrado');
+      }
+      await this.orderRepository.markAutoPrinted(order.id, req.restaurantId!);
+      res.send(204);
+    });
+
     // REQ-6/REQ-7 — regenerar invalida a chave anterior (a antiga simplesmente não casa mais com
     // nenhum restaurante em `findByAutoPrintApiKey`).
     application.post('/restaurants/me/auto-print/regenerate-key', ...operatorAuthenticated, async (req: Request, res: Response) => {

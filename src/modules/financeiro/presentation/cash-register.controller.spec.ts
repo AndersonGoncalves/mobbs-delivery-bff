@@ -81,6 +81,8 @@ function buildClosedTableOrder(overrides: Record<string, unknown> = {}) {
 }
 
 describe('CashRegisterController', () => {
+  beforeEach(() => { jest.useFakeTimers(); jest.setSystemTime(new Date('2026-09-09T12:00:00Z')); });
+  afterEach(() => jest.useRealTimers());
   function setup(overrides: {
     cashRegisterRepository?: Partial<ICashRegisterRepository>;
     orderRepository?: Partial<IOrderRepository>;
@@ -88,6 +90,8 @@ describe('CashRegisterController', () => {
   } = {}) {
     const cashRegisterRepository: Partial<ICashRegisterRepository> = {
       findOpenSessionByRestaurant: jest.fn().mockResolvedValue(null),
+      findSessionByDate: overrides.cashRegisterRepository?.findOpenSessionByRestaurant ?? jest.fn().mockResolvedValue(null),
+      findPendingSessions: jest.fn().mockResolvedValue([]),
       findById: jest.fn().mockResolvedValue(buildSession()),
       open: jest.fn().mockResolvedValue(buildSession()),
       addMovement: jest.fn().mockResolvedValue(buildMovement()),
@@ -234,8 +238,44 @@ describe('CashRegisterController', () => {
 
     await runOperatorChain(routes['GET /restaurants/me/cash-register/open'], { restaurantId: 'r-1' }, { json });
 
-    expect(json).toHaveBeenCalledWith(200, { session: null, movements: [], calculatedBalance: 0, tableSales: 0, balanceByPaymentMethod: {} });
+    expect(json).toHaveBeenCalledWith(200, { session: null, pendingSessions: [], todaySession: null, movements: [], calculatedBalance: 0, tableSales: 0, balanceByPaymentMethod: {} });
     expect(cashRegisterService.ensureAutomaticSchedule).toHaveBeenCalledWith('r-1');
+  });
+
+  it('0176: consulta e fecha caixa pendente individualmente, sem alterar outros caixas', async () => {
+    const previous = buildSession({ id: 'yesterday', openedAt: '2026-09-08T11:00:00Z' });
+    const { routes, cashRegisterRepository, cashRegisterService, orderRepository } = setup({
+      cashRegisterRepository: {
+        findById: jest.fn().mockResolvedValue(previous),
+        findPendingSessions: jest.fn().mockResolvedValue([previous, buildSession()]),
+        close: jest.fn().mockResolvedValue({ session: { ...previous, status: 'fechado' }, calculatedBalance: 150, difference: 0 }),
+      },
+    });
+    const json = jest.fn();
+    await runOperatorChain(routes['GET /restaurants/me/cash-register/:id'], { restaurantId: 'r-1', params: { id: 'yesterday' } }, { json });
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ session: previous, pendingSessions: expect.any(Array) }));
+    expect(orderRepository.getTableSalesBetween).toHaveBeenCalledWith('r-1', new Date(previous.openedAt), new Date('2026-09-09T03:00:00Z'));
+    await runOperatorChain(routes['POST /restaurants/me/cash-register/:id/close'], {
+      restaurantId: 'r-1', params: { id: 'yesterday' }, body: { countedValue: 150 }, user: { uid: 'operator' },
+    }, { json });
+    expect(cashRegisterService.syncOpenSession).toHaveBeenCalledWith('r-1', 'yesterday');
+    expect(cashRegisterRepository.close).toHaveBeenCalledWith('yesterday', 150, 'operator');
+  });
+
+  it('0176: consulta por id não revela caixa de outro restaurante', async () => {
+    const { routes } = setup({ cashRegisterRepository: { findById: jest.fn().mockResolvedValue(buildSession({ restaurantId: 'another' })) } });
+    await expect(runOperatorChain(routes['GET /restaurants/me/cash-register/:id'], { restaurantId: 'r-1', params: { id: 'cr-1' } }, { json: jest.fn() }))
+      .rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('0176: recusa lançamento manual de hoje em caixa pendente antigo', async () => {
+    const { routes, cashRegisterRepository } = setup({ cashRegisterRepository: {
+      findById: jest.fn().mockResolvedValue(buildSession({ openedAt: '2026-09-08T12:00:00Z' })),
+    } });
+    await expect(runOperatorChain(routes['POST /restaurants/me/cash-register/:id/movements'], {
+      restaurantId: 'r-1', params: { id: 'cr-1' }, body: { type: 'entrada', amount: 10, description: 'Hoje' },
+    }, { json: jest.fn() })).rejects.toMatchObject({ statusCode: 400 });
+    expect(cashRegisterRepository.addMovement).not.toHaveBeenCalled();
   });
 
   it('GET /restaurants/me/cash-register/open devolve a sessão aberta com movimentos, saldo calculado e saldo por forma de pagamento (REQ-9)', async () => {
@@ -249,6 +289,7 @@ describe('CashRegisterController', () => {
 
     expect(json).toHaveBeenCalledWith(200, {
       session: expect.objectContaining({ id: 'cr-1' }),
+      pendingSessions: [],
       movements: [expect.objectContaining({ id: 'mv-1' })],
       calculatedBalance: 150,
       tableSales: 75,
