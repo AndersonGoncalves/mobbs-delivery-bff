@@ -1,0 +1,4 @@
+{
+  "jest.jestCommandLine": "npm test -- --runInBand",
+  "jest.runMode": "on-demand"
+}

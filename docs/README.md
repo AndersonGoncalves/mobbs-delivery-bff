@@ -3,6 +3,17 @@
 BFF (Node.js + Restify + MongoDB/Mongoose) do ecossistema mobbs-delivery — consumido por
 `mobbs-delivery-app` (Flutter) e `mobbs-delivery-web` (React).
 
+## Rodar localmente sem pipeline
+
+Guia passo a passo: [rodar-local/RUN-BFF.md](../../mobbs-delivery-app/rodar-local/RUN-BFF.md).
+Para compilar e iniciar BFF + app + retaguarda, veja o
+[índice local](../../mobbs-delivery-app/rodar-local/README.md).
+
+O caminho recomendado roda Mongo local e **BFF compilado no host** (`npm run build`,
+depois `npm start`). `docker compose up -d mongo` sobe somente o banco.
+**`docker compose up -d` sozinho não compila seu código**: a API do Compose usa imagem GHCR.
+Não é necessário pipeline, push ou acesso à EC2 para desenvolver localmente.
+
 ## Contratos — ajustes 0176
 
 - `GET /support/public` é público e retorna exclusivamente
@@ -54,10 +65,10 @@ específica.
 
 ## Padrões
 
-Ver `docs/architecture/patterns.md` §16 (BFF) e `docs/architecture/overview.md` no repositório
-`mobbs-delivery-app` — este repositório ainda não tem `docs/`/`specs/` próprios (ver
-`specs/README.md` daquele repo para o processo de SDD compartilhado entre os repositórios do
-ecossistema).
+Ver [patterns.md §16](../../mobbs-delivery-app/docs/architecture/patterns.md) e
+[overview.md](../../mobbs-delivery-app/docs/architecture/overview.md).
+As specs/arquitetura compartilhadas vivem no app; este repositório tem seus próprios
+guias de execução e testes em `docs/`.
 
 ## Scripts de terminal (`scripts/`)
 
@@ -139,3 +150,21 @@ s3://mobbs-delivery-images/restaurants/<id>/ --recursive`.
   sem exigir operador prévio) cria o restaurante e o primeiro operador (`dono`) automaticamente.
   O script `seed:restaurant` continua útil só pra criar um restaurante de teste sem passar pelo
   fluxo de autocadastro de verdade.
+
+## Resumo rápido — compilar e rodar local
+
+Prepare `.env`, credencial Firebase e banco **local** primeiro, conforme
+[RUN-BFF.md](../../mobbs-delivery-app/rodar-local/RUN-BFF.md).
+Sem pipeline e sem container da API:
+
+```bash
+cd /home/anderson/DevPrograms/Projetos/delivery/mobbs-delivery-bff
+npm ci
+docker compose up -d mongo
+npm run build
+npm start
+```
+
+Deixe o terminal aberto. Em outro: `curl -i http://localhost:3001/support/public`.
+Para editar com recarga, use `npm run dev` no lugar de build/start.
+Testes não precisam desse servidor: `npm test -- --runInBand`.

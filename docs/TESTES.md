@@ -1,93 +1,177 @@
-# Testes do `mobbs-delivery-bff`
+# Testes do BFF — terminal e painel Testing do VS Code
 
-Guia de como rodar os testes automatizados do BFF. Para subir o BFF em si, veja o
-[`README.md`](./README.md) e `../mobbs-delivery-app/rodar-local/README.md`.
+O BFF usa **Jest + ts-jest**; a retaguarda usa **Vitest** e o app usa **Dart/Flutter**.
+Os três aparecem no mesmo painel Testing, mas **cada framework precisa de seu adaptador**.
+Instalar Vitest não descobre os arquivos Jest `*.spec.ts` do BFF.
 
-## Visão geral
+Configuração do runner: [jest.config.js](../jest.config.js).
+Testes ficam em `src/**/*.spec.ts`, junto ao código. Não precisa compilar antes,
+subir Mongo/BFF, executar Docker, fornecer service account ou criar dados para testes unitários.
+As dependências externas são mockadas. Não use credenciais reais para testar.
 
-| Item | Valor |
-|---|---|
-| Framework | **Jest 29** + **ts-jest** (TypeScript direto, sem build prévio) |
-| Config | [`jest.config.js`](./jest.config.js) — `testEnvironment: node`, `testMatch: **/*.spec.ts` |
-| Onde ficam os testes | `*.spec.ts` ao lado do código (`src/modules/<modulo>/{domain,infra,presentation}/`) |
-| Tamanho atual | ~91 arquivos / ~950 testes, ≈ 1,5 min |
-| Dependências externas | **Nenhuma** — Mongo, Firebase e AWS são mockados. Não precisa de Docker, `.env` nem `firebase-service-account.json` |
+Para rodar o servidor (não os testes), veja
+[RUN-BFF.md](../../mobbs-delivery-app/rodar-local/RUN-BFF.md).
 
-Pré-requisito: `npm install` (Node 20).
-
-## Rodando pelo terminal
+## 1. Preparar dependências
 
 ```bash
-cd mobbs-delivery-bff
-
-npm test                                   # todos os testes (jest --passWithNoTests)
-npx jest src/modules/orders                # só uma pasta/módulo
-npx jest src/modules/auto-print/presentation/auto-print.controller.spec.ts   # um arquivo
-npx jest -t "AC-3"                         # só testes cujo nome contém "AC-3"
-npx jest --watch                           # re-roda ao salvar (só os arquivos afetados pelo git diff)
-npx jest --verbose                         # lista cada teste
-npx jest --runInBand                       # um processo só (útil pra depurar ou em máquina fraca)
-npx jest --listTests                       # só lista os arquivos de teste, sem rodar
+cd /home/anderson/DevPrograms/Projetos/delivery/mobbs-delivery-bff
+npm ci
 ```
 
-### Cobertura
+Node 20.19+ ou uma versão compatível posterior. Isso instala o Jest local do lockfile.
 
-O Jest já traz cobertura embutida (a pasta `coverage/` está no `.gitignore`):
+## 2. Fazer aparecer ao lado de Flutter e Vitest
+
+### 2.1 Instalar a extensão certa
+
+No VS Code, abra **Extensions** (Ctrl+Shift+X), pesquise pelo identificador
+**`orta.vscode-jest`** e instale **Jest**, de Orta.
+
+Link: <https://marketplace.visualstudio.com/items?itemName=Orta.vscode-jest>
+
+Se preferir terminal, a instalação explícita é:
 
 ```bash
-npx jest --coverage                                   # tabela por arquivo + coverage/lcov-report/index.html
-npx jest src/modules/orders --coverage --coverageReporters=text-summary   # só um resumo
+code --install-extension Orta.vscode-jest
 ```
 
-### Gates antes de abrir PR (os mesmos do dia a dia)
+Instale/habilite no **perfil/janela atual**. Em WSL, SSH ou Dev Container, instale também no
+ambiente remoto onde a pasta do BFF está aberta. Ter uma extensão instalada no host não
+garante que esteja habilitada no remoto.
 
-```bash
-npm run lint && npm test && npm run build
+Não confunda com Jest Runner: o objetivo aqui é a extensão Jest que integra o **Testing** nativo.
+
+### 2.2 Abrir a pasta do BFF no workspace
+
+Para ver os projetos juntos, o workspace deve incluir estas pastas como raízes:
+
+```text
+mobbs-delivery-app
+mobbs-building-blocks
+mobbs-delivery-web
+mobbs-delivery-bff
 ```
 
-## Rodando pelo VS Code (painel **Testing**, igual ao do Flutter)
+Use **File → Add Folder to Workspace…** e selecione `mobbs-delivery-bff` se não estiver na lista.
+Abrir só a pasta do app não inclui automaticamente um repositório irmão.
+O workspace local `delivery/mobbs-delivery.code-workspace`, se usado, já deve listar essas raízes.
+Salve o workspace e autorize a confiança somente se você confia no código.
 
-O painel *Testing* do VS Code é genérico: o Flutter/Dart aparece nele pela extensão do Dart, e o
-Jest aparece por uma extensão própria.
+### 2.3 Usar a configuração versionada do projeto
 
-1. Instale a extensão **Jest** (`orta.vscode-jest`).
-2. Abra a pasta `mobbs-delivery-bff` (ou, num workspace com várias pastas, configure a raiz do Jest
-   em `.vscode/settings.json` — a pasta `.vscode/` é ignorada pelo Git, é só da sua máquina):
+O BFF já contém:
 
-   ```json
-   {
-     "jest.rootPath": "/home/anderson/DevPrograms/Projetos/delivery/mobbs-delivery-bff",
-     "jest.jestCommandLine": "npx jest",
-     "jest.runMode": "on-demand"
-   }
+- [.vscode/extensions.json](../.vscode/extensions.json): recomenda o adaptador Jest.
+- [.vscode/settings.json](../.vscode/settings.json):
+
+```json
+{
+  "jest.jestCommandLine": "npm test -- --runInBand",
+  "jest.runMode": "on-demand"
+}
+```
+
+A extensão usa a raiz **desta pasta BFF** e encontra `jest.config.js` automaticamente.
+Não configure `jest.rootPath` para a raiz do Flutter nem uma configuração global apontando a
+outro repositório. O modo **on-demand** só executa quando você clica: não dispara toda a suíte
+ao salvar. `--runInBand` reduz concorrência e consumo de memória.
+
+Se você tinha `jest.enable: false` ou um `jest.disabledWorkspaceFolders` excluindo o BFF nas
+configurações pessoais/workspace, remova essa exclusão. Configurações antigas podem impedir
+o runner de iniciar apesar destes arquivos.
+
+### 2.4 Descobrir e executar pela interface
+
+1. Abra a paleta (Ctrl+Shift+P) e execute **Developer: Reload Window**, se acabou de instalar.
+2. Abra **Testing** (ícone de frasco, como na imagem).
+3. Use **Refresh Tests** (atualizar testes) na barra do painel. Se o Jest estiver parado,
+   procure `Jest` na paleta e use o comando de iniciar o runner disponível na sua versão.
+4. Deve surgir a árvore Jest do BFF, além das árvores Dart/Flutter e Vitest.
+5. Expanda `src → modules → suppliers → presentation → suppliers.controller.spec.ts`.
+6. Clique no **▶ do arquivo** para rodar só essa suíte. Depois pode executar um `describe`,
+   um teste específico ou a árvore inteira do BFF.
+7. Clique em **Debug Test** para parar em breakpoints.
+
+Não use o ▶ do topo do painel se quiser só BFF: **Run All Tests** também pode iniciar
+Flutter e Vitest, deixando a máquina muito mais carregada.
+
+## 3. Se a árvore Jest não aparecer
+
+Faça nesta ordem, sem trocar Jest por Vitest:
+
+1. Confirme que `mobbs-delivery-bff` está aberto como raiz e que a extensão está habilitada
+   na janela/perfil/ambiente corretos.
+2. Na raiz do BFF rode:
+
+   ```bash
+   npm test -- --runInBand --listTests
    ```
 
-   `on-demand` roda só quando você clica (com ~950 testes, o modo automático é pesado).
-3. Os testes aparecem no painel *Testing* em árvore (`src/modules/...`), com ▶ por teste/arquivo/
-   pasta, ícones de ✔/✖ e *Debug Test*. Também aparece o ▶ em cima de cada `it(...)`/`describe(...)`
-   dentro do arquivo `.spec.ts`.
+   Deve listar caminhos `*.spec.ts`. Se esse comando falhar, resolva o erro do terminal
+   (por exemplo, rode `npm ci` se falta Jest). Sem descoberta pelo CLI, o adaptador também falha.
+3. Abra **View → Output** e escolha o canal **Jest** correspondente ao BFF. Confira erros
+   de raiz, comando e Node. `MODULE_NOT_FOUND` costuma indicar dependências ausentes ou raiz errada.
+4. Remova configurações antigas como caminho absoluto de outra máquina e recarregue a janela.
+5. Para isolar workspace, abra somente a pasta BFF em outra janela e confira o Testing.
+   Se funcionar isolado, revise as configurações do workspace multi-root, não os testes.
 
-## Melos?
-
-**Não.** O Melos é uma ferramenta do ecossistema **Dart/Flutter** (lê `pubspec.yaml`) e não
-enxerga projetos Node. Aqui o equivalente é o próprio `npm` (scripts do `package.json`), e para
-rodar os 4 projetos de uma vez veja a seção "Resumo" de
-`../mobbs-delivery-app/rodar-local/README.md`.
-
-## Como os testes são escritos
-
-- Controllers são testados com os **repositórios mockados** (`jest.fn()`), chamando a cadeia de
-  middlewares da rota — sem subir servidor HTTP nem banco.
-- Exceção deliberada: repositórios Mongoose só têm spec quando a query em si precisa ser validada
-  (ex.: `order.mongoose.repository.spec.ts`), mockando o `Model`.
-- Nomes dos testes citam a spec e o critério de aceite (`specs/0164 AC-1: ...`) — facilita rodar
-  por `-t "specs/0164"`.
-- Convenções gerais e fluxo SDD: `../mobbs-delivery-app/specs/README.md`.
-
-## Problemas comuns
-
-| Sintoma | Causa / solução |
+| Sintoma | Ação |
 |---|---|
-| Teste passa sozinho e falha na suíte inteira | Estado compartilhado entre testes — confira `jest.clearAllMocks()`/`restoreAllMocks` e `jest.useRealTimers()` no `afterEach` |
-| `console.error` no meio da saída verde | Esperado em testes que cobrem o caminho de erro (ex.: falha de WhatsApp/financeiro "fire-and-forget"); só é problema se o teste falhar |
-| Lentidão no 1º run | ts-jest compila e guarda cache; os runs seguintes são mais rápidos |
+| Só aparecem Flutter e Vitest | Instale/habilite `orta.vscode-jest` e inclua a pasta BFF no workspace |
+| Extensão instalada, mas nenhum teste | Confirme Trust, perfil/remoto, configurações de exclusão e canal Output/Jest |
+| Jest tenta rodar na pasta do app | Remova `jest.rootPath` global errado; use configuração de pasta do BFF |
+| Terminal descobre, mas VS Code não | Problema do adaptador/workspace; não precisa subir Mongo nem recompilar o BFF |
+| Lentidão com todos os projetos | Rode ▶ na árvore/arquivo BFF, não Run All; mantenha `--runInBand` |
+
+## 4. Comandos de testes no terminal
+
+Todos a partir da raiz `mobbs-delivery-bff`:
+
+```bash
+npm test -- --runInBand
+npm test -- --runInBand src/modules/orders
+npm test -- --runInBand --runTestsByPath src/modules/suppliers/presentation/suppliers.controller.spec.ts
+npm test -- --runInBand -t "AC-1"
+npm test -- --runInBand --watch
+npm test -- --runInBand --verbose
+npm test -- --runInBand --listTests
+```
+
+`--watch` é contínuo; Ctrl+C para sair. `--runTestsByPath` seleciona o arquivo exato.
+Não existe `melos` para este repositório Node.
+
+Cobertura:
+
+```bash
+npm test -- --runInBand --coverage
+```
+
+Saída HTML em `coverage/lcov-report/index.html`. Não é preciso instalar outro provider para Jest.
+
+Gates locais:
+
+```bash
+npm run lint
+npm test -- --runInBand
+npm run build
+```
+
+## Resumo rápido — Testing igual ao app/web
+
+1. Instale **Jest (`orta.vscode-jest`)** na janela/ambiente correto.
+2. Adicione a pasta **mobbs-delivery-bff** ao workspace.
+3. No terminal do BFF:
+
+   ```bash
+   cd /home/anderson/DevPrograms/Projetos/delivery/mobbs-delivery-bff
+   npm ci
+   npm test -- --runInBand --listTests
+   ```
+
+4. Recarregue a janela, abra **Testing**, atualize os testes e clique no **▶ da árvore Jest/BFF**.
+5. Prova rápida no terminal, sem API/banco:
+
+   ```bash
+   npm test -- --runInBand --runTestsByPath src/modules/suppliers/presentation/suppliers.controller.spec.ts
+   ```
