@@ -55,7 +55,7 @@ describe('buildReceiptLines (specs/0139-impressao-automatica-bridge)', () => {
     expect(texts).toContain('Desconto: R$0,00');
     expect(texts).toContain('Entrega: R$0,00');
     expect(texts).toContain('TOTAL: R$84,00');
-    expect(texts).toContain('Pagamento: Cartao de credito');
+    expect(texts).toContain('Pagamento: Cartao de Credito Maquininha');
     expect(texts).toContain('-- BsDelivery --');
   });
 

@@ -39,6 +39,14 @@ Cada resposta/mudança acumula histórico datado e incrementa a revisão atomica
 Coleções `suggestion` e `suggestion_read`, com índices Mongoose; não é necessário seed.
 Falhas de persistência são propagadas pelo tratamento HTTP padrão.
 
+## Mercado Pago — configuração inicial
+
+Passo a passo desde a criação da aplicação, OAuth em nova aba, PKCE, callback, webhook,
+credenciais e habilitação no app: [MERCADO-PAGO.md](./MERCADO-PAGO.md).
+`GET /restaurants/me/mercadopago/config` (dono/gerente) informa configuração pública e
+variáveis ausentes, nunca os segredos. Application ID/callback agora vêm do BFF,
+sem depender de `VITE_MERCADOPAGO_CLIENT_ID`.
+
 ## Contratos — ajustes 0176
 
 - `GET /support/public` é público e retorna exclusivamente
@@ -46,7 +54,8 @@ Falhas de persistência são propagadas pelo tratamento HTTP padrão.
   Configure `SUPPORT_WHATSAPP` (DDI/DDD, somente dígitos), `SUPPORT_EMAIL`,
   `SUPPORT_BUSINESS_HOURS`, `SUPPORT_TRAINING_PRICE_CENTS` (inteiro em centavos)
   e `SUPPORT_TRAINING_UNLIMITED_ITEMS` (`true`/`false`).
-  Contatos não configurados ficam vazios, sem contato ou link fictício. A oferta padrão
+  O WhatsApp público padrão é `5585986404604`, confirmado pelo proprietário; `SUPPORT_WHATSAPP`
+  permite alterá-lo. E-mail não configurado fica vazio. A oferta padrão
   custa 4990 centavos, sem limite de itens; horário padrão: “Horário comercial”.
   Os três setores (suporte/comercial/financeiro) usam os mesmos contatos.
   `.env.example` contém placeholders; configure contatos reais apenas no ambiente privado.

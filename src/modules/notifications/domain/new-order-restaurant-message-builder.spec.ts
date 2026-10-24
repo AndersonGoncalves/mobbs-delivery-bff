@@ -70,8 +70,8 @@ describe('buildNewOrderRestaurantMessage', () => {
     const template = 'Pagamento: {formaPagamento}';
 
     expect(buildNewOrderRestaurantMessage(buildInput({ template, order: buildOrder({ paymentMethod: 'pix' }) }))).toBe('Pagamento: Pix');
-    expect(buildNewOrderRestaurantMessage(buildInput({ template, order: buildOrder({ paymentMethod: 'creditCard' }) }))).toBe('Pagamento: Cartão de crédito');
-    expect(buildNewOrderRestaurantMessage(buildInput({ template, order: buildOrder({ paymentMethod: 'debitCard' }) }))).toBe('Pagamento: Cartão de débito');
+    expect(buildNewOrderRestaurantMessage(buildInput({ template, order: buildOrder({ paymentMethod: 'creditCard' }) }))).toBe('Pagamento: Cartão de Crédito Maquininha');
+    expect(buildNewOrderRestaurantMessage(buildInput({ template, order: buildOrder({ paymentMethod: 'debitCard' }) }))).toBe('Pagamento: Cartão de Débito Maquininha');
     expect(buildNewOrderRestaurantMessage(buildInput({ template, order: buildOrder({ paymentMethod: 'cash' }) }))).toBe('Pagamento: Dinheiro');
     expect(buildNewOrderRestaurantMessage(buildInput({ template, order: buildOrder({ paymentMethod: 'creditCardOnline' }) }))).toBe('Pagamento: Cartão de crédito (pago pelo app)');
   });

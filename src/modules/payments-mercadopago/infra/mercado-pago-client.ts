@@ -73,13 +73,14 @@ export class MercadoPagoClient {
 
   /** `POST /oauth/token` com `grant_type: authorization_code` — troca o `code` do callback pelo
    * par de tokens do restaurante. `access_token` vale 180 dias (`expiresIn` em segundos). */
-  async exchangeCodeForToken(code: string, redirectUri: string): Promise<MercadoPagoTokenResult> {
+  async exchangeCodeForToken(code: string, redirectUri: string, codeVerifier?: string): Promise<MercadoPagoTokenResult> {
     const result = await this.requestWithoutAuth<{ access_token: string; refresh_token: string; user_id: number; expires_in: number }>('/oauth/token', {
       client_id: this.clientId,
       client_secret: this.clientSecret,
       code,
       grant_type: 'authorization_code',
       redirect_uri: redirectUri,
+      ...(codeVerifier ? { code_verifier: codeVerifier } : {}),
     });
     return { accessToken: result.access_token, refreshToken: result.refresh_token, userId: String(result.user_id), expiresIn: result.expires_in };
   }

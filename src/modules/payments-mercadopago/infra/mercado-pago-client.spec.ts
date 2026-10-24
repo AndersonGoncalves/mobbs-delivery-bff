@@ -51,7 +51,15 @@ describe('MercadoPagoClient (specs/0170-integracao-mercado-pago)', () => {
       grant_type: 'refresh_token',
       refresh_token: 'refresh-1',
     });
+
     expect(result).toEqual({ accessToken: 'token-2', refreshToken: 'refresh-2', userId: '123', expiresIn: 15552000 });
+  });
+
+  it('0180: envia code_verifier quando PKCE foi usado', async () => {
+    mockFetchOnce(200, { access_token: 'token', refresh_token: 'refresh', user_id: 123, expires_in: 3600 });
+    await client.exchangeCodeForToken('code', 'https://bsdelivery.com.br/painel/settings/mercadopago/callback', 'v'.repeat(64));
+    const [, options] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(JSON.parse(options.body)).toMatchObject({ code_verifier: 'v'.repeat(64) });
   });
 
   it('createPreference: POST /checkout/preferences com o accessToken do restaurante e external_reference', async () => {

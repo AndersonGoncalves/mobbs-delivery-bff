@@ -97,9 +97,9 @@ export function paymentMethodLabel(method: PaymentMethod): string {
     case 'pix':
       return 'Pix';
     case 'creditCard':
-      return 'Cartão de crédito';
+      return 'Cartão de Crédito Maquininha';
     case 'debitCard':
-      return 'Cartão de débito';
+      return 'Cartão de Débito Maquininha';
     case 'cash':
       return 'Dinheiro';
     case 'creditCardOnline':
@@ -123,10 +123,10 @@ export function buildPaymentBlock(input: PaymentBlockInput): string {
       }
       break;
     case 'creditCard':
-      lines.push(`Forma: Cartão de crédito${cardBrand ? ` (${cardBrand})` : ''}`);
+      lines.push(`Forma: Cartão de Crédito Maquininha${cardBrand ? ` (${cardBrand})` : ''}`);
       break;
     case 'debitCard':
-      lines.push(`Forma: Cartão de débito${cardBrand ? ` (${cardBrand})` : ''}`);
+      lines.push(`Forma: Cartão de Débito Maquininha${cardBrand ? ` (${cardBrand})` : ''}`);
       break;
     case 'cash':
       lines.push('Forma: Dinheiro');

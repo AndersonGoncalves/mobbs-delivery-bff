@@ -18,9 +18,9 @@ const ALL_PAYMENT_METHODS: PaymentMethod[] = ['creditCard', 'creditCardOnline', 
 const PAYMENT_LABEL: Record<string, string> = {
   cash: 'Dinheiro',
   pix: 'Pix',
-  creditCard: 'Crédito',
+  creditCard: 'Cartão de Crédito Maquininha',
   creditCardOnline: 'Cartão (online)',
-  debitCard: 'Débito',
+  debitCard: 'Cartão de Débito Maquininha',
 };
 
 // Identifica apenas a abertura automática; fechamento exige um operador.

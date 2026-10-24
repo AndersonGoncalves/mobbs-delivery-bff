@@ -155,7 +155,7 @@ describe('buildOrderReceiptMessage', () => {
     const message = buildOrderReceiptMessage(
       buildInput({ order: buildOrder({ paymentMethod: 'creditCard' }), cardBrand: 'Visa' }),
     );
-    expect(message).toContain('Cartão de crédito (Visa)');
+    expect(message).toContain('Cartão de Crédito Maquininha (Visa)');
   });
 
   it('bloco de pagamento com dinheiro só mostra o método', () => {

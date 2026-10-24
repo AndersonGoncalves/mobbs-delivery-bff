@@ -11,9 +11,9 @@ export interface ReceiptLine {
 const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   cash: 'Dinheiro',
   pix: 'Pix',
-  creditCard: 'Cartao de credito',
+  creditCard: 'Cartao de Credito Maquininha',
   creditCardOnline: 'Cartao de credito (pago online)',
-  debitCard: 'Cartao de debito',
+  debitCard: 'Cartao de Debito Maquininha',
 };
 
 const ORDER_TYPE_LABELS: Record<IOrder['orderType'], string> = {
