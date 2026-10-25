@@ -206,6 +206,9 @@ export interface IRestaurant {
    * tela de horário de funcionamento (não só o default automático do autocadastro), usado pelo
    * checklist de onboarding pra diferenciar "nunca revisou" de "revisou e manteve o padrão". */
   businessHoursReviewedAt?: Date;
+  /** specs/0185 — itens opcionais do checklist de onboarding que algum operador já abriu (vale para
+   * o restaurante inteiro, em qualquer computador). */
+  onboardingVisitedItems?: string[];
   /** specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-10 — formas de pagamento que
    * este restaurante aceita hoje (reaproveita o mesmo `PaymentMethod` de `Order.paymentMethod`,
    * não um enum próprio) — nasce com as 5 ativas no autocadastro (`RestaurantSignupController`). */

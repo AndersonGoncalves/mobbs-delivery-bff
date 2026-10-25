@@ -69,6 +69,7 @@ interface RestaurantLeanDocument {
   showCartSuggestions?: boolean;
   category?: string;
   businessHoursReviewedAt?: Date;
+  onboardingVisitedItems?: string[];
   acceptedPaymentMethods?: PaymentMethod[];
   autoConfirmPaymentMethods?: PaymentMethod[];
   orderTypes?: OrderType[];
@@ -175,6 +176,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     showCartSuggestions: doc.showCartSuggestions ?? false,
     category: doc.category,
     businessHoursReviewedAt: doc.businessHoursReviewedAt,
+    onboardingVisitedItems: doc.onboardingVisitedItems ?? [],
     acceptedPaymentMethods: doc.acceptedPaymentMethods ?? ALL_PAYMENT_METHODS,
     autoConfirmPaymentMethods: doc.autoConfirmPaymentMethods ?? [],
     orderTypes: doc.orderTypes?.length ? doc.orderTypes : ['delivery', 'pickup'],
@@ -278,6 +280,10 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
   async updateBilling(id: string, billing: IRestaurantBilling): Promise<IRestaurant> {
     const doc = await RestaurantModel.findByIdAndUpdate(id, { $set: { billing } }, { new: true }).lean<RestaurantLeanDocument>();
     return toEntity(doc as RestaurantLeanDocument);
+  }
+
+  async markOnboardingItemVisited(id: string, key: string): Promise<void> {
+    await RestaurantModel.updateOne({ _id: id }, { $addToSet: { onboardingVisitedItems: key } });
   }
 
   async setActive(id: string, isActive: boolean): Promise<IRestaurant> {

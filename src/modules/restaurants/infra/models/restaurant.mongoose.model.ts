@@ -196,6 +196,8 @@ const restaurantSchema = new Schema(
     // verdade a tela de horário de funcionamento (não só o default automático do autocadastro).
     // `null`/ausente = nunca revisado desde a criação.
     businessHoursReviewedAt: { type: Date },
+    // specs/0185 — itens opcionais do checklist de onboarding já visitados (compartilhado entre operadores).
+    onboardingVisitedItems: { type: [String], default: [] },
     // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-10 — default (mesmo raciocínio
     // de `RestaurantSignupController` passar explicitamente no create, mas como default de schema
     // cobre também qualquer outro caminho de criação). Pedido explícito do usuário — `bankTransfer`

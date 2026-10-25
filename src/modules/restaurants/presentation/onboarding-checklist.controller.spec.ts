@@ -71,6 +71,7 @@ describe('OnboardingChecklistController', () => {
         { key: 'customerApp', done: false },
       ],
       allDone: false,
+      visitedItems: [],
     });
   });
 
@@ -103,6 +104,7 @@ describe('OnboardingChecklistController', () => {
         { key: 'customerApp', done: true },
       ],
       allDone: true,
+      visitedItems: [],
     });
   });
 
@@ -146,5 +148,37 @@ describe('OnboardingChecklistController', () => {
       const [, payload] = json.mock.calls[0] as [number, { items: { key: string; done: boolean }[] }];
       expect(payload.items.find((item) => item.key === 'customerApp')?.done).toBe(true);
     }
+  });
+
+  // specs/0185 AC-1 — itens opcionais visitados valem para o restaurante, não para um computador.
+  it('specs/0185: devolve os itens visitados já gravados para o restaurante', async () => {
+    const { routes } = setup({ findById: jest.fn().mockResolvedValue(buildRestaurant({ onboardingVisitedItems: ['tables', 'products'] })) });
+    const json = jest.fn();
+
+    await runAuthenticatedChain(routes['GET /restaurants/me/onboarding-checklist'], {}, { json });
+
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ visitedItems: ['tables', 'products'] }));
+  });
+
+  it('specs/0185: POST visited grava a chave no restaurante da sessão e responde 204', async () => {
+    const markOnboardingItemVisited = jest.fn().mockResolvedValue(undefined);
+    const { routes } = setup({ markOnboardingItemVisited });
+    const send = jest.fn();
+
+    await runAuthenticatedChain(routes['POST /restaurants/me/onboarding-checklist/visited'], { body: { key: 'rawMaterials' } } as FakeRequest, { send } as unknown as FakeResponse);
+
+    expect(markOnboardingItemVisited).toHaveBeenCalledWith('r-1', 'rawMaterials');
+    expect(send).toHaveBeenCalledWith(204);
+  });
+
+  it('specs/0185: POST visited rejeita chave desconhecida ou campos extras sem gravar', async () => {
+    const markOnboardingItemVisited = jest.fn();
+    const { routes } = setup({ markOnboardingItemVisited });
+    const chain = routes['POST /restaurants/me/onboarding-checklist/visited'];
+
+    for (const body of [{ key: 'profile' }, { key: 'tables', extra: 1 }, {}]) {
+      await expect(runAuthenticatedChain(chain, { body } as FakeRequest, { send: jest.fn() } as unknown as FakeResponse)).rejects.toMatchObject({ statusCode: 400 });
+    }
+    expect(markOnboardingItemVisited).not.toHaveBeenCalled();
   });
 });

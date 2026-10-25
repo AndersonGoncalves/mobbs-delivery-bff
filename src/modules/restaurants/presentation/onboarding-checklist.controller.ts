@@ -1,12 +1,19 @@
 import type { Request, Response, Server } from 'restify';
+import { z } from 'zod';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
+import { parseBody } from '../../../shared/http/validate';
 import { IRestaurantRepository } from '../domain/repositories/restaurant.repository.interface';
 import { IMenuCategoryRepository } from '../../catalog/domain/repositories/menu-category.repository.interface';
 import { IProductRepository } from '../../catalog/domain/repositories/product.repository.interface';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
+
+// specs/0185 — itens opcionais do checklist (os que o BFF não deriva do estado do restaurante).
+const visitedItemSchema = z.object({
+  key: z.enum(['catalog', 'products', 'tables', 'operators', 'rawMaterials', 'onboardingLink']),
+}).strict();
 
 /**
  * specs/0039-onboarding-primeiro-acesso REQ-3/REQ-4/REQ-5 — checklist sempre derivado do estado
@@ -48,7 +55,14 @@ export class OnboardingChecklistController extends BaseRouter {
         { key: 'customerApp', done: !!found.logoUrl || !!found.primaryColor },
       ];
 
-      res.json(200, { items, allDone: items.every((item) => item.done) });
+      res.json(200, { items, allDone: items.every((item) => item.done), visitedItems: found.onboardingVisitedItems ?? [] });
+    });
+
+    application.post('/restaurants/me/onboarding-checklist/visited', ...authenticated, async (req: Request, res: Response) => {
+      const { key } = parseBody(visitedItemSchema, req.body);
+      this.render(await this.restaurantRepository.findById(req.restaurantId!));
+      await this.restaurantRepository.markOnboardingItemVisited(req.restaurantId!, key);
+      res.send(204);
     });
   }
 }

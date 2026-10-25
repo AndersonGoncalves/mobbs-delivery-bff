@@ -105,6 +105,8 @@ export interface IRestaurantRepository {
   findById(id: string): Promise<IRestaurant | null>;
   updateProfile(id: string, patch: RestaurantProfileUpdate): Promise<IRestaurant>;
   updateBusinessHours(id: string, businessHours: IBusinessHours[]): Promise<IRestaurant>;
+  /** specs/0185 — marca um item opcional do checklist de onboarding como visitado (idempotente). */
+  markOnboardingItemVisited(id: string, key: string): Promise<void>;
   setActive(id: string, isActive: boolean): Promise<IRestaurant>;
   /** specs/0042 — grava o estado de cobrança inteiro do restaurante (faixa, avisos, status, ciclo). */
   updateBilling(id: string, billing: IRestaurantBilling): Promise<IRestaurant>;
