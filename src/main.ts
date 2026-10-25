@@ -1,6 +1,11 @@
 import { Server } from './shared/http/server';
 import { SupportController } from './modules/support/presentation/support.controller';
 import { SupportSettingsMongooseRepository } from './modules/support/infra/support-settings.mongoose.repository';
+import { LandingContentController } from './modules/landing-content/presentation/landing-content.controller';
+import {
+  LandingContentMongooseRepository,
+  LandingTestimonialMongooseRepository,
+} from './modules/landing-content/infra/landing-content.mongoose.repository';
 import { SuggestionRepository } from './modules/suggestions/infra/suggestion.repository';
 import { SuggestionsController } from './modules/suggestions/presentation/suggestions.controller';
 import { buildRestaurantOperatorMiddleware } from './shared/http/restaurant-operator.middleware';
@@ -202,6 +207,12 @@ server
   .bootstrap([
     new SupportController(
       new SupportSettingsMongooseRepository(),
+      buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
+    ),
+    // specs/0183-conteudo-pagina-inicial — conteúdo da home pública e depoimentos.
+    new LandingContentController(
+      new LandingContentMongooseRepository(),
+      new LandingTestimonialMongooseRepository(),
       buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
     ),
     new SuggestionsController(
