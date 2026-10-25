@@ -27,6 +27,26 @@ const companySchema = new Schema({
   instagramUrl: { type: String, default: '' },
   termsUrl: { type: String, default: '' },
   privacyUrl: { type: String, default: '' },
+  backgroundColor: { type: String, default: '' },
+}, { _id: false });
+
+const sectionSettingsFields = {
+  title: { type: String, default: '' },
+  backgroundColor: { type: String, default: '' },
+  backgroundImageUrl: { type: String, default: '' },
+};
+const settingsSchema = new Schema({
+  headerColor: { type: String, default: '' },
+  features: { type: new Schema(sectionSettingsFields, { _id: false }), default: () => ({}) },
+  howItWorks: {
+    type: new Schema({ title: { type: String, default: '' }, backgroundColor: { type: String, default: '' } }, { _id: false }),
+    default: () => ({}),
+  },
+  clients: {
+    type: new Schema({ ...sectionSettingsFields, cardColor: { type: String, default: '' }, textColor: { type: String, default: '' } }, { _id: false }),
+    default: () => ({}),
+  },
+  testimonials: { type: new Schema(sectionSettingsFields, { _id: false }), default: () => ({}) },
 }, { _id: false });
 
 const landingContentSchema = new Schema<LandingContent & { _id: string }>(
@@ -36,6 +56,7 @@ const landingContentSchema = new Schema<LandingContent & { _id: string }>(
     howItWorks: { type: [howItWorksSchema], default: [] },
     clients: { type: [clientSchema], default: [] },
     company: { type: companySchema, default: () => ({}) },
+    settings: { type: settingsSchema, default: () => ({}) },
   },
   { _id: false, timestamps: true },
 );

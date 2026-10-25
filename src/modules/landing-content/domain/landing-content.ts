@@ -30,6 +30,32 @@ export interface LandingCompany {
   instagramUrl: string;
   termsUrl: string;
   privacyUrl: string;
+  /** Cor do rodapé (`#RRGGBB`); vazio = padrão da página. */
+  backgroundColor: string;
+}
+
+/** specs/0186 — título e fundo de uma seção; campo vazio = padrão da página. */
+export interface LandingSectionSettings {
+  title: string;
+  backgroundColor: string;
+  backgroundImageUrl: string;
+}
+
+/** "Como funciona" aceita só cor de fundo (sem foto). */
+export type LandingHowItWorksSettings = Omit<LandingSectionSettings, 'backgroundImageUrl'>;
+
+export interface LandingClientsSettings extends LandingSectionSettings {
+  cardColor: string;
+  textColor: string;
+}
+
+export interface LandingSettings {
+  /** Cor da barra do topo da página inicial. */
+  headerColor: string;
+  features: LandingSectionSettings;
+  howItWorks: LandingHowItWorksSettings;
+  clients: LandingClientsSettings;
+  testimonials: LandingSectionSettings;
 }
 
 /** A ordem dos arrays é a ordem de exibição. */
@@ -38,6 +64,7 @@ export interface LandingContent {
   howItWorks: LandingHowItWorksItem[];
   clients: LandingClient[];
   company: LandingCompany;
+  settings: LandingSettings;
 }
 
 export const EMPTY_LANDING_COMPANY: Readonly<LandingCompany> = {
@@ -49,10 +76,22 @@ export const EMPTY_LANDING_COMPANY: Readonly<LandingCompany> = {
   instagramUrl: '',
   termsUrl: '',
   privacyUrl: '',
+  backgroundColor: '',
 };
 
+export function emptyLandingSettings(): LandingSettings {
+  const section = { title: '', backgroundColor: '', backgroundImageUrl: '' };
+  return {
+    headerColor: '',
+    features: { ...section },
+    howItWorks: { title: '', backgroundColor: '' },
+    clients: { ...section, cardColor: '', textColor: '' },
+    testimonials: { ...section },
+  };
+}
+
 export function emptyLandingContent(): LandingContent {
-  return { features: [], howItWorks: [], clients: [], company: { ...EMPTY_LANDING_COMPANY } };
+  return { features: [], howItWorks: [], clients: [], company: { ...EMPTY_LANDING_COMPANY }, settings: emptyLandingSettings() };
 }
 
 export const testimonialStatuses = ['pending', 'approved', 'rejected'] as const;

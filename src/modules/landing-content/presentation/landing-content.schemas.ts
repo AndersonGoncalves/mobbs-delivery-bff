@@ -3,6 +3,8 @@ import { extractYoutubeId, testimonialStatuses } from '../domain/landing-content
 
 const httpsUrl = z.string().trim().max(2048).url('Informe uma URL válida').refine((url) => url.startsWith('https://'), 'A URL deve começar com https://');
 const optionalHttpsUrl = z.union([z.literal(''), httpsUrl]).default('');
+const optionalColor = z.union([z.literal(''), z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Cor inválida')]).default('');
+const sectionTitle = z.string().trim().max(120).default('');
 const itemId = z.string().trim().min(1).max(64).optional();
 
 const featureSchema = z.object({
@@ -41,6 +43,21 @@ const companySchema = z.object({
   instagramUrl: optionalHttpsUrl,
   termsUrl: optionalHttpsUrl,
   privacyUrl: optionalHttpsUrl,
+  backgroundColor: optionalColor,
+}).strict();
+
+const sectionSettingsSchema = z.object({
+  title: sectionTitle,
+  backgroundColor: optionalColor,
+  backgroundImageUrl: optionalHttpsUrl,
+}).strict();
+
+const settingsSchema = z.object({
+  headerColor: optionalColor,
+  features: sectionSettingsSchema,
+  howItWorks: z.object({ title: sectionTitle, backgroundColor: optionalColor }).strict(),
+  clients: sectionSettingsSchema.extend({ cardColor: optionalColor, textColor: optionalColor }).strict(),
+  testimonials: sectionSettingsSchema,
 }).strict();
 
 export const landingContentSchema = z.object({
@@ -48,6 +65,8 @@ export const landingContentSchema = z.object({
   howItWorks: z.array(howItWorksSchema).max(20),
   clients: z.array(clientSchema).max(60),
   company: companySchema,
+  // Cliente antigo que não envia `settings` mantém o que já estava salvo.
+  settings: settingsSchema.optional(),
 }).strict();
 
 export const submitTestimonialSchema = z.object({

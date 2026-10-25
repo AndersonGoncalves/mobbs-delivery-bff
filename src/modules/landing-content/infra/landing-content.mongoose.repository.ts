@@ -19,11 +19,19 @@ export class LandingContentMongooseRepository implements ILandingContentReposito
     const doc = await LandingContentModel.findById(LANDING_CONTENT_SINGLETON_ID).lean();
     if (!doc) return emptyLandingContent();
     const empty = emptyLandingContent();
+    const stored = doc.settings;
     return {
       features: (doc.features ?? []).map(({ id, text }) => ({ id, text })),
       howItWorks: (doc.howItWorks ?? []).map(({ id, title, description, mediaType, mediaUrl }) => ({ id, title, description, mediaType, mediaUrl })),
       clients: (doc.clients ?? []).map(({ id, companyName, description, imageUrl }) => ({ id, companyName, description, imageUrl })),
       company: { ...empty.company, ...(doc.company ?? {}) },
+      settings: {
+        headerColor: stored?.headerColor ?? '',
+        features: { ...empty.settings.features, ...(stored?.features ?? {}) },
+        howItWorks: { ...empty.settings.howItWorks, ...(stored?.howItWorks ?? {}) },
+        clients: { ...empty.settings.clients, ...(stored?.clients ?? {}) },
+        testimonials: { ...empty.settings.testimonials, ...(stored?.testimonials ?? {}) },
+      },
     };
   }
 

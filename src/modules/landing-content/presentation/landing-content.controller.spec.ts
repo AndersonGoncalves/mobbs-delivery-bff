@@ -151,4 +151,44 @@ describe('LandingContentController - 0183', () => {
     expect(result.uploadUrl).toBe('https://s3.example.com/upload-url');
     expect(result.publicUrl).toMatch(/\/platform\/landing\/[\w-]+\.png$/);
   });
+
+  // specs/0186 — títulos, fundos e cores por seção, cor do topo e do rodapé.
+  const settings = {
+    headerColor: '#112233',
+    features: { title: 'Vantagens', backgroundColor: '#ffffff', backgroundImageUrl: 'https://cdn.example.com/f.jpg' },
+    howItWorks: { title: 'Passo a passo', backgroundColor: '#F5F2EE' },
+    clients: { title: 'Quem usa', backgroundColor: '', backgroundImageUrl: '', cardColor: '#2b2b2b', textColor: '#FFFFFF' },
+    testimonials: { title: '', backgroundColor: '#f5f2ee', backgroundImageUrl: '' },
+  };
+
+  it('PUT salva as configurações visuais e a cor do rodapé', async () => {
+    const { run, contentRepository } = setup();
+    await run('PUT /platform/landing-content', {
+      body: { ...validContent, company: { ...validContent.company, backgroundColor: '#2A1D14' }, settings },
+    });
+    const saved = contentRepository.update.mock.calls[0][0];
+    expect(saved.settings).toEqual(settings);
+    expect(saved.company.backgroundColor).toBe('#2A1D14');
+  });
+
+  it('PUT sem settings (cliente antigo) mantém as configurações já salvas', async () => {
+    const { run, contentRepository } = setup();
+    contentRepository.get.mockResolvedValue({ ...emptyLandingContent(), settings });
+    await run('PUT /platform/landing-content', { body: validContent });
+    expect(contentRepository.update.mock.calls[0][0].settings).toEqual(settings);
+  });
+
+  it.each([
+    ['cor com formato inválido', { headerColor: 'marrom' }],
+    ['cor curta', { clients: { ...settings.clients, cardColor: '#fff' } }],
+    ['foto de fundo sem https', { features: { ...settings.features, backgroundImageUrl: 'http://x/a.jpg' } }],
+    ['foto de fundo em Como funciona', { howItWorks: { ...settings.howItWorks, backgroundImageUrl: 'https://x/a.jpg' } }],
+    ['título longo demais', { testimonials: { ...settings.testimonials, title: 'x'.repeat(121) } }],
+  ])('PUT rejeita %s sem salvar', async (_label, patch) => {
+    const { run, contentRepository } = setup();
+    await expect(
+      run('PUT /platform/landing-content', { body: { ...validContent, settings: { ...settings, ...patch } } }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(contentRepository.update).not.toHaveBeenCalled();
+  });
 });

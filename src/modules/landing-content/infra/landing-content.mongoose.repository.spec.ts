@@ -27,6 +27,27 @@ describe('LandingContentMongooseRepository - 0183', () => {
     expect(result).not.toHaveProperty('_id');
   });
 
+  // specs/0186 — documento salvo antes das configurações visuais continua legível, com padrões vazios.
+  it('documento antigo sem settings devolve configurações vazias; com settings, mescla campo a campo', async () => {
+    const query = LandingContentModel.findById(LANDING_CONTENT_SINGLETON_ID);
+    const legacy = new LandingContentModel({ _id: 'singleton' }).toObject();
+    delete (legacy as { settings?: unknown }).settings;
+    jest.spyOn(query, 'lean').mockResolvedValue(legacy);
+    jest.spyOn(LandingContentModel, 'findById').mockReturnValue(query);
+    expect((await new LandingContentMongooseRepository().get()).settings).toEqual(emptyLandingContent().settings);
+
+    const withSettings = new LandingContentModel({
+      _id: 'singleton',
+      settings: { headerColor: '#112233', clients: { cardColor: '#000000' }, features: { title: 'Vantagens' } },
+    }).toObject();
+    jest.spyOn(query, 'lean').mockResolvedValue(withSettings);
+    const { settings } = await new LandingContentMongooseRepository().get();
+    expect(settings.headerColor).toBe('#112233');
+    expect(settings.features).toEqual({ title: 'Vantagens', backgroundColor: '', backgroundImageUrl: '' });
+    expect(settings.clients).toEqual({ title: '', backgroundColor: '', backgroundImageUrl: '', cardColor: '#000000', textColor: '' });
+    expect(settings.howItWorks).toEqual({ title: '', backgroundColor: '' });
+  });
+
   it('faz upsert validado no singleton', async () => {
     const update = jest.spyOn(LandingContentModel, 'findByIdAndUpdate').mockResolvedValue(null);
     const content = emptyLandingContent();

@@ -76,6 +76,7 @@ export class LandingContentController extends BaseRouter {
         howItWorks: parsed.howItWorks.map((item) => ({ ...item, id: item.id ?? randomUUID() })),
         clients: parsed.clients.map((item) => ({ ...item, id: item.id ?? randomUUID() })),
         company: parsed.company,
+        settings: parsed.settings ?? (await this.contentRepository.get()).settings,
       };
       res.json(200, await this.contentRepository.update(content));
     });
