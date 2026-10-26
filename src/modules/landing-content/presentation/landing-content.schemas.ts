@@ -34,6 +34,8 @@ const clientSchema = z.object({
   imageUrl: optionalHttpsUrl,
 }).strict();
 
+const sectionVisible = z.boolean().default(true);
+
 const companySchema = z.object({
   legalName: z.string().trim().max(160).default(''),
   cnpj: z.string().trim().max(32).default(''),
@@ -44,18 +46,21 @@ const companySchema = z.object({
   termsUrl: optionalHttpsUrl,
   privacyUrl: optionalHttpsUrl,
   backgroundColor: optionalColor,
+  // Pedido explícito do usuário — liga/desliga a seção (rodapé) na home.
+  visible: sectionVisible,
 }).strict();
 
 const sectionSettingsSchema = z.object({
   title: sectionTitle,
   backgroundColor: optionalColor,
   backgroundImageUrl: optionalHttpsUrl,
+  visible: sectionVisible,
 }).strict();
 
 const settingsSchema = z.object({
   headerColor: optionalColor,
   features: sectionSettingsSchema,
-  howItWorks: z.object({ title: sectionTitle, backgroundColor: optionalColor }).strict(),
+  howItWorks: z.object({ title: sectionTitle, backgroundColor: optionalColor, visible: sectionVisible }).strict(),
   clients: sectionSettingsSchema.extend({ cardColor: optionalColor, textColor: optionalColor }).strict(),
   testimonials: sectionSettingsSchema,
 }).strict();

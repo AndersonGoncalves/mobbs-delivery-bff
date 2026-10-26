@@ -43,9 +43,9 @@ describe('LandingContentMongooseRepository - 0183', () => {
     jest.spyOn(query, 'lean').mockResolvedValue(withSettings);
     const { settings } = await new LandingContentMongooseRepository().get();
     expect(settings.headerColor).toBe('#112233');
-    expect(settings.features).toEqual({ title: 'Vantagens', backgroundColor: '', backgroundImageUrl: '' });
-    expect(settings.clients).toEqual({ title: '', backgroundColor: '', backgroundImageUrl: '', cardColor: '#000000', textColor: '' });
-    expect(settings.howItWorks).toEqual({ title: '', backgroundColor: '' });
+    expect(settings.features).toEqual({ title: 'Vantagens', backgroundColor: '', backgroundImageUrl: '', visible: true });
+    expect(settings.clients).toEqual({ title: '', backgroundColor: '', backgroundImageUrl: '', cardColor: '#000000', textColor: '', visible: true });
+    expect(settings.howItWorks).toEqual({ title: '', backgroundColor: '', visible: true });
   });
 
   it('faz upsert validado no singleton', async () => {

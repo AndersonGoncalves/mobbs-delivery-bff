@@ -155,10 +155,10 @@ describe('LandingContentController - 0183', () => {
   // specs/0186 — títulos, fundos e cores por seção, cor do topo e do rodapé.
   const settings = {
     headerColor: '#112233',
-    features: { title: 'Vantagens', backgroundColor: '#ffffff', backgroundImageUrl: 'https://cdn.example.com/f.jpg' },
-    howItWorks: { title: 'Passo a passo', backgroundColor: '#F5F2EE' },
-    clients: { title: 'Quem usa', backgroundColor: '', backgroundImageUrl: '', cardColor: '#2b2b2b', textColor: '#FFFFFF' },
-    testimonials: { title: '', backgroundColor: '#f5f2ee', backgroundImageUrl: '' },
+    features: { title: 'Vantagens', backgroundColor: '#ffffff', backgroundImageUrl: 'https://cdn.example.com/f.jpg', visible: true },
+    howItWorks: { title: 'Passo a passo', backgroundColor: '#F5F2EE', visible: false },
+    clients: { title: 'Quem usa', backgroundColor: '', backgroundImageUrl: '', cardColor: '#2b2b2b', textColor: '#FFFFFF', visible: true },
+    testimonials: { title: '', backgroundColor: '#f5f2ee', backgroundImageUrl: '', visible: true },
   };
 
   it('PUT salva as configurações visuais e a cor do rodapé', async () => {
@@ -169,6 +169,24 @@ describe('LandingContentController - 0183', () => {
     const saved = contentRepository.update.mock.calls[0][0];
     expect(saved.settings).toEqual(settings);
     expect(saved.company.backgroundColor).toBe('#2A1D14');
+  });
+
+  // Pedido explícito do usuário — cada seção (Funcionalidades, Como funciona, Nossos clientes,
+  // Depoimentos, Empresa) ganha um switch pra mostrar/ocultar na home, independente do conteúdo
+  // cadastrado; sem informar, assume visível (cliente antigo continua mostrando tudo).
+  it('PUT salva "visible" de cada seção; sem informar, assume true', async () => {
+    const { run, contentRepository } = setup();
+    await run('PUT /platform/landing-content', {
+      body: { ...validContent, company: { ...validContent.company, visible: false }, settings },
+    });
+    const saved = contentRepository.update.mock.calls[0][0];
+    expect(saved.company.visible).toBe(false);
+    expect(saved.settings.features.visible).toBe(true);
+    expect(saved.settings.howItWorks.visible).toBe(false);
+
+    await run('PUT /platform/landing-content', { body: validContent });
+    const savedWithoutVisible = contentRepository.update.mock.calls[1][0];
+    expect(savedWithoutVisible.company.visible).toBe(true);
   });
 
   it('PUT sem settings (cliente antigo) mantém as configurações já salvas', async () => {

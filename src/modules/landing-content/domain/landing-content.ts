@@ -32,6 +32,8 @@ export interface LandingCompany {
   privacyUrl: string;
   /** Cor do rodapé (`#RRGGBB`); vazio = padrão da página. */
   backgroundColor: string;
+  /** Pedido explícito do usuário — liga/desliga a seção (rodapé) na home, independente dos dados estarem preenchidos. */
+  visible: boolean;
 }
 
 /** specs/0186 — título e fundo de uma seção; campo vazio = padrão da página. */
@@ -39,6 +41,8 @@ export interface LandingSectionSettings {
   title: string;
   backgroundColor: string;
   backgroundImageUrl: string;
+  /** Pedido explícito do usuário — liga/desliga a seção na home. */
+  visible: boolean;
 }
 
 /** "Como funciona" aceita só cor de fundo (sem foto). */
@@ -77,14 +81,15 @@ export const EMPTY_LANDING_COMPANY: Readonly<LandingCompany> = {
   termsUrl: '',
   privacyUrl: '',
   backgroundColor: '',
+  visible: true,
 };
 
 export function emptyLandingSettings(): LandingSettings {
-  const section = { title: '', backgroundColor: '', backgroundImageUrl: '' };
+  const section = { title: '', backgroundColor: '', backgroundImageUrl: '', visible: true };
   return {
     headerColor: '',
     features: { ...section },
-    howItWorks: { title: '', backgroundColor: '' },
+    howItWorks: { title: '', backgroundColor: '', visible: true },
     clients: { ...section, cardColor: '', textColor: '' },
     testimonials: { ...section },
   };

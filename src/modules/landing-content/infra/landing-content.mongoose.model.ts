@@ -28,18 +28,20 @@ const companySchema = new Schema({
   termsUrl: { type: String, default: '' },
   privacyUrl: { type: String, default: '' },
   backgroundColor: { type: String, default: '' },
+  visible: { type: Boolean, default: true },
 }, { _id: false });
 
 const sectionSettingsFields = {
   title: { type: String, default: '' },
   backgroundColor: { type: String, default: '' },
   backgroundImageUrl: { type: String, default: '' },
+  visible: { type: Boolean, default: true },
 };
 const settingsSchema = new Schema({
   headerColor: { type: String, default: '' },
   features: { type: new Schema(sectionSettingsFields, { _id: false }), default: () => ({}) },
   howItWorks: {
-    type: new Schema({ title: { type: String, default: '' }, backgroundColor: { type: String, default: '' } }, { _id: false }),
+    type: new Schema({ title: { type: String, default: '' }, backgroundColor: { type: String, default: '' }, visible: { type: Boolean, default: true } }, { _id: false }),
     default: () => ({}),
   },
   clients: {
