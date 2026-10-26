@@ -17,6 +17,7 @@ const clientSchema = new Schema({
   companyName: { type: String, required: true },
   description: { type: String, default: '' },
   imageUrl: { type: String, default: '' },
+  linkUrl: { type: String, default: '' },
 }, { _id: false });
 const companySchema = new Schema({
   legalName: { type: String, default: '' },

@@ -83,11 +83,22 @@ describe('LandingContentController - 0183', () => {
     expect(json).toHaveBeenCalledWith(200, saved);
   });
 
+  // Pedido explícito do usuário — link da loja de cada cliente, salvo e devolvido como veio.
+  it('PUT salva o link da loja de cada cliente', async () => {
+    const { run, contentRepository } = setup();
+    await run('PUT /platform/landing-content', {
+      body: { ...validContent, clients: [{ companyName: 'Domino', imageUrl: 'https://cdn.example.com/a.png', linkUrl: 'https://bsdelivery.com.br/domino' }] },
+    });
+    const saved = contentRepository.update.mock.calls[0][0];
+    expect(saved.clients[0].linkUrl).toBe('https://bsdelivery.com.br/domino');
+  });
+
   it.each([
     ['YouTube inválido', { howItWorks: [{ title: 'x', mediaType: 'youtube', mediaUrl: 'https://example.com/v' }] }],
     ['imagem sem https', { howItWorks: [{ title: 'x', mediaType: 'image', mediaUrl: 'http://a.com/a.png' }] }],
     ['funcionalidade vazia', { features: [{ text: ' ' }] }],
     ['logo com javascript:', { clients: [{ companyName: 'x', imageUrl: 'javascript:alert(1)' }] }],
+    ['link da loja com javascript:', { clients: [{ companyName: 'x', linkUrl: 'javascript:alert(1)' }] }],
     ['link de termos inválido', { company: { termsUrl: 'ftp://x' } }],
     ['campo desconhecido', { extra: true }],
   ])('PUT rejeita %s sem salvar', async (_label, patch) => {

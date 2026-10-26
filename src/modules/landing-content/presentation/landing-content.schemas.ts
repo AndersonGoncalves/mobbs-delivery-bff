@@ -32,6 +32,8 @@ const clientSchema = z.object({
   companyName: z.string().trim().min(1, 'Informe o nome da empresa').max(120),
   description: z.string().trim().max(500).default(''),
   imageUrl: optionalHttpsUrl,
+  // Pedido explícito do usuário — link da loja desse cliente.
+  linkUrl: optionalHttpsUrl,
 }).strict();
 
 const sectionVisible = z.boolean().default(true);

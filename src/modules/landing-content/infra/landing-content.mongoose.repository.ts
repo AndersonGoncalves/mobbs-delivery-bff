@@ -23,7 +23,7 @@ export class LandingContentMongooseRepository implements ILandingContentReposito
     return {
       features: (doc.features ?? []).map(({ id, text }) => ({ id, text })),
       howItWorks: (doc.howItWorks ?? []).map(({ id, title, description, mediaType, mediaUrl }) => ({ id, title, description, mediaType, mediaUrl })),
-      clients: (doc.clients ?? []).map(({ id, companyName, description, imageUrl }) => ({ id, companyName, description, imageUrl })),
+      clients: (doc.clients ?? []).map(({ id, companyName, description, imageUrl, linkUrl }) => ({ id, companyName, description, imageUrl, linkUrl: linkUrl ?? '' })),
       company: { ...empty.company, ...(doc.company ?? {}) },
       settings: {
         headerColor: stored?.headerColor ?? '',

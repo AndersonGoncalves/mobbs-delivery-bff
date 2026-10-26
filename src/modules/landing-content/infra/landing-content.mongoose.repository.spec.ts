@@ -17,12 +17,14 @@ describe('LandingContentMongooseRepository - 0183', () => {
     const doc = new LandingContentModel({
       _id: 'singleton',
       features: [{ id: 'b', text: 'B' }, { id: 'a', text: 'A' }],
+      clients: [{ id: 'c1', companyName: 'Domino', linkUrl: 'https://bsdelivery.com.br/domino' }],
       company: { legalName: 'BS' },
     });
     jest.spyOn(query, 'lean').mockResolvedValue(doc.toObject());
     jest.spyOn(LandingContentModel, 'findById').mockReturnValue(query);
     const result = await new LandingContentMongooseRepository().get();
     expect(result.features).toEqual([{ id: 'b', text: 'B' }, { id: 'a', text: 'A' }]);
+    expect(result.clients[0].linkUrl).toBe('https://bsdelivery.com.br/domino');
     expect(result.company).toEqual({ ...emptyLandingContent().company, legalName: 'BS' });
     expect(result).not.toHaveProperty('_id');
   });

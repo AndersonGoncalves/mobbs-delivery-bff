@@ -19,6 +19,8 @@ export interface LandingClient {
   companyName: string;
   description: string;
   imageUrl: string;
+  /** Pedido explícito do usuário — link da loja desse cliente (ex. página pública no app); vazio = sem link. */
+  linkUrl: string;
 }
 
 export interface LandingCompany {
