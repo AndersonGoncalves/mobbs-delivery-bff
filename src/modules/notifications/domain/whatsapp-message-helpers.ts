@@ -59,13 +59,15 @@ export function buildTrackingLink(slug: string, trackingToken: string, baseUrl: 
 
 /**
  * Pedido explícito do usuário (follow-up) — link de "repetir pedido" no recibo, pra abrir o app
- * já com aquele pedido pronto pra pedir de novo. Diferente de [buildTrackingLink] (que vive sob o
- * `<slug>` do restaurante), este é um caminho de nível raiz (`repetirpedido`, reservado em
- * `generate-unique-slug.ts` pra nenhum restaurante poder usá-lo como slug) — quem recebe o
- * `trackingToken` já sabe resolver o pedido e o restaurante dele sem precisar do slug no path.
+ * já com aquele pedido pronto pra pedir de novo. Mesmo formato de [buildTrackingLink] (sob o
+ * `<slug>` do restaurante, `/<slug>/repetirpedido/<token>`) — achado real: a 1ª versão deste link
+ * era um caminho de nível raiz (`/repetirpedido/<token>`, sem slug), mas o boot do app web
+ * (`AppController._resolveWebBoot`) resolve o restaurante sempre pelo 1º segmento do path
+ * (`specs/0037-roteamento-por-caminho`); sem o slug ali, o app tentava resolver "repetirpedido"
+ * como se fosse o slug de um restaurante e caía direto em "restaurante não encontrado".
  */
-export function buildRepeatOrderLink(trackingToken: string, baseUrl: string = environment.publicApp.baseUrl): string {
-  return `${baseUrl.replace(/\/+$/, '')}/repetirpedido/${trackingToken}`;
+export function buildRepeatOrderLink(slug: string, trackingToken: string, baseUrl: string = environment.publicApp.baseUrl): string {
+  return `${baseUrl.replace(/\/+$/, '')}/${slug}/repetirpedido/${trackingToken}`;
 }
 
 export function renderSelections(selections: IOrderItemSelection[] | undefined, indent: string): string {

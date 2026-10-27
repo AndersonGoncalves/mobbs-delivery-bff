@@ -61,10 +61,11 @@ describe('buildOrderReceiptMessage', () => {
     expect(message).toContain('https://bsdelivery.com.br/primepizza/track?token=abc123');
   });
 
-  // Pedido explícito do usuário (follow-up) — link de "repetir pedido", nível raiz (sem o slug).
-  it('inclui o link de repetir pedido com o trackingToken', () => {
+  // Pedido explícito do usuário (follow-up) — link de "repetir pedido", mesmo formato do link de
+  // acompanhamento (sob o slug do restaurante).
+  it('inclui o link de repetir pedido com o slug e o trackingToken', () => {
     const message = buildOrderReceiptMessage(buildInput());
-    expect(message).toContain('https://bsdelivery.com.br/repetirpedido/abc123');
+    expect(message).toContain('https://bsdelivery.com.br/primepizza/repetirpedido/abc123');
   });
 
   it('AC-1: lista os itens com quantidade/preço e as seleções aninhadas', () => {

@@ -53,7 +53,7 @@ export function buildMessagePlaceholders(input: MessagePlaceholdersInput): Recor
     pixCopiaECola: pixCode ?? '',
     linkAcompanhamento: buildTrackingLink(restaurantSlug, order.trackingToken),
     // Pedido explícito do usuário (follow-up) — link de "repetir pedido" no recibo.
-    linkRepetirPedido: buildRepeatOrderLink(order.trackingToken),
+    linkRepetirPedido: buildRepeatOrderLink(restaurantSlug, order.trackingToken),
     motivoCancelamento: cancellationReason ?? '',
     // specs/0089-observacao-pedido-whatsapp-historico — observação livre do cliente no checkout
     // (`Order.notes`, distinto de `OrderItem.notes` por item); ausente = linha some sozinha.

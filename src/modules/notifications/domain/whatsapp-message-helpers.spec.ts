@@ -40,16 +40,18 @@ describe('buildTrackingLink (specs/0069)', () => {
 
 // Pedido explícito do usuário (follow-up) — link de "repetir pedido" no recibo.
 describe('buildRepeatOrderLink', () => {
-  it('monta <origem>/repetirpedido/<token> (caminho de nível raiz, sem o slug do restaurante)', () => {
-    expect(buildRepeatOrderLink('tok123', 'https://bsdelivery.com.br')).toBe('https://bsdelivery.com.br/repetirpedido/tok123');
+  it('monta <origem>/<slug>/repetirpedido/<token> (mesmo formato de buildTrackingLink)', () => {
+    expect(buildRepeatOrderLink('meu-restaurante', 'tok123', 'https://bsdelivery.com.br')).toBe(
+      'https://bsdelivery.com.br/meu-restaurante/repetirpedido/tok123',
+    );
   });
 
   it('ignora barra final na origem configurada', () => {
-    expect(buildRepeatOrderLink('t', 'https://exemplo.com.br/')).toBe('https://exemplo.com.br/repetirpedido/t');
+    expect(buildRepeatOrderLink('r', 't', 'https://exemplo.com.br/')).toBe('https://exemplo.com.br/r/repetirpedido/t');
   });
 
   it('usa https://bsdelivery.com.br quando PUBLIC_APP_BASE_URL não está definida', () => {
-    expect(buildRepeatOrderLink('t')).toBe('https://bsdelivery.com.br/repetirpedido/t');
+    expect(buildRepeatOrderLink('r', 't')).toBe('https://bsdelivery.com.br/r/repetirpedido/t');
   });
 });
 
