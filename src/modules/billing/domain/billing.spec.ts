@@ -35,8 +35,12 @@ describe('sumRevenueCents (AC-1)', () => {
 });
 
 describe('isBillingBlocked (REQ-7/REQ-8)', () => {
-  it('AC-8: restaurante no gratuito nunca fica bloqueado, mesmo com status blocked marcado por engano', () => {
-    expect(isBillingBlocked({ referenceMonth: '2026-10', currentTier: 'free', notified75Percent: false, notifiedTierUpgrade: false, status: 'blocked', cycle: 'monthly' })).toBe(false);
+  // specs/0175-cobranca-assinatura-asaas REQ-27/AC-21 substitui a isenção antiga por faixa
+  // corrente (0042 AC-8) — `status` agora só é escrito por `recomputeAccessStatus` a partir de
+  // dívida real, nunca "por engano"; gratuito COM dívida real (ex. de uma competência paga
+  // anterior) precisa continuar bloqueando.
+  it('REQ-27/AC-21: restaurante no gratuito com status blocked (dívida real de competência anterior) fica bloqueado', () => {
+    expect(isBillingBlocked({ referenceMonth: '2026-10', currentTier: 'free', notified75Percent: false, notifiedTierUpgrade: false, status: 'blocked', cycle: 'monthly' })).toBe(true);
   });
 
   it('restaurante em faixa paga com status blocked fica bloqueado; com status ok, não', () => {

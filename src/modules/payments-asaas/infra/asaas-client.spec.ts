@@ -140,6 +140,16 @@ describe('AsaasClient (specs/0101-integracao-asaas, fase 1)', () => {
     });
   });
 
+  // specs/0175-cobranca-assinatura-asaas.
+  it('getPayment: GET /payments/:id devolve id e status', async () => {
+    mockFetchOnce(200, { id: 'pay_1', status: 'CONFIRMED' });
+
+    const result = await client.getPayment('pay_1');
+
+    expect(global.fetch).toHaveBeenCalledWith('https://api-sandbox.asaas.com/v3/payments/pay_1', expect.objectContaining({ method: 'GET' }));
+    expect(result).toEqual({ id: 'pay_1', status: 'CONFIRMED' });
+  });
+
   it('getBalance: GET /finance/balance', async () => {
     mockFetchOnce(200, { balance: 1234.56 });
 

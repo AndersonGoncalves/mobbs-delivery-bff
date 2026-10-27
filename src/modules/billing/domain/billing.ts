@@ -66,11 +66,19 @@ export function priceCents(tier: BillingTier, cycle: BillingCycle, settings: Bil
 }
 
 /**
- * Bloqueio por inadimplência (REQ-7/REQ-8): só vale quando o status é `blocked` e a faixa não é a gratuita —
- * restaurante no gratuito nunca é bloqueado, mesmo com o status marcado por engano.
+ * Bloqueio por inadimplência (REQ-7/REQ-8 de specs/0042). `status` é só `'blocked'`/`'ok'` —
+ * nenhuma outra condição aqui.
+ *
+ * specs/0175-cobranca-assinatura-asaas REQ-27/AC-21 (substitui a isenção antiga da specs/0042
+ * AC-8, "gratuito nunca bloqueado") — a isenção por `currentTier === 'free'` media a faixa do MÊS
+ * EM CURSO (informativa), não dívida real; um restaurante hoje no Gratuito pode ter uma dívida
+ * legítima de uma competência paga anterior ou de um anual contratado, e essa dívida precisa
+ * continuar bloqueando. Desde 0175, `status` só é escrito por `recomputeAccessStatus`
+ * (`platform-billing/domain`), nunca mais à mão — a função já decide corretamente quando bloquear
+ * (gratuito SEM dívida nunca bloqueia, REQ-27, mas isso é decidido lá, não aqui por faixa).
  */
 export function isBillingBlocked(billing: IRestaurantBilling | undefined): boolean {
-  return billing?.status === 'blocked' && billing.currentTier !== 'free';
+  return billing?.status === 'blocked';
 }
 
 /** Mês de referência `YYYY-MM` no fuso de Brasília (UTC-3, sem horário de verão desde 2019). */

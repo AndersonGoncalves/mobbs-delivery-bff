@@ -66,6 +66,16 @@ export interface AsaasCheckoutResult {
   link: string;
 }
 
+/** specs/0175-cobranca-assinatura-asaas — status real de um pagamento específico (reconciliação
+ * da assinatura da plataforma, por id direto — diferente de `findPaymentByExternalReference`,
+ * que busca por referência quando ainda não se sabe o id). `status` é um dos 14 valores
+ * documentados (`PENDING`/`RECEIVED`/`CONFIRMED`/`OVERDUE`/`REFUNDED`/etc., verificado em
+ * docs.asaas.com/reference/recuperar-uma-unica-cobranca, 2026-10-27). */
+export interface AsaasPaymentResult {
+  id: string;
+  status: string;
+}
+
 export interface AsaasBalanceResult {
   balance: number;
 }
@@ -198,6 +208,14 @@ export class AsaasClient {
       sendType: 'NON_SEQUENTIALLY',
       authToken: webhookToken,
     });
+  }
+
+  /** `GET /v3/payments/:id` (specs/0175-cobranca-assinatura-asaas) — status real de uma cobrança
+   * específica, pra reconciliação (`ReconciliationService`): webhook perdido/atrasado,
+   * pagamento durante indisponibilidade, estorno total/parcial. */
+  async getPayment(chargeId: string): Promise<AsaasPaymentResult> {
+    const result = await this.request<{ id: string; status: string }>('GET', `/payments/${chargeId}`);
+    return { id: result.id, status: result.status };
   }
 
   /** `GET /v3/finance/balance` (fase 2, REQ-7) — saldo disponível da subconta. */
