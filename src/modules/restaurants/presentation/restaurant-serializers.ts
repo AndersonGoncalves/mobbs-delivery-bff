@@ -87,5 +87,16 @@ export function toOperatorRestaurant(restaurant: IRestaurant): Omit<IRestaurant,
   delete safe.asaasWebhookToken;
   delete safe.mercadoPagoAccessToken;
   delete safe.mercadoPagoRefreshToken;
+  // Pedido explícito do usuário (follow-up) — `previousAsaasSubaccounts` carrega `asaasApiKey`/
+  // `asaasWebhookToken` por entrada (a UI só precisa listar pra oferecer "Reconectar", nunca ver
+  // a chave); mesmo cuidado do campo ativo acima, mas por item do array.
+  if (safe.previousAsaasSubaccounts) {
+    safe.previousAsaasSubaccounts = safe.previousAsaasSubaccounts.map((entry) => {
+      const redacted = { ...entry };
+      delete (redacted as Partial<typeof entry>).asaasApiKey;
+      delete (redacted as Partial<typeof entry>).asaasWebhookToken;
+      return redacted;
+    });
+  }
   return safe as Omit<IRestaurant, 'paymentWebhookApiKey' | 'asaasApiKey' | 'asaasWebhookToken' | 'mercadoPagoAccessToken' | 'mercadoPagoRefreshToken'>;
 }

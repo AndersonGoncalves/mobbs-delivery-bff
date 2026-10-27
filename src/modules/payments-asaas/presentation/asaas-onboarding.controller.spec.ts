@@ -54,6 +54,7 @@ describe('AsaasOnboardingController (specs/0101-integracao-asaas, fase 1)', () =
       disconnectAsaasSubaccount: jest.fn().mockResolvedValue({ id: 'r-1', onlinePaymentsEnabled: false }),
       reactivateAsaasSubaccount: jest.fn().mockResolvedValue({ id: 'r-1', onlinePaymentsEnabled: true }),
       forgetAsaasSubaccount: jest.fn().mockResolvedValue({ id: 'r-1', onlinePaymentsEnabled: false }),
+      reconnectPreviousAsaasSubaccount: jest.fn().mockResolvedValue({ id: 'r-1', onlinePaymentsEnabled: true, asaasAccountId: 'acc-antiga' }),
       ...overrides.restaurantRepository,
     };
     const { application, routes } = buildApp();
@@ -136,9 +137,10 @@ describe('AsaasOnboardingController (specs/0101-integracao-asaas, fase 1)', () =
     expect(send).toHaveBeenCalledWith(204);
   });
 
-  // Pedido explícito do usuário (follow-up) — "esquecer" a subconta inteira, diferente de
-  // desvincular: limpa os dados pra vincular uma conta Asaas diferente, sem chamar o Asaas.
-  it('DELETE /restaurants/me/asaas/subaccount/forget limpa os dados (204)', async () => {
+  // Pedido explícito do usuário (follow-up) — "esquecer" a subconta ATIVA, diferente de
+  // desvincular: limpa os campos ativos pra vincular uma conta Asaas diferente, sem chamar o
+  // Asaas (o repository arquiva os dados antigos, ver restaurant.mongoose.repository.spec.ts).
+  it('DELETE /restaurants/me/asaas/subaccount/forget limpa os campos ativos (204)', async () => {
     const { restaurantRepository, routes } = setup();
     const send = jest.fn();
 
@@ -146,6 +148,31 @@ describe('AsaasOnboardingController (specs/0101-integracao-asaas, fase 1)', () =
 
     expect(restaurantRepository.forgetAsaasSubaccount).toHaveBeenCalledWith('r-1');
     expect(send).toHaveBeenCalledWith(204);
+  });
+
+  // Pedido explícito do usuário (follow-up) — restaura uma subconta arquivada, sem chamar o
+  // Asaas de novo.
+  it('POST /restaurants/me/asaas/subaccount/reconnect restaura a subconta arquivada pelo asaasAccountId', async () => {
+    const { restaurantRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/asaas/subaccount/reconnect'],
+      { restaurantId: 'r-1', body: { asaasAccountId: 'acc-antiga' } },
+      { json, send: jest.fn() },
+    );
+
+    expect(restaurantRepository.reconnectPreviousAsaasSubaccount).toHaveBeenCalledWith('r-1', 'acc-antiga');
+    expect(MockedAsaasClient.prototype.createSubaccount).not.toHaveBeenCalled();
+    expect(json).toHaveBeenCalledWith(200, { onlinePaymentsEnabled: true, asaasAccountId: 'acc-antiga' });
+  });
+
+  it('POST /restaurants/me/asaas/subaccount/reconnect sem asaasAccountId é rejeitado (400)', async () => {
+    const { routes } = setup();
+
+    await expect(
+      runOperatorChain(routes['POST /restaurants/me/asaas/subaccount/reconnect'], { restaurantId: 'r-1', body: {} }, { json: jest.fn(), send: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 400 });
   });
 
   // Achado real (pedido explícito do usuário) — "desvincular" não apaga a subconta no Asaas;

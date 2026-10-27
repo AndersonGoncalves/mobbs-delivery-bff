@@ -4,8 +4,10 @@ import { OrderType, PaymentMethod } from '../../../orders/domain/entities/order.
 import {
   CashRegisterMode,
   DeliveryFeeMode,
+  IAsaasSubaccountData,
   IBusinessHours,
   IDeliveryFeeZone,
+  IPreviousAsaasSubaccount,
   IRestaurant,
   IRestaurantAddress,
   IRestaurantBilling,
@@ -107,18 +109,8 @@ interface RestaurantLeanDocument {
   asaasWalletId?: string;
   asaasApiKey?: string;
   asaasWebhookToken?: string;
-  asaasSubaccountData?: {
-    name: string;
-    email: string;
-    cpfCnpj: string;
-    birthDate: string;
-    mobilePhone: string;
-    incomeValue: number;
-    address: string;
-    addressNumber: string;
-    province: string;
-    postalCode: string;
-  };
+  asaasSubaccountData?: IAsaasSubaccountData;
+  previousAsaasSubaccounts?: IPreviousAsaasSubaccount[];
   asaasCheckoutWebhookRegistered?: boolean;
   mercadoPagoAccessToken?: string;
   mercadoPagoRefreshToken?: string;
@@ -219,6 +211,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     asaasApiKey: doc.asaasApiKey,
     asaasWebhookToken: doc.asaasWebhookToken,
     asaasSubaccountData: doc.asaasSubaccountData,
+    previousAsaasSubaccounts: doc.previousAsaasSubaccounts ?? [],
     asaasCheckoutWebhookRegistered: doc.asaasCheckoutWebhookRegistered,
     mercadoPagoAccessToken: doc.mercadoPagoAccessToken,
     mercadoPagoRefreshToken: doc.mercadoPagoRefreshToken,
@@ -393,15 +386,73 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
     return toEntity(doc as RestaurantLeanDocument);
   }
 
-  // Pedido explícito do usuário (follow-up) — "esquecer" a subconta inteira, pra vincular uma
+  // Pedido explícito do usuário (follow-up) — "esquecer" a subconta ATIVA, pra vincular uma
   // conta Asaas diferente (ver interface). Nunca chama o Asaas — a subconta antiga continua
-  // existindo lá, intocada.
+  // existindo lá, intocada. Diferente da versão original (que fazia só `$unset`): arquiva os
+  // campos ativos em `previousAsaasSubaccounts` antes de limpá-los — a chave de API só vem uma
+  // vez na criação do Asaas, perdê-la de vez tornava essa subconta irrecuperável pela nossa UI.
   async forgetAsaasSubaccount(id: string): Promise<IRestaurant> {
+    const current = await RestaurantModel.findById(id).lean<RestaurantLeanDocument>();
+    if (!current?.asaasAccountId || !current.asaasWalletId || !current.asaasApiKey || !current.asaasWebhookToken || !current.asaasSubaccountData) {
+      // Nada pra arquivar (restaurante nunca teve subconta vinculada) — só garante o estado limpo.
+      const doc = await RestaurantModel.findByIdAndUpdate(id, { $set: { onlinePaymentsEnabled: false } }, { new: true }).lean<RestaurantLeanDocument>();
+      return toEntity(doc as RestaurantLeanDocument);
+    }
+
+    const archived: IPreviousAsaasSubaccount = {
+      asaasAccountId: current.asaasAccountId,
+      asaasWalletId: current.asaasWalletId,
+      asaasApiKey: current.asaasApiKey,
+      asaasWebhookToken: current.asaasWebhookToken,
+      subaccountData: current.asaasSubaccountData,
+      archivedAt: new Date().toISOString(),
+    };
     const doc = await RestaurantModel.findByIdAndUpdate(
       id,
       {
         $set: { onlinePaymentsEnabled: false },
         $unset: { asaasAccountId: 1, asaasWalletId: 1, asaasApiKey: 1, asaasWebhookToken: 1, asaasSubaccountData: 1, asaasCheckoutWebhookRegistered: 1 },
+        $push: { previousAsaasSubaccounts: archived },
+      },
+      { new: true },
+    ).lean<RestaurantLeanDocument>();
+    return toEntity(doc as RestaurantLeanDocument);
+  }
+
+  // Pedido explícito do usuário (follow-up) — restaura uma entrada de `previousAsaasSubaccounts`
+  // de volta aos campos ativos, sem chamar o Asaas de novo (mesmo espírito de
+  // `reactivateAsaasSubaccount`).
+  //
+  // Achado real — se já existisse uma subconta ATIVA (`asaasAccountId` setado) diferente da que
+  // está sendo reconectada, sobrescrever direto com `$set` apagaria as credenciais dela sem
+  // arquivar (perda de verdade, diferente de `forgetAsaasSubaccount`, que sempre arquiva antes
+  // de limpar). Em vez de arquivar as duas coisas na mesma escrita (MongoDB rejeita `$push` e
+  // `$pull` no mesmo caminho `previousAsaasSubaccounts` numa única `update`), a regra é mais
+  // simples e segura: só reconecta quando não há nenhuma subconta ativa agora (o operador
+  // precisa "Desvincular"/"Vincular outra conta" primeiro) — nunca troca uma ativa por outra
+  // silenciosamente.
+  async reconnectPreviousAsaasSubaccount(id: string, asaasAccountId: string): Promise<IRestaurant> {
+    const current = await RestaurantModel.findOne({ _id: id, 'previousAsaasSubaccounts.asaasAccountId': asaasAccountId }).lean<RestaurantLeanDocument>();
+    const entry = current?.previousAsaasSubaccounts?.find((item) => item.asaasAccountId === asaasAccountId);
+    if (!entry) {
+      throw new Error(`Subconta Asaas arquivada não encontrada (asaasAccountId: ${asaasAccountId})`);
+    }
+    if (current?.asaasAccountId) {
+      throw new Error('Já existe uma subconta Asaas ativa — desvincule ou limpe os dados dela antes de reconectar outra.');
+    }
+
+    const doc = await RestaurantModel.findByIdAndUpdate(
+      id,
+      {
+        $set: {
+          onlinePaymentsEnabled: true,
+          asaasAccountId: entry.asaasAccountId,
+          asaasWalletId: entry.asaasWalletId,
+          asaasApiKey: entry.asaasApiKey,
+          asaasWebhookToken: entry.asaasWebhookToken,
+          asaasSubaccountData: entry.subaccountData,
+        },
+        $pull: { previousAsaasSubaccounts: { asaasAccountId } },
       },
       { new: true },
     ).lean<RestaurantLeanDocument>();

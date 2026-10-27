@@ -9,6 +9,38 @@ export interface IBusinessHours {
 
 export type PixKeyType = 'telefone' | 'cpf' | 'cnpj' | 'email' | 'aleatoria';
 
+/** specs/0101-integracao-asaas — dados comerciais submetidos na criação de uma subconta Asaas; ver `IRestaurant.asaasSubaccountData`. */
+export interface IAsaasSubaccountData {
+  name: string;
+  email: string;
+  cpfCnpj: string;
+  birthDate: string;
+  mobilePhone: string;
+  incomeValue: number;
+  address: string;
+  addressNumber: string;
+  province: string;
+  postalCode: string;
+}
+
+/**
+ * Pedido explícito do usuário (follow-up) — snapshot completo de uma subconta Asaas que já foi
+ * "esquecida" (`forgetAsaasSubaccount`) pelo operador, arquivado em vez de descartado: o Asaas
+ * não tem endpoint de exclusão de subconta (`asaas-onboarding.controller.ts`), então a chave de
+ * API já emitida é a ÚNICA forma de voltar a usá-la depois — perdê-la de vez (como o `$unset`
+ * fazia antes) tornava a subconta irrecuperável pela nossa própria UI, mesmo ela continuando
+ * ativa e intocada do lado do Asaas.
+ */
+export interface IPreviousAsaasSubaccount {
+  asaasAccountId: string;
+  asaasWalletId: string;
+  asaasApiKey: string;
+  asaasWebhookToken: string;
+  subaccountData: IAsaasSubaccountData;
+  /** Quando `forgetAsaasSubaccount` arquivou esta entrada. */
+  archivedAt: string;
+}
+
 /**
  * Endereço do estabelecimento (não do cliente, docs/architecture/data-model.md §Address) — só os
  * campos físicos, sem `customerId`/`label`/`isDefault`/coordenadas (exclusivos do endereço de
@@ -320,18 +352,12 @@ export interface IRestaurant {
    * subconta, guardados (sem segredo nenhum aqui, é a mesma coisa que o operador digitou no
    * formulário) pra a retaguarda conseguir reexibir os campos preenchidos/desabilitados depois
    * de vinculado, em vez de perder tudo a cada reload. */
-  asaasSubaccountData?: {
-    name: string;
-    email: string;
-    cpfCnpj: string;
-    birthDate: string;
-    mobilePhone: string;
-    incomeValue: number;
-    address: string;
-    addressNumber: string;
-    province: string;
-    postalCode: string;
-  };
+  asaasSubaccountData?: IAsaasSubaccountData;
+  /** Pedido explícito do usuário (follow-up) — subcontas "esquecidas" (`forgetAsaasSubaccount`),
+   * arquivadas pra poder reconectar depois (`reconnectPreviousAsaasSubaccount`) sem precisar
+   * recriar no Asaas (que rejeitaria por CPF/e-mail "já está em uso" — a subconta antiga nunca é
+   * apagada lá). Mais recente por último; nunca reordenado nem limitado em tamanho nesta v1. */
+  previousAsaasSubaccounts?: IPreviousAsaasSubaccount[];
   /** specs/0101-integracao-asaas (fase 2) — o webhook de Pix (`createSubaccount`, acima) nunca é
    * tocado; cartão via Asaas Checkout precisa de um webhook ADICIONAL (eventos `CHECKOUT_*`,
    * registrado sob demanda — `AsaasClient.createCheckoutWebhook`) na primeira vez que o

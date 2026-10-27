@@ -172,12 +172,22 @@ export interface IRestaurantRepository {
   reactivateAsaasSubaccount(id: string, subaccountData: IRestaurant['asaasSubaccountData']): Promise<IRestaurant>;
 
   /** Pedido explícito do usuário (follow-up) — diferente de `disconnectAsaasSubaccount`
-   * (pausa, mantém tudo pra reconectar a MESMA subconta): "esquece" a subconta inteira —
-   * apaga `asaasAccountId`/`asaasWalletId`/`asaasApiKey`/`asaasWebhookToken`/
-   * `asaasSubaccountData`/`asaasCheckoutWebhookRegistered`, deixando o formulário em branco pra
-   * vincular uma conta Asaas DIFERENTE. A subconta antiga não é apagada no Asaas (sem chamada
-   * à API deles) — só paramos de referenciá-la por aqui. */
+   * (pausa, mantém tudo pra reconectar a MESMA subconta): "esquece" a subconta ATIVA — deixa o
+   * formulário em branco pra vincular uma conta Asaas DIFERENTE. A subconta antiga não é apagada
+   * no Asaas (sem chamada à API deles), e também não é mais descartada por aqui: `asaasAccountId`/
+   * `asaasWalletId`/`asaasApiKey`/`asaasWebhookToken`/`asaasSubaccountData` são ARQUIVADOS em
+   * `previousAsaasSubaccounts` (não um `$unset` simples) — a chave de API só vem uma vez na
+   * criação, então descartá-la de vez tornava essa subconta irrecuperável pela nossa própria UI,
+   * mesmo continuando ativa no Asaas. `reconnectPreviousAsaasSubaccount` restaura uma entrada
+   * arquivada de volta pros campos ativos. */
   forgetAsaasSubaccount(id: string): Promise<IRestaurant>;
+
+  /** Pedido explícito do usuário (follow-up) — restaura uma subconta arquivada por
+   * `forgetAsaasSubaccount` de volta aos campos ativos (`asaasAccountId`/.../`asaasSubaccountData`),
+   * sem chamar o Asaas de novo (mesmo espírito de `reactivateAsaasSubaccount`); remove a entrada
+   * de `previousAsaasSubaccounts` ao restaurar (nunca fica repetida em ativo + arquivo).
+   * `asaasAccountId` identifica qual entrada do histórico restaurar. */
+  reconnectPreviousAsaasSubaccount(id: string, asaasAccountId: string): Promise<IRestaurant>;
 
   /** specs/0170-integracao-mercado-pago — persiste o resultado da troca OAuth do restaurante
    * com o Mercado Pago (`MercadoPagoOAuthController`); fora de `RestaurantProfileUpdate` de

@@ -8,7 +8,7 @@ import { requireOperatorRole } from '../../../shared/http/require-operator-role.
 import { environment } from '../../../shared/config/environment';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { AsaasClient } from '../infra/asaas-client';
-import { createAsaasSubaccountSchema } from './asaas-onboarding.schemas';
+import { createAsaasSubaccountSchema, reconnectAsaasSubaccountSchema } from './asaas-onboarding.schemas';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
@@ -82,12 +82,22 @@ export class AsaasOnboardingController extends BaseRouter {
       res.send(204);
     });
 
-    // Pedido explícito do usuário (follow-up) — "esquecer" a subconta inteira (diferente de
-    // desvincular, que mantém tudo pronto pra reconectar a MESMA subconta): limpa os dados,
-    // deixando o formulário em branco pra vincular uma conta Asaas diferente.
+    // Pedido explícito do usuário (follow-up) — "esquecer" a subconta ATIVA (diferente de
+    // desvincular, que mantém tudo pronto pra reconectar a MESMA subconta): deixa o formulário
+    // em branco pra vincular uma conta Asaas diferente. Os dados não se perdem — são arquivados
+    // em `previousAsaasSubaccounts`, restauráveis depois via `.../reconnect`.
     application.del('/restaurants/me/asaas/subaccount/forget', ...operatorAuthenticated, async (req: Request, res: Response) => {
       await this.restaurantRepository.forgetAsaasSubaccount(req.restaurantId!);
       res.send(204);
+    });
+
+    // Pedido explícito do usuário (follow-up) — restaura uma subconta arquivada por
+    // `forgetAsaasSubaccount` (`previousAsaasSubaccounts`) de volta aos campos ativos, sem
+    // chamar o Asaas de novo (mesmo espírito de "Reativar" sobre `disconnectAsaasSubaccount`).
+    application.post('/restaurants/me/asaas/subaccount/reconnect', ...operatorAuthenticated, async (req: Request, res: Response) => {
+      const { asaasAccountId } = parseBody(reconnectAsaasSubaccountSchema, req.body);
+      await this.restaurantRepository.reconnectPreviousAsaasSubaccount(req.restaurantId!, asaasAccountId);
+      res.json(200, { onlinePaymentsEnabled: true, asaasAccountId });
     });
 
     // specs/0101-integracao-asaas (fase 2, REQ-7) — saldo/repasses são dado financeiro, mesmo

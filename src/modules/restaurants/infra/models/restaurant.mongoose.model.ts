@@ -46,6 +46,21 @@ const asaasSubaccountDataSchema = new Schema(
   { _id: false },
 );
 
+// Pedido explícito do usuário (follow-up) — snapshot completo de uma subconta "esquecida"
+// (ver `IPreviousAsaasSubaccount`); guarda a chave de API já emitida, única forma de voltar a
+// usar essa subconta depois (o Asaas não tem endpoint de exclusão).
+const previousAsaasSubaccountSchema = new Schema(
+  {
+    asaasAccountId: { type: String, required: true },
+    asaasWalletId: { type: String, required: true },
+    asaasApiKey: { type: String, required: true },
+    asaasWebhookToken: { type: String, required: true },
+    subaccountData: { type: asaasSubaccountDataSchema, required: true },
+    archivedAt: { type: String, required: true },
+  },
+  { _id: false },
+);
+
 // specs/0028-destaques-vendidos-banners REQ-5.
 const bannerSchema = new Schema(
   {
@@ -172,6 +187,7 @@ const restaurantSchema = new Schema(
     asaasApiKey: { type: String },
     asaasWebhookToken: { type: String },
     asaasSubaccountData: { type: asaasSubaccountDataSchema },
+    previousAsaasSubaccounts: { type: [previousAsaasSubaccountSchema], default: [] },
     // specs/0101-integracao-asaas (fase 2).
     asaasCheckoutWebhookRegistered: { type: Boolean, default: false },
     // specs/0170-integracao-mercado-pago — vínculo OAuth (não subconta/KYC como o Asaas acima).

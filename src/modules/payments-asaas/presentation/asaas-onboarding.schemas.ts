@@ -17,3 +17,9 @@ export const createAsaasSubaccountSchema = z.object({
   postalCode: z.string().min(8),
   companyType: z.enum(['MEI', 'LIMITED', 'INDIVIDUAL', 'ASSOCIATION']).optional(),
 });
+
+/** Pedido explícito do usuário (follow-up) — `POST .../subaccount/reconnect`, identifica qual
+ * entrada de `previousAsaasSubaccounts` restaurar. */
+export const reconnectAsaasSubaccountSchema = z.object({
+  asaasAccountId: z.string().min(1),
+});
