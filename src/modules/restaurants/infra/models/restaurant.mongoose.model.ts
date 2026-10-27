@@ -168,6 +168,8 @@ const restaurantSchema = new Schema(
     asaasApiKey: { type: String },
     asaasWebhookToken: { type: String },
     asaasSubaccountData: { type: asaasSubaccountDataSchema },
+    // specs/0101-integracao-asaas (fase 2).
+    asaasCheckoutWebhookRegistered: { type: Boolean, default: false },
     // specs/0170-integracao-mercado-pago — vínculo OAuth (não subconta/KYC como o Asaas acima).
     mercadoPagoAccessToken: { type: String },
     mercadoPagoRefreshToken: { type: String },

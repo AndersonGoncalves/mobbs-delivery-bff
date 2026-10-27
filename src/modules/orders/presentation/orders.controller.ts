@@ -143,8 +143,14 @@ export class OrdersController extends BaseRouter {
 
       // specs/0170-integracao-mercado-pago REQ-3 — mesmo raciocínio do Pix acima: o app já
       // esconde a opção sem vínculo, isto é defesa em profundidade.
-      if (payload.paymentMethod === 'creditCardOnline' && !restaurant.mercadoPagoAccessToken) {
-        throw new BadRequestError('Restaurante não tem Mercado Pago vinculado');
+      // specs/0101-integracao-asaas (fase 2) — Asaas Checkout é um gateway alternativo válido pro
+      // mesmo `creditCardOnline`; só rejeita se o restaurante não tem NENHUM dos dois vinculado.
+      if (
+        payload.paymentMethod === 'creditCardOnline' &&
+        !restaurant.mercadoPagoAccessToken &&
+        !(restaurant.onlinePaymentsEnabled && restaurant.asaasApiKey)
+      ) {
+        throw new BadRequestError('Restaurante não tem gateway de cartão online vinculado');
       }
 
       const subtotal = payload.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
@@ -243,6 +249,11 @@ export class OrdersController extends BaseRouter {
       // ausência — diferente do Pix, aqui não existe um "cartão local" equivalente ao BR Code pra cair).
       if (payload.paymentMethod === 'creditCardOnline' && restaurant.mercadoPagoAccessToken) {
         await this.tryCreateMercadoPagoPreference(order, restaurant);
+      } else if (payload.paymentMethod === 'creditCardOnline' && restaurant.onlinePaymentsEnabled && restaurant.asaasApiKey) {
+        // specs/0101-integracao-asaas (fase 2) — Mercado Pago tem prioridade quando o restaurante
+        // tem os dois configurados (evita ambiguidade de qual gateway processou o pagamento, pro
+        // estorno saber pra quem ligar depois); Asaas é o fallback quando só ele está habilitado.
+        await this.tryCreateAsaasCheckout(order, restaurant);
       }
 
       // specs/0013-notificacoes-whatsapp REQ-1/REQ-4 — fire-and-forget: nunca bloqueia a
@@ -338,6 +349,7 @@ export class OrdersController extends BaseRouter {
       }
       await this.tryRefundOrderPixViaAsaas(order);
       await this.tryRefundOrderCardOnlineViaMercadoPago(order);
+      await this.tryRefundOrderCardOnlineViaAsaas(order);
 
       void this.whatsAppNotificationService.sendOrderStatusUpdate(updated).catch((error) => {
         console.error(`[whatsapp] erro inesperado enviando atualização de status do pedido ${updated.id}:`, error);
@@ -519,6 +531,7 @@ export class OrdersController extends BaseRouter {
         }
         await this.tryRefundOrderPixViaAsaas(order);
         await this.tryRefundOrderCardOnlineViaMercadoPago(order);
+        await this.tryRefundOrderCardOnlineViaAsaas(order);
 
         void this.whatsAppNotificationService.sendOrderStatusUpdate(updated, reason).catch((error) => {
           console.error(`[whatsapp] erro inesperado enviando atualização de status do pedido ${updated.id}:`, error);
@@ -772,6 +785,61 @@ export class OrdersController extends BaseRouter {
       await this.paymentRepository.setMercadoPagoCheckoutDetails(order.id, { externalReference: preference.id, checkoutUrl: preference.initPoint });
     } catch (error) {
       console.error(`[mercadopago] erro inesperado criando a preferência de checkout do pedido ${order.id}:`, error);
+    }
+  }
+
+  /** specs/0101-integracao-asaas (fase 2) — cria o checkout hospedado (cartão digitado numa
+   * página do Asaas, nunca no nosso backend) e persiste `checkoutUrl`/`externalReference`
+   * (id do CHECKOUT, só até o webhook confirmar e trocar pelo id do pagamento real — ver
+   * `AsaasWebhookController`). Mesmo padrão de `tryCreateMercadoPagoPreference`: qualquer falha é
+   * logada e engolida, sem fallback local (não existe "checkout local" equivalente ao BR Code). */
+  private async tryCreateAsaasCheckout(order: IOrder, restaurant: IRestaurant): Promise<void> {
+    try {
+      const client = new AsaasClient(restaurant.asaasApiKey!, environment.asaas.baseUrl);
+
+      // Webhook de checkout é registrado sob demanda, uma vez por restaurante — nunca mexe no
+      // webhook de Pix já criado em `createSubaccount` (fase 1), que continua intocado.
+      if (!restaurant.asaasCheckoutWebhookRegistered) {
+        const webhookUrl = `${environment.server.publicBaseUrl}/webhooks/asaas/${restaurant.id}`;
+        await client.createCheckoutWebhook(webhookUrl, restaurant.asaasWebhookToken!, restaurant.asaasSubaccountData?.email ?? 'contato@bsdelivery.com.br');
+        await this.restaurantRepository.markAsaasCheckoutWebhookRegistered(restaurant.id);
+      }
+
+      const trackingUrl = `${environment.publicApp.baseUrl}/${restaurant.slug}/pedidos/${order.id}`;
+      const checkout = await client.createCheckout({
+        items: order.items.map((item) => ({ name: item.productName, quantity: item.quantity, value: item.unitPrice })),
+        externalReference: order.id,
+        successUrl: trackingUrl,
+        cancelUrl: trackingUrl,
+        expiredUrl: trackingUrl,
+      });
+
+      await this.paymentRepository.setAsaasCheckoutDetails(order.id, { externalReference: checkout.id, checkoutUrl: checkout.link });
+    } catch (error) {
+      console.error(`[asaas] erro inesperado criando o checkout de cartão do pedido ${order.id}:`, error);
+    }
+  }
+
+  /** specs/0101-integracao-asaas (fase 2) — estorna no Asaas um pedido cancelado cujo cartão
+   * online (via checkout hospedado) já tinha sido aprovado por lá. `payment.externalReference`
+   * já foi trocado do id do checkout pro id do pagamento real pelo webhook no momento da
+   * confirmação (`AsaasWebhookController`) — se isso nunca aconteceu (pagamento nunca confirmado
+   * por aqui), não há o que estornar. */
+  private async tryRefundOrderCardOnlineViaAsaas(order: IOrder): Promise<void> {
+    if (order.paymentMethod !== 'creditCardOnline') return;
+    const payment = await this.paymentRepository.findByOrderId(order.id);
+    if (!payment || payment.status !== 'aprovado' || !payment.externalReference) return;
+
+    const restaurant = await this.restaurantRepository.findById(order.restaurantId);
+    // Mercado Pago tem prioridade quando os dois estão configurados (mesmo critério da criação).
+    if (!restaurant?.asaasApiKey || restaurant.mercadoPagoAccessToken) return;
+
+    try {
+      const client = new AsaasClient(restaurant.asaasApiKey, environment.asaas.baseUrl);
+      await client.refundCharge(payment.externalReference);
+      await this.paymentRepository.markAsRefunded(order.id);
+    } catch (error) {
+      console.error(`[asaas] erro inesperado estornando o cartão online do pedido ${order.id} — cancelamento já efetivado, resolver manualmente:`, error);
     }
   }
 

@@ -69,4 +69,15 @@ export class PaymentMongooseRepository implements IPaymentRepository {
     const doc = await PaymentModel.findOneAndUpdate({ orderId }, { $set: data }, { new: true }).lean<PaymentLeanDocument>();
     return toEntity(doc as PaymentLeanDocument);
   }
+
+  // specs/0101-integracao-asaas (fase 2).
+  async setAsaasCheckoutDetails(orderId: string, data: { externalReference: string; checkoutUrl: string }): Promise<IPayment> {
+    const doc = await PaymentModel.findOneAndUpdate({ orderId }, { $set: data }, { new: true }).lean<PaymentLeanDocument>();
+    return toEntity(doc as PaymentLeanDocument);
+  }
+
+  async updateExternalReference(orderId: string, externalReference: string): Promise<IPayment> {
+    const doc = await PaymentModel.findOneAndUpdate({ orderId }, { $set: { externalReference } }, { new: true }).lean<PaymentLeanDocument>();
+    return toEntity(doc as PaymentLeanDocument);
+  }
 }

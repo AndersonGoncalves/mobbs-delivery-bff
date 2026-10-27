@@ -323,6 +323,12 @@ export interface IRestaurant {
     province: string;
     postalCode: string;
   };
+  /** specs/0101-integracao-asaas (fase 2) — o webhook de Pix (`createSubaccount`, acima) nunca é
+   * tocado; cartão via Asaas Checkout precisa de um webhook ADICIONAL (eventos `CHECKOUT_*`,
+   * registrado sob demanda — `AsaasClient.createCheckoutWebhook`) na primeira vez que o
+   * restaurante recebe um pedido pago assim, pra nunca reconfigurar o que já está em produção.
+   * Marcado depois do registro bem-sucedido, pra não repetir a cada pedido. */
+  asaasCheckoutWebhookRegistered?: boolean;
   /** specs/0170-integracao-mercado-pago — vínculo OAuth da conta Mercado Pago do restaurante
    * (modelo diferente do Asaas: não é subconta/KYC criada por nós, é a própria conta do
    * restaurante autorizando nossa aplicação). `mercadoPagoAccessToken`/`mercadoPagoRefreshToken`

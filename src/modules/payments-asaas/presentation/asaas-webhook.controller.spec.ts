@@ -3,7 +3,15 @@ import { IOrderRepository } from '../../orders/domain/repositories/order.reposit
 import { IPaymentRepository } from '../../orders/domain/repositories/payment.repository.interface';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IWhatsAppNotificationService } from '../../notifications/domain/services/i-whatsapp-notification.service';
+import { AsaasClient } from '../infra/asaas-client';
 import { AsaasWebhookController } from './asaas-webhook.controller';
+
+// specs/0101-integracao-asaas (fase 2) — CHECKOUT_PAID resolve o id do pagamento real via
+// `AsaasClient`, mockado aqui mesmo padrão de `asaas-onboarding.controller.spec.ts`.
+jest.mock('../infra/asaas-client');
+jest.mock('../../../shared/config/environment', () => ({
+  environment: { asaas: { apiKey: 'parent-key', baseUrl: 'https://api-sandbox.asaas.com/v3' } },
+}));
 
 type FakeRequest = Partial<Pick<Request, 'params' | 'body'>> & { header?: (name: string) => string | undefined };
 type FakeResponse = Pick<Response, 'json' | 'send'>;
@@ -36,6 +44,13 @@ function buildRestaurant(overrides: Record<string, unknown> = {}) {
 }
 
 describe('AsaasWebhookController (specs/0101-integracao-asaas, fase 1)', () => {
+  const MockedAsaasClient = AsaasClient as jest.MockedClass<typeof AsaasClient>;
+
+  beforeEach(() => {
+    MockedAsaasClient.mockClear();
+    MockedAsaasClient.prototype.findPaymentByExternalReference = jest.fn().mockResolvedValue({ id: 'pay_real_1' });
+  });
+
   function setup(overrides: {
     orderRepository?: Partial<IOrderRepository>;
     paymentRepository?: Partial<IPaymentRepository>;
@@ -50,6 +65,7 @@ describe('AsaasWebhookController (specs/0101-integracao-asaas, fase 1)', () => {
     const paymentRepository: Partial<IPaymentRepository> = {
       findByOrderId: jest.fn().mockResolvedValue(buildPayment()),
       markAsApproved: jest.fn().mockResolvedValue(buildPayment({ status: 'aprovado' })),
+      updateExternalReference: jest.fn().mockResolvedValue(buildPayment()),
       ...overrides.paymentRepository,
     };
     const restaurantRepository: Partial<IRestaurantRepository> = {
@@ -130,5 +146,78 @@ describe('AsaasWebhookController (specs/0101-integracao-asaas, fase 1)', () => {
 
     expect(paymentRepository.markAsApproved).not.toHaveBeenCalled();
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ payment: { method: 'pix', status: 'aprovado' } }));
+  });
+
+  // specs/0101-integracao-asaas (fase 2).
+  describe('CHECKOUT_PAID (cartão via Asaas Checkout)', () => {
+    function setupCheckout(overrides: Parameters<typeof setup>[0] = {}) {
+      return setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ paymentMethod: 'creditCardOnline' })), ...overrides.orderRepository },
+        paymentRepository: {
+          findByOrderId: jest.fn().mockResolvedValue(buildPayment({ method: 'creditCardOnline', externalReference: 'chk_1' })),
+          markAsApproved: jest.fn().mockResolvedValue(buildPayment({ method: 'creditCardOnline', status: 'aprovado' })),
+          ...overrides.paymentRepository,
+        },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ asaasApiKey: 'key-subconta' })), ...overrides.restaurantRepository },
+        ...overrides,
+      });
+    }
+
+    it('confirma o pagamento e resolve/persiste o id do pagamento real (não o id do checkout)', async () => {
+      const { paymentRepository, routes } = setupCheckout();
+      const json = jest.fn();
+
+      await routes['POST /webhooks/asaas/:restaurantId'][0](
+        buildReq('webhook-token-1', { event: 'CHECKOUT_PAID', checkout: { id: 'chk_1', externalReference: 'o-1' } }),
+        { json, send: jest.fn() },
+      );
+
+      expect(paymentRepository.markAsApproved).toHaveBeenCalledWith('o-1');
+      expect(MockedAsaasClient.prototype.findPaymentByExternalReference).toHaveBeenCalledWith('o-1');
+      expect(paymentRepository.updateExternalReference).toHaveBeenCalledWith('o-1', 'pay_real_1');
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ payment: { method: 'creditCardOnline', status: 'aprovado' } }));
+    });
+
+    it('pedido com pagamento Pix (não cartão online) é 409 — payload de checkout não bate', async () => {
+      const { routes } = setupCheckout({
+        paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ method: 'pix' })) },
+      });
+
+      await expect(
+        routes['POST /webhooks/asaas/:restaurantId'][0](
+          buildReq('webhook-token-1', { event: 'CHECKOUT_PAID', checkout: { id: 'chk_1', externalReference: 'o-1' } }),
+          { json: jest.fn(), send: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 409 });
+    });
+
+    it('reenvio pro mesmo checkout já aprovado é 200 idempotente, sem resolver o pagamento de novo', async () => {
+      const { paymentRepository, routes } = setupCheckout({
+        paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ method: 'creditCardOnline', status: 'aprovado' })) },
+      });
+      const json = jest.fn();
+
+      await routes['POST /webhooks/asaas/:restaurantId'][0](
+        buildReq('webhook-token-1', { event: 'CHECKOUT_PAID', checkout: { id: 'chk_1', externalReference: 'o-1' } }),
+        { json, send: jest.fn() },
+      );
+
+      expect(paymentRepository.markAsApproved).not.toHaveBeenCalled();
+      expect(MockedAsaasClient.prototype.findPaymentByExternalReference).not.toHaveBeenCalled();
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ payment: { method: 'creditCardOnline', status: 'aprovado' } }));
+    });
+
+    it('checkout sem externalReference é 200 no-op', async () => {
+      const { paymentRepository, routes } = setupCheckout();
+      const send = jest.fn();
+
+      await routes['POST /webhooks/asaas/:restaurantId'][0](
+        buildReq('webhook-token-1', { event: 'CHECKOUT_PAID', checkout: { id: 'chk_1' } }),
+        { json: jest.fn(), send },
+      );
+
+      expect(send).toHaveBeenCalledWith(200);
+      expect(paymentRepository.markAsApproved).not.toHaveBeenCalled();
+    });
   });
 });

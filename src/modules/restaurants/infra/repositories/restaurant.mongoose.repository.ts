@@ -116,6 +116,7 @@ interface RestaurantLeanDocument {
     province: string;
     postalCode: string;
   };
+  asaasCheckoutWebhookRegistered?: boolean;
   mercadoPagoAccessToken?: string;
   mercadoPagoRefreshToken?: string;
   mercadoPagoUserId?: string;
@@ -212,6 +213,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     asaasApiKey: doc.asaasApiKey,
     asaasWebhookToken: doc.asaasWebhookToken,
     asaasSubaccountData: doc.asaasSubaccountData,
+    asaasCheckoutWebhookRegistered: doc.asaasCheckoutWebhookRegistered,
     mercadoPagoAccessToken: doc.mercadoPagoAccessToken,
     mercadoPagoRefreshToken: doc.mercadoPagoRefreshToken,
     mercadoPagoUserId: doc.mercadoPagoUserId,
@@ -391,6 +393,15 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
     data: { mercadoPagoAccessToken: string; mercadoPagoRefreshToken: string; mercadoPagoUserId: string; mercadoPagoTokenExpiresAt: string },
   ): Promise<IRestaurant> {
     const doc = await RestaurantModel.findByIdAndUpdate(id, { $set: data }, { new: true }).lean<RestaurantLeanDocument>();
+    return toEntity(doc as RestaurantLeanDocument);
+  }
+
+  async markAsaasCheckoutWebhookRegistered(id: string): Promise<IRestaurant> {
+    const doc = await RestaurantModel.findByIdAndUpdate(
+      id,
+      { $set: { asaasCheckoutWebhookRegistered: true } },
+      { new: true },
+    ).lean<RestaurantLeanDocument>();
     return toEntity(doc as RestaurantLeanDocument);
   }
 }

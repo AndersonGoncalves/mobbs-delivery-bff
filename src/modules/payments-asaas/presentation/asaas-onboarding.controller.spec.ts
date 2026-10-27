@@ -19,6 +19,7 @@ function buildApp() {
   const application = {
     post: (path: string, ...handlers: RouteHandler[]) => { routes[`POST ${path}`] = handlers; },
     del: (path: string, ...handlers: RouteHandler[]) => { routes[`DEL ${path}`] = handlers; },
+    get: (path: string, ...handlers: RouteHandler[]) => { routes[`GET ${path}`] = handlers; },
   };
   return { application: application as unknown as Server, routes };
 }
@@ -174,5 +175,56 @@ describe('AsaasOnboardingController (specs/0101-integracao-asaas, fase 1)', () =
     );
 
     expect(restaurantRepository.reactivateAsaasSubaccount).toHaveBeenCalledWith('r-1', buildSubaccountInput({ name: 'Outro Nome' }));
+  });
+
+  // specs/0101-integracao-asaas (fase 2, REQ-7) — saldo/repasses da subconta.
+  describe('GET /restaurants/me/asaas/balance e /transfers', () => {
+    beforeEach(() => {
+      MockedAsaasClient.prototype.getBalance = jest.fn().mockResolvedValue({ balance: 1234.56 });
+      MockedAsaasClient.prototype.listTransfers = jest.fn().mockResolvedValue([{ id: 'tr_1', status: 'DONE', value: 100, netValue: 99, transferFee: 1, dateCreated: '2026-10-27' }]);
+    });
+
+    it('devolve o saldo da subconta do restaurante autenticado', async () => {
+      const { routes } = setup({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue({ id: 'r-1', asaasApiKey: 'key-subconta' }) },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(routes['GET /restaurants/me/asaas/balance'], { restaurantId: 'r-1' }, { json, send: jest.fn() });
+
+      expect(MockedAsaasClient.prototype.getBalance).toHaveBeenCalled();
+      expect(json).toHaveBeenCalledWith(200, { balance: 1234.56 });
+    });
+
+    it('sem subconta vinculada, devolve saldo nulo sem chamar o Asaas', async () => {
+      const { routes } = setup({ restaurantRepository: { findById: jest.fn().mockResolvedValue({ id: 'r-1' }) } });
+      const json = jest.fn();
+
+      await runOperatorChain(routes['GET /restaurants/me/asaas/balance'], { restaurantId: 'r-1' }, { json, send: jest.fn() });
+
+      expect(MockedAsaasClient.prototype.getBalance).not.toHaveBeenCalled();
+      expect(json).toHaveBeenCalledWith(200, { balance: null });
+    });
+
+    it('devolve os repasses da subconta do restaurante autenticado', async () => {
+      const { routes } = setup({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue({ id: 'r-1', asaasApiKey: 'key-subconta' }) },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(routes['GET /restaurants/me/asaas/transfers'], { restaurantId: 'r-1' }, { json, send: jest.fn() });
+
+      expect(json).toHaveBeenCalledWith(200, { transfers: [{ id: 'tr_1', status: 'DONE', value: 100, netValue: 99, transferFee: 1, dateCreated: '2026-10-27' }] });
+    });
+
+    it('sem subconta vinculada, devolve lista vazia de repasses sem chamar o Asaas', async () => {
+      const { routes } = setup({ restaurantRepository: { findById: jest.fn().mockResolvedValue({ id: 'r-1' }) } });
+      const json = jest.fn();
+
+      await runOperatorChain(routes['GET /restaurants/me/asaas/transfers'], { restaurantId: 'r-1' }, { json, send: jest.fn() });
+
+      expect(MockedAsaasClient.prototype.listTransfers).not.toHaveBeenCalled();
+      expect(json).toHaveBeenCalledWith(200, { transfers: [] });
+    });
   });
 });

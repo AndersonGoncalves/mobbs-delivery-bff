@@ -178,4 +178,9 @@ export interface IRestaurantRepository {
     id: string,
     data: { mercadoPagoAccessToken: string; mercadoPagoRefreshToken: string; mercadoPagoUserId: string; mercadoPagoTokenExpiresAt: string },
   ): Promise<IRestaurant>;
+
+  /** specs/0101-integracao-asaas (fase 2) — marca que o webhook adicional de eventos de checkout
+   * (cartão) já foi registrado pra este restaurante, evitando registrar de novo a cada pedido
+   * (`OrdersController.tryCreateAsaasCheckout`). */
+  markAsaasCheckoutWebhookRegistered(id: string): Promise<IRestaurant>;
 }

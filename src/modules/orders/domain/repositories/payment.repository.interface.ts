@@ -30,4 +30,15 @@ export interface IPaymentRepository {
   /** specs/0170-integracao-mercado-pago — persiste o id da preferência e a URL de checkout
    * devolvidos pelo Mercado Pago na criação do pedido (`OrdersController.create`). */
   setMercadoPagoCheckoutDetails(orderId: string, data: { externalReference: string; checkoutUrl: string }): Promise<IPayment>;
+
+  /** specs/0101-integracao-asaas (fase 2) — persiste o id do checkout e a URL hospedada
+   * devolvidos pelo Asaas na criação do pedido (`OrdersController.create`), mesmo padrão de
+   * `setMercadoPagoCheckoutDetails`. */
+  setAsaasCheckoutDetails(orderId: string, data: { externalReference: string; checkoutUrl: string }): Promise<IPayment>;
+
+  /** specs/0101-integracao-asaas (fase 2) — depois que o webhook confirma um checkout pago
+   * (`CHECKOUT_PAID`), `externalReference` é sobrescrito do id do CHECKOUT (usado só até ali) pro
+   * id do PAGAMENTO real (`AsaasClient.findPaymentByExternalReference`) — estorno
+   * (`POST /v3/payments/:id/refund`) opera sobre pagamento, nunca sobre checkout. */
+  updateExternalReference(orderId: string, externalReference: string): Promise<IPayment>;
 }

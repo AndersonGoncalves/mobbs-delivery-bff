@@ -81,5 +81,36 @@ export class AsaasOnboardingController extends BaseRouter {
       await this.restaurantRepository.disconnectAsaasSubaccount(req.restaurantId!);
       res.send(204);
     });
+
+    // specs/0101-integracao-asaas (fase 2, REQ-7) — saldo/repasses são dado financeiro, mesmo
+    // critério de acesso de Caixa/relatórios (`CAIXA_ROLES` na web: dono/gerente/financeiro),
+    // mais largo que o KYC de cadastrar a subconta (só dono/gerente, acima).
+    const financialAuthenticated: AsyncHandler[] = [
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('dono', 'gerente', 'financeiro'),
+    ];
+
+    application.get('/restaurants/me/asaas/balance', ...financialAuthenticated, async (req: Request, res: Response) => {
+      const restaurant = await this.restaurantRepository.findById(req.restaurantId!);
+      if (!restaurant?.asaasApiKey) {
+        res.json(200, { balance: null });
+        return;
+      }
+      const client = new AsaasClient(restaurant.asaasApiKey, environment.asaas.baseUrl);
+      const { balance } = await client.getBalance();
+      res.json(200, { balance });
+    });
+
+    application.get('/restaurants/me/asaas/transfers', ...financialAuthenticated, async (req: Request, res: Response) => {
+      const restaurant = await this.restaurantRepository.findById(req.restaurantId!);
+      if (!restaurant?.asaasApiKey) {
+        res.json(200, { transfers: [] });
+        return;
+      }
+      const client = new AsaasClient(restaurant.asaasApiKey, environment.asaas.baseUrl);
+      const transfers = await client.listTransfers();
+      res.json(200, { transfers });
+    });
   }
 }
