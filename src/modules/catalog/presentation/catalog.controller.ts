@@ -1,6 +1,7 @@
 import type { Request, Response, Server } from 'restify';
 import { BadRequestError, ConflictError, NotFoundError } from 'restify-errors';
 
+import { isBillingBlocked } from '../../billing/domain/billing';
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
@@ -209,6 +210,13 @@ export class CatalogController extends BaseRouter {
     application.get('/restaurants/resolve/:slug/table-menu', async (req: Request, res: Response) => {
       const restaurant = await this.restaurantRepository.findBySlug(req.params.slug);
       if (!restaurant) throw new NotFoundError('Restaurante não encontrado');
+      // specs/0175-cobranca-assinatura-asaas REQ-25 — "cardápio de mesa" por QR Code (sem
+      // login/sessão), mesmo sentinela já usado por `GET /restaurants/resolve/:slug`: nunca
+      // expõe o cardápio pra visitante de restaurante bloqueado (REQ-30).
+      if (isBillingBlocked(restaurant.billing)) {
+        res.json(200, { blocked: true });
+        return;
+      }
 
       const categories = await this.menuCategoryRepository.listByRestaurant(restaurant.id);
       const filtered = await this.filterPublicCategories(restaurant.id, categories);

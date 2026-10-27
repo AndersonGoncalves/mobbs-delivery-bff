@@ -31,8 +31,9 @@ export interface ISubscriptionObligationRepository {
   /** Só as relevantes pra calcular bloqueio/exibir pendência — `status` != `paid`/`exempt`/
    * `cancelled` (usada por `recomputeAccessStatus` e pelo resumo exibido ao lojista). */
   findOpenByRestaurantId(restaurantId: string): Promise<ISubscriptionObligation[]>;
-  /** `awaiting_issue`/`issue_failed` — elegíveis pra emissão (REQ-9/REQ-12). */
-  findEligibleForIssuance(): Promise<ISubscriptionObligation[]>;
+  /** `awaiting_issue`/`issue_failed` — elegíveis pra emissão (REQ-9/REQ-12). Filtra por
+   * restaurante quando informado (reprocessamento administrativo de uma loja, REQ-32). */
+  findEligibleForIssuance(restaurantId?: string): Promise<ISubscriptionObligation[]>;
   /** `pending`/`overdue` — elegíveis pra reconciliação (REQ-22). Filtra por restaurante quando
    * informado (reconciliação sob demanda de um restaurante específico). */
   findPendingForReconciliation(restaurantId?: string): Promise<ISubscriptionObligation[]>;

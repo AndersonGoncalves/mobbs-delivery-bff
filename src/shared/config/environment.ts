@@ -66,4 +66,16 @@ export const environment = {
      * ainda não sabemos de qual restaurante é o pagamento — ver plan.md. */
     platformAccessToken: process.env.MERCADOPAGO_PLATFORM_ACCESS_TOKEN,
   },
+  /** specs/0175-cobranca-assinatura-asaas — cobrança da ASSINATURA da plataforma (lojista paga
+   * a plataforma), nunca confundir com `asaas` acima (pedidos dos restaurantes). Reusa a MESMA
+   * credencial `ASAAS_API_KEY`/`ASAAS_BASE_URL` (conta mãe — já é uma conta Asaas comum, capaz
+   * de ter clientes/cobranças próprias, não só criar subcontas) — as 4 variáveis abaixo são as
+   * únicas genuinamente novas desta spec. `webhookToken` nunca é o mesmo token por-restaurante
+   * de `asaas`/`mercadoPago` (webhook/endpoint próprios, `PlatformBillingWebhookController`). */
+  platformBilling: {
+    pixKeyType: process.env.BILLING_PIX_KEY_TYPE,
+    pixKey: process.env.BILLING_PIX_KEY,
+    beneficiaryName: process.env.BILLING_PIX_BENEFICIARY_NAME,
+    webhookToken: process.env.ASAAS_BILLING_WEBHOOK_TOKEN,
+  },
 };

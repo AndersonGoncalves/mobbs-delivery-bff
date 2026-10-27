@@ -101,7 +101,10 @@ export class PlatformBillingCycleService {
     await this.deps.annualSubscriptionService.issueRenewalIfDue(subscription, now);
   }
 
-  private async recomputeAndPersist(restaurantId: string, now: Date): Promise<void> {
+  /** Público de propósito — reusado fora do sweep completo pelo webhook (REQ-21: liberação
+   * imediata ao confirmar pagamento, sem esperar o próximo ciclo) e pelos endpoints
+   * administrativos de reprocessar/registrar exceção (REQ-32). */
+  async recomputeAndPersist(restaurantId: string, now: Date): Promise<void> {
     const restaurant = await this.deps.restaurantRepository.findById(restaurantId);
     if (!restaurant) return;
 

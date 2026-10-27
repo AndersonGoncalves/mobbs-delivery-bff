@@ -987,6 +987,18 @@ describe('OrdersController', () => {
     ).rejects.toMatchObject({ statusCode: 404 });
   });
 
+  // specs/0175-cobranca-assinatura-asaas REQ-25/REQ-30 — "acompanhamento de pedidos existentes"
+  // por link direto nunca expõe dado do pedido pra um restaurante bloqueado por inadimplência.
+  it('GET /orders/track/:token: restaurante bloqueado devolve { blocked: true }, nunca o pedido', async () => {
+    const billing = { referenceMonth: '2026-10', currentTier: 'pro' as const, notified75Percent: false, notifiedTierUpgrade: false, status: 'blocked' as const, cycle: 'monthly' as const };
+    const { routes } = setup({ restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ billing })) } });
+    const json = jest.fn();
+
+    await runPublicChain(routes['GET /orders/track/:token'], { params: { token: 'token-1' } }, { json });
+
+    expect(json).toHaveBeenCalledWith(200, { blocked: true });
+  });
+
   it('AC-1: GET /restaurants/me/orders lista os pedidos em andamento do restaurante do operador (token, não da rota)', async () => {
     const { orderRepository, routes } = setup();
     const json = jest.fn();

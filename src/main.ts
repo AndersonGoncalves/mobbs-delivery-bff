@@ -103,6 +103,24 @@ import { GooglePlacesService } from './modules/prospects/infra/services/google-p
 import { ProspectOutreachService } from './modules/prospects/infra/services/prospect-outreach.service';
 import { PlatformWhatsAppConnectionService } from './modules/whatsapp-connection/infra/platform-whatsapp-connection.service';
 import { PlatformWhatsAppConnectionController } from './modules/whatsapp-connection/presentation/platform-whatsapp-connection.controller';
+import { AsaasClient } from './modules/payments-asaas/infra/asaas-client';
+// specs/0175-cobranca-assinatura-asaas.
+import { BillingPayerMongooseRepository } from './modules/platform-billing/infra/repositories/billing-payer.mongoose.repository';
+import { BillingSettingsVersionMongooseRepository } from './modules/platform-billing/infra/repositories/billing-settings-version.mongoose.repository';
+import { SubscriptionObligationMongooseRepository } from './modules/platform-billing/infra/repositories/subscription-obligation.mongoose.repository';
+import { SubscriptionEventMongooseRepository } from './modules/platform-billing/infra/repositories/subscription-event.mongoose.repository';
+import { AnnualSubscriptionMongooseRepository } from './modules/platform-billing/infra/repositories/annual-subscription.mongoose.repository';
+import { PixAvailabilityExceptionMongooseRepository } from './modules/platform-billing/infra/repositories/pix-availability-exception.mongoose.repository';
+import { PlatformBillingActivationMongooseRepository } from './modules/platform-billing/infra/repositories/platform-billing-activation.mongoose.repository';
+import { activatePlatformBilling } from './modules/platform-billing/infra/migrations/activate-platform-billing';
+import { CloseMonthlyBillingService } from './modules/platform-billing/domain/services/close-monthly-billing.service';
+import { AnnualSubscriptionService } from './modules/platform-billing/domain/services/annual-subscription.service';
+import { ObligationIssuanceService } from './modules/platform-billing/domain/services/obligation-issuance.service';
+import { ReconciliationService } from './modules/platform-billing/domain/services/reconciliation.service';
+import { BillingPayerService } from './modules/platform-billing/domain/services/billing-payer.service';
+import { PlatformBillingCycleService } from './modules/platform-billing/domain/services/platform-billing-cycle.service';
+import { PlatformBillingController } from './modules/platform-billing/presentation/platform-billing.controller';
+import { PlatformBillingWebhookController } from './modules/platform-billing/presentation/platform-billing-webhook.controller';
 
 const server = new Server();
 
@@ -202,6 +220,57 @@ const campaignDispatchService = new CampaignDispatchService(
 const prospectRepository = new ProspectMongooseRepository();
 const platformWhatsAppConnectionService = new PlatformWhatsAppConnectionService();
 const prospectOutreachService = new ProspectOutreachService(prospectRepository, platformWhatsAppConnectionService);
+
+// specs/0175-cobranca-assinatura-asaas — cobrança da assinatura da plataforma (lojista paga a
+// plataforma), separada de `payments-asaas`/`payments-mercadopago` (pagamento de PEDIDO).
+// `restaurantOperatorMiddlewareWithoutBillingGuard` (sem `restaurantRepository`, ao contrário de
+// `restaurantOperatorMiddleware` acima) nunca lança `BillingBlockedError` — REQ-26 exige que o
+// lojista BLOQUEADO continue acessando a própria página de regularização.
+const restaurantOperatorMiddlewareWithoutBillingGuard = buildRestaurantOperatorMiddleware(restaurantOperatorRepository);
+const billingPayerRepository = new BillingPayerMongooseRepository();
+const billingSettingsVersionRepository = new BillingSettingsVersionMongooseRepository();
+const obligationRepository = new SubscriptionObligationMongooseRepository();
+const subscriptionEventRepository = new SubscriptionEventMongooseRepository();
+const annualSubscriptionRepository = new AnnualSubscriptionMongooseRepository();
+const pixAvailabilityExceptionRepository = new PixAvailabilityExceptionMongooseRepository();
+const platformBillingActivationRepository = new PlatformBillingActivationMongooseRepository();
+// Mesma credencial da conta MÃE já usada em `AsaasOnboardingController` pra criar subcontas
+// (specs/0101) — aqui é um USO NOVO da mesma conta (cliente/cobrança própria), nunca uma
+// subconta de restaurante.
+const platformAsaasClient = new AsaasClient(environment.asaas.apiKey ?? '', environment.asaas.baseUrl);
+const closeMonthlyBillingService = new CloseMonthlyBillingService({
+  orderRepository,
+  obligationRepository,
+  settingsVersionRepository: billingSettingsVersionRepository,
+});
+const annualSubscriptionService = new AnnualSubscriptionService({
+  annualSubscriptionRepository,
+  obligationRepository,
+  closeMonthlyBillingService,
+});
+const obligationIssuanceService = new ObligationIssuanceService({
+  obligationRepository,
+  billingPayerRepository,
+  pixAvailabilityExceptionRepository,
+  asaasClient: platformAsaasClient,
+});
+const reconciliationService = new ReconciliationService({
+  obligationRepository,
+  subscriptionEventRepository,
+  asaasClient: platformAsaasClient,
+});
+const billingPayerService = new BillingPayerService({ billingPayerRepository, asaasClient: platformAsaasClient });
+const platformBillingCycleService = new PlatformBillingCycleService({
+  restaurantRepository,
+  obligationRepository,
+  annualSubscriptionRepository,
+  pixAvailabilityExceptionRepository,
+  platformBillingActivationRepository,
+  closeMonthlyBillingService,
+  annualSubscriptionService,
+  obligationIssuanceService,
+  reconciliationService,
+});
 
 server
   .bootstrap([
@@ -306,7 +375,35 @@ server
       orderRepository,
       buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
       billingSettingsRepository,
+      obligationRepository,
+      annualSubscriptionRepository,
+      billingPayerRepository,
+      subscriptionEventRepository,
+      pixAvailabilityExceptionRepository,
+      platformBillingCycleService,
+      obligationIssuanceService,
+      reconciliationService,
     ),
+    // specs/0175-cobranca-assinatura-asaas — API do lojista (planos, pagador, Pix, anual) e
+    // webhook da assinatura (credencial/endpoint próprios, nunca os de pedido).
+    new PlatformBillingController({
+      restaurantOperatorMiddlewareWithoutBillingGuard,
+      billingSettingsRepository,
+      billingPayerRepository,
+      obligationRepository,
+      annualSubscriptionRepository,
+      pixAvailabilityExceptionRepository,
+      billingPayerService,
+      annualSubscriptionService,
+      reconciliationService,
+      orderRepository,
+    }),
+    new PlatformBillingWebhookController({
+      obligationRepository,
+      subscriptionEventRepository,
+      platformBillingCycleService,
+      webhookToken: environment.platformBilling.webhookToken ?? '',
+    }),
     // specs/0113-parametrizacao-faixas-cobranca.
     new BillingSettingsController(
       billingSettingsRepository,
@@ -380,11 +477,27 @@ server
       customerPixKeyRepository,
       buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
     ),
-  ], [migrateOperatorRolesToDono, backfillManualBestSellers, backfillStockTracking])
+  ], [
+    migrateOperatorRolesToDono,
+    backfillManualBestSellers,
+    backfillStockTracking,
+    // specs/0175-cobranca-assinatura-asaas REQ-34.
+    () => activatePlatformBilling({ activationRepository: platformBillingActivationRepository, settingsVersionRepository: billingSettingsVersionRepository, billingSettingsRepository }),
+  ])
   // specs/0066 REQ-1 — sessões do Baileys vivem em memória; sem isto todo restart do container
   // derruba o envio de WhatsApp em silêncio. specs/0124 — mesma lógica pra sessão da plataforma.
   .then(() =>
     Promise.all([whatsAppConnectionService.restoreConnectedSessions(), platformWhatsAppConnectionService.restoreConnectedSession()]),
+  )
+  // specs/0175-cobranca-assinatura-asaas REQ-9 — sweep disparado uma vez no boot (fire-and-forget:
+  // nunca atrasa nem derruba a inicialização do servidor; erro só logado, nunca propagado). A
+  // migração acima já rodou antes deste `.then()` (está dentro de `bootstrap`), garantindo que
+  // `PlatformBillingActivation`/a versão 1 das configurações já existem quando o ciclo rodar.
+  .then(() =>
+    platformBillingCycleService.runCycle(new Date()).catch((error) => {
+      // eslint-disable-next-line no-console
+      console.error('[platform-billing] erro inesperado no ciclo disparado no boot:', error);
+    }),
   )
   .catch((error) => {
     // eslint-disable-next-line no-console

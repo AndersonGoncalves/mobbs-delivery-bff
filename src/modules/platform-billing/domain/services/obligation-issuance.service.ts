@@ -32,8 +32,10 @@ export class ObligationIssuanceService {
     },
   ) {}
 
-  async issuePending(now: Date): Promise<void> {
-    const eligible = await this.deps.obligationRepository.findEligibleForIssuance();
+  /** Sem `restaurantId`: todas as obligations elegíveis (sweep global). Com `restaurantId`: só as
+   * de um restaurante (reprocessamento administrativo, REQ-32). */
+  async issuePending(now: Date, restaurantId?: string): Promise<void> {
+    const eligible = await this.deps.obligationRepository.findEligibleForIssuance(restaurantId);
     for (const obligation of eligible) {
       await this.issueOne(obligation, now);
     }

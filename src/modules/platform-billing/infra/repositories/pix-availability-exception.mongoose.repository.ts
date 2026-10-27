@@ -28,4 +28,13 @@ export class PixAvailabilityExceptionMongooseRepository implements IPixAvailabil
     ).lean<ExceptionLeanDocument>();
     return toEntity(doc as ExceptionLeanDocument);
   }
+
+  async setAdminOverride(obligationId: string, graceDeadline: Date, now: Date): Promise<IPixAvailabilityException> {
+    const doc = await PixAvailabilityExceptionModel.findOneAndUpdate(
+      { obligationId },
+      { $set: { graceDeadline }, $setOnInsert: { obligationId, firstValidPixAvailableAt: now } },
+      { upsert: true, new: true },
+    ).lean<ExceptionLeanDocument>();
+    return toEntity(doc as ExceptionLeanDocument);
+  }
 }

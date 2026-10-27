@@ -1405,5 +1405,20 @@ describe('CatalogController', () => {
         routes['GET /restaurants/resolve/:slug/table-menu'][0]({ params: { slug: 'nao-existe' } }, { json: jest.fn() }),
       ).rejects.toMatchObject({ statusCode: 404 });
     });
+
+    // specs/0175-cobranca-assinatura-asaas REQ-25/REQ-30 — cardápio de mesa por QR Code nunca
+    // expõe o cardápio pra visitante de restaurante bloqueado por inadimplência.
+    it('restaurante bloqueado devolve { blocked: true }, nunca o cardápio', async () => {
+      const billing = { referenceMonth: '2026-10', currentTier: 'pro' as const, notified75Percent: false, notifiedTierUpgrade: false, status: 'blocked' as const, cycle: 'monthly' as const };
+      const { routes, menuCategoryRepository } = setup({
+        restaurantRepository: { findBySlug: jest.fn().mockResolvedValue({ id: 'r-1', name: 'Pizzaria Teste', slug: 'pizzaria-teste', stockControlEnabled: false, billing }) },
+      });
+      const json = jest.fn();
+
+      await routes['GET /restaurants/resolve/:slug/table-menu'][0]({ params: { slug: 'pizzaria-teste' } }, { json });
+
+      expect(json).toHaveBeenCalledWith(200, { blocked: true });
+      expect(menuCategoryRepository.listByRestaurant).not.toHaveBeenCalled();
+    });
   });
 });

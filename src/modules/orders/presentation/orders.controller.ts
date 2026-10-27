@@ -598,6 +598,14 @@ export class OrdersController extends BaseRouter {
     application.get('/orders/track/:token', async (req: Request, res: Response) => {
       const order = await this.orderRepository.findByTrackingToken(req.params.token);
       const found = this.render(order);
+      // specs/0175-cobranca-assinatura-asaas REQ-25 — "acompanhamento de pedidos existentes" por
+      // link direto, mesmo sentinela já usado por `GET /restaurants/resolve/:slug`: nunca expõe
+      // dado do pedido pra visitante de restaurante bloqueado (REQ-30).
+      const restaurant = await this.restaurantRepository.findById(found.restaurantId);
+      if (restaurant && isBillingBlocked(restaurant.billing)) {
+        res.json(200, { blocked: true });
+        return;
+      }
       res.json(200, this.toPublicView(found));
     });
   }

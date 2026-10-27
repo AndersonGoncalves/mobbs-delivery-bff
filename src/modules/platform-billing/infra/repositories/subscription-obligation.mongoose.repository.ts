@@ -53,8 +53,10 @@ export class SubscriptionObligationMongooseRepository implements ISubscriptionOb
     return docs.map(toEntity);
   }
 
-  async findEligibleForIssuance(): Promise<ISubscriptionObligation[]> {
-    const docs = await SubscriptionObligationModel.find({ status: { $in: ['awaiting_issue', 'issue_failed'] } }).lean<ObligationLeanDocument[]>();
+  async findEligibleForIssuance(restaurantId?: string): Promise<ISubscriptionObligation[]> {
+    const filter: Record<string, unknown> = { status: { $in: ['awaiting_issue', 'issue_failed'] } };
+    if (restaurantId) filter.restaurantId = restaurantId;
+    const docs = await SubscriptionObligationModel.find(filter).lean<ObligationLeanDocument[]>();
     return docs.map(toEntity);
   }
 
