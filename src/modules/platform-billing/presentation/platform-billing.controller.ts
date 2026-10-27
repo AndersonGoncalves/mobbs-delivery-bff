@@ -114,7 +114,11 @@ export class PlatformBillingController extends BaseRouter {
       ).filter((exception): exception is NonNullable<typeof exception> => exception !== null);
       const accessStatus = recomputeAccessStatus(openObligations, exceptions, now);
 
-      res.json(200, { payer, openObligations, annualSubscription: subscription, accessStatus });
+      // `operatorRole` — a página de regularização (REQ-26) não pode chamar `GET
+      // /restaurants/me/operators/me` pra saber o papel (essa rota passa pelo middleware COM o
+      // guard de billing, bloquearia de novo); devolve aqui, resolvido pelo mesmo middleware SEM
+      // o guard que já autenticou esta rota.
+      res.json(200, { payer, openObligations, annualSubscription: subscription, accessStatus, operatorRole: req.operatorRole });
     });
 
     // REQ-32 (histórico completo, não só o em aberto) — mesmo critério financeiro de acesso.

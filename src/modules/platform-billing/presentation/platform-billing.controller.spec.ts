@@ -207,4 +207,15 @@ describe('PlatformBillingController (specs/0175-cobranca-assinatura-asaas)', () 
 
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ accessStatus: expect.objectContaining({ status: 'blocked' }) }));
   });
+
+  // specs/0175-cobranca-assinatura-asaas REQ-26 — a página de regularização não pode chamar
+  // `GET /restaurants/me/operators/me` (middleware COM o guard de billing, bloquearia de novo).
+  it('REQ-26: resumo devolve o operatorRole, pra decidir a UI (Dono vs Gerente/Caixa) sem outra chamada bloqueada', async () => {
+    const { routes } = setup();
+    const json = jest.fn();
+
+    await runChain(routes['GET /restaurants/me/billing/summary'], { restaurantId: 'r-1', operatorRole: 'financeiro' as never }, { json });
+
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ operatorRole: 'financeiro' }));
+  });
 });
