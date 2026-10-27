@@ -22,6 +22,12 @@ import { ReferralCodeMongooseRepository } from './modules/referrals/infra/reposi
 import { CustomerPixKeyMongooseRepository } from './modules/referrals/infra/repositories/customer-pix-key.mongoose.repository';
 import { CustomerReferralsController } from './modules/referrals/presentation/customer-referrals.controller';
 import { PlatformReferralsController } from './modules/referrals/presentation/platform-referrals.controller';
+import { ResellerMongooseRepository } from './modules/resellers/infra/repositories/reseller.mongoose.repository';
+import { ResellerProspectMongooseRepository } from './modules/resellers/infra/repositories/reseller-prospect.mongoose.repository';
+import { ResellerClientMongooseRepository } from './modules/resellers/infra/repositories/reseller-client.mongoose.repository';
+import { ResellerController } from './modules/resellers/presentation/reseller.controller';
+import { PlatformResellersController } from './modules/resellers/presentation/platform-resellers.controller';
+import { buildResellerMiddleware } from './shared/http/reseller.middleware';
 import { RestaurantOperatorsController } from './modules/restaurant-operators/presentation/restaurant-operators.controller';
 import { MenuCategoryMongooseRepository } from './modules/catalog/infra/repositories/menu-category.mongoose.repository';
 import { ProductMongooseRepository } from './modules/catalog/infra/repositories/product.mongoose.repository';
@@ -127,6 +133,12 @@ const server = new Server();
 const restaurantOperatorRepository = new RestaurantOperatorMongooseRepository();
 const restaurantRepository = new RestaurantMongooseRepository();
 const restaurantOperatorMiddleware = buildRestaurantOperatorMiddleware(restaurantOperatorRepository, restaurantRepository);
+// specs/0189-painel-revenda — instâncias únicas, compartilhadas por `RestaurantSignupController`
+// (vínculo automático via `?revenda=`), `ResellerController` e `PlatformResellersController`.
+const resellerRepository = new ResellerMongooseRepository();
+const resellerProspectRepository = new ResellerProspectMongooseRepository();
+const resellerClientRepository = new ResellerClientMongooseRepository();
+const resellerMiddleware = buildResellerMiddleware(resellerRepository);
 // specs/0044-promocoes-produtos — instância única, compartilhada por ProductMongooseRepository
 // (preço/percentual promocional + desconto em opção vinculada) e MenuCategoryMongooseRepository
 // (versão leve do cardápio por categoria), além do PromotionsController (CRUD da retaguarda).
@@ -300,6 +312,8 @@ server
       new ReferralMongooseRepository(),
       new ReferralCodeMongooseRepository(),
       new RawMaterialMongooseRepository(),
+      resellerRepository,
+      resellerClientRepository,
     ),
     new OnboardingChecklistController(
       restaurantRepository,
@@ -475,6 +489,15 @@ server
       customerRepository,
       restaurantRepository,
       customerPixKeyRepository,
+      buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
+    ),
+    // specs/0189-painel-revenda.
+    new ResellerController(resellerRepository, resellerProspectRepository, resellerClientRepository, restaurantRepository, resellerMiddleware),
+    new PlatformResellersController(
+      resellerRepository,
+      resellerProspectRepository,
+      resellerClientRepository,
+      restaurantRepository,
       buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
     ),
   ], [

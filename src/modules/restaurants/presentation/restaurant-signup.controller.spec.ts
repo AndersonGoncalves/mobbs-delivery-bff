@@ -7,6 +7,8 @@ import { IMenuCategoryRepository } from '../../catalog/domain/repositories/menu-
 import { IProductRepository } from '../../catalog/domain/repositories/product.repository.interface';
 import { IAdditionalGroupTemplateRepository } from '../../additional-group-templates/domain/repositories/additional-group-template.repository.interface';
 import { IRawMaterialRepository } from '../../raw-materials/domain/repositories/raw-material.repository.interface';
+import { IResellerRepository } from '../../resellers/domain/repositories/reseller.repository.interface';
+import { IResellerClientRepository } from '../../resellers/domain/repositories/reseller-client.repository.interface';
 import { RestaurantSignupController } from './restaurant-signup.controller';
 
 type FakeRequest = Partial<Pick<Request, 'body'>> & { user?: { email?: string }; query?: Record<string, string> };
@@ -89,6 +91,9 @@ describe('RestaurantSignupController', () => {
     const additionalGroupTemplateRepository = buildAdditionalGroupTemplateRepository();
     const { application, routes } = buildFakeApplication();
     const rawMaterialRepository = { create: jest.fn().mockResolvedValue({ id: 'rm-1' }) };
+    // specs/0189-painel-revenda REQ-10/REQ-11.
+    const resellerRepository = { findByCode: jest.fn().mockResolvedValue(null) } as unknown as IResellerRepository;
+    const resellerClientRepository = { create: jest.fn().mockResolvedValue({ id: 'rc-1' }) } as unknown as IResellerClientRepository;
     new RestaurantSignupController(
       restaurantRepository,
       operatorRepository,
@@ -98,6 +103,8 @@ describe('RestaurantSignupController', () => {
       referralRepository,
       referralCodeRepository,
       rawMaterialRepository as unknown as IRawMaterialRepository,
+      resellerRepository,
+      resellerClientRepository,
     ).initializeRoutes(application);
     return {
       restaurantRepository,
@@ -107,6 +114,8 @@ describe('RestaurantSignupController', () => {
       additionalGroupTemplateRepository,
       referralRepository,
       referralCodeRepository,
+      resellerRepository,
+      resellerClientRepository,
       routes,
     };
   }
@@ -144,6 +153,53 @@ describe('RestaurantSignupController', () => {
     );
 
     expect(referralRepository.create).not.toHaveBeenCalled();
+  });
+
+  // specs/0189-painel-revenda AC-6/REQ-10.
+  it('specs/0189 AC-6: cadastro com ?revenda= de um revendedor ativo cria o cliente efetivado com origem "link"', async () => {
+    const { resellerRepository, resellerClientRepository, routes } = setup();
+    resellerRepository.findByCode = jest.fn().mockImplementation(async (code: string) =>
+      (code === 'XYZ789' ? { id: 'reseller-1', isActive: true } : null));
+
+    await runAuthenticatedChain(
+      routes['POST /restaurants/signup'],
+      {
+        body: { name: 'Pizzaria do João', ownerName: 'João da Silva', whatsapp: '11999999999', businessType: 'pizzaria' },
+        query: { revenda: 'xyz789' },
+        user: { email: 'joao@exemplo.com' },
+      },
+      { json: jest.fn() },
+    );
+
+    expect(resellerRepository.findByCode).toHaveBeenCalledWith('XYZ789');
+    expect(resellerClientRepository.create).toHaveBeenCalledWith({ resellerId: 'reseller-1', restaurantId: 'r-1', origin: 'link' });
+  });
+
+  // specs/0189-painel-revenda AC-7/REQ-11.
+  it('specs/0189 AC-7: cadastro com ?revenda= de código inexistente completa normalmente, sem criar vínculo', async () => {
+    const { resellerClientRepository, routes } = setup();
+
+    await runAuthenticatedChain(
+      routes['POST /restaurants/signup'],
+      { body: { name: 'Pizzaria do João', ownerName: 'João da Silva', whatsapp: '11999999999', businessType: 'pizzaria' }, query: { revenda: 'NAOEXISTE' }, user: { email: 'joao@exemplo.com' } },
+      { json: jest.fn() },
+    );
+
+    expect(resellerClientRepository.create).not.toHaveBeenCalled();
+  });
+
+  // plan.md decisão — revendedor inativo é tratado como "código não encontrado".
+  it('specs/0189: cadastro com ?revenda= de um revendedor inativo não cria vínculo', async () => {
+    const { resellerRepository, resellerClientRepository, routes } = setup();
+    resellerRepository.findByCode = jest.fn().mockResolvedValue({ id: 'reseller-1', isActive: false });
+
+    await runAuthenticatedChain(
+      routes['POST /restaurants/signup'],
+      { body: { name: 'Pizzaria do João', ownerName: 'João da Silva', whatsapp: '11999999999', businessType: 'pizzaria' }, query: { revenda: 'ABC123' }, user: { email: 'joao@exemplo.com' } },
+      { json: jest.fn() },
+    );
+
+    expect(resellerClientRepository.create).not.toHaveBeenCalled();
   });
 
   it('AC-2: cria o restaurante e o operador dono, devolvendo restaurantId e slug', async () => {
