@@ -33,6 +33,9 @@ interface RestaurantLeanDocument {
   document?: string;
   minimumOrderValue?: number;
   stockControlEnabled?: boolean;
+  cashbackPercent?: number;
+  loyaltyGoalOrders?: number;
+  loyaltyRewardValue?: number;
   deliveryFeeCents?: number;
   shareMessage?: string;
   welcomeMessage?: string;
@@ -141,6 +144,9 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     document: doc.document,
     minimumOrderValue: doc.minimumOrderValue ?? 0,
     stockControlEnabled: doc.stockControlEnabled ?? false,
+    cashbackPercent: doc.cashbackPercent,
+    loyaltyGoalOrders: doc.loyaltyGoalOrders,
+    loyaltyRewardValue: doc.loyaltyRewardValue,
     deliveryFeeCents: doc.deliveryFeeCents ?? 0,
     shareMessage: doc.shareMessage ?? buildDefaultShareMessage(doc.name),
     welcomeMessage: doc.welcomeMessage,

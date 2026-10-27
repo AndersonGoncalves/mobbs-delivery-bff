@@ -35,6 +35,7 @@ import { IOrderRepository } from '../domain/repositories/order.repository.interf
 import { IRestaurantTableRepository } from '../../table-service/domain/repositories/table.repository.interface';
 import { IPaymentRepository } from '../domain/repositories/payment.repository.interface';
 import { IBlockedCustomerRepository } from '../../customer-blocking/domain/repositories/blocked-customer.repository.interface';
+import { CustomerBalanceService } from '../../customer-balance/domain/services/customer-balance.service';
 import { isValidCellphone } from '../../../shared/utils/is-valid-cellphone';
 import { normalizePhoneNumber } from '../../../shared/utils/normalize-phone-number';
 import { assignOrderMotoboySchema, cancelOrderWithReasonSchema, createOrderSchema, salesSummaryQuerySchema, updateOrderStatusSchema } from './orders.schemas';
@@ -82,6 +83,9 @@ export class OrdersController extends BaseRouter {
     // Pedido explícito do usuário (módulo `customer-blocking`) — checagem em profundidade no
     // momento do pedido, nunca confia só no app esconder a opção.
     private readonly blockedCustomerRepository?: IBlockedCustomerRepository,
+    // specs/0131-cashback-app + specs/0132-programa-fidelidade-app — saldo resgatável
+    // compartilhado (resgate na criação, devolução no cancelamento, crédito na entrega).
+    private readonly customerBalanceService?: CustomerBalanceService,
   ) {
     super();
     if (rawMaterialRepository) {
@@ -165,12 +169,21 @@ export class OrdersController extends BaseRouter {
       // de novo aqui, mesmo que o cliente já tenha "aplicado" o cupom antes via
       // `POST /restaurants/:id/coupons/validate` (feedback de UX, não fonte de verdade).
       const { discount, couponCode } = await this.applyCoupon(payload.couponCode, payload.restaurantId, req.user!.uid, subtotal);
-      const total = subtotal + deliveryFee - discount;
+      const orderTotalBeforeCashback = subtotal + deliveryFee - discount;
 
       // Resolve os vínculos atuais e reserva saldo antes de aceitar o pedido. O corpo enviado pelo
       // cliente nunca fornece ids de estoque; só nomes de grupo/opção são casados com o catálogo.
       const resolvedItems = await this.resolveItemsLinkedProducts(payload.items);
       const orderId = randomUUID();
+
+      // specs/0131-cashback-app REQ-4/REQ-5/REQ-7 — nunca confia no valor pedido pelo app: capa
+      // em min(saldo real, valor pedido, total do pedido antes do cashback) e debita atomicamente.
+      const cashbackUsed =
+        payload.cashbackAmount && this.customerBalanceService
+          ? await this.customerBalanceService.debitRedemption(req.user!.uid, payload.restaurantId, payload.cashbackAmount, orderTotalBeforeCashback, orderId)
+          : 0;
+      const total = orderTotalBeforeCashback - cashbackUsed;
+
       const items = restaurant.stockControlEnabled
         ? await this.requireStockReservationService().reserveOrderItems(
             restaurant.id,
@@ -209,6 +222,7 @@ export class OrdersController extends BaseRouter {
         discount,
         total,
         couponCode,
+        cashbackUsed,
         paymentMethod: payload.paymentMethod,
         cardBrand: payload.cardBrand,
         cashChangeFor: payload.cashChangeFor,
@@ -350,6 +364,7 @@ export class OrdersController extends BaseRouter {
       await this.tryRefundOrderPixViaAsaas(order);
       await this.tryRefundOrderCardOnlineViaMercadoPago(order);
       await this.tryRefundOrderCardOnlineViaAsaas(order);
+      await this.refundCashbackIfUsed(order);
 
       void this.whatsAppNotificationService.sendOrderStatusUpdate(updated).catch((error) => {
         console.error(`[whatsapp] erro inesperado enviando atualização de status do pedido ${updated.id}:`, error);
@@ -472,6 +487,37 @@ export class OrdersController extends BaseRouter {
           }
 
         }
+        // specs/0131-cashback-app REQ-2 / specs/0132-programa-fidelidade-app REQ-2/REQ-3 — mesmo
+        // corte de `orderType !== 'table'` e mesmo try/catch não-bloqueante do caixa automático
+        // acima: falha ao creditar nunca reverte o status, que já avançou.
+        if (status === 'entregue' && updated.orderType !== 'table' && this.customerBalanceService) {
+          try {
+            const restaurant = await this.restaurantRepository.findById(updated.restaurantId);
+            if (restaurant?.cashbackPercent) {
+              // `updated.total` já é líquido do cashback resgatado no mesmo pedido (`total =
+              // subtotal + deliveryFee - discount - cashbackUsed`) — "sem contar o cashback já
+              // resgatado nesse mesmo pedido" (REQ-2) cai de graça da própria definição de `total`.
+              const cashbackAmount = Math.round((restaurant.cashbackPercent / 100) * updated.total * 100) / 100;
+              if (cashbackAmount > 0) {
+                await this.customerBalanceService.creditCashback(updated.customerId, updated.restaurantId, cashbackAmount, updated.id);
+              }
+            }
+            if (restaurant?.loyaltyGoalOrders) {
+              const stampCount = await this.customerBalanceService.incrementLoyaltyStamp(updated.customerId, updated.restaurantId);
+              if (stampCount >= restaurant.loyaltyGoalOrders) {
+                await this.customerBalanceService.creditLoyaltyReward(
+                  updated.customerId,
+                  updated.restaurantId,
+                  restaurant.loyaltyRewardValue ?? 0,
+                  updated.id,
+                );
+                await this.customerBalanceService.resetLoyaltyStamp(updated.customerId, updated.restaurantId);
+              }
+            }
+          } catch (error) {
+            console.error(`[customer-balance] erro inesperado creditando cashback/fidelidade do pedido ${updated.id}:`, error);
+          }
+        }
 
         res.json(200, updated);
       },
@@ -532,6 +578,7 @@ export class OrdersController extends BaseRouter {
         await this.tryRefundOrderPixViaAsaas(order);
         await this.tryRefundOrderCardOnlineViaMercadoPago(order);
         await this.tryRefundOrderCardOnlineViaAsaas(order);
+        await this.refundCashbackIfUsed(order);
 
         void this.whatsAppNotificationService.sendOrderStatusUpdate(updated, reason).catch((error) => {
           console.error(`[whatsapp] erro inesperado enviando atualização de status do pedido ${updated.id}:`, error);
@@ -657,6 +704,21 @@ export class OrdersController extends BaseRouter {
     }
 
     return { discount: result.discountAmount, couponCode: coupon!.code };
+  }
+
+  /**
+   * specs/0131-cashback-app REQ-6 — devolve ao saldo o valor de cashback resgatado num pedido
+   * cancelado antes de entregar (único momento em que cancelar é possível —
+   * `order-status-transitions.ts`, `entregue` é terminal). Fire-and-forget/try-catch: falha na
+   * devolução nunca reverte o cancelamento, que já aconteceu.
+   */
+  private async refundCashbackIfUsed(order: IOrder): Promise<void> {
+    if (!order.cashbackUsed || !this.customerBalanceService) return;
+    try {
+      await this.customerBalanceService.refundRedemption(order.customerId, order.restaurantId, order.cashbackUsed, order.id);
+    } catch (error) {
+      console.error(`[customer-balance] erro inesperado devolvendo cashback do pedido ${order.id}:`, error);
+    }
   }
 
   // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16 — busca o `Product` de cada

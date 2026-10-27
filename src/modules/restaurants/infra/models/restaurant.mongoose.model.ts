@@ -85,6 +85,10 @@ const restaurantSchema = new Schema(
     document: { type: String },
     minimumOrderValue: { type: Number, required: true, default: 0 },
     stockControlEnabled: { type: Boolean, required: true, default: false },
+    // specs/0131-cashback-app REQ-1 / specs/0132-programa-fidelidade-app REQ-1.
+    cashbackPercent: { type: Number },
+    loyaltyGoalOrders: { type: Number },
+    loyaltyRewardValue: { type: Number },
     deliveryFeeCents: { type: Number, required: true, default: 0 },
     shareMessage: { type: String },
     // specs/0094-mensagem-boas-vindas-home — sem default: ausente/vazio = nenhum card na home.

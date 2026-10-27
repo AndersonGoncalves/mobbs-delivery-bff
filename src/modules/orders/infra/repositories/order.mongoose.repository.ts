@@ -36,6 +36,7 @@ interface OrderLeanDocument {
   discount: number;
   total: number;
   couponCode?: string;
+  cashbackUsed?: number;
   paymentMethod: PaymentMethod;
   cashChangeFor?: number;
   createdAt: Date;
@@ -79,6 +80,7 @@ function toEntity(doc: OrderLeanDocument): IOrder {
     discount: doc.discount,
     total: doc.total,
     couponCode: doc.couponCode,
+    cashbackUsed: doc.cashbackUsed,
     paymentMethod: doc.paymentMethod,
     cashChangeFor: doc.cashChangeFor,
     createdAt: doc.createdAt.toISOString(),
@@ -111,6 +113,7 @@ export class OrderMongooseRepository implements IOrderRepository {
       discount: input.discount,
       total: input.total,
       couponCode: input.couponCode,
+      cashbackUsed: input.cashbackUsed,
       paymentMethod: input.paymentMethod,
       cashChangeFor: input.cashChangeFor,
       tableId: input.tableId,

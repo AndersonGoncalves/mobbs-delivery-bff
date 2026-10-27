@@ -70,6 +70,15 @@ export interface IRestaurant {
   minimumOrderValue: number;
   /** specs/0108 — chave global de reserva/ocultação de itens rastreados; ausência equivale a false. */
   stockControlEnabled?: boolean;
+  /** specs/0131-cashback-app REQ-1 — 0 a 100, default 0/ausente (desligado). Único valor fixo,
+   * sem agenda por campanha/período (decisão de design, `specs/0131/plan.md`). */
+  cashbackPercent?: number;
+  /** specs/0132-programa-fidelidade-app REQ-1 — quantos pedidos entregues completam o cartão de
+   * fidelidade; ausência/`0` = feature desligada. */
+  loyaltyGoalOrders?: number;
+  /** specs/0132-programa-fidelidade-app REQ-1 — valor em reais creditado ao saldo resgatável
+   * (`specs/0131`) quando `loyaltyGoalOrders` é atingido. */
+  loyaltyRewardValue?: number;
   /**
    * specs/0004-carrinho — taxa de entrega fixa nesta v1 (docs/architecture/data-model.md,
    * `deliveryFeeCents`; sem cálculo por distância). Default 0. Editável pela retaguarda (campo

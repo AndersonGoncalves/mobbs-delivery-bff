@@ -130,6 +130,13 @@ export interface IOrder {
    * histórico de qual código o pedido usou.
    */
   couponCode?: string;
+  /**
+   * specs/0131-cashback-app REQ-4/REQ-5 — valor de saldo de cashback resgatado neste pedido
+   * (reais), já debitado do saldo do cliente na criação (`CustomerBalanceService.
+   * debitRedemption`). `0`/ausente = nenhum resgate. `Order.total` já é líquido deste valor
+   * (`total = subtotal + deliveryFee - discount - cashbackUsed`).
+   */
+  cashbackUsed?: number;
   paymentMethod: PaymentMethod;
   /**
    * specs/0080-troco-pagamento-dinheiro-checkout REQ-2 — só faz sentido com `paymentMethod ===

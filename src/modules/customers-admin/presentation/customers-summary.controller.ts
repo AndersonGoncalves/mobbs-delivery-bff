@@ -7,6 +7,7 @@ import { requireOperatorRole } from '../../../shared/http/require-operator-role.
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { IAddressRepository } from '../../customers/domain/repositories/address.repository.interface';
 import { ICustomerSummaryRepository } from '../domain/repositories/customer-summary.repository.interface';
+import { CustomerBalanceService } from '../../customer-balance/domain/services/customer-balance.service';
 import { customersSummaryQuerySchema } from './customers-summary.schemas';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
@@ -29,6 +30,8 @@ export class CustomersSummaryController extends BaseRouter {
     // Pedido explícito do usuário (follow-up) — "ver endereços" do cliente (mesmo padrão de "ver
     // pedidos").
     private readonly addressRepository: IAddressRepository,
+    // specs/0131-cashback-app REQ-8 / specs/0132-programa-fidelidade-app REQ-6.
+    private readonly customerBalanceService: CustomerBalanceService,
   ) {
     super();
   }
@@ -84,6 +87,26 @@ export class CustomersSummaryController extends BaseRouter {
         }
         const addresses = await this.addressRepository.listByCustomer(req.params.customerId);
         res.json(200, addresses);
+      },
+    );
+
+    // specs/0131-cashback-app REQ-8 / specs/0132-programa-fidelidade-app REQ-6 — saldo +
+    // histórico + progresso de fidelidade do cliente neste restaurante. Mesma checagem de posse
+    // da rota de endereços acima (nunca por `customerId` adivinhado).
+    application.get(
+      '/restaurants/me/customers-summary/:customerId/balance',
+      ...authenticated,
+      async (req: Request, res: Response) => {
+        const orders = await this.orderRepository.findManyByCustomerAndRestaurant(req.params.customerId, req.restaurantId!);
+        if (orders.length === 0) {
+          res.json(200, { balance: 0, loyaltyStampCount: 0, transactions: [] });
+          return;
+        }
+        const [balance, transactions] = await Promise.all([
+          this.customerBalanceService.getOrCreate(req.params.customerId, req.restaurantId!),
+          this.customerBalanceService.getHistory(req.params.customerId, req.restaurantId!),
+        ]);
+        res.json(200, { balance: balance.balance, loyaltyStampCount: balance.loyaltyStampCount, transactions });
       },
     );
   }

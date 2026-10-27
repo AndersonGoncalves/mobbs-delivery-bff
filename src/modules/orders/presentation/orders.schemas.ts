@@ -63,6 +63,10 @@ export const createOrderSchema = z
     // "aplicou" um código no checkout. Revalidado sempre no controller (nunca confia no desconto
     // calculado pelo app) — este schema só garante o formato, não a validade do cupom em si.
     couponCode: optionalString(z.string().min(1)),
+    // specs/0131-cashback-app REQ-4/REQ-5 — quanto do saldo de cashback o cliente quer usar neste
+    // pedido (app manda o próprio saldo lido, pra "usar tudo"). Nunca confia nesse valor: o
+    // controller sempre revalida contra o saldo real e o total do pedido (REQ-7).
+    cashbackAmount: z.coerce.number().positive().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.orderType === 'delivery' && !data.deliveryAddress) {

@@ -127,6 +127,8 @@ const orderSchema = new Schema(
     total: { type: Number, required: true },
     // specs/0022-cupons-desconto REQ-2/REQ-4 — código do cupom aplicado, se algum (ver `IOrder.couponCode`).
     couponCode: { type: String },
+    // specs/0131-cashback-app REQ-4/REQ-5 (ver `IOrder.cashbackUsed`).
+    cashbackUsed: { type: Number },
     paymentMethod: { type: String, enum: ['creditCard', 'creditCardOnline', 'debitCard', 'pix', 'cash'], required: true },
     // specs/0080-troco-pagamento-dinheiro-checkout REQ-2 (ver `IOrder.cashChangeFor`).
     cashChangeFor: { type: Number },

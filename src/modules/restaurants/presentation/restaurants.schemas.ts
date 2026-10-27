@@ -75,6 +75,11 @@ export const restaurantProfileSchema = z
     document: z.string().refine(isValidCnpj, 'CNPJ inválido'),
     minimumOrderValue: z.number().nonnegative(),
     stockControlEnabled: z.boolean().optional(),
+    // specs/0131-cashback-app REQ-1 — 0 a 100, default 0 (desligado).
+    cashbackPercent: z.number().min(0).max(100).optional(),
+    // specs/0132-programa-fidelidade-app REQ-1 — ausência/`0` = feature desligada.
+    loyaltyGoalOrders: z.number().int().nonnegative().optional(),
+    loyaltyRewardValue: z.number().nonnegative().optional(),
     // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-1 — só usado de verdade
     // quando deliveryFeeMode === 'fixed', mas sempre aceito/gravado (mesmo raciocínio de
     // deliveryFeeZones, que também persiste mesmo fora do modo byNeighborhood).

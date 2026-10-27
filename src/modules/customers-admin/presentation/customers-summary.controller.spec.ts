@@ -3,6 +3,8 @@ import type { Request, Response, Server } from 'restify';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { IAddressRepository } from '../../customers/domain/repositories/address.repository.interface';
 import { ICustomerSummaryRepository } from '../domain/repositories/customer-summary.repository.interface';
+import { CustomerBalanceService } from '../../customer-balance/domain/services/customer-balance.service';
+import { ICustomerBalanceRepository } from '../../customer-balance/domain/repositories/customer-balance.repository.interface';
 import { CustomersSummaryController } from './customers-summary.controller';
 
 type FakeRequest = Partial<Pick<Request, 'params' | 'query'>> & { restaurantId?: string };
@@ -95,14 +97,20 @@ describe('CustomersSummaryController (specs/0016-clientes-retaguarda)', () => {
       ...overrides.addressRepository,
     };
     const restaurantOperatorMiddleware = jest.fn(async () => {});
+    const customerBalanceRepository: Partial<ICustomerBalanceRepository> = {
+      getOrCreate: jest.fn().mockResolvedValue({ id: 'cb-1', customerId: 'cust-1', restaurantId: 'r-1', balance: 0, loyaltyStampCount: 0, updatedAt: '' }),
+      getHistory: jest.fn().mockResolvedValue([]),
+    };
+    const customerBalanceService = new CustomerBalanceService(customerBalanceRepository as ICustomerBalanceRepository);
     const { application, routes } = buildFakeApplication();
     new CustomersSummaryController(
       customerSummaryRepository as ICustomerSummaryRepository,
       orderRepository as IOrderRepository,
       restaurantOperatorMiddleware,
       addressRepository as IAddressRepository,
+      customerBalanceService,
     ).initializeRoutes(application);
-    return { customerSummaryRepository, orderRepository, addressRepository, routes };
+    return { customerSummaryRepository, orderRepository, addressRepository, customerBalanceRepository, routes };
   }
 
   it('AC-1: GET /restaurants/me/customers-summary lista os clientes do restaurante do operador', async () => {

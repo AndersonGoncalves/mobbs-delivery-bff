@@ -80,6 +80,9 @@ import { FavoriteMongooseRepository } from './modules/customers/infra/repositori
 import { CustomersController } from './modules/customers/presentation/customers.controller';
 import { CustomerSummaryMongooseRepository } from './modules/customers-admin/infra/repositories/customer-summary.mongoose.repository';
 import { CustomersSummaryController } from './modules/customers-admin/presentation/customers-summary.controller';
+import { CustomerBalanceService } from './modules/customer-balance/domain/services/customer-balance.service';
+import { CustomerBalanceMongooseRepository } from './modules/customer-balance/infra/repositories/customer-balance.mongoose.repository';
+import { CustomerBalanceController } from './modules/customer-balance/presentation/customer-balance.controller';
 import { CustomerPaymentMethodsController } from './modules/customers-admin/presentation/customer-payment-methods.controller';
 import { WhatsAppNotificationService } from './modules/notifications/infra/whatsapp-notification.service';
 import { AdditionalGroupTemplateMongooseRepository } from './modules/additional-group-templates/infra/repositories/additional-group-template.mongoose.repository';
@@ -190,6 +193,11 @@ const orderRepository = new OrderMongooseRepository();
 // specs/0118-controle-caixa-automatico-redes-sociais — ver comentário acima de
 // `cashRegisterRepository`: só pode ser montado aqui, depois de `orderRepository` existir.
 const cashRegisterService = new CashRegisterService(cashRegisterRepository, restaurantRepository, orderRepository);
+
+// specs/0131-cashback-app + specs/0132-programa-fidelidade-app — mesma instância compartilhada
+// entre `OrdersController` (resgate/devolução/crédito), `CustomerBalanceController` (leitura do
+// cliente) e `CustomersSummaryController` (leitura da retaguarda), sem duplicar instância.
+const customerBalanceService = new CustomerBalanceService(new CustomerBalanceMongooseRepository());
 
 // specs/0113-parametrizacao-faixas-cobranca — documento único de limites/mensalidades, compartilhado
 // entre o recálculo por pedido entregue, o card de faturamento do restaurante, o painel da
@@ -356,6 +364,7 @@ server
       new RestaurantTableMongooseRepository(),
       rawMaterialRepository,
       blockedCustomerRepository,
+      customerBalanceService,
     ),
     new BillingController(restaurantRepository, orderRepository, restaurantOperatorMiddleware, billingSettingsRepository),
     // Pedido explícito do usuário — página "Bloquear cliente".
@@ -455,7 +464,9 @@ server
       orderRepository,
       restaurantOperatorMiddleware,
       new AddressMongooseRepository(),
+      customerBalanceService,
     ),
+    new CustomerBalanceController(customerBalanceService, restaurantRepository),
     new CustomerPaymentMethodsController(customerRepository, restaurantRepository, restaurantOperatorMiddleware),
     new WhatsAppConnectionController(whatsAppConnectionService, restaurantOperatorMiddleware),
     new AccountsPayableController(new AccountPayableMongooseRepository(), cashRegisterRepository, restaurantOperatorMiddleware),

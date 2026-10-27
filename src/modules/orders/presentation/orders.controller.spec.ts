@@ -15,6 +15,8 @@ import { IRestaurantTableRepository } from '../../table-service/domain/repositor
 import { IBlockedCustomerRepository } from '../../customer-blocking/domain/repositories/blocked-customer.repository.interface';
 import { AsaasClient } from '../../payments-asaas/infra/asaas-client';
 import { MercadoPagoClient } from '../../payments-mercadopago/infra/mercado-pago-client';
+import { CustomerBalanceService } from '../../customer-balance/domain/services/customer-balance.service';
+import { ICustomerBalanceRepository } from '../../customer-balance/domain/repositories/customer-balance.repository.interface';
 import { OrdersController } from './orders.controller';
 
 // specs/0101-integracao-asaas (fase 1) — `tryChargeOrderPixViaAsaas`/`tryRefundOrderPixViaAsaas`
@@ -102,6 +104,10 @@ function buildRestaurant(
     asaasCheckoutWebhookRegistered: boolean;
     // specs/0170-integracao-mercado-pago.
     mercadoPagoAccessToken: string;
+    // specs/0131-cashback-app / specs/0132-programa-fidelidade-app.
+    cashbackPercent: number;
+    loyaltyGoalOrders: number;
+    loyaltyRewardValue: number;
   }> = {},
 ) {
   return {
@@ -199,6 +205,35 @@ function buildCoupon(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** Fake em memória com o mesmo comportamento atômico do Mongoose real (specs/0131/specs/0132). */
+function buildFakeCustomerBalanceRepository(initial: { balance?: number; loyaltyStampCount?: number } = {}): ICustomerBalanceRepository {
+  let balance = initial.balance ?? 0;
+  let loyaltyStampCount = initial.loyaltyStampCount ?? 0;
+  const snapshot = () => ({ id: 'cb-1', customerId: 'customer-1', restaurantId: 'r-1', balance, loyaltyStampCount, updatedAt: '' });
+  return {
+    getOrCreate: jest.fn().mockImplementation(async () => snapshot()),
+    incrementBalance: jest.fn().mockImplementation(async (_c: string, _r: string, amount: number) => {
+      balance += amount;
+      return snapshot();
+    }),
+    tryDebit: jest.fn().mockImplementation(async (_c: string, _r: string, amount: number) => {
+      if (balance < amount) return null;
+      balance -= amount;
+      return snapshot();
+    }),
+    incrementLoyaltyStamp: jest.fn().mockImplementation(async () => {
+      loyaltyStampCount += 1;
+      return snapshot();
+    }),
+    resetLoyaltyStamp: jest.fn().mockImplementation(async () => {
+      loyaltyStampCount = 0;
+      return snapshot();
+    }),
+    addTransaction: jest.fn().mockImplementation(async (input) => ({ id: 't-1', createdAt: new Date().toISOString(), ...input })),
+    getHistory: jest.fn().mockResolvedValue([]),
+  };
+}
+
 describe('OrdersController', () => {
   function setup(
     overrides: {
@@ -213,6 +248,7 @@ describe('OrdersController', () => {
       tableRepository?: Partial<IRestaurantTableRepository>;
       rawMaterialRepository?: Partial<IRawMaterialRepository>;
       blockedCustomerRepository?: Partial<IBlockedCustomerRepository>;
+      customerBalanceRepository?: ICustomerBalanceRepository;
     } = {},
   ) {
     const orderRepository: Partial<IOrderRepository> = {
@@ -329,6 +365,8 @@ describe('OrdersController', () => {
       isBlocked: jest.fn().mockResolvedValue(false),
       ...overrides.blockedCustomerRepository,
     };
+    const customerBalanceRepository = overrides.customerBalanceRepository ?? buildFakeCustomerBalanceRepository();
+    const customerBalanceService = new CustomerBalanceService(customerBalanceRepository);
     const { application, routes } = buildFakeApplication();
     new OrdersController(
       orderRepository as IOrderRepository,
@@ -346,6 +384,7 @@ describe('OrdersController', () => {
       tableRepository as IRestaurantTableRepository,
       rawMaterialRepository as IRawMaterialRepository,
       blockedCustomerRepository as IBlockedCustomerRepository,
+      customerBalanceService,
     ).initializeRoutes(application);
     return {
       orderRepository,
@@ -361,6 +400,7 @@ describe('OrdersController', () => {
       tableRepository,
       rawMaterialRepository,
       blockedCustomerRepository,
+      customerBalanceRepository,
       routes,
     };
   }
@@ -2301,6 +2341,130 @@ describe('OrdersController', () => {
 
       expect(MockedMercadoPagoClient.prototype.refundPayment).not.toHaveBeenCalled();
       expect(paymentRepository.markAsRefunded).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('specs/0131-cashback-app + specs/0132-programa-fidelidade-app', () => {
+    it('AC-4/AC-6: POST /orders debita o cashback pedido (capado pelo saldo real) e abate do total', async () => {
+      const customerBalanceRepository = buildFakeCustomerBalanceRepository({ balance: 5 });
+      const { orderRepository, routes } = setup({ customerBalanceRepository });
+
+      await runAuthenticatedChain(
+        routes['POST /orders'],
+        { body: buildValidBody({ cashbackAmount: 5, items: [buildItem({ unitPrice: 50, quantity: 1 })] }), user: { uid: 'customer-1' } },
+        { json: jest.fn() },
+      );
+
+      expect(orderRepository.create).toHaveBeenCalledWith(expect.objectContaining({ cashbackUsed: 5, total: 50 }));
+      await expect(customerBalanceRepository.getOrCreate('customer-1', 'r-1')).resolves.toMatchObject({ balance: 0 });
+    });
+
+    it('AC-6: resgate nunca deixa o total negativo — capa no total do pedido mesmo com saldo maior', async () => {
+      const customerBalanceRepository = buildFakeCustomerBalanceRepository({ balance: 20 });
+      const { orderRepository, routes } = setup({ customerBalanceRepository });
+
+      await runAuthenticatedChain(
+        routes['POST /orders'],
+        { body: buildValidBody({ cashbackAmount: 20, items: [buildItem({ unitPrice: 10, quantity: 1 })] }), user: { uid: 'customer-1' } },
+        { json: jest.fn() },
+      );
+
+      // subtotal 10 + taxa de entrega 5 (default de `buildRestaurant`) = 15 de total antes do cashback.
+      expect(orderRepository.create).toHaveBeenCalledWith(expect.objectContaining({ cashbackUsed: 15, total: 0 }));
+      await expect(customerBalanceRepository.getOrCreate('customer-1', 'r-1')).resolves.toMatchObject({ balance: 5 });
+    });
+
+    it('REQ-6: PATCH /orders/:id/cancel devolve ao saldo o cashback resgatado no pedido', async () => {
+      const customerBalanceRepository = buildFakeCustomerBalanceRepository({ balance: 0 });
+      const { routes } = setup({
+        customerBalanceRepository,
+        orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ cashbackUsed: 5 })) },
+      });
+
+      await runAuthenticatedChain(routes['PATCH /orders/:id/cancel'], { params: { id: 'o-1' }, user: { uid: 'customer-1' } }, { json: jest.fn() });
+
+      await expect(customerBalanceRepository.getOrCreate('customer-1', 'r-1')).resolves.toMatchObject({ balance: 5 });
+    });
+
+    it('REQ-6: PATCH /restaurants/me/orders/:id/cancel (operador) também devolve o cashback resgatado', async () => {
+      const customerBalanceRepository = buildFakeCustomerBalanceRepository({ balance: 0 });
+      const { routes } = setup({
+        customerBalanceRepository,
+        orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ cashbackUsed: 5, status: 'confirmado' })) },
+      });
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/cancel'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { reason: 'cliente desistiu' } },
+        { json: jest.fn() },
+      );
+
+      await expect(customerBalanceRepository.getOrCreate('customer-1', 'r-1')).resolves.toMatchObject({ balance: 5 });
+    });
+
+    it('REQ-2: PATCH .../status pra "entregue" credita cashback sobre o total (já líquido do resgate)', async () => {
+      const customerBalanceRepository = buildFakeCustomerBalanceRepository();
+      const { routes } = setup({
+        customerBalanceRepository,
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ cashbackPercent: 10 })) },
+        orderRepository: {
+          findById: jest.fn().mockResolvedValue(buildOrder({ status: 'saiuParaEntrega' })),
+          updateStatus: jest.fn().mockResolvedValue(buildOrder({ status: 'entregue', total: 30 })),
+        },
+      });
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/status'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'entregue' } },
+        { json: jest.fn() },
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+
+      await expect(customerBalanceRepository.getOrCreate('customer-1', 'r-1')).resolves.toMatchObject({ balance: 3 });
+    });
+
+    it('specs/0132 AC-2/AC-3: PATCH .../status pra "entregue" soma 1 selo e, ao atingir a meta, credita a recompensa e zera o contador', async () => {
+      const customerBalanceRepository = buildFakeCustomerBalanceRepository({ loyaltyStampCount: 9 });
+      const { routes } = setup({
+        customerBalanceRepository,
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ loyaltyGoalOrders: 10, loyaltyRewardValue: 15 })) },
+        orderRepository: {
+          findById: jest.fn().mockResolvedValue(buildOrder({ status: 'saiuParaEntrega' })),
+          updateStatus: jest.fn().mockResolvedValue(buildOrder({ status: 'entregue' })),
+        },
+      });
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/status'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'entregue' } },
+        { json: jest.fn() },
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+
+      await expect(customerBalanceRepository.getOrCreate('customer-1', 'r-1')).resolves.toMatchObject({ balance: 15, loyaltyStampCount: 0 });
+    });
+
+    it('falha ao creditar cashback/fidelidade não impede a resposta 200 da mudança de status', async () => {
+      const customerBalanceRepository = buildFakeCustomerBalanceRepository();
+      (customerBalanceRepository.incrementBalance as jest.Mock).mockRejectedValue(new Error('falha de rede'));
+      const json = jest.fn();
+      const { routes } = setup({
+        customerBalanceRepository,
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ cashbackPercent: 10 })) },
+        orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ status: 'saiuParaEntrega' })) },
+      });
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/status'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'entregue' } },
+        { json },
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ status: 'entregue' }));
     });
   });
 });
