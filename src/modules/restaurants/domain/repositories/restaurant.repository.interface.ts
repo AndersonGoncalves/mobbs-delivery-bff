@@ -171,6 +171,14 @@ export interface IRestaurantRepository {
    * aqui — necessário pra restaurantes vinculados antes desse campo existir. */
   reactivateAsaasSubaccount(id: string, subaccountData: IRestaurant['asaasSubaccountData']): Promise<IRestaurant>;
 
+  /** Pedido explícito do usuário (follow-up) — diferente de `disconnectAsaasSubaccount`
+   * (pausa, mantém tudo pra reconectar a MESMA subconta): "esquece" a subconta inteira —
+   * apaga `asaasAccountId`/`asaasWalletId`/`asaasApiKey`/`asaasWebhookToken`/
+   * `asaasSubaccountData`/`asaasCheckoutWebhookRegistered`, deixando o formulário em branco pra
+   * vincular uma conta Asaas DIFERENTE. A subconta antiga não é apagada no Asaas (sem chamada
+   * à API deles) — só paramos de referenciá-la por aqui. */
+  forgetAsaasSubaccount(id: string): Promise<IRestaurant>;
+
   /** specs/0170-integracao-mercado-pago — persiste o resultado da troca OAuth do restaurante
    * com o Mercado Pago (`MercadoPagoOAuthController`); fora de `RestaurantProfileUpdate` de
    * propósito, mesmo raciocínio de `saveAsaasSubaccount`. */

@@ -82,6 +82,14 @@ export class AsaasOnboardingController extends BaseRouter {
       res.send(204);
     });
 
+    // Pedido explícito do usuário (follow-up) — "esquecer" a subconta inteira (diferente de
+    // desvincular, que mantém tudo pronto pra reconectar a MESMA subconta): limpa os dados,
+    // deixando o formulário em branco pra vincular uma conta Asaas diferente.
+    application.del('/restaurants/me/asaas/subaccount/forget', ...operatorAuthenticated, async (req: Request, res: Response) => {
+      await this.restaurantRepository.forgetAsaasSubaccount(req.restaurantId!);
+      res.send(204);
+    });
+
     // specs/0101-integracao-asaas (fase 2, REQ-7) — saldo/repasses são dado financeiro, mesmo
     // critério de acesso de Caixa/relatórios (`CAIXA_ROLES` na web: dono/gerente/financeiro),
     // mais largo que o KYC de cadastrar a subconta (só dono/gerente, acima).

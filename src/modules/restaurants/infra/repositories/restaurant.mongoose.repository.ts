@@ -387,6 +387,21 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
     return toEntity(doc as RestaurantLeanDocument);
   }
 
+  // Pedido explícito do usuário (follow-up) — "esquecer" a subconta inteira, pra vincular uma
+  // conta Asaas diferente (ver interface). Nunca chama o Asaas — a subconta antiga continua
+  // existindo lá, intocada.
+  async forgetAsaasSubaccount(id: string): Promise<IRestaurant> {
+    const doc = await RestaurantModel.findByIdAndUpdate(
+      id,
+      {
+        $set: { onlinePaymentsEnabled: false },
+        $unset: { asaasAccountId: 1, asaasWalletId: 1, asaasApiKey: 1, asaasWebhookToken: 1, asaasSubaccountData: 1, asaasCheckoutWebhookRegistered: 1 },
+      },
+      { new: true },
+    ).lean<RestaurantLeanDocument>();
+    return toEntity(doc as RestaurantLeanDocument);
+  }
+
   // specs/0170-integracao-mercado-pago.
   async saveMercadoPagoTokens(
     id: string,

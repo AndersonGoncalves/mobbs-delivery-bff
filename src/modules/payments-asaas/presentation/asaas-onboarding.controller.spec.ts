@@ -53,6 +53,7 @@ describe('AsaasOnboardingController (specs/0101-integracao-asaas, fase 1)', () =
       saveAsaasSubaccount: jest.fn().mockResolvedValue({ id: 'r-1', onlinePaymentsEnabled: true, asaasAccountId: 'acc_1' }),
       disconnectAsaasSubaccount: jest.fn().mockResolvedValue({ id: 'r-1', onlinePaymentsEnabled: false }),
       reactivateAsaasSubaccount: jest.fn().mockResolvedValue({ id: 'r-1', onlinePaymentsEnabled: true }),
+      forgetAsaasSubaccount: jest.fn().mockResolvedValue({ id: 'r-1', onlinePaymentsEnabled: false }),
       ...overrides.restaurantRepository,
     };
     const { application, routes } = buildApp();
@@ -132,6 +133,18 @@ describe('AsaasOnboardingController (specs/0101-integracao-asaas, fase 1)', () =
     await runOperatorChain(routes['DEL /restaurants/me/asaas/subaccount'], { restaurantId: 'r-1' }, { json: jest.fn(), send });
 
     expect(restaurantRepository.disconnectAsaasSubaccount).toHaveBeenCalledWith('r-1');
+    expect(send).toHaveBeenCalledWith(204);
+  });
+
+  // Pedido explícito do usuário (follow-up) — "esquecer" a subconta inteira, diferente de
+  // desvincular: limpa os dados pra vincular uma conta Asaas diferente, sem chamar o Asaas.
+  it('DELETE /restaurants/me/asaas/subaccount/forget limpa os dados (204)', async () => {
+    const { restaurantRepository, routes } = setup();
+    const send = jest.fn();
+
+    await runOperatorChain(routes['DEL /restaurants/me/asaas/subaccount/forget'], { restaurantId: 'r-1' }, { json: jest.fn(), send });
+
+    expect(restaurantRepository.forgetAsaasSubaccount).toHaveBeenCalledWith('r-1');
     expect(send).toHaveBeenCalledWith(204);
   });
 
