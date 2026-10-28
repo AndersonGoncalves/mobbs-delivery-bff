@@ -30,6 +30,17 @@ const restaurantOperatorSchema = new Schema(
 
 restaurantOperatorSchema.index({ restaurantId: 1, email: 1 }, { unique: true });
 
+// Achado real (pedido explícito do usuário) — a regra "um e-mail só pode estar ativo em UM
+// restaurante por vez" (checada em `POST /restaurants/me/operators` e `POST /restaurants/signup`
+// antes de criar) nunca era garantida pelo banco; nada impedia duas ativações simultâneas por um
+// caminho fora desses dois endpoints, o que tornava `findActiveOperatorByEmail` (sem `.sort()`)
+// não-determinístico. Índice parcial (só sobre documentos `isActive: true`) — permite múltiplos
+// vínculos históricos inativos pro mesmo e-mail (operador que já passou por outro restaurante),
+// só nunca mais de um ativo ao mesmo tempo. Precisa de
+// `deactivateDuplicateActiveOperators` rodando antes no boot (`main.ts`), senão a criação deste
+// índice falha com chave duplicada caso já exista alguma violação na base.
+restaurantOperatorSchema.index({ email: 1 }, { unique: true, partialFilterExpression: { isActive: true } });
+
 // Nome de coleção explícito (singular, docs/architecture/patterns.md §16.6.1) — mesma convenção
 // de RestaurantModel, evita a pluralização automática do Mongoose.
 export const RestaurantOperatorModel = model(

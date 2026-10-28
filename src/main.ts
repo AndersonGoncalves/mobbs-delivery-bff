@@ -15,6 +15,7 @@ import { RestaurantSignupController } from './modules/restaurants/presentation/r
 import { OnboardingChecklistController } from './modules/restaurants/presentation/onboarding-checklist.controller';
 import { RestaurantOperatorMongooseRepository } from './modules/restaurant-operators/infra/repositories/restaurant-operator.mongoose.repository';
 import { migrateOperatorRolesToDono } from './modules/restaurant-operators/infra/migrations/migrate-operator-roles-to-dono';
+import { deactivateDuplicateActiveOperators } from './modules/restaurant-operators/infra/migrations/deactivate-duplicate-active-operators';
 import { backfillManualBestSellers } from './modules/catalog/infra/migrations/backfill-manual-best-sellers';
 import { backfillStockTracking } from './modules/catalog/infra/migrations/backfill-stock-tracking';
 import { ReferralMongooseRepository } from './modules/referrals/infra/repositories/referral.mongoose.repository';
@@ -562,6 +563,7 @@ server
       buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
     ),
   ], [
+    deactivateDuplicateActiveOperators,
     migrateOperatorRolesToDono,
     backfillManualBestSellers,
     backfillStockTracking,

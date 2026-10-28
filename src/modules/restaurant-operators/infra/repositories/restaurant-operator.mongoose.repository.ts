@@ -36,7 +36,13 @@ function toEntity(doc: RestaurantOperatorLeanDocument): IRestaurantOperator {
 
 export class RestaurantOperatorMongooseRepository implements IRestaurantOperatorRepository {
   async findActiveOperatorByEmail(email: string): Promise<IRestaurantOperator | null> {
-    const doc = await RestaurantOperatorModel.findOne({ email, isActive: true }).lean<RestaurantOperatorLeanDocument>();
+    // Rede de segurança além do índice único parcial (`restaurant-operator.mongoose.model.ts`):
+    // se por algum motivo mais de um vínculo ativo existir pro mesmo e-mail, `.sort()` garante
+    // que a resposta é sempre o mesmo (o mais recente), nunca o que o Mongo decidir devolver sem
+    // ordenação explícita (não-determinístico, achado real investigando um bug de login).
+    const doc = await RestaurantOperatorModel.findOne({ email, isActive: true })
+      .sort({ createdAt: -1 })
+      .lean<RestaurantOperatorLeanDocument>();
     return doc ? toEntity(doc) : null;
   }
 

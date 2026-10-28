@@ -36,4 +36,19 @@ describe('RestaurantOperatorModel', () => {
 
     expect(operator.hasFullAccess).toBe(false);
   });
+
+  // Achado real (pedido explícito do usuário) — "um e-mail só pode estar ativo em UM restaurante
+  // por vez" só era garantida no código (`POST /restaurants/me/operators`/`POST
+  // /restaurants/signup`), nunca no banco: o índice único era só `(restaurantId, email)`, então
+  // nada impedia duas ativações simultâneas por qualquer caminho fora desses dois endpoints.
+  it('tem um índice único parcial em "email" só pra documentos ativos (permite histórico inativo)', () => {
+    const emailActiveIndex = RestaurantOperatorModel.schema
+      .indexes()
+      .find(([fields]) => Object.keys(fields).length === 1 && fields.email === 1);
+
+    expect(emailActiveIndex).toBeDefined();
+    const [, options] = emailActiveIndex!;
+    expect(options.unique).toBe(true);
+    expect(options.partialFilterExpression).toEqual({ isActive: true });
+  });
 });
