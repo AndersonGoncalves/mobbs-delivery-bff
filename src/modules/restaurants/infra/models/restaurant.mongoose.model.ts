@@ -212,6 +212,11 @@ const restaurantSchema = new Schema(
     instagramAccountId: { type: String },
     instagramPageId: { type: String },
     instagramUsername: { type: String },
+    // specs/0090-integracao-ifood — credenciais digitadas pelo operador (não OAuth redirect).
+    ifoodMerchantId: { type: String },
+    ifoodClientId: { type: String },
+    ifoodClientSecret: { type: String },
+    ifoodConnectedAt: { type: String },
     // Pedido explícito do usuário — tempo médio de atendimento mostrado no app do cliente, por
     // modalidade; defaults vindos do exemplo mostrado (40-60min delivery, 20-40min balcão).
     deliveryTimeMinMinutes: { type: Number, required: true, default: 40 },

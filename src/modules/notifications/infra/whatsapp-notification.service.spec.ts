@@ -88,6 +88,15 @@ describe('WhatsAppNotificationService', () => {
       );
     });
 
+    // specs/0090-integracao-ifood AC-5/REQ-8.
+    it('AC-5: pedido de origem iFood nunca dispara mensagem automática', async () => {
+      const { service, whatsAppConnectionService } = setup();
+
+      await service.sendOrderReceipt(buildOrder({ source: 'ifood' }));
+
+      expect(whatsAppConnectionService.sendMessage).not.toHaveBeenCalled();
+    });
+
     it('specs/0069: notifyCustomerOnOrderCreated false não envia o recibo', async () => {
       const { service, whatsAppConnectionService } = setup({
         restaurant: { id: 'r-1', name: 'Prime Pizza', slug: 'primepizza', whatsappConnected: true, notifyCustomerOnOrderCreated: false },

@@ -27,6 +27,10 @@ import { ResellerMongooseRepository } from './modules/resellers/infra/repositori
 import { ResellerProspectMongooseRepository } from './modules/resellers/infra/repositories/reseller-prospect.mongoose.repository';
 import { ResellerClientMongooseRepository } from './modules/resellers/infra/repositories/reseller-client.mongoose.repository';
 import { ResellerController } from './modules/resellers/presentation/reseller.controller';
+import { IFoodOnboardingController } from './modules/ifood-integration/presentation/ifood-onboarding.controller';
+import { IFoodAuthService } from './modules/ifood-integration/infra/ifood-auth.service';
+import { IFoodClient } from './modules/ifood-integration/infra/ifood-client';
+import { IFoodPollingWorker } from './modules/ifood-integration/domain/ifood-polling-worker';
 import { PlatformResellersController } from './modules/resellers/presentation/platform-resellers.controller';
 import { buildResellerMiddleware } from './shared/http/reseller.middleware';
 import { RestaurantOperatorsController } from './modules/restaurant-operators/presentation/restaurant-operators.controller';
@@ -301,6 +305,19 @@ const publishDueInstagramPostsService = new PublishDueInstagramPostsService(
   restaurantRepository,
   instagramGraphClient,
 );
+// specs/0090-integracao-ifood — mesmo raciocínio de `whatsAppConnectionService`/
+// `publishDueInstagramPostsService`: instância única compartilhada entre o worker de polling
+// (abaixo) e o controller de credenciais (só este último precisa do repositório de restaurante,
+// mas ambos moram aqui pra ficar perto de onde o scheduler é montado).
+const ifoodAuthService = new IFoodAuthService(environment.ifood.baseUrl);
+const ifoodClient = new IFoodClient(environment.ifood.baseUrl);
+const ifoodPollingWorker = new IFoodPollingWorker(
+  restaurantRepository,
+  customerRepository,
+  orderRepository,
+  ifoodAuthService,
+  ifoodClient,
+);
 const platformBillingCycleService = new PlatformBillingCycleService({
   restaurantRepository,
   obligationRepository,
@@ -554,6 +571,8 @@ server
       customerPixKeyRepository,
       buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
     ),
+    // specs/0090-integracao-ifood REQ-9 — cadastro das credenciais da integração.
+    new IFoodOnboardingController(restaurantRepository, restaurantOperatorMiddleware),
     // specs/0189-painel-revenda.
     new ResellerController(resellerRepository, resellerProspectRepository, resellerClientRepository, restaurantRepository, resellerMiddleware),
     new PlatformResellersController(
@@ -602,6 +621,18 @@ server
         console.error('[instagram-automation] erro inesperado no publicador:', error);
       });
     }, 60_000);
+  })
+  // specs/0090-integracao-ifood REQ-2 — mesmo desvio deliberado do publicador de Instagram acima
+  // (ver comentário lá): polling de eventos do iFood não tem webhook, precisa mesmo de um "tick"
+  // em processo. ~30s (plan.md) — rápido o bastante pro pedido aparecer na retaguarda sem
+  // demora perceptível, sem sobrecarregar a API do iFood com polling agressivo.
+  .then(() => {
+    setInterval(() => {
+      ifoodPollingWorker.run().catch((error) => {
+        // eslint-disable-next-line no-console
+        console.error('[ifood-integration] erro inesperado no polling:', error);
+      });
+    }, 30_000);
   })
   .catch((error) => {
     // eslint-disable-next-line no-console

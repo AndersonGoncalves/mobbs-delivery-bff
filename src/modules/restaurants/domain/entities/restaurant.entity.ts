@@ -401,6 +401,15 @@ export interface IRestaurant {
   mercadoPagoRefreshToken?: string;
   mercadoPagoUserId?: string;
   mercadoPagoTokenExpiresAt?: string;
+  /** specs/0090-integracao-ifood — credenciais da integração com a API do iFood (Portal do
+   * Parceiro), digitadas pelo operador (mesmo modelo de formulário do Asaas — não é OAuth
+   * redirect como o Mercado Pago, o iFood entrega `clientId`/`clientSecret` direto pro
+   * restaurante no cadastro de parceiro deles). `ifoodClientSecret` nunca deve aparecer numa
+   * resposta de API (ver `toOperatorRestaurant`), mesmo cuidado de `asaasApiKey`. */
+  ifoodMerchantId?: string;
+  ifoodClientId?: string;
+  ifoodClientSecret?: string;
+  ifoodConnectedAt?: string;
   /** Pedido explícito do usuário (follow-up) — vínculo OAuth (Facebook Login for Business) da
    * conta Instagram Business do restaurante, mesmo modelo do Mercado Pago acima.
    * `instagramAccessToken` nunca deve aparecer numa resposta de API (ver

@@ -26,6 +26,8 @@ import { IRestaurantRepository } from '../../restaurants/domain/repositories/res
 import { IOrder, IOrderItem, IPayment } from '../domain/entities/order.entity';
 import { AsaasClient } from '../../payments-asaas/infra/asaas-client';
 import { MercadoPagoClient } from '../../payments-mercadopago/infra/mercado-pago-client';
+import { IFoodAuthService } from '../../ifood-integration/infra/ifood-auth.service';
+import { IFoodClient } from '../../ifood-integration/infra/ifood-client';
 import { ConfirmOnlinePaymentService } from '../domain/services/confirm-online-payment.service';
 import { StockReservationService } from '../domain/services/stock-reservation.service';
 import { isOrderCancellableByOperator, isValidOrderStatusTransition } from '../domain/order-status-transitions';
@@ -58,6 +60,12 @@ type AsyncHandler = (req: Request, res: Response) => Promise<void>;
  */
 export class OrdersController extends BaseRouter {
   private readonly stockReservationService?: StockReservationService;
+  // specs/0090-integracao-ifood — instâncias únicas (não por chamada): `ifoodAuthService`
+  // aproveita o cache de token em memória entre requisições (mesmo raciocínio de
+  // `WhatsAppConnectionService` guardar estado em memória); `ifoodClient` recebe o token por
+  // chamada (mesmo padrão de `FacebookGraphClient`), por isso pode ser uma instância só.
+  private readonly ifoodAuthService = new IFoodAuthService(environment.ifood.baseUrl);
+  private readonly ifoodClient = new IFoodClient(environment.ifood.baseUrl);
 
   constructor(
     private readonly orderRepository: IOrderRepository,
@@ -522,6 +530,12 @@ export class OrdersController extends BaseRouter {
 
         const updated = await this.orderRepository.updateStatus(order.id, status, req.restaurantId);
 
+        // specs/0090-integracao-ifood REQ-5 — confirmar na retaguarda um pedido de origem iFood
+        // também confirma na API deles.
+        if (status === 'confirmado') {
+          await this.tryConfirmOrderViaIFood(updated);
+        }
+
         // specs/0013-notificacoes-whatsapp REQ-2/REQ-4 — mesma lógica fire-and-forget do REQ-1.
         void this.whatsAppNotificationService.sendOrderStatusUpdate(updated).catch((error) => {
           console.error(`[whatsapp] erro inesperado enviando atualização de status do pedido ${updated.id}:`, error);
@@ -648,6 +662,9 @@ export class OrdersController extends BaseRouter {
         await this.tryRefundOrderCardOnlineViaMercadoPago(order);
         await this.tryRefundOrderCardOnlineViaAsaas(order);
         await this.refundCashbackIfUsed(order);
+        // specs/0090-integracao-ifood REQ-6 — cancelar na retaguarda um pedido de origem iFood
+        // também solicita o cancelamento na API deles.
+        await this.tryCancelOrderViaIFood(updated, reason);
 
         void this.whatsAppNotificationService.sendOrderStatusUpdate(updated, reason).catch((error) => {
           console.error(`[whatsapp] erro inesperado enviando atualização de status do pedido ${updated.id}:`, error);
@@ -902,6 +919,37 @@ export class OrdersController extends BaseRouter {
       await this.paymentRepository.markAsRefunded(order.id);
     } catch (error) {
       console.error(`[asaas] erro inesperado estornando o Pix do pedido ${order.id} — cancelamento já efetivado, resolver manualmente:`, error);
+    }
+  }
+
+  /** specs/0090-integracao-ifood REQ-5 — confirmação do operador na retaguarda propagada pro
+   * iFood; nunca bloqueia a confirmação local (mesmo raciocínio de `tryRefundOrderPixViaAsaas`:
+   * falha aqui é logada e engolida, o pedido já confirmou do nosso lado). */
+  private async tryConfirmOrderViaIFood(order: IOrder): Promise<void> {
+    if (order.source !== 'ifood') return;
+    const restaurant = await this.restaurantRepository.findById(order.restaurantId);
+    if (!restaurant?.ifoodClientId || !restaurant.ifoodClientSecret) return;
+
+    try {
+      const accessToken = await this.ifoodAuthService.getAccessToken(restaurant.ifoodClientId, restaurant.ifoodClientSecret);
+      await this.ifoodClient.confirmOrder(accessToken, order.id);
+    } catch (error) {
+      console.error(`[ifood-integration] erro inesperado confirmando o pedido ${order.id} no iFood:`, error);
+    }
+  }
+
+  /** specs/0090-integracao-ifood REQ-6 — mesmo raciocínio de `tryConfirmOrderViaIFood` acima,
+   * pro cancelamento (com motivo). */
+  private async tryCancelOrderViaIFood(order: IOrder, reason: string): Promise<void> {
+    if (order.source !== 'ifood') return;
+    const restaurant = await this.restaurantRepository.findById(order.restaurantId);
+    if (!restaurant?.ifoodClientId || !restaurant.ifoodClientSecret) return;
+
+    try {
+      const accessToken = await this.ifoodAuthService.getAccessToken(restaurant.ifoodClientId, restaurant.ifoodClientSecret);
+      await this.ifoodClient.requestCancellation(accessToken, order.id, reason);
+    } catch (error) {
+      console.error(`[ifood-integration] erro inesperado cancelando o pedido ${order.id} no iFood:`, error);
     }
   }
 

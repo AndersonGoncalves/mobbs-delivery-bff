@@ -124,6 +124,10 @@ interface RestaurantLeanDocument {
   instagramAccountId?: string;
   instagramPageId?: string;
   instagramUsername?: string;
+  ifoodMerchantId?: string;
+  ifoodClientId?: string;
+  ifoodClientSecret?: string;
+  ifoodConnectedAt?: string;
 }
 
 const ALL_PAYMENT_METHODS: PaymentMethod[] = ['creditCard', 'debitCard', 'pix', 'cash'];
@@ -233,6 +237,10 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     instagramAccountId: doc.instagramAccountId,
     instagramPageId: doc.instagramPageId,
     instagramUsername: doc.instagramUsername,
+    ifoodMerchantId: doc.ifoodMerchantId,
+    ifoodClientId: doc.ifoodClientId,
+    ifoodClientSecret: doc.ifoodClientSecret,
+    ifoodConnectedAt: doc.ifoodConnectedAt,
   };
 }
 
@@ -509,6 +517,29 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
     const doc = await RestaurantModel.findByIdAndUpdate(
       id,
       { $unset: { instagramAccessToken: 1, instagramAccountId: 1, instagramPageId: 1, instagramUsername: 1 } },
+      { new: true },
+    ).lean<RestaurantLeanDocument>();
+    return toEntity(doc as RestaurantLeanDocument);
+  }
+
+  // specs/0090-integracao-ifood — mesmo molde de `saveMercadoPagoTokens` (credenciais digitadas
+  // pelo operador, não OAuth).
+  async saveIFoodCredentials(
+    id: string,
+    data: { ifoodMerchantId: string; ifoodClientId: string; ifoodClientSecret: string },
+  ): Promise<IRestaurant> {
+    const doc = await RestaurantModel.findByIdAndUpdate(
+      id,
+      { $set: { ...data, ifoodConnectedAt: new Date().toISOString() } },
+      { new: true },
+    ).lean<RestaurantLeanDocument>();
+    return toEntity(doc as RestaurantLeanDocument);
+  }
+
+  async disconnectIFood(id: string): Promise<IRestaurant> {
+    const doc = await RestaurantModel.findByIdAndUpdate(
+      id,
+      { $unset: { ifoodMerchantId: 1, ifoodClientId: 1, ifoodClientSecret: 1, ifoodConnectedAt: 1 } },
       { new: true },
     ).lean<RestaurantLeanDocument>();
     return toEntity(doc as RestaurantLeanDocument);

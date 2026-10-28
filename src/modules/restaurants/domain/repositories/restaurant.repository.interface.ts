@@ -224,4 +224,15 @@ export interface IRestaurantRepository {
    * (cartão) já foi registrado pra este restaurante, evitando registrar de novo a cada pedido
    * (`OrdersController.tryCreateAsaasCheckout`). */
   markAsaasCheckoutWebhookRegistered(id: string): Promise<IRestaurant>;
+
+  /** specs/0090-integracao-ifood — persiste as credenciais digitadas pelo operador
+   * (`IFoodOnboardingController`); fora de `RestaurantProfileUpdate` de propósito, mesmo
+   * raciocínio de `saveMercadoPagoTokens` (`ifoodClientSecret` nunca deve ser setável por um PUT
+   * de perfil comum). Marca `ifoodConnectedAt` com a hora atual. */
+  saveIFoodCredentials(id: string, data: { ifoodMerchantId: string; ifoodClientId: string; ifoodClientSecret: string }): Promise<IRestaurant>;
+
+  /** specs/0090-integracao-ifood — desvincula a integração (apaga as credenciais, diferente de
+   * `disconnectAsaasSubaccount`: não há "reconectar sem redigitar" aqui, o operador digita de
+   * novo se quiser reconectar — são só 3 campos, sem KYC/subconta por trás). */
+  disconnectIFood(id: string): Promise<IRestaurant>;
 }

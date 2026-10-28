@@ -15,6 +15,8 @@ import { IRestaurantTableRepository } from '../../table-service/domain/repositor
 import { IBlockedCustomerRepository } from '../../customer-blocking/domain/repositories/blocked-customer.repository.interface';
 import { AsaasClient } from '../../payments-asaas/infra/asaas-client';
 import { MercadoPagoClient } from '../../payments-mercadopago/infra/mercado-pago-client';
+import { IFoodAuthService } from '../../ifood-integration/infra/ifood-auth.service';
+import { IFoodClient } from '../../ifood-integration/infra/ifood-client';
 import { CustomerBalanceService } from '../../customer-balance/domain/services/customer-balance.service';
 import { ICustomerBalanceRepository } from '../../customer-balance/domain/repositories/customer-balance.repository.interface';
 import { OrdersController } from './orders.controller';
@@ -26,6 +28,11 @@ jest.mock('../../payments-asaas/infra/asaas-client');
 // specs/0170-integracao-mercado-pago — mesmo raciocínio acima, pra `tryCreateMercadoPagoPreference`/
 // `tryRefundOrderCardOnlineViaMercadoPago`.
 jest.mock('../../payments-mercadopago/infra/mercado-pago-client');
+// specs/0090-integracao-ifood — mesmo raciocínio acima, pra `tryConfirmOrderViaIFood`/
+// `tryCancelOrderViaIFood` (`ifoodAuthService`/`ifoodClient` são campos da classe, não injetados
+// via construtor).
+jest.mock('../../ifood-integration/infra/ifood-auth.service');
+jest.mock('../../ifood-integration/infra/ifood-client');
 
 type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & {
   user?: { uid: string; email?: string };
@@ -110,6 +117,9 @@ function buildRestaurant(
     loyaltyRewardValue: number;
     // specs/0192-ajustes-banner-fidelidade-pix-asaas.
     loyaltyMinOrderValue: number;
+    // specs/0090-integracao-ifood.
+    ifoodClientId: string;
+    ifoodClientSecret: string;
   }> = {},
 ) {
   return {
@@ -1320,6 +1330,90 @@ describe('OrdersController', () => {
 
     expect(orderRepository.updateStatus).toHaveBeenCalledWith('o-1', 'confirmado', 'r-1');
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ status: 'confirmado' }));
+  });
+
+  describe('specs/0090-integracao-ifood REQ-5/REQ-6 — confirmar/cancelar propaga pra API do iFood', () => {
+    const MockedIFoodAuthService = IFoodAuthService as jest.MockedClass<typeof IFoodAuthService>;
+    const MockedIFoodClient = IFoodClient as jest.MockedClass<typeof IFoodClient>;
+
+    beforeEach(() => {
+      MockedIFoodAuthService.mockClear();
+      MockedIFoodClient.mockClear();
+      MockedIFoodAuthService.prototype.getAccessToken = jest.fn().mockResolvedValue('token-1');
+      MockedIFoodClient.prototype.confirmOrder = jest.fn().mockResolvedValue(undefined);
+      MockedIFoodClient.prototype.requestCancellation = jest.fn().mockResolvedValue(undefined);
+    });
+
+    it('AC-3: confirmar um pedido de origem iFood chama IFoodClient.confirmOrder', async () => {
+      const { restaurantRepository, routes } = setup({
+        orderRepository: {
+          findById: jest.fn().mockResolvedValue(buildOrder({ source: 'ifood' })),
+          updateStatus: jest.fn().mockResolvedValue(buildOrder({ source: 'ifood', status: 'confirmado' })),
+        },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ ifoodClientId: 'client-1', ifoodClientSecret: 'secret-1' })) },
+      });
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/status'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'confirmado' } },
+        { json: jest.fn() },
+      );
+
+      expect(MockedIFoodAuthService.prototype.getAccessToken).toHaveBeenCalledWith('client-1', 'secret-1');
+      expect(MockedIFoodClient.prototype.confirmOrder).toHaveBeenCalledWith('token-1', 'o-1');
+      expect(restaurantRepository.findById).toHaveBeenCalled();
+    });
+
+    it('confirmar um pedido de origem própria (sem source) NÃO chama o iFood', async () => {
+      const { routes } = setup({ orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ source: undefined })) } });
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/status'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'confirmado' } },
+        { json: jest.fn() },
+      );
+
+      expect(MockedIFoodClient.prototype.confirmOrder).not.toHaveBeenCalled();
+    });
+
+    it('AC-3: cancelar um pedido de origem iFood chama IFoodClient.requestCancellation com o motivo', async () => {
+      const { routes } = setup({
+        orderRepository: {
+          findById: jest.fn().mockResolvedValue(buildOrder({ source: 'ifood', status: 'confirmado' })),
+          updateStatus: jest.fn().mockResolvedValue(buildOrder({ source: 'ifood', status: 'cancelado' })),
+        },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ ifoodClientId: 'client-1', ifoodClientSecret: 'secret-1' })) },
+      });
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/cancel'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { reason: 'Produto em falta' } },
+        { json: jest.fn() },
+      );
+
+      expect(MockedIFoodClient.prototype.requestCancellation).toHaveBeenCalledWith('token-1', 'o-1', 'Produto em falta');
+    });
+
+    it('falha ao confirmar no iFood não impede a confirmação local (erro só logado)', async () => {
+      MockedIFoodClient.prototype.confirmOrder = jest.fn().mockRejectedValue(new Error('iFood fora do ar'));
+      const { orderRepository, routes } = setup({
+        orderRepository: {
+          findById: jest.fn().mockResolvedValue(buildOrder({ source: 'ifood' })),
+          updateStatus: jest.fn().mockResolvedValue(buildOrder({ source: 'ifood', status: 'confirmado' })),
+        },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ ifoodClientId: 'client-1', ifoodClientSecret: 'secret-1' })) },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/status'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'confirmado' } },
+        { json },
+      );
+
+      expect(orderRepository.updateStatus).toHaveBeenCalled();
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ status: 'confirmado' }));
+    });
   });
 
   it('specs/0013 REQ-2: PATCH .../status dispara o aviso de mudança de status por WhatsApp', async () => {

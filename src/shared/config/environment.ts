@@ -96,4 +96,12 @@ export const environment = {
     beneficiaryName: process.env.BILLING_PIX_BENEFICIARY_NAME,
     webhookToken: process.env.ASAAS_BILLING_WEBHOOK_TOKEN,
   },
+  /** specs/0090-integracao-ifood — diferente de `asaas`/`mercadoPago` acima: sem credencial de
+   * nível-plataforma aqui. `clientId`/`clientSecret` do iFood são por restaurante
+   * (`Restaurant.ifoodClientId`/`ifoodClientSecret`, digitados pelo operador — cada restaurante
+   * registra a própria aplicação parceira no Portal do Parceiro iFood), só a URL base da API é
+   * configuração de ambiente (sandbox vs. produção). */
+  ifood: {
+    baseUrl: process.env.IFOOD_BASE_URL || 'https://merchant-api.ifood.com.br',
+  },
 };

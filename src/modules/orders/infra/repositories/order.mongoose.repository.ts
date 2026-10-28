@@ -15,7 +15,7 @@ interface OrderLeanDocument {
   restaurantId: string;
   items: IOrderItem[];
   orderType: OrderType;
-  source?: 'totem' | 'operador-web' | 'operador-extensao';
+  source?: 'totem' | 'operador-web' | 'operador-extensao' | 'ifood';
   operatorId?: string;
   deliveryAddress?: string;
   deliveryMotoboy?: { id: string; name: string };

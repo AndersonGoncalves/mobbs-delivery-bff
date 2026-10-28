@@ -80,6 +80,12 @@ export class WhatsAppNotificationService implements IWhatsAppNotificationService
     customer: { phone?: string } | null,
     restaurant: { whatsappConnected: boolean } | null,
   ): boolean {
+    // specs/0090-integracao-ifood REQ-8 — cliente do iFood não é necessariamente um `Customer`
+    // capturado do mesmo jeito (telefone pode não vir), e o iFood já notifica por conta própria.
+    if (order.source === 'ifood') {
+      console.warn(`[whatsapp] pedido ${order.id}: mensagem não enviada — pedido de origem iFood`);
+      return true;
+    }
     if (!customer?.phone) {
       console.warn(`[whatsapp] pedido ${order.id}: mensagem não enviada — cliente sem telefone cadastrado`);
       return true;

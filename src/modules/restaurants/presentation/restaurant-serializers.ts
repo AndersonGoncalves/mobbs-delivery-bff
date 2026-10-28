@@ -80,13 +80,17 @@ export function toPublicRestaurant(restaurant: IRestaurant) {
  * que precise exibir o valor bruto, só confirmar "vinculado"/"ativo" (`asaasAccountId`,
  * `onlinePaymentsEnabled`, `mercadoPagoUserId` continuam, não são segredo).
  */
-export function toOperatorRestaurant(restaurant: IRestaurant): Omit<IRestaurant, 'paymentWebhookApiKey' | 'asaasApiKey' | 'asaasWebhookToken' | 'mercadoPagoAccessToken' | 'mercadoPagoRefreshToken' | 'instagramAccessToken'> {
+export function toOperatorRestaurant(restaurant: IRestaurant): Omit<IRestaurant, 'paymentWebhookApiKey' | 'asaasApiKey' | 'asaasWebhookToken' | 'mercadoPagoAccessToken' | 'mercadoPagoRefreshToken' | 'instagramAccessToken' | 'ifoodClientSecret'> {
   const safe: Partial<IRestaurant> = { ...restaurant };
   delete safe.paymentWebhookApiKey;
   delete safe.asaasApiKey;
   delete safe.asaasWebhookToken;
   delete safe.mercadoPagoAccessToken;
   delete safe.mercadoPagoRefreshToken;
+  // specs/0090-integracao-ifood — mesmo cuidado de `asaasApiKey`/`mercadoPagoAccessToken` acima
+  // (`ifoodMerchantId`/`ifoodConnectedAt` não são segredo e continuam, a UI usa pra mostrar
+  // "conectado").
+  delete safe.ifoodClientSecret;
   // Pedido explícito do usuário (follow-up) — automação de postagens no Instagram, mesmo cuidado
   // do token do Mercado Pago acima (`instagramAccountId`/`instagramUsername` não são segredo e
   // continuam, a UI usa pra mostrar "conectado como @usuario").

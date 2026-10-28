@@ -111,8 +111,11 @@ export interface IOrder {
    * extensão Chrome) em nome do cliente selecionado (ou do atendimento anônimo de balcão), nunca
    * pelo próprio operador "virando" cliente. Distinto de `source` ausente (app cliente) e de
    * `'totem'` (autoatendimento sem operador logado).
+   *
+   * specs/0090-integracao-ifood REQ-3 — `'ifood'` marca um pedido recebido via polling da API do
+   * iFood (`IFoodPollingWorker`), nunca criado pelo cliente/operador/totem diretamente.
    */
-  source?: 'totem' | 'operador-web' | 'operador-extensao';
+  source?: 'totem' | 'operador-web' | 'operador-extensao' | 'ifood';
   /** specs/0174-pdv-extensao-chrome-lateral REQ-22 — id do operador que finalizou a venda, só
    * presente quando `source` é `'operador-web'`/`'operador-extensao'`. Rastreabilidade, nunca usado
    * pra autorização (quem decide o que o operador pode fazer é `req.operatorRole`, resolvido a

@@ -102,7 +102,7 @@ const orderSchema = new Schema(
     orderType: { type: String, enum: ['delivery', 'pickup', 'table'], required: true },
     // specs/0155-app-totem-autoatendimento REQ-14 — ausente = pedido do app cliente (default de
     // todo documento já existente antes desta spec).
-    source: { type: String, enum: ['totem', 'operador-web', 'operador-extensao'] },
+    source: { type: String, enum: ['totem', 'operador-web', 'operador-extensao', 'ifood'] },
     // specs/0174-pdv-extensao-chrome-lateral REQ-22.
     operatorId: { type: String },
     deliveryAddress: { type: String },
