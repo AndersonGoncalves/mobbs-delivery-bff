@@ -374,7 +374,7 @@ describe('RestaurantOperatorsController', () => {
   it('GET /restaurants/me/operators/waiters lista só os operadores garcom ativos', async () => {
     const { repository, routes } = setup({
       listByRestaurant: jest.fn().mockResolvedValue([
-        buildOperator({ id: 'op-1', email: 'joao@example.com', name: 'João', role: 'garcom', isActive: true }),
+        buildOperator({ id: 'op-1', email: 'joao@example.com', name: 'João', role: 'garcom', isActive: true, whatsapp: '5511999999999' }),
         buildOperator({ id: 'op-2', email: 'inativo@example.com', role: 'garcom', isActive: false }),
         buildOperator({ id: 'op-3', email: 'dono@example.com', role: 'dono', isActive: true }),
       ]),
@@ -384,7 +384,7 @@ describe('RestaurantOperatorsController', () => {
     await runChain(routes['GET /restaurants/me/operators/waiters'], {}, { json, send: jest.fn() });
 
     expect(repository.listByRestaurant).toHaveBeenCalledWith('r-1');
-    expect(json).toHaveBeenCalledWith(200, [{ id: 'op-1', name: 'João', email: 'joao@example.com' }]);
+    expect(json).toHaveBeenCalledWith(200, [{ id: 'op-1', name: 'João', email: 'joao@example.com', whatsapp: '5511999999999' }]);
   });
 
   it('caixa pode listar operadores garçom', async () => {

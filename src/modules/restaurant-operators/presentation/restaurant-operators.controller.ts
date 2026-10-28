@@ -129,6 +129,9 @@ export class RestaurantOperatorsController extends BaseRouter {
 
     // (ajuste, pedido explícito do usuário) — equivalente ao endpoint de motoboys acima, pra
     // alimentar a página "Cadastro de garçons" (agora só leitura, lista operadores `garcom`).
+    // `whatsapp` (achado real, pedido explícito do usuário) — mesmo campo genérico de
+    // `RestaurantOperator` que já alimenta o ícone de WhatsApp dos motoboys acima; omitido aqui
+    // de início sem motivo real (garçom também pode ter WhatsApp cadastrado).
     application.get(
       '/restaurants/me/operators/waiters',
       firebaseAuthMiddleware,
@@ -138,7 +141,7 @@ export class RestaurantOperatorsController extends BaseRouter {
         const operators = await this.operatorRepository.listByRestaurant(req.restaurantId!);
         const waiters = operators
           .filter((operator) => operator.role === 'garcom' && operator.isActive)
-          .map((operator) => ({ id: operator.id, name: operator.name || operator.email, email: operator.email }));
+          .map((operator) => ({ id: operator.id, name: operator.name || operator.email, email: operator.email, whatsapp: operator.whatsapp }));
         res.json(200, waiters);
       },
     );
