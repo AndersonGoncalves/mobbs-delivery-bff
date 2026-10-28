@@ -8,7 +8,11 @@ import { IStockMovementRepository } from '../../raw-materials/domain/repositorie
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { CatalogController } from './catalog.controller';
 
-type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & { restaurantId?: string; user?: { uid: string } };
+type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & {
+  restaurantId?: string;
+  operatorRole?: Request['operatorRole'];
+  user?: { uid: string };
+};
 type FakeResponse = Pick<Response, 'json'> & Partial<Pick<Response, 'send'>>;
 type RouteHandler = (req: FakeRequest, res: FakeResponse) => Promise<void>;
 
@@ -231,6 +235,45 @@ describe('CatalogController', () => {
     await runOperatorChain(routes['GET /restaurants/me/menu-categories'], { restaurantId: 'r-1' }, { json });
 
     expect(menuCategoryRepository.listByRestaurant).toHaveBeenCalledWith('r-1');
+  });
+
+  // specs/0165-comanda-eletronica REQ-20 — `garcom` passa a ler cardápio/categorias (pro
+  // `mobbs-delivery-comanda` montar o item), mas continua sem poder criar/editar.
+  it('REQ-20 (specs/0165): garcom lê GET /restaurants/me/menu-categories e GET /restaurants/me/products, mas não escreve', async () => {
+    const { routes } = setup();
+    const response = { json: jest.fn() };
+    const waiterRequest = { operatorRole: 'garcom' as const };
+
+    await expect(
+      routes['GET /restaurants/me/menu-categories'][2](waiterRequest, response),
+    ).resolves.toBeUndefined();
+    await expect(
+      routes['GET /restaurants/me/products'][2](waiterRequest, response),
+    ).resolves.toBeUndefined();
+    await expect(
+      routes['POST /restaurants/me/menu-categories'][2](waiterRequest, response),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    await expect(
+      routes['POST /restaurants/me/products'][2](waiterRequest, response),
+    ).rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  it('REQ-20 (specs/0165): dono/gerente/financeiro continuam lendo GET /restaurants/me/products normalmente', async () => {
+    const { routes } = setup();
+    const response = { json: jest.fn() };
+
+    await expect(
+      routes['GET /restaurants/me/products'][2]({ operatorRole: 'dono' as const }, response),
+    ).resolves.toBeUndefined();
+    await expect(
+      routes['GET /restaurants/me/products'][2]({ operatorRole: 'gerente' as const }, response),
+    ).resolves.toBeUndefined();
+    await expect(
+      routes['GET /restaurants/me/products'][2]({ operatorRole: 'financeiro' as const }, response),
+    ).resolves.toBeUndefined();
+    await expect(
+      routes['GET /restaurants/me/products'][2]({ operatorRole: 'motoboy' as const }, response),
+    ).rejects.toMatchObject({ statusCode: 403 });
   });
 
   it('specs/0108 AC-1: controle global desligado mantém produto rastreado sem saldo no catálogo', async () => {

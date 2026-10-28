@@ -254,9 +254,20 @@ export class CatalogController extends BaseRouter {
       this.restaurantOperatorMiddleware,
       requireOperatorRole('dono', 'gerente', 'financeiro'),
     ];
+    // specs/0165-comanda-eletronica REQ-20 — só estas duas leituras (GET) ganham `garcom`, pra
+    // ele montar o item no `mobbs-delivery-comanda`; criar/editar cardápio continua restrito a
+    // `dono`/`gerente` (`authenticated` acima, inalterado nos POST/PUT abaixo). Array dedicado
+    // (em vez de adicionar `garcom` direto em `authenticated`/`showcaseAuthenticated`) porque
+    // essas duas constantes também protegem rotas de escrita (criar categoria/produto, reordenar
+    // destaques/mais vendidos) que devem continuar sem `garcom`.
+    const catalogReadWithWaiterAuthenticated: AsyncHandler[] = [
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('dono', 'gerente', 'financeiro', 'garcom'),
+    ];
 
     // REQ-1 (retaguarda): mesmo cardápio de cima, mas escopado pelo token do operador.
-    application.get('/restaurants/me/menu-categories', ...authenticated, async (req: Request, res: Response) => {
+    application.get('/restaurants/me/menu-categories', ...catalogReadWithWaiterAuthenticated, async (req: Request, res: Response) => {
       const categories = await this.menuCategoryRepository.listByRestaurant(req.restaurantId!);
       res.json(200, categories);
     });
@@ -302,7 +313,7 @@ export class CatalogController extends BaseRouter {
 
     // REQ-2 (retaguarda): produtos completos (com `additionalGroups`) do restaurante do operador.
     // specs/0026-selecao-clonar-excluir-busca-web REQ-7 — `name`/`isAvailable` filtram no servidor.
-    application.get('/restaurants/me/products', ...showcaseAuthenticated, async (req: Request, res: Response) => {
+    application.get('/restaurants/me/products', ...catalogReadWithWaiterAuthenticated, async (req: Request, res: Response) => {
       const query = parseBody(listProductsQuerySchema, req.query ?? {});
       const products = await this.productRepository.listByRestaurant(req.restaurantId!, {
         name: query.name,
