@@ -79,6 +79,8 @@ import { BlockedCustomerMongooseRepository } from './modules/customer-blocking/i
 import { CustomerBlockingController } from './modules/customer-blocking/presentation/customer-blocking.controller';
 import { AutoPrintController } from './modules/auto-print/presentation/auto-print.controller';
 import { buildPrintApiKeyMiddleware } from './shared/http/print-api-key.middleware';
+import { TotemController } from './modules/totem/presentation/totem.controller';
+import { buildTotemApiKeyMiddleware } from './shared/http/totem-api-key.middleware';
 import { buildPaymentWebhookApiKeyMiddleware } from './shared/http/payment-webhook-api-key.middleware';
 import { FavoriteMongooseRepository } from './modules/customers/infra/repositories/favorite.mongoose.repository';
 import { CustomersController } from './modules/customers/presentation/customers.controller';
@@ -392,6 +394,19 @@ server
       customerRepository,
       buildPrintApiKeyMiddleware(restaurantRepository),
       restaurantOperatorMiddleware,
+    ),
+    // specs/0155-app-totem-autoatendimento — pareamento/cardápio/criação de pedido do totem
+    // físico, escopado pela própria chave (mesmo molde de `AutoPrintController` acima).
+    new TotemController(
+      new MenuCategoryMongooseRepository(promotionRepository),
+      productRepository,
+      orderRepository,
+      restaurantRepository,
+      customerRepository,
+      buildTotemApiKeyMiddleware(restaurantRepository),
+      restaurantOperatorMiddleware,
+      stockMovementRepository,
+      rawMaterialRepository,
     ),
     // specs/0140-confirmacao-automatica-pix REQ-1b — webhook gateway-agnóstico de confirmação de Pix.
     new PaymentWebhookController(
