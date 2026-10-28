@@ -195,6 +195,11 @@ const restaurantSchema = new Schema(
     mercadoPagoRefreshToken: { type: String },
     mercadoPagoUserId: { type: String },
     mercadoPagoTokenExpiresAt: { type: String },
+    // Pedido explícito do usuário (follow-up) — vínculo OAuth do Instagram, mesmo modelo acima.
+    instagramAccessToken: { type: String },
+    instagramAccountId: { type: String },
+    instagramPageId: { type: String },
+    instagramUsername: { type: String },
     // Pedido explícito do usuário — tempo médio de atendimento mostrado no app do cliente, por
     // modalidade; defaults vindos do exemplo mostrado (40-60min delivery, 20-40min balcão).
     deliveryTimeMinMinutes: { type: Number, required: true, default: 40 },

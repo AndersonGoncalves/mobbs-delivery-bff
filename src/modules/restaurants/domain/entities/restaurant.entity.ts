@@ -373,6 +373,17 @@ export interface IRestaurant {
   mercadoPagoRefreshToken?: string;
   mercadoPagoUserId?: string;
   mercadoPagoTokenExpiresAt?: string;
+  /** Pedido explícito do usuário (follow-up) — vínculo OAuth (Facebook Login for Business) da
+   * conta Instagram Business do restaurante, mesmo modelo do Mercado Pago acima.
+   * `instagramAccessToken` nunca deve aparecer numa resposta de API (ver
+   * `toOperatorRestaurant`); `instagramAccountId` é o id da conta Instagram Business na Graph
+   * API (usado em toda chamada de publicação), `instagramPageId` é o id da Página do Facebook
+   * vinculada (intermediário necessário pra resolver `instagramAccountId` no momento do
+   * vínculo), `instagramUsername` só decorativo (mostrado na retaguarda). */
+  instagramAccessToken?: string;
+  instagramAccountId?: string;
+  instagramPageId?: string;
+  instagramUsername?: string;
 }
 
 export type CashRegisterMode = 'manual' | 'automatic';

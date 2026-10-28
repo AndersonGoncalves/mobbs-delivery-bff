@@ -35,6 +35,12 @@ describe('buildUploadKey', () => {
     expect(key).toMatch(/^restaurants\/r-1\/operators\/[0-9a-f-]{36}\.png$/);
   });
 
+  // Pedido explícito do usuário (follow-up) — automação de postagens no Instagram.
+  it('instagramPost: gera um UUID por chamada, dentro da pasta instagram-posts/', () => {
+    const key = buildUploadKey('instagramPost', 'r-1', 'foto.png');
+    expect(key).toMatch(/^restaurants\/r-1\/instagram-posts\/[0-9a-f-]{36}\.png$/);
+  });
+
   it('sem extensão no filename, usa "jpg" como fallback', () => {
     expect(buildUploadKey('logo', 'r-1', 'foto-sem-extensao')).toBe('restaurants/r-1/logo.jpg');
   });

@@ -92,6 +92,22 @@ describe('UploadsController', () => {
     }));
   });
 
+  // Pedido explícito do usuário (follow-up) — automação de postagens no Instagram.
+  it('aceita kind "instagramPost"', async () => {
+    const { routes } = setup();
+    const json = jest.fn();
+
+    await runAuthenticatedChain(
+      routes['POST /restaurants/me/uploads/presign'],
+      { body: { kind: 'instagramPost', filename: 'foto.png' } },
+      { json },
+    );
+
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({
+      publicUrl: expect.stringContaining('restaurants/r-1/instagram-posts/'),
+    }));
+  });
+
   it('rejeita com 400 quando kind não é um dos valores aceitos', async () => {
     const { routes } = setup();
 

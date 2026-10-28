@@ -116,6 +116,10 @@ interface RestaurantLeanDocument {
   mercadoPagoRefreshToken?: string;
   mercadoPagoUserId?: string;
   mercadoPagoTokenExpiresAt?: string;
+  instagramAccessToken?: string;
+  instagramAccountId?: string;
+  instagramPageId?: string;
+  instagramUsername?: string;
 }
 
 const ALL_PAYMENT_METHODS: PaymentMethod[] = ['creditCard', 'debitCard', 'pix', 'cash'];
@@ -217,6 +221,10 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     mercadoPagoRefreshToken: doc.mercadoPagoRefreshToken,
     mercadoPagoUserId: doc.mercadoPagoUserId,
     mercadoPagoTokenExpiresAt: doc.mercadoPagoTokenExpiresAt,
+    instagramAccessToken: doc.instagramAccessToken,
+    instagramAccountId: doc.instagramAccountId,
+    instagramPageId: doc.instagramPageId,
+    instagramUsername: doc.instagramUsername,
   };
 }
 
@@ -465,6 +473,24 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
     data: { mercadoPagoAccessToken: string; mercadoPagoRefreshToken: string; mercadoPagoUserId: string; mercadoPagoTokenExpiresAt: string },
   ): Promise<IRestaurant> {
     const doc = await RestaurantModel.findByIdAndUpdate(id, { $set: data }, { new: true }).lean<RestaurantLeanDocument>();
+    return toEntity(doc as RestaurantLeanDocument);
+  }
+
+  // Pedido explícito do usuário (follow-up) — automação de postagens no Instagram.
+  async saveInstagramTokens(
+    id: string,
+    data: { instagramAccessToken: string; instagramAccountId: string; instagramPageId: string; instagramUsername?: string },
+  ): Promise<IRestaurant> {
+    const doc = await RestaurantModel.findByIdAndUpdate(id, { $set: data }, { new: true }).lean<RestaurantLeanDocument>();
+    return toEntity(doc as RestaurantLeanDocument);
+  }
+
+  async clearInstagramConnection(id: string): Promise<IRestaurant> {
+    const doc = await RestaurantModel.findByIdAndUpdate(
+      id,
+      { $unset: { instagramAccessToken: 1, instagramAccountId: 1, instagramPageId: 1, instagramUsername: 1 } },
+      { new: true },
+    ).lean<RestaurantLeanDocument>();
     return toEntity(doc as RestaurantLeanDocument);
   }
 

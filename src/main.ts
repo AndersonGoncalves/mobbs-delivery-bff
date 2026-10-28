@@ -44,6 +44,10 @@ import { AsaasOnboardingController } from './modules/payments-asaas/presentation
 import { AsaasWebhookController } from './modules/payments-asaas/presentation/asaas-webhook.controller';
 import { MercadoPagoOAuthController } from './modules/payments-mercadopago/presentation/mercado-pago-oauth.controller';
 import { MercadoPagoWebhookController } from './modules/payments-mercadopago/presentation/mercado-pago-webhook.controller';
+import { InstagramAutomationController } from './modules/instagram-automation/presentation/instagram-automation.controller';
+import { InstagramPostMongooseRepository } from './modules/instagram-automation/infra/repositories/instagram-post.mongoose.repository';
+import { FacebookGraphClient } from './modules/instagram-automation/infra/facebook-graph-client';
+import { PublishDueInstagramPostsService } from './modules/instagram-automation/domain/publish-due-instagram-posts';
 import { CouponMongooseRepository } from './modules/coupons/infra/repositories/coupon.mongoose.repository';
 import { CouponsController } from './modules/coupons/presentation/coupons.controller';
 import { PromotionMongooseRepository } from './modules/promotions/infra/repositories/promotion.mongoose.repository';
@@ -280,6 +284,18 @@ const reconciliationService = new ReconciliationService({
   asaasClient: platformAsaasClient,
 });
 const billingPayerService = new BillingPayerService({ billingPayerRepository, asaasClient: platformAsaasClient });
+// Pedido explícito do usuário (follow-up) — automação de postagens no Instagram.
+const instagramPostRepository = new InstagramPostMongooseRepository();
+const instagramGraphClient = new FacebookGraphClient(
+  environment.facebook.appId ?? '',
+  environment.facebook.appSecret ?? '',
+  environment.facebook.graphBaseUrl,
+);
+const publishDueInstagramPostsService = new PublishDueInstagramPostsService(
+  instagramPostRepository,
+  restaurantRepository,
+  instagramGraphClient,
+);
 const platformBillingCycleService = new PlatformBillingCycleService({
   restaurantRepository,
   obligationRepository,
@@ -391,6 +407,7 @@ server
     new AsaasWebhookController(orderRepository, paymentRepository, restaurantRepository, whatsAppNotificationService),
     // specs/0170-integracao-mercado-pago — cobrança de cartão de crédito via Checkout Pro.
     new MercadoPagoOAuthController(restaurantRepository, restaurantOperatorMiddleware),
+    new InstagramAutomationController(restaurantRepository, instagramPostRepository, restaurantOperatorMiddleware),
     new MercadoPagoWebhookController(orderRepository, paymentRepository, restaurantRepository, whatsAppNotificationService),
     // specs/0106 — painel da plataforma, restrito à lista PLATFORM_ADMIN_EMAILS.
     new PlatformController(
@@ -533,6 +550,23 @@ server
       console.error('[platform-billing] erro inesperado no ciclo disparado no boot:', error);
     }),
   )
+  // Pedido explícito do usuário (follow-up) — automação de postagens no Instagram precisa de
+  // execução autônoma de verdade pra cumprir o que promete ("agendadas"): diferente do ciclo de
+  // cobrança acima (que tolera um empurrão externo — `docs/CHECKLIST-ATIVACAO-COBRANCA-ASSINATURA.md`
+  // §5 documenta "sem setInterval/cron real neste BFF ainda... até uma automação própria
+  // existir"), uma postagem agendada sem ninguém rodando o publicador simplesmente nunca sai. Por
+  // isso, primeiro `setInterval` em processo deste BFF — desvio deliberado e documentado da
+  // decisão anterior, não um precedente esquecido. 60s: intervalo curto o bastante pra o horário
+  // agendado "bater" com precisão aceitável pro caso de uso (postagem de rede social, não
+  // cobrança financeira), sem sobrecarregar a Graph API com polling agressivo.
+  .then(() => {
+    setInterval(() => {
+      publishDueInstagramPostsService.run().catch((error) => {
+        // eslint-disable-next-line no-console
+        console.error('[instagram-automation] erro inesperado no publicador:', error);
+      });
+    }, 60_000);
+  })
   .catch((error) => {
     // eslint-disable-next-line no-console
     console.error('Falha ao iniciar o servidor:', error);

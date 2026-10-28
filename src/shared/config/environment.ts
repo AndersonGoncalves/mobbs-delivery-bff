@@ -66,6 +66,24 @@ export const environment = {
      * ainda não sabemos de qual restaurante é o pagamento — ver plan.md. */
     platformAccessToken: process.env.MERCADOPAGO_PLATFORM_ACCESS_TOKEN,
   },
+  /** Pedido explícito do usuário (follow-up) — automação de postagens no Instagram, mesmo
+   * modelo OAuth do Mercado Pago (`mercadoPago` acima): cada restaurante autoriza ESTA
+   * aplicação (Facebook Login for Business) e a gente recebe um token de acesso de longa
+   * duração da Página/conta Instagram Business dele, salvo em
+   * `Restaurant.instagramAccessToken`. `appId`/`appSecret` são da aplicação registrada no
+   * Meta for Developers (developers.facebook.com/apps) — precisa ter os produtos "Facebook
+   * Login" e "Instagram Graph API" configurados, e passar pela revisão de permissões do Meta
+   * (`instagram_basic`, `instagram_content_publish`, `pages_show_list`,
+   * `pages_read_engagement`) antes de publicar de verdade em produção (mesmo tipo de
+   * dependência operacional já documentada em `specs/0174` pra submissão na Chrome Web
+   * Store — aprovação não é instantânea). `redirectUri` é a URL de callback da retaguarda que
+   * recebe o `code` do OAuth e repassa pro BFF. */
+  facebook: {
+    appId: process.env.FACEBOOK_APP_ID,
+    appSecret: process.env.FACEBOOK_APP_SECRET,
+    redirectUri: process.env.FACEBOOK_REDIRECT_URI,
+    graphBaseUrl: process.env.FACEBOOK_GRAPH_BASE_URL || 'https://graph.facebook.com/v21.0',
+  },
   /** specs/0175-cobranca-assinatura-asaas — cobrança da ASSINATURA da plataforma (lojista paga
    * a plataforma), nunca confundir com `asaas` acima (pedidos dos restaurantes). Reusa a MESMA
    * credencial `ASAAS_API_KEY`/`ASAAS_BASE_URL` (conta mãe — já é uma conta Asaas comum, capaz

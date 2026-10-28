@@ -197,6 +197,15 @@ export interface IRestaurantRepository {
     data: { mercadoPagoAccessToken: string; mercadoPagoRefreshToken: string; mercadoPagoUserId: string; mercadoPagoTokenExpiresAt: string },
   ): Promise<IRestaurant>;
 
+  /** Pedido explícito do usuário (follow-up) — automação de postagens no Instagram, mesmo
+   * raciocínio de `saveMercadoPagoTokens`. */
+  saveInstagramTokens(
+    id: string,
+    data: { instagramAccessToken: string; instagramAccountId: string; instagramPageId: string; instagramUsername?: string },
+  ): Promise<IRestaurant>;
+
+  clearInstagramConnection(id: string): Promise<IRestaurant>;
+
   /** specs/0101-integracao-asaas (fase 2) — marca que o webhook adicional de eventos de checkout
    * (cartão) já foi registrado pra este restaurante, evitando registrar de novo a cada pedido
    * (`OrdersController.tryCreateAsaasCheckout`). */

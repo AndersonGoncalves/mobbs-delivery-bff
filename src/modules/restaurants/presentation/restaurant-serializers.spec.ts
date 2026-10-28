@@ -22,6 +22,17 @@ describe('toOperatorRestaurant', () => {
     expect(safe.asaasAccountId).toBe('acc-1');
   });
 
+  // Pedido explícito do usuário (follow-up) — automação de postagens no Instagram.
+  it('remove instagramAccessToken do campo ativo, mas mantém instagramAccountId/instagramUsername', () => {
+    const safe = toOperatorRestaurant(
+      buildRestaurant({ instagramAccessToken: 'segredo', instagramAccountId: 'ig-1', instagramUsername: 'minha_loja' }),
+    );
+
+    expect(safe).not.toHaveProperty('instagramAccessToken');
+    expect(safe.instagramAccountId).toBe('ig-1');
+    expect(safe.instagramUsername).toBe('minha_loja');
+  });
+
   // Pedido explícito do usuário (follow-up) — `previousAsaasSubaccounts` arquiva a chave de API
   // de cada subconta esquecida; a retaguarda só lista pra oferecer "Reconectar", nunca vê a chave.
   it('remove asaasApiKey/asaasWebhookToken de cada entrada de previousAsaasSubaccounts', () => {

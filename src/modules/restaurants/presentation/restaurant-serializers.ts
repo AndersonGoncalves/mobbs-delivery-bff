@@ -80,13 +80,17 @@ export function toPublicRestaurant(restaurant: IRestaurant) {
  * que precise exibir o valor bruto, só confirmar "vinculado"/"ativo" (`asaasAccountId`,
  * `onlinePaymentsEnabled`, `mercadoPagoUserId` continuam, não são segredo).
  */
-export function toOperatorRestaurant(restaurant: IRestaurant): Omit<IRestaurant, 'paymentWebhookApiKey' | 'asaasApiKey' | 'asaasWebhookToken' | 'mercadoPagoAccessToken' | 'mercadoPagoRefreshToken'> {
+export function toOperatorRestaurant(restaurant: IRestaurant): Omit<IRestaurant, 'paymentWebhookApiKey' | 'asaasApiKey' | 'asaasWebhookToken' | 'mercadoPagoAccessToken' | 'mercadoPagoRefreshToken' | 'instagramAccessToken'> {
   const safe: Partial<IRestaurant> = { ...restaurant };
   delete safe.paymentWebhookApiKey;
   delete safe.asaasApiKey;
   delete safe.asaasWebhookToken;
   delete safe.mercadoPagoAccessToken;
   delete safe.mercadoPagoRefreshToken;
+  // Pedido explícito do usuário (follow-up) — automação de postagens no Instagram, mesmo cuidado
+  // do token do Mercado Pago acima (`instagramAccountId`/`instagramUsername` não são segredo e
+  // continuam, a UI usa pra mostrar "conectado como @usuario").
+  delete safe.instagramAccessToken;
   // Pedido explícito do usuário (follow-up) — `previousAsaasSubaccounts` carrega `asaasApiKey`/
   // `asaasWebhookToken` por entrada (a UI só precisa listar pra oferecer "Reconectar", nunca ver
   // a chave); mesmo cuidado do campo ativo acima, mas por item do array.
@@ -98,5 +102,5 @@ export function toOperatorRestaurant(restaurant: IRestaurant): Omit<IRestaurant,
       return redacted;
     });
   }
-  return safe as Omit<IRestaurant, 'paymentWebhookApiKey' | 'asaasApiKey' | 'asaasWebhookToken' | 'mercadoPagoAccessToken' | 'mercadoPagoRefreshToken'>;
+  return safe as Omit<IRestaurant, 'paymentWebhookApiKey' | 'asaasApiKey' | 'asaasWebhookToken' | 'mercadoPagoAccessToken' | 'mercadoPagoRefreshToken' | 'instagramAccessToken'>;
 }

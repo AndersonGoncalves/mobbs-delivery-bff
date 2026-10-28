@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 
-export type UploadKind = 'logo' | 'defaultProductImage' | 'product' | 'banner' | 'additionalGroupOption' | 'campaign' | 'menuCategory' | 'rawMaterial' | 'operatorPhoto';
+export type UploadKind = 'logo' | 'defaultProductImage' | 'product' | 'banner' | 'additionalGroupOption' | 'campaign' | 'menuCategory' | 'rawMaterial' | 'operatorPhoto' | 'instagramPost';
 
 /** specs/0036-migracao-imagens-s3 ADR-0036-03 — mesma estrutura de pastas que o Firebase Storage
  * já usava (`mobbs-delivery-web/src/shared/storage.ts`), pra a migração ficar invisível pro
@@ -31,5 +31,9 @@ export function buildUploadKey(kind: UploadKind, restaurantId: string, filename:
       return `${base}/raw-materials/${randomUUID()}.${extension}`;
     case 'operatorPhoto':
       return `${base}/operators/${randomUUID()}.${extension}`;
+    // Pedido explícito do usuário (follow-up) — imagem de uma postagem agendada do Instagram; a
+    // API do Instagram busca essa URL pra criar o container de mídia, precisa ser pública (S3).
+    case 'instagramPost':
+      return `${base}/instagram-posts/${randomUUID()}.${extension}`;
   }
 }
