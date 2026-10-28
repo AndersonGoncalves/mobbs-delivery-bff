@@ -32,13 +32,16 @@ import {
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
-function hasStock(item: { tracksStock?: boolean; stockQuantity?: number }, enabled: boolean): boolean {
+// specs/0155-app-totem-autoatendimento — `export` nestas (eram só locais ao módulo) pra
+// `TotemController` reaproveitar exatamente a mesma filtragem de estoque das rotas públicas de
+// cardápio (`filterPublicCategories` abaixo), em vez de reimplementar a lógica em paralelo.
+export function hasStock(item: { tracksStock?: boolean; stockQuantity?: number }, enabled: boolean): boolean {
   return !enabled || !item.tracksStock || (item.stockQuantity ?? 0) > 0;
 }
 
 // Opção sem saldo sai do detalhe e o grupo se ajusta ao que sobrou (grupo vazio some; mínimo/máximo
 // nunca passam da quantidade de opções) — o produto em si continua disponível.
-function filterStockGroups(groups: IProduct['additionalGroups']): IProduct['additionalGroups'] {
+export function filterStockGroups(groups: IProduct['additionalGroups']): IProduct['additionalGroups'] {
   return groups.flatMap((group) => {
     // "Sem X" não consome o ingrediente: remoção continua disponível mesmo com o saldo zerado.
     if (group.type === 'remover') return [group];
@@ -55,11 +58,11 @@ function filterStockGroups(groups: IProduct['additionalGroups']): IProduct['addi
   });
 }
 
-function filterProductStock<T extends { tracksStock?: boolean; stockQuantity?: number }>(products: T[], enabled: boolean): T[] {
+export function filterProductStock<T extends { tracksStock?: boolean; stockQuantity?: number }>(products: T[], enabled: boolean): T[] {
   return products.filter((product) => hasStock(product, enabled));
 }
 
-function stripInventoryFields<T extends { tracksStock?: boolean; stockQuantity?: number; minimumStockAlert?: number }>(item: T) {
+export function stripInventoryFields<T extends { tracksStock?: boolean; stockQuantity?: number; minimumStockAlert?: number }>(item: T) {
   const publicItem = { ...item };
   delete publicItem.tracksStock;
   delete publicItem.stockQuantity;
@@ -67,7 +70,7 @@ function stripInventoryFields<T extends { tracksStock?: boolean; stockQuantity?:
   return publicItem;
 }
 
-function stripOptionStockAvailability(groups: IProduct['additionalGroups']): IProduct['additionalGroups'] {
+export function stripOptionStockAvailability(groups: IProduct['additionalGroups']): IProduct['additionalGroups'] {
   return groups.map((group) => ({
     ...group,
     options: (group.options ?? []).map((option) => {
@@ -78,7 +81,7 @@ function stripOptionStockAvailability(groups: IProduct['additionalGroups']): IPr
   }));
 }
 
-function toPublicProduct(product: IProduct) {
+export function toPublicProduct(product: IProduct) {
   const { additionalGroups, ...publicFields } = product;
   return {
     ...stripInventoryFields(publicFields),

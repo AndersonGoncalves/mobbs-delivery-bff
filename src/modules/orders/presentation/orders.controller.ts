@@ -30,6 +30,8 @@ import { ConfirmOnlinePaymentService } from '../domain/services/confirm-online-p
 import { StockReservationService } from '../domain/services/stock-reservation.service';
 import { isOrderCancellableByOperator, isValidOrderStatusTransition } from '../domain/order-status-transitions';
 import { buildOrderPixCode } from '../domain/build-order-pix-code';
+import { computeOrderPricing } from '../domain/compute-order-pricing';
+import { resolveInitialOrderStatus } from '../domain/resolve-initial-order-status';
 import { resolveOrderItemLinkedProducts } from '../domain/resolve-order-item-linked-products';
 import { IOrderRepository } from '../domain/repositories/order.repository.interface';
 import { IRestaurantTableRepository } from '../../table-service/domain/repositories/table.repository.interface';
@@ -157,12 +159,17 @@ export class OrdersController extends BaseRouter {
         throw new BadRequestError('Restaurante não tem gateway de cartão online vinculado');
       }
 
-      const subtotal = payload.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
       // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-1 — 'free' nunca cobra,
       // independente do que estiver em `deliveryFeeCents` (o restaurante pode ter mudado de modo
       // sem zerar o valor antigo). Por bairro, a taxa é a da zona do bairro escolhido — mesma regra que
       // o app mostra no checkout (`GET /restaurants/:id/delivery-fee`) — e sem zona o pedido não fecha.
       const deliveryFee = resolveDeliveryFee(restaurant, payload);
+
+      // specs/0155-app-totem-autoatendimento (plan.md, ADR) — subtotal calculado via
+      // `computeOrderPricing` (extraído pra ser reaproveitado pelo `TotemController`, mesma
+      // fórmula, nunca uma reimplementação paralela). `cashbackUsed` só entra no total depois de
+      // resolvido abaixo, por isso o cálculo aqui é em duas etapas (mesmo comportamento de antes).
+      const subtotal = computeOrderPricing({ items: payload.items, deliveryFee: 0, discount: 0, cashbackUsed: 0 }).subtotal;
 
       // specs/0022-cupons-desconto REQ-2/REQ-4 — primeiro consumidor real de `Order.discount`
       // (antes hardcoded em `0`). **Nunca confia no desconto calculado pelo app**: revalida tudo
@@ -199,12 +206,9 @@ export class OrdersController extends BaseRouter {
       // `confirmado` direto se estiverem na configuração de auto-confirmação do restaurante.
       // specs/0170-integracao-mercado-pago — `creditCardOnline` tem a mesma restrição do Pix,
       // mesmo motivo: também só confirma depois do pagamento aprovado (webhook).
-      const initialStatus =
-        payload.paymentMethod !== 'pix' &&
-        payload.paymentMethod !== 'creditCardOnline' &&
-        restaurant.autoConfirmPaymentMethods?.includes(payload.paymentMethod)
-          ? 'confirmado'
-          : undefined;
+      // specs/0155-app-totem-autoatendimento (plan.md, ADR) — regra extraída pra
+      // `resolveInitialOrderStatus`, reaproveitada pelo `TotemController`.
+      const initialStatus = resolveInitialOrderStatus(payload.paymentMethod, restaurant);
 
       let order: IOrder;
       try {

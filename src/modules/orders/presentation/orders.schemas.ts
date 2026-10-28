@@ -18,7 +18,9 @@ const optionalString = (schema: z.ZodString) =>
 
 // specs/0005-checkout — árvore recursiva (produto composto, mesmo motivo de
 // `nestedAdditionalGroups` em catalog/presentation) precisa de `z.lazy()`.
-const orderItemSelectionSchema: z.ZodType<IOrderItemSelection> = z.lazy(() =>
+// specs/0155-app-totem-autoatendimento — exportado pra `totem.schemas.ts` reaproveitar a mesma
+// validação de item/seleção (nunca redefinir o formato em paralelo).
+export const orderItemSelectionSchema: z.ZodType<IOrderItemSelection> = z.lazy(() =>
   z.object({
     groupName: z.string().min(1),
     optionName: z.string().min(1),
@@ -27,7 +29,7 @@ const orderItemSelectionSchema: z.ZodType<IOrderItemSelection> = z.lazy(() =>
   }),
 );
 
-const orderItemSchema = z.object({
+export const orderItemSchema = z.object({
   id: z.string().min(1),
   productId: z.string().min(1),
   productName: z.string().min(1),

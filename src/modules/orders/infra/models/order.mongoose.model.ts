@@ -100,6 +100,9 @@ const orderSchema = new Schema(
     restaurantId: { type: String, required: true },
     items: { type: [orderItemSchema], default: [] },
     orderType: { type: String, enum: ['delivery', 'pickup', 'table'], required: true },
+    // specs/0155-app-totem-autoatendimento REQ-14 — ausente = pedido do app cliente (default de
+    // todo documento já existente antes desta spec).
+    source: { type: String, enum: ['totem'] },
     deliveryAddress: { type: String },
     deliveryMotoboy: { type: deliveryMotoboySchema, default: undefined },
     tableId: { type: String },

@@ -100,6 +100,13 @@ export interface IOrder {
   restaurantId: string;
   items: IOrderItem[];
   orderType: OrderType;
+  /**
+   * specs/0155-app-totem-autoatendimento REQ-14 — distingue um pedido criado pelo totem físico
+   * de um pedido comum do app cliente, sem introduzir um `OrderType` novo (ADR do plano:
+   * `orderType` continua `'pickup'`, só este campo aditivo marca a origem). Ausente = app
+   * cliente (comportamento de todo pedido já existente antes desta spec).
+   */
+  source?: 'totem';
   deliveryAddress?: string;
   /** specs/0125 — snapshot do motoboy atribuído pela retaguarda, quando houver. */
   deliveryMotoboy?: { id: string; name: string };

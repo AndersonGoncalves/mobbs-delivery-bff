@@ -14,6 +14,8 @@ export interface NewOrderInput {
   restaurantId: string;
   items: IOrderItem[];
   orderType: OrderType;
+  /** specs/0155-app-totem-autoatendimento REQ-14 — ver `IOrder.source`. */
+  source?: 'totem';
   deliveryAddress?: string;
   notes?: string;
   subtotal: number;
