@@ -333,6 +333,9 @@ describe('OrdersController', () => {
       decrementStock: jest.fn().mockResolvedValue(false),
       decrementStockIfAvailable: jest.fn().mockResolvedValue(false),
       restoreStock: jest.fn().mockResolvedValue(true),
+      // specs/0187-kds-cozinha REQ-8/REQ-9 — usado por `GET /restaurants/me/kitchen/orders` e
+      // `.../kitchen/stations`; default vazio, sobrescrito pelos testes que precisam de produtos.
+      listByRestaurant: jest.fn().mockResolvedValue([]),
       ...overrides.productRepository,
     };
     const stockMovementRepository: Partial<IStockMovementRepository> = {
@@ -2466,5 +2469,136 @@ describe('OrdersController', () => {
 
       expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ status: 'entregue' }));
     });
+  });
+
+  describe('specs/0187-kds-cozinha', () => {
+    it('AC-1: cozinha é aceito por GET /restaurants/me/kitchen/orders e .../kitchen/stations, mas rejeitado (403) em rotas fora do KDS', async () => {
+      const { routes } = setup();
+
+      await expect(
+        routes['GET /restaurants/me/kitchen/orders'][2]({ operatorRole: 'cozinha', restaurantId: 'r-1' }, { json: jest.fn() }),
+      ).resolves.toBeUndefined();
+      await expect(
+        routes['GET /restaurants/me/kitchen/stations'][2]({ operatorRole: 'cozinha', restaurantId: 'r-1' }, { json: jest.fn() }),
+      ).resolves.toBeUndefined();
+      // Pedidos "em geral" (dados completos, inclusive financeiro) continuam fora do alcance de `cozinha`.
+      await expect(
+        routes['GET /restaurants/me/orders'][2]({ operatorRole: 'cozinha', restaurantId: 'r-1' }, { json: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 403 });
+    });
+
+    it.each(['garcom', 'motoboy', undefined])('REQ-6/REQ-7: %s não acessa GET /restaurants/me/kitchen/orders (403)', async (operatorRole) => {
+      const { routes } = setup();
+
+      await expect(
+        routes['GET /restaurants/me/kitchen/orders'][2]({ operatorRole, restaurantId: 'r-1' }, { json: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 403 });
+    });
+
+    it('REQ-9/REQ-10/REQ-20: GET /restaurants/me/kitchen/orders filtra confirmado/emPreparo, ordena por confirmedAt crescente, e nunca inclui dados financeiros/endereço/cliente', async () => {
+      const confirmedAt = (iso: string) => [{ status: 'confirmado', changedAt: iso }];
+      const orders = [
+        buildOrder({ id: 'o-late', status: 'emPreparo', statusHistory: confirmedAt('2026-10-27T12:00:00.000Z') }),
+        buildOrder({ id: 'o-early', status: 'confirmado', statusHistory: confirmedAt('2026-10-27T10:00:00.000Z') }),
+        buildOrder({ id: 'o-delivered', status: 'entregue', statusHistory: confirmedAt('2026-10-27T09:00:00.000Z') }),
+      ];
+      const { routes } = setup({ orderRepository: { findActiveByRestaurant: jest.fn().mockResolvedValue(orders) } });
+      const json = jest.fn();
+
+      await runOperatorChain(routes['GET /restaurants/me/kitchen/orders'], { restaurantId: 'r-1' }, { json });
+
+      const response = json.mock.calls[0][1] as Array<{ id: string }>;
+      expect(response.map((order) => order.id)).toEqual(['o-early', 'o-late']);
+      for (const order of response) {
+        expect(order).not.toHaveProperty('total');
+        expect(order).not.toHaveProperty('subtotal');
+        expect(order).not.toHaveProperty('deliveryFee');
+        expect(order).not.toHaveProperty('paymentMethod');
+        expect(order).not.toHaveProperty('payment');
+        expect(order).not.toHaveProperty('deliveryAddress');
+        expect(order).not.toHaveProperty('customer');
+      }
+    });
+
+    it('REQ-9/AC-7: GET /restaurants/me/kitchen/orders resolve kitchenStation por item ao vivo (produto sem praça cai undefined, "praça Geral")', async () => {
+      const order = buildOrder({
+        status: 'confirmado',
+        items: [
+          { id: 'i-1', productId: 'p-chapa', productName: 'X-Burger', quantity: 2, unitPrice: 10, selections: [{ groupName: 'Ponto', optionName: 'Bem passado', priceDelta: 0 }] },
+          { id: 'i-2', productId: 'p-sem-praca', productName: 'Guardanapo', quantity: 1, unitPrice: 0 },
+        ],
+      });
+      const { routes } = setup({
+        orderRepository: { findActiveByRestaurant: jest.fn().mockResolvedValue([order]) },
+        productRepository: {
+          listByRestaurant: jest.fn().mockResolvedValue([
+            { id: 'p-chapa', kitchenStation: 'Chapa' },
+            { id: 'p-sem-praca' },
+          ]),
+        },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(routes['GET /restaurants/me/kitchen/orders'], { restaurantId: 'r-1' }, { json });
+
+      const [response] = json.mock.calls[0][1] as Array<{ items: Array<{ productId: string; kitchenStation?: string; selections: unknown[] }> }>;
+      expect(response.items).toEqual([
+        expect.objectContaining({ productId: 'p-chapa', kitchenStation: 'Chapa', selections: [{ groupName: 'Ponto', optionName: 'Bem passado' }] }),
+        expect.objectContaining({ productId: 'p-sem-praca', kitchenStation: undefined }),
+      ]);
+    });
+
+    it('REQ-8: GET /restaurants/me/kitchen/stations devolve as praças distintas em uso, ordenadas, sem repetição nem vazio', async () => {
+      const { routes } = setup({
+        productRepository: {
+          listByRestaurant: jest.fn().mockResolvedValue([
+            { id: 'p1', kitchenStation: 'Bebida' },
+            { id: 'p2', kitchenStation: 'Chapa' },
+            { id: 'p3', kitchenStation: 'Bebida' },
+            { id: 'p4', kitchenStation: '' },
+            { id: 'p5' },
+          ]),
+        },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(routes['GET /restaurants/me/kitchen/stations'], { restaurantId: 'r-1' }, { json });
+
+      expect(json).toHaveBeenCalledWith(200, { stations: ['Bebida', 'Chapa'] });
+    });
+
+    it('REQ-15/AC-5: cozinha avança confirmado -> emPreparo via PATCH /restaurants/me/orders/:id/status (mesma rota do Kanban)', async () => {
+      const { orderRepository, routes } = setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ status: 'confirmado' })) },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/status'],
+        { restaurantId: 'r-1', operatorRole: 'cozinha', params: { id: 'o-1' }, body: { status: 'emPreparo' } },
+        { json },
+      );
+
+      expect(orderRepository.updateStatus).toHaveBeenCalledWith('o-1', 'emPreparo', 'r-1');
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ status: 'emPreparo' }));
+    });
+
+    it.each(['saiuParaEntrega', 'entregue', 'cancelado', 'aguardandoConfirmacao'])(
+      'REQ-7/REQ-17: cozinha não pode avançar pedido fora da janela confirmado/emPreparo (status atual: %s) — 403',
+      async (status) => {
+        const { orderRepository, routes } = setup({
+          orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ status })) },
+        });
+
+        await expect(
+          runOperatorChain(
+            routes['PATCH /restaurants/me/orders/:id/status'],
+            { restaurantId: 'r-1', operatorRole: 'cozinha', params: { id: 'o-1' }, body: { status: 'entregue' } },
+            { json: jest.fn() },
+          ),
+        ).rejects.toMatchObject({ statusCode: 403 });
+        expect(orderRepository.updateStatus).not.toHaveBeenCalled();
+      },
+    );
   });
 });

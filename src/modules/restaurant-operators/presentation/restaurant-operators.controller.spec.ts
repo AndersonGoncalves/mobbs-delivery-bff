@@ -167,6 +167,19 @@ describe('RestaurantOperatorsController', () => {
     );
   });
 
+  // specs/0187-kds-cozinha REQ-7/REQ-19 — mesmo cadastro, novo papel `cozinha`.
+  it('specs/0187-kds-cozinha: POST /restaurants/me/operators cria operador com papel cozinha', async () => {
+    const { repository, routes } = setup();
+
+    await runChain(
+      routes['POST /restaurants/me/operators'],
+      { body: { email: 'cozinha@example.com', role: 'cozinha', name: 'Praça da Chapa' } },
+      { json: jest.fn(), send: jest.fn() },
+    );
+
+    expect(repository.create).toHaveBeenCalledWith('r-1', 'cozinha@example.com', 'cozinha', 'Praça da Chapa', undefined, undefined);
+  });
+
   it('rejeita cadastro de operador sem nome', async () => {
     const { repository, routes } = setup();
 

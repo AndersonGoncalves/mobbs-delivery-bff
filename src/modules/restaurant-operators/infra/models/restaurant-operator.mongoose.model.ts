@@ -20,7 +20,8 @@ const restaurantOperatorSchema = new Schema(
     // da rota (`operatorRoleSchema`) já aceitava os dois, mas o Mongoose rejeitava o `.create()`
     // na hora de salvar (erro não tratado, sem try/catch na rota) — cadastrar um operador
     // garçom/motoboy sempre falhava, mesmo com o restante do sistema já pronto pra eles.
-    role: { type: String, enum: ['dono', 'gerente', 'financeiro', 'garcom', 'motoboy'], required: true, default: 'dono' },
+    // specs/0187-kds-cozinha REQ-7/REQ-19 — `cozinha` adicionado ao mesmo enum.
+    role: { type: String, enum: ['dono', 'gerente', 'financeiro', 'garcom', 'motoboy', 'cozinha'], required: true, default: 'dono' },
     hasFullAccess: { type: Boolean, required: true, default: false },
     isActive: { type: Boolean, required: true, default: true },
   },

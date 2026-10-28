@@ -427,13 +427,63 @@ export class OrdersController extends BaseRouter {
       res.json(200, this.attachAutoPrintMissed(await this.attachCustomers(orders), restaurant!));
     });
 
+    // specs/0187-kds-cozinha REQ-6/REQ-9/REQ-10/REQ-20 — leitura dedicada e redigida pro KDS,
+    // separada de `GET /restaurants/me/orders` (que devolve o `IOrder` cru completo, incluindo
+    // total/pagamento/endereço/contato — exatamente o que REQ-20 proíbe pro papel `cozinha`;
+    // `plan.md` ADR). Mesmas 4 roles que podem logar no KDS (REQ-6); `dono`/`gerente`/
+    // `financeiro` continuam podendo usar a lista completa de `GET /restaurants/me/orders`
+    // normalmente — esta rota nova não substitui aquela, só soma.
+    const kitchenAuthenticated: AsyncHandler[] = [
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('dono', 'gerente', 'financeiro', 'cozinha'),
+    ];
+
+    // REQ-8 — praças (`Product.kitchenStation`) distintas em uso pelo restaurante, pra alimentar
+    // o seletor de praça do KDS no primeiro login. Calculado a partir do catálogo completo (não
+    // só dos pedidos ativos agora — uma cozinha momentaneamente vazia ainda precisa saber quais
+    // praças existem, `plan.md` "Riscos"), mas devolve só os nomes: nunca o produto/preço/
+    // cardápio inteiro (REQ-7 — `cozinha` não acessa cardápio).
+    application.get('/restaurants/me/kitchen/stations', ...kitchenAuthenticated, async (req: Request, res: Response) => {
+      const products = await this.productRepository.listByRestaurant(req.restaurantId!);
+      const stations = [...new Set(products.map((product) => product.kitchenStation).filter((station): station is string => !!station?.trim()))].sort(
+        (a, b) => a.localeCompare(b, 'pt-BR'),
+      );
+      res.json(200, { stations });
+    });
+
+    // REQ-9/REQ-10/REQ-20 — pedidos `confirmado`/`emPreparo` do restaurante do operador logado,
+    // mais antigo primeiro por `confirmedAt` (momento em que entrou na fila de preparo, não
+    // `createdAt` bruto — decisão de design 5, `specs/0187-kds-cozinha/spec.md`), numa vista
+    // redigida (`toKitchenView`, sem total/subtotal/forma de pagamento/endereço/contato do
+    // cliente). `kitchenStation` por item é resolvido ao vivo contra o catálogo atual (`plan.md`
+    // ADR), reaproveitando `findActiveByRestaurant` já existente (specs/0008) — sem método de
+    // repositório novo, só filtra/ordena em memória (poucos pedidos ativos por restaurante).
+    application.get('/restaurants/me/kitchen/orders', ...kitchenAuthenticated, async (req: Request, res: Response) => {
+      const [orders, products] = await Promise.all([
+        this.orderRepository.findActiveByRestaurant(req.restaurantId!),
+        this.productRepository.listByRestaurant(req.restaurantId!),
+      ]);
+      const stationByProductId = new Map(products.map((product) => [product.id, product.kitchenStation]));
+      const kitchenOrders = orders
+        .filter((order) => order.status === 'confirmado' || order.status === 'emPreparo')
+        .map((order) => this.toKitchenView(order, stationByProductId))
+        .sort((a, b) => new Date(a.confirmedAt ?? 0).getTime() - new Date(b.confirmedAt ?? 0).getTime());
+      res.json(200, kitchenOrders);
+    });
+
     // specs/0137-papeis-garcom-motoboy REQ-3 — além de `dono`/`gerente`, `motoboy` também pode
     // chamar esta rota, mas só pra marcar a própria entrega como `entregue` (checagem de posse
     // abaixo); `dono`/`gerente` continuam sem nenhuma restrição extra, como hoje.
+    // specs/0187-kds-cozinha REQ-15/REQ-17 — `cozinha` também pode chamar esta mesma rota (botão
+    // "Pronto" do KDS dispara exatamente este PATCH, nunca uma rota nova), mas só enquanto o
+    // pedido estiver `confirmado`/`emPreparo` (checagem de posse abaixo, mesmo molde da de
+    // `motoboy`) — a trava de "qual é o próximo status válido" continua 100% em
+    // `isValidOrderStatusTransition`, inalterada.
     const statusUpdateAuthenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,
-      requireOperatorRole('dono', 'gerente', 'financeiro', 'motoboy'),
+      requireOperatorRole('dono', 'gerente', 'financeiro', 'motoboy', 'cozinha'),
     ];
 
     // REQ-2/REQ-5: só avança um passo por vez (`isValidOrderStatusTransition`) — fonte de
@@ -455,6 +505,15 @@ export class OrdersController extends BaseRouter {
           if (status !== 'entregue') {
             throw new ForbiddenError('Motoboy só pode marcar o pedido como entregue');
           }
+        }
+
+        // specs/0187-kds-cozinha REQ-7/REQ-17 — `cozinha` só avança um pedido que esteja
+        // atualmente `confirmado`/`emPreparo` (a janela que o KDS mostra, REQ-9); fora dela —
+        // `entregue`, `cancelado`, `saiuParaEntrega`, `aguardandoConfirmacao` — é 403, mesmo que
+        // a transição numérica fizesse sentido pra outro papel (mantém REQ-7: "sem acesso a
+        // nenhuma outra área").
+        if (req.operatorRole === 'cozinha' && order.status !== 'confirmado' && order.status !== 'emPreparo') {
+          throw new ForbiddenError('Papel cozinha só pode avançar pedidos confirmados ou em preparo');
         }
 
         if (!isValidOrderStatusTransition(order.status, status)) {
@@ -957,6 +1016,34 @@ export class OrdersController extends BaseRouter {
   private confirmedAtMs(order: IOrder): number | undefined {
     const entry = order.statusHistory.find((history) => history.status === 'confirmado');
     return entry ? new Date(entry.changedAt).getTime() : undefined;
+  }
+
+  /**
+   * specs/0187-kds-cozinha REQ-9/REQ-10/REQ-11/REQ-20 — vista do pedido pra `GET
+   * /restaurants/me/kitchen/orders`: deliberadamente SEM `total`/`subtotal`/`deliveryFee`/
+   * `discount`/`paymentMethod`/`payment`/`deliveryAddress`/`customer` (REQ-20 — nada fora do
+   * necessário pro preparo). `kitchenStation` de cada item é resolvido ao vivo contra o `Product`
+   * atual (`stationByProductId`, `plan.md` ADR) — produto sem `kitchenStation`/removido do
+   * catálogo cai em `undefined` (REQ-1 da decisão de design: "praça Geral"/sem filtro).
+   */
+  private toKitchenView(order: IOrder, stationByProductId: Map<string, string | undefined>) {
+    return {
+      id: order.id,
+      orderNumber: order.orderNumber,
+      orderType: order.orderType,
+      status: order.status,
+      statusHistory: order.statusHistory,
+      confirmedAt: order.statusHistory.find((history) => history.status === 'confirmado')?.changedAt,
+      items: order.items.map((item) => ({
+        id: item.id,
+        productId: item.productId,
+        productName: item.productName,
+        quantity: item.quantity,
+        notes: item.notes,
+        kitchenStation: stationByProductId.get(item.productId),
+        selections: (item.selections ?? []).map((selection) => ({ groupName: selection.groupName, optionName: selection.optionName })),
+      })),
+    };
   }
 
   private async attachPaymentSummaries(orders: IOrder[]): Promise<(IOrder & { payment?: Pick<IPayment, 'method' | 'status'> })[]> {

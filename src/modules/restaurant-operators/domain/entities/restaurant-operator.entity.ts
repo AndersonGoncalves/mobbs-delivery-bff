@@ -15,10 +15,16 @@
  * um único módulo:
  * - `garcom`: só o mapa de mesas/PDV (`table-service`).
  * - `motoboy`: só a lista dos próprios pedidos atribuídos a ele (`GET /restaurants/me/orders/my-deliveries`).
+ *
+ * specs/0187-kds-cozinha REQ-7/REQ-19 — mais um papel restrito a um único app satélite
+ * (`mobbs-delivery-kds`): `cozinha` só lê pedidos confirmados/em preparo e avança o próprio
+ * status (`GET/PATCH /restaurants/me/kitchen/...`, `PATCH /restaurants/me/orders/:id/status`
+ * restrito à janela `confirmado`/`emPreparo`) — sem cardápio, financeiro, configurações ou
+ * qualquer outra rota.
  */
-export type OperatorRole = 'dono' | 'gerente' | 'financeiro' | 'garcom' | 'motoboy';
+export type OperatorRole = 'dono' | 'gerente' | 'financeiro' | 'garcom' | 'motoboy' | 'cozinha';
 
-export const OPERATOR_ROLES: OperatorRole[] = ['dono', 'gerente', 'financeiro', 'garcom', 'motoboy'];
+export const OPERATOR_ROLES: OperatorRole[] = ['dono', 'gerente', 'financeiro', 'garcom', 'motoboy', 'cozinha'];
 
 export interface IRestaurantOperator {
   id: string;
