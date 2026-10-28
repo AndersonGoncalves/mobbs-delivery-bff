@@ -1101,8 +1101,13 @@ export class OrdersController extends BaseRouter {
   }
 }
 
-/** Taxa de entrega do pedido, decidida no BFF (nunca aceita do app). */
-function resolveDeliveryFee(
+/**
+ * Taxa de entrega do pedido, decidida no BFF (nunca aceita do app).
+ * `export` — specs/0174-pdv-extensao-chrome-lateral reaproveita esta mesma função pro checkout de
+ * operador (delivery/retirada/balcão pela extensão/PDV web), nunca uma reimplementação paralela
+ * do cálculo de taxa (mesmo cuidado já aplicado a `computeOrderPricing`/`resolveInitialOrderStatus`).
+ */
+export function resolveDeliveryFee(
   restaurant: { deliveryFeeMode: string; deliveryFeeCents: number; deliveryFeeZones: { neighborhood: string; feeCents: number }[] },
   payload: { orderType: string; deliveryNeighborhood?: string },
 ): number {

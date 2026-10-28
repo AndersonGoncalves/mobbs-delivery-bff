@@ -80,6 +80,8 @@ import { CustomerBlockingController } from './modules/customer-blocking/presenta
 import { AutoPrintController } from './modules/auto-print/presentation/auto-print.controller';
 import { buildPrintApiKeyMiddleware } from './shared/http/print-api-key.middleware';
 import { TotemController } from './modules/totem/presentation/totem.controller';
+import { OperatorDraftsController } from './modules/operator-drafts/presentation/operator-drafts.controller';
+import { OperatorDraftMongooseRepository } from './modules/operator-drafts/infra/repositories/operator-draft.mongoose.repository';
 import { buildTotemApiKeyMiddleware } from './shared/http/totem-api-key.middleware';
 import { buildPaymentWebhookApiKeyMiddleware } from './shared/http/payment-webhook-api-key.middleware';
 import { FavoriteMongooseRepository } from './modules/customers/infra/repositories/favorite.mongoose.repository';
@@ -407,6 +409,22 @@ server
       restaurantOperatorMiddleware,
       stockMovementRepository,
       rawMaterialRepository,
+    ),
+    // specs/0174-pdv-extensao-chrome-lateral — dois rascunhos de pedido sincronizados entre a
+    // extensão Chrome e o PDV web, restritos a Dono/Gerente/Caixa (REQ-5), e finalização
+    // idempotente/concorrente segura reaproveitando o motor de preço/estoque de `POST /orders`.
+    new OperatorDraftsController(
+      new OperatorDraftMongooseRepository(),
+      orderRepository,
+      restaurantRepository,
+      customerRepository,
+      new AddressMongooseRepository(),
+      blockedCustomerRepository,
+      couponRepository,
+      restaurantOperatorMiddleware,
+      stockMovementRepository,
+      rawMaterialRepository,
+      productRepository,
     ),
     // specs/0140-confirmacao-automatica-pix REQ-1b — webhook gateway-agnóstico de confirmação de Pix.
     new PaymentWebhookController(

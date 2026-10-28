@@ -106,7 +106,18 @@ export interface IOrder {
    * `orderType` continua `'pickup'`, só este campo aditivo marca a origem). Ausente = app
    * cliente (comportamento de todo pedido já existente antes desta spec).
    */
-  source?: 'totem';
+  /**
+   * specs/0174-pdv-extensao-chrome-lateral REQ-22 — pedido criado por um operador (PDV web ou
+   * extensão Chrome) em nome do cliente selecionado (ou do atendimento anônimo de balcão), nunca
+   * pelo próprio operador "virando" cliente. Distinto de `source` ausente (app cliente) e de
+   * `'totem'` (autoatendimento sem operador logado).
+   */
+  source?: 'totem' | 'operador-web' | 'operador-extensao';
+  /** specs/0174-pdv-extensao-chrome-lateral REQ-22 — id do operador que finalizou a venda, só
+   * presente quando `source` é `'operador-web'`/`'operador-extensao'`. Rastreabilidade, nunca usado
+   * pra autorização (quem decide o que o operador pode fazer é `req.operatorRole`, resolvido a
+   * cada requisição). */
+  operatorId?: string;
   deliveryAddress?: string;
   /** specs/0125 — snapshot do motoboy atribuído pela retaguarda, quando houver. */
   deliveryMotoboy?: { id: string; name: string };
