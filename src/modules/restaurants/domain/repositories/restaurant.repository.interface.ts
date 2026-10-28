@@ -64,6 +64,8 @@ export type RestaurantProfileUpdate = Partial<
     | 'autoPrintEnabled'
     | 'autoPrintIntervalSeconds'
     | 'autoPrintMaxAgeMinutes'
+    | 'totemEnabled'
+    | 'totemPaymentMethods'
   >
 >;
 
@@ -145,6 +147,16 @@ export interface IRestaurantRepository {
    * do webhook de pagamento (`X-Payment-Webhook-Api-Key`); usado pelo middleware de autenticação
    * do webhook, não por operador logado. */
   findByPaymentWebhookApiKey(apiKey: string): Promise<IRestaurant | null>;
+
+  /** specs/0155-app-totem-autoatendimento REQ-1/REQ-22 — mesmo raciocínio de
+   * `regenerateAutoPrintApiKey`: gera e grava uma chave nova, fora de `RestaurantProfileUpdate`
+   * de propósito (só por este método dedicado). */
+  regenerateTotemApiKey(id: string): Promise<IRestaurant>;
+
+  /** specs/0155-app-totem-autoatendimento REQ-16 — resolve o restaurante dono da chave de
+   * pareamento do totem (`X-Totem-Api-Key`); usado pelo `totemApiKeyMiddleware`, sem Firebase
+   * nem operador logado (mesmo raciocínio de `findByAutoPrintApiKey`). */
+  findByTotemApiKey(apiKey: string): Promise<IRestaurant | null>;
 
   /** specs/0101-integracao-asaas (fase 1) — persiste os dados da subconta criada no Asaas
    * (`AsaasOnboardingController`); fora de `RestaurantProfileUpdate` de propósito — o `apiKey`

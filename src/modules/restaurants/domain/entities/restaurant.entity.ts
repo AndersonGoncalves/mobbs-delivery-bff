@@ -326,6 +326,21 @@ export interface IRestaurant {
   autoPrintEnabled: boolean;
   autoPrintIntervalSeconds: number;
   autoPrintApiKey?: string;
+  /**
+   * specs/0155-app-totem-autoatendimento REQ-22 — liga/desliga o totem físico do restaurante e
+   * as formas de pagamento que ele oferece (restritas a `cash`/`pix` na v1, ver
+   * `TotemController`), mesmo espírito de `autoPrintEnabled`/`acceptedPaymentMethods` acima.
+   * Default: desligado, nenhuma forma (restaurante precisa configurar antes de usar o totem).
+   */
+  totemEnabled: boolean;
+  totemPaymentMethods: PaymentMethod[];
+  /**
+   * specs/0155-app-totem-autoatendimento REQ-1/REQ-22 — chave de pareamento do totem físico,
+   * mesmo padrão de `autoPrintApiKey` (gerada/regenerada sob demanda pela retaguarda, nunca em
+   * branco depois da primeira geração). Resolve `restaurantId` no `totemApiKeyMiddleware`, sem
+   * Firebase nem operador logado.
+   */
+  totemApiKey?: string;
   /** specs/0156-filtro-idade-impressao-automatica REQ-1/REQ-2 — pedido mais velho que isso (desde
    * `Order.createdAt`) deixa de ser candidato à fila de impressão automática, mesmo nunca tendo
    * sido impresso — evita despejar uma pilha de pedidos represados quando o bridge volta a ficar

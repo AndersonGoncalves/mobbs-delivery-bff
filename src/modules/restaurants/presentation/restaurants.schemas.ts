@@ -9,6 +9,11 @@ import { BUSINESS_TYPES } from '../domain/business-type';
 // não redefine um novo.
 export const paymentMethodSchema = z.enum(['creditCard', 'creditCardOnline', 'debitCard', 'pix', 'cash']);
 
+// specs/0155-app-totem-autoatendimento REQ-11/"Fora de escopo" do spec.md — o totem só oferece
+// dinheiro e Pix nesta v1 (sem maquininha integrada); schema próprio (não `paymentMethodSchema`
+// inteiro) pra rejeitar na validação, não só esconder na UI, qualquer outra forma.
+export const totemPaymentMethodSchema = z.enum(['pix', 'cash']);
+
 // specs/0028-destaques-vendidos-banners REQ-5, REQ-6 — mesmo padrão de
 // `productAdditionalGroupSchema`/`type`: o campo de destino exigido depende de `linkType`,
 // validado de verdade no BFF (não só no formulário da web).
@@ -136,6 +141,11 @@ export const restaurantProfileSchema = z
     autoPrintIntervalSeconds: z.number().int().min(5).max(120),
     // specs/0156-filtro-idade-impressao-automatica REQ-2.
     autoPrintMaxAgeMinutes: z.number().int().min(1).max(60),
+    // specs/0155-app-totem-autoatendimento REQ-22 — a chave (`totemApiKey`) não entra aqui de
+    // propósito, só é gerada/trocada pela rota dedicada de regenerar (mesmo padrão de
+    // `autoPrintApiKey`/`autoPrintEnabled` acima).
+    totemEnabled: z.boolean(),
+    totemPaymentMethods: z.array(totemPaymentMethodSchema),
     // Pedido explícito do usuário — tempo médio de atendimento, por modalidade (minutos).
     deliveryTimeMinMinutes: z.number().int().positive(),
     deliveryTimeMaxMinutes: z.number().int().positive(),

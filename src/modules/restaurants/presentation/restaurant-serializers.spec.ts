@@ -58,4 +58,15 @@ describe('toOperatorRestaurant', () => {
     expect(entry.asaasAccountId).toBe('acc-antiga');
     expect(entry.subaccountData.email).toBe('a@b.com');
   });
+
+  // specs/0155-app-totem-autoatendimento REQ-22 — `totemApiKey` fica (mesmo raciocínio de
+  // `autoPrintApiKey`, já documentado no comentário de `toOperatorRestaurant`): a retaguarda
+  // mostra/copia a chave de pareamento de propósito, não é segredo que precise ser redigido.
+  it('mantém totemApiKey/totemEnabled/totemPaymentMethods no campo ativo', () => {
+    const safe = toOperatorRestaurant(buildRestaurant({ totemApiKey: 'chave-totem', totemEnabled: true, totemPaymentMethods: ['pix', 'cash'] }));
+
+    expect(safe.totemApiKey).toBe('chave-totem');
+    expect(safe.totemEnabled).toBe(true);
+    expect(safe.totemPaymentMethods).toEqual(['pix', 'cash']);
+  });
 });

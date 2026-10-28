@@ -103,6 +103,9 @@ interface RestaurantLeanDocument {
   autoPrintIntervalSeconds?: number;
   autoPrintMaxAgeMinutes?: number;
   autoPrintApiKey?: string;
+  totemEnabled?: boolean;
+  totemPaymentMethods?: PaymentMethod[];
+  totemApiKey?: string;
   paymentWebhookApiKey?: string;
   onlinePaymentsEnabled?: boolean;
   asaasAccountId?: string;
@@ -208,6 +211,9 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     autoPrintIntervalSeconds: doc.autoPrintIntervalSeconds ?? 10,
     autoPrintMaxAgeMinutes: doc.autoPrintMaxAgeMinutes ?? 5,
     autoPrintApiKey: doc.autoPrintApiKey,
+    totemEnabled: doc.totemEnabled ?? false,
+    totemPaymentMethods: doc.totemPaymentMethods ?? [],
+    totemApiKey: doc.totemApiKey,
     paymentWebhookApiKey: doc.paymentWebhookApiKey,
     onlinePaymentsEnabled: doc.onlinePaymentsEnabled ?? false,
     asaasAccountId: doc.asaasAccountId,
@@ -333,6 +339,18 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
 
   async findByAutoPrintApiKey(apiKey: string): Promise<IRestaurant | null> {
     const doc = await RestaurantModel.findOne({ autoPrintApiKey: apiKey }).lean<RestaurantLeanDocument>();
+    return doc ? toEntity(doc) : null;
+  }
+
+  // specs/0155-app-totem-autoatendimento REQ-1/REQ-22.
+  async regenerateTotemApiKey(id: string): Promise<IRestaurant> {
+    const apiKey = randomBytes(24).toString('hex');
+    const doc = await RestaurantModel.findByIdAndUpdate(id, { $set: { totemApiKey: apiKey } }, { new: true }).lean<RestaurantLeanDocument>();
+    return toEntity(doc as RestaurantLeanDocument);
+  }
+
+  async findByTotemApiKey(apiKey: string): Promise<IRestaurant | null> {
+    const doc = await RestaurantModel.findOne({ totemApiKey: apiKey }).lean<RestaurantLeanDocument>();
     return doc ? toEntity(doc) : null;
   }
 

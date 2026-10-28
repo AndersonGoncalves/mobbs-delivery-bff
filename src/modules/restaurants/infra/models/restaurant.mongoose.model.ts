@@ -177,6 +177,13 @@ const restaurantSchema = new Schema(
     // specs/0156-filtro-idade-impressao-automatica REQ-1/REQ-2 — default 5 min preserva um corte
     // razoável pra todo restaurante já existente sem precisar configurar nada.
     autoPrintMaxAgeMinutes: { type: Number, default: 5, min: 1, max: 60 },
+    // specs/0155-app-totem-autoatendimento REQ-22 — default desligado/sem formas preserva o
+    // comportamento atual (sem totem nenhum) de todo restaurante já existente.
+    totemEnabled: { type: Boolean, required: true, default: false },
+    // REQ-11/"Fora de escopo" do spec.md — restrito a dinheiro e Pix nesta v1 (defesa em
+    // profundidade também no schema, não só na validação do controller).
+    totemPaymentMethods: { type: [String], enum: ['pix', 'cash'], default: [] },
+    totemApiKey: { type: String },
     // specs/0140-confirmacao-automatica-pix REQ-1b.
     paymentWebhookApiKey: { type: String },
     // specs/0101-integracao-asaas (fase 1) — default desligado preserva o comportamento atual

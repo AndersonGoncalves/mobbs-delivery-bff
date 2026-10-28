@@ -1,3 +1,5 @@
+import { randomUUID } from 'crypto';
+
 import { ICustomer } from '../../domain/entities/customer.entity';
 import { CustomerProfileUpsert, ICustomerRepository } from '../../domain/repositories/customer.repository.interface';
 import { PaymentMethod } from '../../../orders/domain/entities/order.entity';
@@ -55,6 +57,18 @@ export class CustomerMongooseRepository implements ICustomerRepository {
       { new: true, upsert: true },
     ).lean<CustomerLeanDocument>();
     return toEntity(doc as CustomerLeanDocument);
+  }
+
+  /** specs/0155-app-totem-autoatendimento REQ-16a — ver `ICustomerRepository.createStandalone`. */
+  async createStandalone(name: string, phone?: string): Promise<ICustomer> {
+    const id = `totem_${randomUUID()}`;
+    const doc = await CustomerModel.create({
+      _id: id,
+      name,
+      email: `${id}@totem.mobbs-delivery.local`,
+      phone,
+    });
+    return toEntity(doc.toObject() as CustomerLeanDocument);
   }
 
   async acceptTerms(id: string, version: string, profileOnInsert: CustomerProfileUpsert): Promise<ICustomer> {
