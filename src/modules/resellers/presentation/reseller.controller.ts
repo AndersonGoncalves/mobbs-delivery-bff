@@ -8,7 +8,7 @@ import { IRestaurantRepository } from '../../restaurants/domain/repositories/res
 import { IResellerRepository } from '../domain/repositories/reseller.repository.interface';
 import { IResellerProspectRepository } from '../domain/repositories/reseller-prospect.repository.interface';
 import { IResellerClientRepository } from '../domain/repositories/reseller-client.repository.interface';
-import { convertProspectSchema, resellerProspectInputSchema } from './resellers.schemas';
+import { convertProspectSchema, resellerProspectInputSchema, updateResellerPixKeySchema } from './resellers.schemas';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
@@ -39,6 +39,15 @@ export class ResellerController extends BaseRouter {
       const reseller = await this.resellerRepository.findById(req.resellerId!);
       if (!reseller) throw new NotFoundError('Revendedor não encontrado');
       res.json(200, { ...reseller, referralLink: `${REFERRAL_LINK_BASE}${reseller.code}` });
+    });
+
+    // Pedido explícito do usuário (follow-up) — dados bancários (chave Pix) autoatendidos, sem
+    // precisar chamar o financeiro no WhatsApp pra cadastrar.
+    application.patch('/reseller/me/bank-data', ...authenticated, async (req: Request, res: Response) => {
+      const { pixKey } = parseBody(updateResellerPixKeySchema, req.body);
+      const updated = await this.resellerRepository.updatePixKey(req.resellerId!, pixKey);
+      if (!updated) throw new NotFoundError('Revendedor não encontrado');
+      res.json(200, { ...updated, referralLink: `${REFERRAL_LINK_BASE}${updated.code}` });
     });
 
     // REQ-5.

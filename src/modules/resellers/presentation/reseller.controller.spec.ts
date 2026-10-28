@@ -49,7 +49,11 @@ describe('ResellerController (specs/0189-painel-revenda)', () => {
     client?: Partial<IResellerClientRepository>;
     restaurant?: Partial<IRestaurantRepository>;
   } = {}) {
-    const resellerRepository = { findById: jest.fn().mockResolvedValue(buildReseller()), ...overrides.reseller } as unknown as IResellerRepository;
+    const resellerRepository = {
+      findById: jest.fn().mockResolvedValue(buildReseller()),
+      updatePixKey: jest.fn().mockResolvedValue(buildReseller({ pixKey: 'ana@pix.com' })),
+      ...overrides.reseller,
+    } as unknown as IResellerRepository;
     const prospectRepository = {
       listByReseller: jest.fn().mockResolvedValue([]),
       create: jest.fn().mockResolvedValue(buildProspect()),
@@ -86,6 +90,33 @@ describe('ResellerController (specs/0189-painel-revenda)', () => {
       code: 'ABC123',
       referralLink: 'https://bsdelivery.com.br/gratis?revenda=ABC123',
     }));
+  });
+
+  // Pedido explícito do usuário (follow-up) — dados bancários autoatendidos, sem precisar chamar
+  // o financeiro no WhatsApp.
+  it('PATCH /reseller/me/bank-data salva a chave Pix do revendedor logado', async () => {
+    const { resellerRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runChain(
+      routes['PATCH /reseller/me/bank-data'],
+      { resellerId: 'reseller-1', body: { pixKey: 'ana@pix.com' } },
+      { json },
+    );
+
+    expect(resellerRepository.updatePixKey).toHaveBeenCalledWith('reseller-1', 'ana@pix.com');
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({
+      pixKey: 'ana@pix.com',
+      referralLink: 'https://bsdelivery.com.br/gratis?revenda=ABC123',
+    }));
+  });
+
+  it('rejeita PATCH /reseller/me/bank-data sem chave Pix', async () => {
+    const { routes } = setup();
+
+    await expect(
+      runChain(routes['PATCH /reseller/me/bank-data'], { resellerId: 'reseller-1', body: {} }, { json: jest.fn() }),
+    ).rejects.toThrow();
   });
 
   // AC-4.

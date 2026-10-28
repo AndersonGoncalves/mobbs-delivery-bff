@@ -10,10 +10,20 @@ interface ResellerLeanDocument {
   code: string;
   isActive: boolean;
   createdAt: Date;
+  pixKey?: string;
 }
 
 function toEntity(doc: ResellerLeanDocument): IReseller {
-  return { id: doc._id, name: doc.name, email: doc.email, phone: doc.phone, code: doc.code, isActive: doc.isActive, createdAt: doc.createdAt };
+  return {
+    id: doc._id,
+    name: doc.name,
+    email: doc.email,
+    phone: doc.phone,
+    code: doc.code,
+    isActive: doc.isActive,
+    createdAt: doc.createdAt,
+    pixKey: doc.pixKey,
+  };
 }
 
 export class ResellerMongooseRepository implements IResellerRepository {
@@ -44,6 +54,11 @@ export class ResellerMongooseRepository implements IResellerRepository {
 
   async setActive(id: string, isActive: boolean): Promise<IReseller | null> {
     const doc = await ResellerModel.findByIdAndUpdate(id, { $set: { isActive } }, { new: true }).lean<ResellerLeanDocument>();
+    return doc ? toEntity(doc) : null;
+  }
+
+  async updatePixKey(id: string, pixKey: string): Promise<IReseller | null> {
+    const doc = await ResellerModel.findByIdAndUpdate(id, { $set: { pixKey } }, { new: true }).lean<ResellerLeanDocument>();
     return doc ? toEntity(doc) : null;
   }
 }

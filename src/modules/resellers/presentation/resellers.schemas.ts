@@ -23,3 +23,8 @@ export const resellerProspectInputSchema = z.object({
 export const convertProspectSchema = z.object({
   restaurantId: z.string().trim().min(1),
 });
+
+/** Pedido explícito do usuário (follow-up) — dados bancários autoatendidos. */
+export const updateResellerPixKeySchema = z.object({
+  pixKey: z.string().trim().min(1),
+});

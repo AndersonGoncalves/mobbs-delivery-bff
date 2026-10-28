@@ -12,4 +12,7 @@ export interface IResellerRepository {
   listAll(): Promise<IReseller[]>;
   /** REQ-16. */
   setActive(id: string, isActive: boolean): Promise<IReseller | null>;
+  /** Pedido explícito do usuário (follow-up) — dados bancários (chave Pix) autoatendidos pelo
+   * próprio revendedor, sem precisar chamar o financeiro no WhatsApp. */
+  updatePixKey(id: string, pixKey: string): Promise<IReseller | null>;
 }

@@ -12,4 +12,9 @@ export interface IReseller {
   code: string;
   isActive: boolean;
   createdAt: Date;
+  /** Pedido explícito do usuário (follow-up) — dados bancários pro recebimento da comissão,
+   * cadastrados pelo próprio revendedor (sem precisar chamar o financeiro no WhatsApp). Só a
+   * chave Pix nesta v1 — o jeito mais simples/direto de pagar que o próprio sistema já usa em
+   * todo o resto (`Order.pixKey` do restaurante, mesmo padrão). */
+  pixKey?: string;
 }
