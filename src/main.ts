@@ -329,7 +329,7 @@ server
       productRepository,
       restaurantOperatorMiddleware,
     ),
-    new RestaurantOperatorsController(restaurantOperatorRepository, restaurantOperatorMiddleware),
+    new RestaurantOperatorsController(restaurantOperatorRepository, restaurantOperatorMiddleware, emailService),
     new CatalogController(
       new MenuCategoryMongooseRepository(promotionRepository),
       productRepository,

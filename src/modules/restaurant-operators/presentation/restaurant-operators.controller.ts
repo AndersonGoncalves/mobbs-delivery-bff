@@ -5,6 +5,7 @@ import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
 import { requireOperatorRole, requireOwnerRole } from '../../../shared/http/require-operator-role.middleware';
+import { IEmailService } from '../../../shared/email/i-email-service';
 import { IRestaurantOperatorRepository } from '../domain/repositories/restaurant-operator.repository.interface';
 import {
   addOperatorSchema,
@@ -27,6 +28,8 @@ export class RestaurantOperatorsController extends BaseRouter {
   constructor(
     private readonly operatorRepository: IRestaurantOperatorRepository,
     private readonly restaurantOperatorMiddleware: AsyncHandler,
+    // Pedido explícito do usuário (follow-up) — e-mail de aviso de novo login.
+    private readonly emailService: IEmailService,
   ) {
     super();
   }
@@ -51,6 +54,39 @@ export class RestaurantOperatorsController extends BaseRouter {
       const operator = await this.operatorRepository.findById(req.operatorId!);
       res.json(200, this.render(operator));
     });
+
+    // Pedido explícito do usuário (follow-up) — e-mail de aviso ao operador a cada novo login na
+    // retaguarda (web chama logo depois de um `signIn()`/`signInWithEmail()` bem-sucedido,
+    // `AuthProvider.tsx`). Fire-and-forget (mesmo padrão de `CustomersController`, specs/0023):
+    // a resposta HTTP nunca espera o envio terminar, e falha no SMTP não derruba o login real
+    // (o aviso é só informativo, nunca bloqueia acesso).
+    application.post(
+      '/restaurants/me/operators/me/login-notification',
+      ...authenticated,
+      async (req: Request, res: Response) => {
+        const forwarded = req.headers['x-forwarded-for'];
+        const ip = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'desconhecido';
+        const userAgent = (Array.isArray(req.headers['user-agent']) ? req.headers['user-agent'][0] : req.headers['user-agent']) || 'desconhecido';
+        const email = req.user!.email!;
+
+        void this.emailService
+          .send({
+            to: email,
+            subject: 'Novo login na sua conta mobbs delivery',
+            html: [
+              `<p>Olá! Segue o registro de um novo login na retaguarda do mobbs delivery.</p>`,
+              `<p>E-mail do usuário: ${email}</p>`,
+              `<p>Endereço IP: ${ip}</p>`,
+              `<p>Dados do navegador: ${userAgent}</p>`,
+              `<p>Se não foi você, troque sua senha o quanto antes.</p>`,
+            ].join('\n'),
+          })
+          .catch((error) => {
+            console.error(`[email] falha ao enviar aviso de novo login pra ${email}:`, error);
+          });
+        res.send(204);
+      },
+    );
 
     application.get('/restaurants/me/operators', ...operatorManagementAuthenticated, async (req: Request, res: Response) => {
       const operators = await this.operatorRepository.listByRestaurant(req.restaurantId!);

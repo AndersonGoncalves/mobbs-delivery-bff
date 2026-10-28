@@ -1,9 +1,10 @@
 import type { Request, Response, Server } from 'restify';
 
+import { IEmailService } from '../../../shared/email/i-email-service';
 import { IRestaurantOperatorRepository } from '../domain/repositories/restaurant-operator.repository.interface';
 import { RestaurantOperatorsController } from './restaurant-operators.controller';
 
-type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'restaurantId'>> & {
+type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'restaurantId' | 'headers' | 'socket' | 'user'>> & {
   operatorRole?: string;
   operatorId?: string;
   hasFullAccess?: boolean;
@@ -64,13 +65,55 @@ describe('RestaurantOperatorsController', () => {
       updateProfile: jest.fn().mockResolvedValue(undefined),
       ...repositoryOverrides,
     };
+    const emailService: Partial<IEmailService> = { send: jest.fn().mockResolvedValue(undefined) };
     const { application, routes } = buildFakeApplication();
     new RestaurantOperatorsController(
       repository as IRestaurantOperatorRepository,
       operatorMiddleware as unknown as (req: Request, res: Response) => Promise<void>,
+      emailService as IEmailService,
     ).initializeRoutes(application);
-    return { repository, routes };
+    return { repository, emailService, routes };
   }
+
+  // Pedido explícito do usuário (follow-up) — e-mail de aviso de novo login.
+  it('POST /restaurants/me/operators/me/login-notification envia o e-mail com IP/navegador e responde 204 sem esperar', async () => {
+    const { emailService, routes } = setup();
+    const send = jest.fn();
+
+    await runChain(
+      routes['POST /restaurants/me/operators/me/login-notification'],
+      {
+        user: { uid: 'u-1', email: 'ana@example.com' },
+        headers: { 'x-forwarded-for': '203.0.113.9, 10.0.0.1', 'user-agent': 'Mozilla/5.0 Chrome/120' },
+        socket: { remoteAddress: '10.0.0.1' } as never,
+      },
+      { json: jest.fn(), send },
+    );
+
+    expect(send).toHaveBeenCalledWith(204);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(emailService.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'ana@example.com',
+        subject: 'Novo login na sua conta mobbs delivery',
+        html: expect.stringContaining('203.0.113.9'),
+      }),
+    );
+    expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ html: expect.stringContaining('Chrome/120') }));
+  });
+
+  it('POST /restaurants/me/operators/me/login-notification sem X-Forwarded-For usa o IP da conexão', async () => {
+    const { emailService, routes } = setup();
+
+    await runChain(
+      routes['POST /restaurants/me/operators/me/login-notification'],
+      { user: { uid: 'u-1', email: 'ana@example.com' }, headers: {}, socket: { remoteAddress: '10.0.0.1' } as never },
+      { json: jest.fn(), send: jest.fn() },
+    );
+
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ html: expect.stringContaining('10.0.0.1') }));
+  });
 
   it('AC-12: GET /restaurants/me/operators lista os operadores do restaurante do token', async () => {
     const { repository, routes } = setup();
