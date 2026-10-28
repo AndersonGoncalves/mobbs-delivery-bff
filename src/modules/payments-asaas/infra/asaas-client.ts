@@ -230,4 +230,10 @@ export class AsaasClient {
     const result = await this.request<{ data: AsaasTransferResult[] }>('GET', `/transfers?limit=${limit}`);
     return result.data;
   }
+
+  /** `POST /v3/transfers` (specs/0194-ajustes-menu-ajuda-assinatura-estoque REQ-10) — repassa o
+   * saldo disponível da subconta pra uma chave Pix de destino já cadastrada no restaurante. */
+  async createTransfer(value: number, pixAddressKey: string, pixAddressKeyType: string): Promise<AsaasTransferResult> {
+    return this.request<AsaasTransferResult>('POST', '/transfers', { value, pixAddressKey, pixAddressKeyType });
+  }
 }

@@ -8,7 +8,7 @@ import { requireOperatorRole } from '../../../shared/http/require-operator-role.
 import { environment } from '../../../shared/config/environment';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { AsaasClient } from '../infra/asaas-client';
-import { createAsaasSubaccountSchema, reconnectAsaasSubaccountSchema } from './asaas-onboarding.schemas';
+import { createAsaasSubaccountSchema, reconnectAsaasSubaccountSchema, savePixTransferKeySchema } from './asaas-onboarding.schemas';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
@@ -129,6 +129,37 @@ export class AsaasOnboardingController extends BaseRouter {
       const client = new AsaasClient(restaurant.asaasApiKey, environment.asaas.baseUrl);
       const transfers = await client.listTransfers();
       res.json(200, { transfers });
+    });
+
+    // specs/0194-ajustes-menu-ajuda-assinatura-estoque REQ-10 — chave Pix de destino do repasse,
+    // mesma restrição de acesso de saldo/repasses (financeiro incluso).
+    application.post('/restaurants/me/asaas/transfer-pix-key', ...financialAuthenticated, async (req: Request, res: Response) => {
+      const { pixAddressKey, pixAddressKeyType } = parseBody(savePixTransferKeySchema, req.body);
+      await this.restaurantRepository.updateProfile(req.restaurantId!, {
+        asaasTransferPixKey: pixAddressKey,
+        asaasTransferPixKeyType: pixAddressKeyType,
+      });
+      res.json(200, { asaasTransferPixKey: pixAddressKey, asaasTransferPixKeyType: pixAddressKeyType });
+    });
+
+    // specs/0194-ajustes-menu-ajuda-assinatura-estoque REQ-10 — repassa SEMPRE o saldo total
+    // disponível no momento (sem valor informado pelo operador, decisão confirmada com o usuário)
+    // pra chave Pix já cadastrada acima.
+    application.post('/restaurants/me/asaas/transfer', ...financialAuthenticated, async (req: Request, res: Response) => {
+      const restaurant = await this.restaurantRepository.findById(req.restaurantId!);
+      if (!restaurant?.asaasApiKey) {
+        throw new Error('Subconta Asaas não conectada — conecte em Integrações > Asaas antes de transferir.');
+      }
+      if (!restaurant.asaasTransferPixKey || !restaurant.asaasTransferPixKeyType) {
+        throw new Error('Cadastre a chave Pix de destino antes de transferir o saldo.');
+      }
+      const client = new AsaasClient(restaurant.asaasApiKey, environment.asaas.baseUrl);
+      const { balance } = await client.getBalance();
+      if (!balance || balance <= 0) {
+        throw new Error('Saldo disponível insuficiente pra transferir.');
+      }
+      const transfer = await client.createTransfer(balance, restaurant.asaasTransferPixKey, restaurant.asaasTransferPixKeyType);
+      res.json(200, { transfer });
     });
   }
 }

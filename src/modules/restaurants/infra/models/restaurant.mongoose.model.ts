@@ -199,6 +199,9 @@ const restaurantSchema = new Schema(
     previousAsaasSubaccounts: { type: [previousAsaasSubaccountSchema], default: [] },
     // specs/0101-integracao-asaas (fase 2).
     asaasCheckoutWebhookRegistered: { type: Boolean, default: false },
+    // specs/0194-ajustes-menu-ajuda-assinatura-estoque REQ-10 — chave Pix de destino do repasse.
+    asaasTransferPixKey: { type: String },
+    asaasTransferPixKeyType: { type: String, enum: ['CPF', 'CNPJ', 'EMAIL', 'PHONE', 'EVP'] },
     // specs/0170-integracao-mercado-pago — vínculo OAuth (não subconta/KYC como o Asaas acima).
     mercadoPagoAccessToken: { type: String },
     mercadoPagoRefreshToken: { type: String },

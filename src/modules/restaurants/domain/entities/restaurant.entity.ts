@@ -385,6 +385,13 @@ export interface IRestaurant {
    * restaurante recebe um pedido pago assim, pra nunca reconfigurar o que já está em produção.
    * Marcado depois do registro bem-sucedido, pra não repetir a cada pedido. */
   asaasCheckoutWebhookRegistered?: boolean;
+  /** specs/0194-ajustes-menu-ajuda-assinatura-estoque REQ-10 — chave Pix de DESTINO pra onde o
+   * restaurante repassa o saldo disponível na própria subconta Asaas (botão "Transferir saldo",
+   * `AsaasOnboardingController`/`AsaasClient.createTransfer`). Não confundir com `pixKey`/
+   * `pixKeyType` (chave que o restaurante expõe pro CLIENTE pagar, sem gateway) — são dados e
+   * fluxos diferentes; o tipo aqui segue o enum em inglês maiúsculo do contrato do Asaas. */
+  asaasTransferPixKey?: string;
+  asaasTransferPixKeyType?: 'CPF' | 'CNPJ' | 'EMAIL' | 'PHONE' | 'EVP';
   /** specs/0170-integracao-mercado-pago — vínculo OAuth da conta Mercado Pago do restaurante
    * (modelo diferente do Asaas: não é subconta/KYC criada por nós, é a própria conta do
    * restaurante autorizando nossa aplicação). `mercadoPagoAccessToken`/`mercadoPagoRefreshToken`

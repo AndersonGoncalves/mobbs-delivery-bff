@@ -55,6 +55,7 @@ describe('AsaasOnboardingController (specs/0101-integracao-asaas, fase 1)', () =
       reactivateAsaasSubaccount: jest.fn().mockResolvedValue({ id: 'r-1', onlinePaymentsEnabled: true }),
       forgetAsaasSubaccount: jest.fn().mockResolvedValue({ id: 'r-1', onlinePaymentsEnabled: false }),
       reconnectPreviousAsaasSubaccount: jest.fn().mockResolvedValue({ id: 'r-1', onlinePaymentsEnabled: true, asaasAccountId: 'acc-antiga' }),
+      updateProfile: jest.fn().mockResolvedValue({ id: 'r-1' }),
       ...overrides.restaurantRepository,
     };
     const { application, routes } = buildApp();
@@ -265,6 +266,92 @@ describe('AsaasOnboardingController (specs/0101-integracao-asaas, fase 1)', () =
 
       expect(MockedAsaasClient.prototype.listTransfers).not.toHaveBeenCalled();
       expect(json).toHaveBeenCalledWith(200, { transfers: [] });
+    });
+  });
+
+  // specs/0194-ajustes-menu-ajuda-assinatura-estoque REQ-10.
+  describe('POST /restaurants/me/asaas/transfer-pix-key e /transfer', () => {
+    beforeEach(() => {
+      MockedAsaasClient.prototype.createTransfer = jest.fn();
+    });
+
+    it('salva a chave Pix de destino do repasse', async () => {
+      const { restaurantRepository, routes } = setup();
+      const json = jest.fn();
+
+      await runOperatorChain(
+        routes['POST /restaurants/me/asaas/transfer-pix-key'],
+        { restaurantId: 'r-1', body: { pixAddressKey: 'dono@primepizza.com', pixAddressKeyType: 'EMAIL' } },
+        { json, send: jest.fn() },
+      );
+
+      expect(restaurantRepository.updateProfile).toHaveBeenCalledWith('r-1', {
+        asaasTransferPixKey: 'dono@primepizza.com',
+        asaasTransferPixKeyType: 'EMAIL',
+      });
+      expect(json).toHaveBeenCalledWith(200, { asaasTransferPixKey: 'dono@primepizza.com', asaasTransferPixKeyType: 'EMAIL' });
+    });
+
+    it('chave Pix inválida pro tipo selecionado é rejeitada (400)', async () => {
+      const { routes } = setup();
+
+      await expect(
+        runOperatorChain(
+          routes['POST /restaurants/me/asaas/transfer-pix-key'],
+          { restaurantId: 'r-1', body: { pixAddressKey: '000', pixAddressKeyType: 'CPF' } },
+          { json: jest.fn(), send: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it('transfere o saldo total disponível pra chave Pix já cadastrada', async () => {
+      MockedAsaasClient.prototype.getBalance = jest.fn().mockResolvedValue({ balance: 500 });
+      MockedAsaasClient.prototype.createTransfer = jest.fn().mockResolvedValue({ id: 'tr_2', status: 'PENDING', value: 500, netValue: 500, transferFee: 0, dateCreated: '2026-10-28' });
+      const { routes } = setup({
+        restaurantRepository: {
+          findById: jest.fn().mockResolvedValue({ id: 'r-1', asaasApiKey: 'key-subconta', asaasTransferPixKey: 'dono@primepizza.com', asaasTransferPixKeyType: 'EMAIL' }),
+        },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(routes['POST /restaurants/me/asaas/transfer'], { restaurantId: 'r-1' }, { json, send: jest.fn() });
+
+      expect(MockedAsaasClient.prototype.createTransfer).toHaveBeenCalledWith(500, 'dono@primepizza.com', 'EMAIL');
+      expect(json).toHaveBeenCalledWith(200, { transfer: { id: 'tr_2', status: 'PENDING', value: 500, netValue: 500, transferFee: 0, dateCreated: '2026-10-28' } });
+    });
+
+    it('sem subconta Asaas conectada, rejeita antes de chamar o Asaas', async () => {
+      const { routes } = setup({ restaurantRepository: { findById: jest.fn().mockResolvedValue({ id: 'r-1' }) } });
+
+      await expect(
+        runOperatorChain(routes['POST /restaurants/me/asaas/transfer'], { restaurantId: 'r-1' }, { json: jest.fn(), send: jest.fn() }),
+      ).rejects.toThrow(/Subconta Asaas não conectada/);
+      expect(MockedAsaasClient.prototype.createTransfer).not.toHaveBeenCalled();
+    });
+
+    it('sem chave Pix de repasse cadastrada, rejeita antes de chamar o Asaas', async () => {
+      const { routes } = setup({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue({ id: 'r-1', asaasApiKey: 'key-subconta' }) },
+      });
+
+      await expect(
+        runOperatorChain(routes['POST /restaurants/me/asaas/transfer'], { restaurantId: 'r-1' }, { json: jest.fn(), send: jest.fn() }),
+      ).rejects.toThrow(/Cadastre a chave Pix/);
+      expect(MockedAsaasClient.prototype.createTransfer).not.toHaveBeenCalled();
+    });
+
+    it('saldo zerado/insuficiente, rejeita antes de chamar o Asaas', async () => {
+      MockedAsaasClient.prototype.getBalance = jest.fn().mockResolvedValue({ balance: 0 });
+      const { routes } = setup({
+        restaurantRepository: {
+          findById: jest.fn().mockResolvedValue({ id: 'r-1', asaasApiKey: 'key-subconta', asaasTransferPixKey: 'dono@primepizza.com', asaasTransferPixKeyType: 'EMAIL' }),
+        },
+      });
+
+      await expect(
+        runOperatorChain(routes['POST /restaurants/me/asaas/transfer'], { restaurantId: 'r-1' }, { json: jest.fn(), send: jest.fn() }),
+      ).rejects.toThrow(/Saldo disponível insuficiente/);
+      expect(MockedAsaasClient.prototype.createTransfer).not.toHaveBeenCalled();
     });
   });
 });

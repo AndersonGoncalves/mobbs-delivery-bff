@@ -66,6 +66,8 @@ export type RestaurantProfileUpdate = Partial<
     | 'autoPrintMaxAgeMinutes'
     | 'totemEnabled'
     | 'totemPaymentMethods'
+    | 'asaasTransferPixKey'
+    | 'asaasTransferPixKeyType'
   >
 >;
 

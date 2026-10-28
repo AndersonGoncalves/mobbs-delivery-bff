@@ -165,4 +165,16 @@ describe('AsaasClient (specs/0101-integracao-asaas, fase 1)', () => {
     expect(global.fetch).toHaveBeenCalledWith('https://api-sandbox.asaas.com/v3/transfers?limit=50', expect.objectContaining({ method: 'GET' }));
     expect(result).toEqual([{ id: 'tr_1', status: 'DONE', value: 100, netValue: 99, transferFee: 1, dateCreated: '2026-10-27' }]);
   });
+
+  // specs/0194-ajustes-menu-ajuda-assinatura-estoque REQ-10.
+  it('createTransfer: POST /transfers com value/pixAddressKey/pixAddressKeyType', async () => {
+    mockFetchOnce(200, { id: 'tr_2', status: 'PENDING', value: 500, netValue: 500, transferFee: 0, dateCreated: '2026-10-28' });
+
+    const result = await client.createTransfer(500, 'dono@primepizza.com', 'EMAIL');
+
+    expect(global.fetch).toHaveBeenCalledWith('https://api-sandbox.asaas.com/v3/transfers', expect.objectContaining({ method: 'POST' }));
+    const [, options] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(JSON.parse(options.body)).toEqual({ value: 500, pixAddressKey: 'dono@primepizza.com', pixAddressKeyType: 'EMAIL' });
+    expect(result).toEqual({ id: 'tr_2', status: 'PENDING', value: 500, netValue: 500, transferFee: 0, dateCreated: '2026-10-28' });
+  });
 });
