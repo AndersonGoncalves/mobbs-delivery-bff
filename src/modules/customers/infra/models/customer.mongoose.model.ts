@@ -15,6 +15,10 @@ const customerSchema = new Schema(
     // specs/0171-meios-pagamento-por-cliente REQ-1 — ausente/`null` = sem restrição própria.
     allowedPaymentMethods: { type: [String] },
     deletedAt: { type: Date },
+    // (achado real, pedido explícito do usuário) — cliente cadastrado manualmente pela retaguarda
+    // (botão "NOVO" em Clientes), sem pedido nenhum ainda — só esse restaurante pode vê-lo na
+    // lista (ver `CustomerSummaryMongooseRepository`), nunca outro.
+    createdByRestaurantId: { type: String },
   },
   { _id: false, timestamps: true },
 );

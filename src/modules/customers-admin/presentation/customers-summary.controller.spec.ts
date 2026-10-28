@@ -2,12 +2,13 @@ import type { Request, Response, Server } from 'restify';
 
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { IAddressRepository } from '../../customers/domain/repositories/address.repository.interface';
+import { ICustomerRepository } from '../../customers/domain/repositories/customer.repository.interface';
 import { ICustomerSummaryRepository } from '../domain/repositories/customer-summary.repository.interface';
 import { CustomerBalanceService } from '../../customer-balance/domain/services/customer-balance.service';
 import { ICustomerBalanceRepository } from '../../customer-balance/domain/repositories/customer-balance.repository.interface';
 import { CustomersSummaryController } from './customers-summary.controller';
 
-type FakeRequest = Partial<Pick<Request, 'params' | 'query'>> & { restaurantId?: string };
+type FakeRequest = Partial<Pick<Request, 'params' | 'query' | 'body'>> & { restaurantId?: string };
 type FakeResponse = Pick<Response, 'json'>;
 type RouteHandler = (req: FakeRequest, res: FakeResponse) => Promise<void>;
 
@@ -16,6 +17,9 @@ function buildFakeApplication() {
   const application = {
     get: (path: string, ...handlers: RouteHandler[]) => {
       routes[`GET ${path}`] = handlers;
+    },
+    post: (path: string, ...handlers: RouteHandler[]) => {
+      routes[`POST ${path}`] = handlers;
     },
   };
   return { application: application as unknown as Server, routes };
@@ -82,6 +86,7 @@ describe('CustomersSummaryController (specs/0016-clientes-retaguarda)', () => {
       customerSummaryRepository?: Partial<ICustomerSummaryRepository>;
       orderRepository?: Partial<IOrderRepository>;
       addressRepository?: Partial<IAddressRepository>;
+      customerRepository?: Partial<ICustomerRepository>;
     } = {},
   ) {
     const customerSummaryRepository: Partial<ICustomerSummaryRepository> = {
@@ -96,6 +101,10 @@ describe('CustomersSummaryController (specs/0016-clientes-retaguarda)', () => {
       listByCustomer: jest.fn().mockResolvedValue([buildAddress()]),
       ...overrides.addressRepository,
     };
+    const customerRepository: Partial<ICustomerRepository> = {
+      createByRestaurant: jest.fn().mockResolvedValue({ id: 'cust-novo', name: 'Novo Cliente', email: 'x@retaguarda.mobbs-delivery.local', phone: '5511999990000' }),
+      ...overrides.customerRepository,
+    };
     const restaurantOperatorMiddleware = jest.fn(async () => {});
     const customerBalanceRepository: Partial<ICustomerBalanceRepository> = {
       getOrCreate: jest.fn().mockResolvedValue({ id: 'cb-1', customerId: 'cust-1', restaurantId: 'r-1', balance: 0, loyaltyStampCount: 0, updatedAt: '' }),
@@ -109,8 +118,9 @@ describe('CustomersSummaryController (specs/0016-clientes-retaguarda)', () => {
       restaurantOperatorMiddleware,
       addressRepository as IAddressRepository,
       customerBalanceService,
+      customerRepository as ICustomerRepository,
     ).initializeRoutes(application);
-    return { customerSummaryRepository, orderRepository, addressRepository, customerBalanceRepository, routes };
+    return { customerSummaryRepository, orderRepository, addressRepository, customerBalanceRepository, customerRepository, routes };
   }
 
   it('AC-1: GET /restaurants/me/customers-summary lista os clientes do restaurante do operador', async () => {
@@ -216,5 +226,28 @@ describe('CustomersSummaryController (specs/0016-clientes-retaguarda)', () => {
 
     expect(addressRepository.listByCustomer).not.toHaveBeenCalled();
     expect(json).toHaveBeenCalledWith(200, []);
+  });
+
+  // (achado real, pedido explícito do usuário) — "NOVO" em Clientes.
+  it('POST /restaurants/me/customers cadastra um cliente avulso com o telefone normalizado', async () => {
+    const { customerRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/customers'],
+      { restaurantId: 'r-1', body: { name: 'Novo Cliente', phone: '(55) 11 99999-0000' } },
+      { json },
+    );
+
+    expect(customerRepository.createByRestaurant).toHaveBeenCalledWith('r-1', 'Novo Cliente', '5511999990000');
+    expect(json).toHaveBeenCalledWith(201, { customerId: 'cust-novo', name: 'Novo Cliente', phone: '5511999990000' });
+  });
+
+  it('POST /restaurants/me/customers sem telefone é rejeitado (400)', async () => {
+    const { routes } = setup();
+
+    await expect(
+      runOperatorChain(routes['POST /restaurants/me/customers'], { restaurantId: 'r-1', body: { name: 'Novo Cliente' } }, { json: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 400 });
   });
 });

@@ -16,6 +16,7 @@ interface CustomerLeanDocument {
   termsVersionAccepted?: string;
   allowedPaymentMethods?: PaymentMethod[];
   deletedAt?: Date;
+  createdByRestaurantId?: string;
 }
 
 function toEntity(doc: CustomerLeanDocument): ICustomer {
@@ -30,6 +31,7 @@ function toEntity(doc: CustomerLeanDocument): ICustomer {
     termsVersionAccepted: doc.termsVersionAccepted,
     allowedPaymentMethods: doc.allowedPaymentMethods,
     deletedAt: doc.deletedAt?.toISOString(),
+    createdByRestaurantId: doc.createdByRestaurantId,
   };
 }
 
@@ -67,6 +69,28 @@ export class CustomerMongooseRepository implements ICustomerRepository {
       name,
       email: `${id}@totem.mobbs-delivery.local`,
       phone,
+    });
+    return toEntity(doc.toObject() as CustomerLeanDocument);
+  }
+
+  /** specs/0016-clientes-retaguarda (follow-up) — ver `ICustomerRepository.createByRestaurant`. */
+  async createByRestaurant(restaurantId: string, name: string, phone: string): Promise<ICustomer> {
+    const existing = await CustomerModel.findOne({ phone }).lean<CustomerLeanDocument>();
+    if (existing) {
+      const updated = await CustomerModel.findByIdAndUpdate(
+        existing._id,
+        { $set: { createdByRestaurantId: restaurantId } },
+        { new: true },
+      ).lean<CustomerLeanDocument>();
+      return toEntity(updated as CustomerLeanDocument);
+    }
+    const id = `retaguarda_${randomUUID()}`;
+    const doc = await CustomerModel.create({
+      _id: id,
+      name,
+      email: `${id}@retaguarda.mobbs-delivery.local`,
+      phone,
+      createdByRestaurantId: restaurantId,
     });
     return toEntity(doc.toObject() as CustomerLeanDocument);
   }

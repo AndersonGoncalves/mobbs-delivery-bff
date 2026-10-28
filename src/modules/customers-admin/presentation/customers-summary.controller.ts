@@ -4,11 +4,13 @@ import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
 import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
+import { normalizePhoneNumber } from '../../../shared/utils/normalize-phone-number';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { IAddressRepository } from '../../customers/domain/repositories/address.repository.interface';
+import { ICustomerRepository } from '../../customers/domain/repositories/customer.repository.interface';
 import { ICustomerSummaryRepository } from '../domain/repositories/customer-summary.repository.interface';
 import { CustomerBalanceService } from '../../customer-balance/domain/services/customer-balance.service';
-import { customersSummaryQuerySchema } from './customers-summary.schemas';
+import { createCustomerByRestaurantSchema, customersSummaryQuerySchema } from './customers-summary.schemas';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
@@ -32,6 +34,8 @@ export class CustomersSummaryController extends BaseRouter {
     private readonly addressRepository: IAddressRepository,
     // specs/0131-cashback-app REQ-8 / specs/0132-programa-fidelidade-app REQ-6.
     private readonly customerBalanceService: CustomerBalanceService,
+    // (achado real, pedido explícito do usuário) — "NOVO" em Clientes (`createByRestaurant`).
+    private readonly customerRepository: ICustomerRepository,
   ) {
     super();
   }
@@ -43,6 +47,21 @@ export class CustomersSummaryController extends BaseRouter {
       this.restaurantOperatorMiddleware,
       requireOperatorRole('dono', 'gerente', 'financeiro'),
     ];
+
+    // (achado real, pedido explícito do usuário) — "NOVO" em Clientes: cadastro manual ANTES de
+    // qualquer pedido, mesmo papel de escrita de `CustomerPaymentMethodsController`
+    // (dono/gerente — mais restrito que a leitura acima, que inclui financeiro).
+    application.post(
+      '/restaurants/me/customers',
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('dono', 'gerente'),
+      async (req: Request, res: Response) => {
+        const { name, phone } = parseBody(createCustomerByRestaurantSchema, req.body);
+        const customer = await this.customerRepository.createByRestaurant(req.restaurantId!, name, normalizePhoneNumber(phone));
+        res.json(201, { customerId: customer.id, name: customer.name, phone: customer.phone });
+      },
+    );
 
     // AC-1/AC-2/AC-4
     application.get('/restaurants/me/customers-summary', ...authenticated, async (req: Request, res: Response) => {

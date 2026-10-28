@@ -27,6 +27,12 @@ export interface ICustomer {
   /** REQ-6 — presente só depois de anonimizado (`anonymize()`); `Order`s vinculados permanecem
    * intactos (REQ-7), só o `Customer` perde os dados de identificação. */
   deletedAt?: string;
+  /** (achado real, pedido explícito do usuário) — cliente cadastrado manualmente pela retaguarda
+   * (`CustomersSummaryController.createByRestaurant`), ainda sem pedido nenhum — único jeito de
+   * um `Customer` (global, sem vínculo de restaurante) aparecer na lista de Clientes de um
+   * restaurante específico antes do primeiro pedido (`CustomerSummaryMongooseRepository`). Fica
+   * `undefined` pra qualquer `Customer` nascido de um pedido/login normal de cliente. */
+  createdByRestaurantId?: string;
 }
 
 /**

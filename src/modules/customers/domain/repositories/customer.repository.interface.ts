@@ -44,6 +44,16 @@ export interface ICustomerRepository {
   createStandalone(name: string, phone?: string): Promise<ICustomer>;
 
   /**
+   * (achado real, pedido explícito do usuário) — "NOVO" em Clientes (`CustomersSummaryController`,
+   * dono/gerente): cadastro manual, antes de qualquer pedido. Resolve pelo telefone normalizado
+   * primeiro (mesmo cuidado de `createStandalone`/`TotemController` — nunca duplica um `Customer`
+   * já existente com aquele telefone); se já existir, só marca `createdByRestaurantId` nele (pra
+   * aparecer na lista deste restaurante) em vez de criar de novo. Se não existir, cria um
+   * `Customer` avulso igual `createStandalone`, já com `createdByRestaurantId`.
+   */
+  createByRestaurant(restaurantId: string, name: string, phone: string): Promise<ICustomer>;
+
+  /**
    * REQ-2/REQ-4 (`specs/0017-lgpd-privacidade`) — `upsert` igual `upsertProfile`: um cliente
    * Google recém-logado pode aceitar os termos ANTES de qualquer `PUT /customers/me` (nunca
    * chamado por `signInWithGoogle`, ver `GET /customers/me`), então o documento pode ainda não

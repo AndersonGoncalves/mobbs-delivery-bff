@@ -1,6 +1,7 @@
 import type { PipelineStage } from 'mongoose';
 
 import { OrderModel } from '../../../orders/infra/models/order.mongoose.model';
+import { CustomerModel } from '../../../customers/infra/models/customer.mongoose.model';
 import { PaymentMethod } from '../../../orders/domain/entities/order.entity';
 import { ICustomerSummary } from '../../domain/entities/customer-summary.entity';
 import { ICustomerSummaryRepository } from '../../domain/repositories/customer-summary.repository.interface';
@@ -11,6 +12,13 @@ interface CustomerSummaryAggregationResult {
   totalSpent: number;
   lastOrderAt: Date;
   customer: { name: string; phone?: string; allowedPaymentMethods?: PaymentMethod[] };
+}
+
+interface StandaloneCustomerDocument {
+  _id: string;
+  name: string;
+  phone?: string;
+  allowedPaymentMethods?: PaymentMethod[];
 }
 
 // Escapa caracteres especiais de regex antes de usar `search` num `$regex` — sem isso, um cliente
@@ -26,6 +34,11 @@ function escapeRegex(value: string): string {
  * "sem transações/agregação" não se aplica aqui: agregação de leitura, não transação), com
  * `$lookup` na coleção `customer` (`_id` = UID do Firebase, mesma chave de `Order.customerId`)
  * pra trazer `name`/`phone` num único round-trip ao banco.
+ *
+ * (achado real, pedido explícito do usuário) — união com clientes cadastrados manualmente pela
+ * retaguarda (`createdByRestaurantId`, "NOVO" em Clientes) que ainda não fizeram pedido nenhum;
+ * sem isso a lista continuaria 100% derivada de `order`, e um cliente recém-cadastrado nunca
+ * apareceria até o primeiro pedido.
  */
 export class CustomerSummaryMongooseRepository implements ICustomerSummaryRepository {
   async listByRestaurant(restaurantId: string, search?: string, fromDate?: Date, toDate?: Date): Promise<ICustomerSummary[]> {
@@ -63,7 +76,7 @@ export class CustomerSummaryMongooseRepository implements ICustomerSummaryReposi
 
     const results = await OrderModel.aggregate<CustomerSummaryAggregationResult>(pipeline);
 
-    return results.map((result) => ({
+    const fromOrders = results.map((result) => ({
       customerId: result._id,
       name: result.customer.name,
       phone: result.customer.phone,
@@ -74,5 +87,29 @@ export class CustomerSummaryMongooseRepository implements ICustomerSummaryReposi
       // `Customer` (sem `$project` próprio), então `allowedPaymentMethods` já está disponível aqui.
       allowedPaymentMethods: result.customer.allowedPaymentMethods,
     }));
+
+    // (achado real, pedido explícito do usuário) — "NOVO" em Clientes cadastra um `Customer`
+    // ANTES de qualquer pedido; sem isso, ele nunca apareceria aqui (lista inteira é derivada de
+    // `order`). `createdByRestaurantId` escopa a visibilidade a só este restaurante — nunca
+    // vaza um cadastro manual de outro restaurante. Um cliente já coberto por `fromOrders`
+    // (já fez pedido aqui) não entra de novo com totais zerados.
+    const alreadyListed = new Set(fromOrders.map((entry) => entry.customerId));
+    const standaloneQuery: Record<string, unknown> = { createdByRestaurantId: restaurantId, _id: { $nin: [...alreadyListed] } };
+    if (search) {
+      const regex = new RegExp(escapeRegex(search), 'i');
+      standaloneQuery.$or = [{ name: regex }, { phone: regex }];
+    }
+    const standaloneCustomers = await CustomerModel.find(standaloneQuery).lean<StandaloneCustomerDocument[]>();
+    const fromStandalone = standaloneCustomers.map((customer) => ({
+      customerId: customer._id,
+      name: customer.name,
+      phone: customer.phone,
+      totalOrders: 0,
+      totalSpent: 0,
+      lastOrderAt: undefined,
+      allowedPaymentMethods: customer.allowedPaymentMethods,
+    }));
+
+    return [...fromOrders, ...fromStandalone].sort((a, b) => b.totalSpent - a.totalSpent);
   }
 }

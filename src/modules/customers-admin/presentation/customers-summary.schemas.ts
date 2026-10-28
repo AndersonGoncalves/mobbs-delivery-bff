@@ -11,3 +11,9 @@ export const customersSummaryQuerySchema = z.object({
   fromDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'fromDate deve estar em formato YYYY-MM-DD').optional(),
   toDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'toDate deve estar em formato YYYY-MM-DD').optional(),
 });
+
+/** (achado real, pedido explícito do usuário) — "NOVO" em Clientes, `POST /restaurants/me/customers`. */
+export const createCustomerByRestaurantSchema = z.object({
+  name: z.string().min(1),
+  phone: z.string().min(8),
+});

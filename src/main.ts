@@ -516,6 +516,7 @@ server
       restaurantOperatorMiddleware,
       new AddressMongooseRepository(),
       customerBalanceService,
+      customerRepository,
     ),
     new CustomerBalanceController(customerBalanceService, restaurantRepository),
     new CustomerPaymentMethodsController(customerRepository, restaurantRepository, restaurantOperatorMiddleware),
