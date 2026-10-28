@@ -88,6 +88,8 @@ const productSchema = new Schema(
     bestSellerOrder: { type: Number, required: true, default: 0 },
     isSuggestedInCart: { type: Boolean, required: true, default: false },
     cartSuggestionOrder: { type: Number, required: true, default: 0 },
+    // specs/0187-kds-cozinha REQ-18 — texto livre, nunca `required` (ausente = sem praça).
+    kitchenStation: { type: String },
   },
   { _id: false, timestamps: true },
 );

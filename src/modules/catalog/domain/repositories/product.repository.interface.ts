@@ -29,6 +29,8 @@ export type NewProductInput = {
   /** specs/0117-vitrine-manual-e-ajustes-formularios — ver comentários dos mesmos campos em `IProduct`. */
   isBestSeller?: boolean;
   isSuggestedInCart?: boolean;
+  /** specs/0187-kds-cozinha REQ-18 — ver comentário do mesmo campo em `IProduct`. */
+  kitchenStation?: string;
 };
 
 export type ProductUpdateInput = Partial<NewProductInput>;

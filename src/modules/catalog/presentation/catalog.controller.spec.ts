@@ -636,6 +636,26 @@ describe('CatalogController', () => {
     );
   });
 
+  // specs/0187-kds-cozinha REQ-18 — mesmo padrão de posId/ncmCode acima: texto livre, opcional,
+  // round-trip completo (POST cria, PUT atualiza).
+  it('specs/0187-kds-cozinha: POST/PUT /restaurants/me/products persiste kitchenStation', async () => {
+    const { productRepository, routes } = setup();
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/products'],
+      { restaurantId: 'r-1', body: { menuCategoryId: 'c-1', name: 'X-Burger', price: 18, kitchenStation: 'Chapa' } },
+      { json: jest.fn() },
+    );
+    expect(productRepository.create).toHaveBeenCalledWith('r-1', expect.objectContaining({ kitchenStation: 'Chapa' }));
+
+    await runOperatorChain(
+      routes['PUT /restaurants/me/products/:id'],
+      { restaurantId: 'r-1', params: { id: 'p-1' }, body: { menuCategoryId: 'c-1', name: 'X-Burger', price: 18, kitchenStation: 'Montagem' } },
+      { json: jest.fn() },
+    );
+    expect(productRepository.update).toHaveBeenCalledWith('p-1', expect.objectContaining({ kitchenStation: 'Montagem' }));
+  });
+
   // specs/0116-ajustes-cadastro-produto REQ-12 — horário invertido (fim antes do início) é rejeitado.
   it('POST /restaurants/me/products rejeita scheduleEndTime antes de scheduleStartTime', async () => {
     const { routes } = setup();

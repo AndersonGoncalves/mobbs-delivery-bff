@@ -76,6 +76,8 @@ function toEntity(doc: ProductLeanDocument): IProduct {
     bestSellerOrder: doc.bestSellerOrder ?? 0,
     isSuggestedInCart: doc.isSuggestedInCart ?? false,
     cartSuggestionOrder: doc.cartSuggestionOrder ?? 0,
+    // specs/0187-kds-cozinha REQ-18.
+    kitchenStation: doc.kitchenStation,
   };
 }
 

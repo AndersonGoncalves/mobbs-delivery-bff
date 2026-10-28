@@ -181,4 +181,9 @@ export interface IProduct {
   /** specs/0117-vitrine-manual-e-ajustes-formularios REQ-2/REQ-9 — ordem dentro de "Peça
    * também", só relevante quando `isSuggestedInCart === true` (mesmo padrão de `featuredOrder`). */
   cartSuggestionOrder: number;
+  /** specs/0187-kds-cozinha REQ-18 — praça de preparo (ex. "Chapa", "Bebida", "Montagem"), texto
+   * livre (cada restaurante nomeia as próprias praças, sem taxonomia fixa do sistema). Ausente =
+   * produto aparece em todas as telas do KDS ("praça Geral"/sem filtro) — nunca some da cozinha
+   * por falta de configuração (decisão de design 1, `specs/0187-kds-cozinha/spec.md`). */
+  kitchenStation?: string;
 }

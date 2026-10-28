@@ -174,6 +174,8 @@ const productSchemaShape = {
   // specs/0117-vitrine-manual-e-ajustes-formularios REQ-1/REQ-2.
   isBestSeller: z.boolean().default(false),
   isSuggestedInCart: z.boolean().default(false),
+  // specs/0187-kds-cozinha REQ-18 — texto livre, opcional (sem taxonomia fixa do sistema).
+  kitchenStation: z.string().optional(),
 };
 
 // REQ-12/mesmo espírito de `restaurants.schemas.ts` (businessHours) — evita salvar uma janela
