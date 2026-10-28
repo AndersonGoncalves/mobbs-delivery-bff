@@ -111,6 +111,12 @@ export interface IRestaurant {
   /** specs/0132-programa-fidelidade-app REQ-1 — valor em reais creditado ao saldo resgatável
    * (`specs/0131`) quando `loyaltyGoalOrders` é atingido. */
   loyaltyRewardValue?: number;
+  /** specs/0192-ajustes-banner-fidelidade-pix-asaas REQ-4 — valor mínimo (em reais) que o pedido
+   * entregue precisa ter pra contar como carimbo de fidelidade (evita completar o cartão com
+   * vários pedidos muito baixos); ausência/`0` = sem piso, todo pedido entregue conta (mesmo
+   * comportamento de antes desta spec). Não é o mesmo campo que `minimumOrderValue` acima (esse é
+   * o pedido mínimo pra fazer checkout no restaurante inteiro, sem relação com fidelidade). */
+  loyaltyMinOrderValue?: number;
   /**
    * specs/0004-carrinho — taxa de entrega fixa nesta v1 (docs/architecture/data-model.md,
    * `deliveryFeeCents`; sem cálculo por distância). Default 0. Editável pela retaguarda (campo

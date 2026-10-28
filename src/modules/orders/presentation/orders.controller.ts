@@ -565,7 +565,13 @@ export class OrdersController extends BaseRouter {
                 await this.customerBalanceService.creditCashback(updated.customerId, updated.restaurantId, cashbackAmount, updated.id);
               }
             }
-            if (restaurant?.loyaltyGoalOrders) {
+            // specs/0192-ajustes-banner-fidelidade-pix-asaas REQ-5/REQ-6 — mesma base de
+            // `updated.total` usada acima pro cashback percentual (já líquida do cashback
+            // resgatado no mesmo pedido); pedido abaixo do mínimo configurado não gera carimbo
+            // nenhum (nem avança nem retrocede o contador atual). Sem mínimo configurado
+            // (ausente/0), `?? 0` preserva o comportamento de antes desta spec: todo pedido conta.
+            const meetsLoyaltyMinOrderValue = updated.total >= (restaurant?.loyaltyMinOrderValue ?? 0);
+            if (restaurant?.loyaltyGoalOrders && meetsLoyaltyMinOrderValue) {
               const stampCount = await this.customerBalanceService.incrementLoyaltyStamp(updated.customerId, updated.restaurantId);
               if (stampCount >= restaurant.loyaltyGoalOrders) {
                 await this.customerBalanceService.creditLoyaltyReward(

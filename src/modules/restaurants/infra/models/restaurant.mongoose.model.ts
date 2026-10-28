@@ -104,6 +104,8 @@ const restaurantSchema = new Schema(
     cashbackPercent: { type: Number },
     loyaltyGoalOrders: { type: Number },
     loyaltyRewardValue: { type: Number },
+    // specs/0192-ajustes-banner-fidelidade-pix-asaas REQ-4.
+    loyaltyMinOrderValue: { type: Number },
     deliveryFeeCents: { type: Number, required: true, default: 0 },
     shareMessage: { type: String },
     // specs/0094-mensagem-boas-vindas-home — sem default: ausente/vazio = nenhum card na home.

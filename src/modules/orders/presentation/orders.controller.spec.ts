@@ -108,6 +108,8 @@ function buildRestaurant(
     cashbackPercent: number;
     loyaltyGoalOrders: number;
     loyaltyRewardValue: number;
+    // specs/0192-ajustes-banner-fidelidade-pix-asaas.
+    loyaltyMinOrderValue: number;
   }> = {},
 ) {
   return {
@@ -2447,6 +2449,78 @@ describe('OrdersController', () => {
       await Promise.resolve();
 
       await expect(customerBalanceRepository.getOrCreate('customer-1', 'r-1')).resolves.toMatchObject({ balance: 15, loyaltyStampCount: 0 });
+    });
+
+    describe('specs/0192-ajustes-banner-fidelidade-pix-asaas REQ-5/REQ-6 — valor mínimo pro carimbo de fidelidade', () => {
+      it('AC-4: pedido abaixo do valor mínimo configurado não avança o carimbo', async () => {
+        const customerBalanceRepository = buildFakeCustomerBalanceRepository({ loyaltyStampCount: 2 });
+        const { routes } = setup({
+          customerBalanceRepository,
+          restaurantRepository: {
+            findById: jest.fn().mockResolvedValue(buildRestaurant({ loyaltyGoalOrders: 5, loyaltyRewardValue: 15, loyaltyMinOrderValue: 20 })),
+          },
+          orderRepository: {
+            findById: jest.fn().mockResolvedValue(buildOrder({ status: 'saiuParaEntrega' })),
+            updateStatus: jest.fn().mockResolvedValue(buildOrder({ status: 'entregue', total: 15 })),
+          },
+        });
+
+        await runOperatorChain(
+          routes['PATCH /restaurants/me/orders/:id/status'],
+          { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'entregue' } },
+          { json: jest.fn() },
+        );
+        await Promise.resolve();
+        await Promise.resolve();
+
+        await expect(customerBalanceRepository.getOrCreate('customer-1', 'r-1')).resolves.toMatchObject({ loyaltyStampCount: 2 });
+      });
+
+      it('AC-5: pedido no valor mínimo ou acima avança o carimbo normalmente', async () => {
+        const customerBalanceRepository = buildFakeCustomerBalanceRepository({ loyaltyStampCount: 2 });
+        const { routes } = setup({
+          customerBalanceRepository,
+          restaurantRepository: {
+            findById: jest.fn().mockResolvedValue(buildRestaurant({ loyaltyGoalOrders: 5, loyaltyRewardValue: 15, loyaltyMinOrderValue: 20 })),
+          },
+          orderRepository: {
+            findById: jest.fn().mockResolvedValue(buildOrder({ status: 'saiuParaEntrega' })),
+            updateStatus: jest.fn().mockResolvedValue(buildOrder({ status: 'entregue', total: 25 })),
+          },
+        });
+
+        await runOperatorChain(
+          routes['PATCH /restaurants/me/orders/:id/status'],
+          { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'entregue' } },
+          { json: jest.fn() },
+        );
+        await Promise.resolve();
+        await Promise.resolve();
+
+        await expect(customerBalanceRepository.getOrCreate('customer-1', 'r-1')).resolves.toMatchObject({ loyaltyStampCount: 3 });
+      });
+
+      it('AC-6: sem valor mínimo configurado, todo pedido entregue conta (comportamento inalterado)', async () => {
+        const customerBalanceRepository = buildFakeCustomerBalanceRepository({ loyaltyStampCount: 2 });
+        const { routes } = setup({
+          customerBalanceRepository,
+          restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ loyaltyGoalOrders: 5, loyaltyRewardValue: 15 })) },
+          orderRepository: {
+            findById: jest.fn().mockResolvedValue(buildOrder({ status: 'saiuParaEntrega' })),
+            updateStatus: jest.fn().mockResolvedValue(buildOrder({ status: 'entregue', total: 1 })),
+          },
+        });
+
+        await runOperatorChain(
+          routes['PATCH /restaurants/me/orders/:id/status'],
+          { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'entregue' } },
+          { json: jest.fn() },
+        );
+        await Promise.resolve();
+        await Promise.resolve();
+
+        await expect(customerBalanceRepository.getOrCreate('customer-1', 'r-1')).resolves.toMatchObject({ loyaltyStampCount: 3 });
+      });
     });
 
     it('falha ao creditar cashback/fidelidade não impede a resposta 200 da mudança de status', async () => {

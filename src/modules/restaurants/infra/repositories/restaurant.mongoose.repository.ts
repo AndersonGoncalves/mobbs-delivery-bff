@@ -38,6 +38,7 @@ interface RestaurantLeanDocument {
   cashbackPercent?: number;
   loyaltyGoalOrders?: number;
   loyaltyRewardValue?: number;
+  loyaltyMinOrderValue?: number;
   deliveryFeeCents?: number;
   shareMessage?: string;
   welcomeMessage?: string;
@@ -146,6 +147,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     cashbackPercent: doc.cashbackPercent,
     loyaltyGoalOrders: doc.loyaltyGoalOrders,
     loyaltyRewardValue: doc.loyaltyRewardValue,
+    loyaltyMinOrderValue: doc.loyaltyMinOrderValue,
     deliveryFeeCents: doc.deliveryFeeCents ?? 0,
     shareMessage: doc.shareMessage ?? buildDefaultShareMessage(doc.name),
     welcomeMessage: doc.welcomeMessage,

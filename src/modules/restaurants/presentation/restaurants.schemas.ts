@@ -85,6 +85,8 @@ export const restaurantProfileSchema = z
     // specs/0132-programa-fidelidade-app REQ-1 — ausência/`0` = feature desligada.
     loyaltyGoalOrders: z.number().int().nonnegative().optional(),
     loyaltyRewardValue: z.number().nonnegative().optional(),
+    // specs/0192-ajustes-banner-fidelidade-pix-asaas REQ-4 — ausência/`0` = sem piso.
+    loyaltyMinOrderValue: z.number().nonnegative().optional(),
     // specs/0033-ajustes-carrinho-enderecos-adicionais-pedidos-login REQ-1 — só usado de verdade
     // quando deliveryFeeMode === 'fixed', mas sempre aceito/gravado (mesmo raciocínio de
     // deliveryFeeZones, que também persiste mesmo fora do modo byNeighborhood).
