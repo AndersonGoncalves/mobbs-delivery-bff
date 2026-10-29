@@ -90,8 +90,35 @@ export class SubscriptionObligationMongooseRepository implements ISubscriptionOb
   }
 
   async upsertAnnual(input: UpsertAnnualObligationInput): Promise<ISubscriptionObligation> {
+    const key = { restaurantId: input.restaurantId, kind: input.kind, 'coveragePeriod.start': input.coveragePeriod.start };
+
+    // Índice único por (restaurantId, kind, coveragePeriod.start) — se já existe um documento
+    // CANCELADO com essa mesma chave (ex.: desistência e nova adesão no mesmo dia), o
+    // $setOnInsert abaixo nunca dispara (o upsert encontra esse documento e não insere um novo),
+    // devolvendo a sobra cancelada intocada pra uma assinatura que está ativa de verdade — bug
+    // real encontrado em produção (specs/0175). Revive esse documento em vez de reaproveitá-lo.
+    const existing = await SubscriptionObligationModel.findOne(key).lean<ObligationLeanDocument>();
+    if (existing && existing.status === 'cancelled') {
+      const revived = await SubscriptionObligationModel.findOneAndUpdate(
+        key,
+        {
+          $set: {
+            coveragePeriod: input.coveragePeriod,
+            tier: input.tier,
+            settingsVersionId: input.settingsVersionId,
+            amountCents: input.amountCents,
+            status: 'awaiting_issue',
+            dueDate: input.dueDate,
+          },
+          $unset: { issuedAt: 1, paidAt: 1, issueFailureReason: 1, asaasChargeId: 1, pixPayload: 1, pixExpiresAt: 1 },
+        },
+        { new: true },
+      ).lean<ObligationLeanDocument>();
+      return toEntity(revived as ObligationLeanDocument);
+    }
+
     const doc = await SubscriptionObligationModel.findOneAndUpdate(
-      { restaurantId: input.restaurantId, kind: input.kind, 'coveragePeriod.start': input.coveragePeriod.start },
+      key,
       {
         $setOnInsert: {
           restaurantId: input.restaurantId,

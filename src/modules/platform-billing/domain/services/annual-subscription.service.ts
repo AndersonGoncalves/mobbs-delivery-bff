@@ -70,7 +70,12 @@ export class AnnualSubscriptionService {
     if (!subscription.renewalActive) return null;
 
     const obligations = await this.deps.obligationRepository.findByRestaurantId(subscription.restaurantId);
-    const annualObligations = obligations.filter((obligation) => obligation.kind === 'annual-initial' || obligation.kind === 'annual-renewal');
+    // `status !== 'cancelled'` — uma obligation cancelada (ex.: desistência anterior) não pode
+    // determinar o próximo aniversário real da cobertura (mesmo achado de produção que motivou o
+    // fix de `upsertAnnual`, specs/0175).
+    const annualObligations = obligations.filter(
+      (obligation) => (obligation.kind === 'annual-initial' || obligation.kind === 'annual-renewal') && obligation.status !== 'cancelled',
+    );
     const latestCoverageEnd = annualObligations.reduce<Date | null>((latest, obligation) => {
       const end = obligation.coveragePeriod?.end;
       if (!end) return latest;
