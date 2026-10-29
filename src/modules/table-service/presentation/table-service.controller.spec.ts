@@ -183,6 +183,39 @@ describe('TableServiceController', () => {
     expect(json).toHaveBeenCalledWith(201, createdOrder);
   });
 
+  // specs/0199-painel-pedidos-por-periodo AC-4.
+  it('specs/0199 AC-4: abrir mesa com origin "comanda" grava source "comanda"', async () => {
+    const { orderRepository, routes } = setup({
+      tableRepository: { findById: jest.fn().mockResolvedValue(buildTable()) },
+      orderRepository: { create: jest.fn().mockResolvedValue({ id: 'o-table', restaurantId: 'r-1' }) },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/table-orders'],
+      { restaurantId: 'r-1', body: { tableId: 't-1', origin: 'comanda' } },
+      { json, send: jest.fn() },
+    );
+
+    expect(orderRepository.create).toHaveBeenCalledWith(expect.objectContaining({ source: 'comanda' }));
+  });
+
+  it('specs/0199 AC-4: abrir mesa sem origin (web) grava source ausente', async () => {
+    const { orderRepository, routes } = setup({
+      tableRepository: { findById: jest.fn().mockResolvedValue(buildTable()) },
+      orderRepository: { create: jest.fn().mockResolvedValue({ id: 'o-table', restaurantId: 'r-1' }) },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/table-orders'],
+      { restaurantId: 'r-1', body: { tableId: 't-1', origin: 'web' } },
+      { json, send: jest.fn() },
+    );
+
+    expect(orderRepository.create).toHaveBeenCalledWith(expect.objectContaining({ source: undefined }));
+  });
+
   it('AC-3: resolve preço do catálogo e calcula subtotal/serviço no BFF ao incluir item', async () => {
     const order = {
       id: 'o-table', restaurantId: 'r-1', orderType: 'table', tableId: 't-1', tableName: '1', status: 'confirmado',

@@ -120,7 +120,7 @@ export class TableOrderService {
     return order;
   }
 
-  async openOrder(restaurantId: string, input: { tableId?: string | null; waiterId?: string | null }) {
+  async openOrder(restaurantId: string, input: { tableId?: string | null; waiterId?: string | null; origin?: 'web' | 'comanda' }) {
     const table = input.tableId ? await this.tableRepository.findById(input.tableId, restaurantId) : null;
     if (input.tableId && !table) throw new NotFoundError('Mesa não encontrada');
     if (table && (table.activeOrderId || await this.orderRepository.findActiveTableOrder(restaurantId, table.id))) {
@@ -151,6 +151,8 @@ export class TableOrderService {
       initialStatus: 'confirmado',
       tableId: table?.id,
       tableName: table?.name ?? 'Balcão',
+      // specs/0199-painel-pedidos-por-periodo AC-4.
+      source: input.origin === 'comanda' ? 'comanda' : undefined,
       // (ajuste, pedido explícito do usuário) — `name || email`, mesmo padrão de `deliveryMotoboy`
       // em `OrdersController` e da listagem de `waiters` acima.
       tableWaiter: waiterOperator ? { id: waiterOperator.id, name: waiterOperator.name || waiterOperator.email } : undefined,

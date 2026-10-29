@@ -16,7 +16,7 @@ export interface NewOrderInput {
   orderType: OrderType;
   /** specs/0155-app-totem-autoatendimento REQ-14 / specs/0174-pdv-extensao-chrome-lateral REQ-22
    * / specs/0090-integracao-ifood REQ-3 — ver `IOrder.source`. */
-  source?: 'totem' | 'operador-web' | 'operador-extensao' | 'ifood';
+  source?: 'totem' | 'operador-web' | 'operador-extensao' | 'ifood' | 'comanda';
   /** specs/0174-pdv-extensao-chrome-lateral REQ-22 — ver `IOrder.operatorId`. */
   operatorId?: string;
   deliveryAddress?: string;

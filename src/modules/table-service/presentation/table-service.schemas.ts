@@ -56,6 +56,10 @@ const tableSelectionSchema: z.ZodType<TableSelectionInput> = z.lazy(() =>
 export const openTableOrderSchema = z.object({
   tableId: z.string().min(1).nullable().optional(),
   waiterId: z.string().min(1).nullable().optional(),
+  // specs/0199-painel-pedidos-por-periodo AC-4 — distingue mesa aberta pelo app
+  // mobbs-delivery-comanda (tablet) da aberta pela retaguarda web, mesmo padrão de `origin` já
+  // usado em operator-drafts (specs/0174).
+  origin: z.enum(['web', 'comanda']).optional(),
 });
 
 export const updateTableOrderItemQuantitySchema = z.object({ quantity: z.number().int().min(0).max(99), operationId: z.string().min(1).optional() });

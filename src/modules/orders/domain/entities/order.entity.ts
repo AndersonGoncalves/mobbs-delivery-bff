@@ -114,8 +114,12 @@ export interface IOrder {
    *
    * specs/0090-integracao-ifood REQ-3 — `'ifood'` marca um pedido recebido via polling da API do
    * iFood (`IFoodPollingWorker`), nunca criado pelo cliente/operador/totem diretamente.
+   *
+   * specs/0199-painel-pedidos-por-periodo AC-4 — `'comanda'` marca uma mesa aberta pelo app
+   * `mobbs-delivery-comanda` (garçom no tablet), distinto de uma mesa aberta pela retaguarda web
+   * (`TableServicePage.tsx`, que grava `source` ausente, igual sempre foi).
    */
-  source?: 'totem' | 'operador-web' | 'operador-extensao' | 'ifood';
+  source?: 'totem' | 'operador-web' | 'operador-extensao' | 'ifood' | 'comanda';
   /** specs/0174-pdv-extensao-chrome-lateral REQ-22 — id do operador que finalizou a venda, só
    * presente quando `source` é `'operador-web'`/`'operador-extensao'`. Rastreabilidade, nunca usado
    * pra autorização (quem decide o que o operador pode fazer é `req.operatorRole`, resolvido a
