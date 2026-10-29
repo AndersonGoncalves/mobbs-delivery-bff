@@ -172,6 +172,27 @@ export interface IOrder {
    * impressão automática é calculada ao vivo por `status === 'confirmado'`, sem precisar marcar
    * nada como "pendente" na criação/confirmação do pedido). */
   autoPrintStatus?: 'printed';
+  /**
+   * specs/0091-integracao-fiscal-focusnfe REQ-2/REQ-3/REQ-4/REQ-5/REQ-6 — status da emissão do
+   * documento fiscal (NFCe/CFe/NFe) via FocusNFe. Ausente = restaurante sem integração fiscal
+   * configurada (`FiscalConfig`) OU pedido ainda não atingiu o gatilho de emissão ("entregue") —
+   * nunca confundir ausência com "rejeitado". `ref` é o identificador que O PRÓPRIO BFF escolhe
+   * ao emitir (usa `Order.id`) e devolve pra FocusNFe via query param `ref` — é o mesmo valor
+   * usado depois pra consultar/cancelar o documento.
+   */
+  fiscal?: IOrderFiscal;
+}
+
+export type FiscalDocumentStatus = 'pendente' | 'emitido' | 'rejeitado' | 'cancelado';
+
+export interface IOrderFiscal {
+  status: FiscalDocumentStatus;
+  /** Igual a `Order.id` — ver comentário acima. */
+  ref?: string;
+  /** Caminho/URL do DANFCe (HTML) devolvido pela FocusNFe quando `status === 'emitido'`. */
+  documentUrl?: string;
+  /** Motivo da rejeição (SEFAZ) ou mensagem de erro técnico, só quando `status === 'rejeitado'`. */
+  rejectedReason?: string;
 }
 
 /**

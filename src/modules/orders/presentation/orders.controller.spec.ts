@@ -261,6 +261,7 @@ describe('OrdersController', () => {
       rawMaterialRepository?: Partial<IRawMaterialRepository>;
       blockedCustomerRepository?: Partial<IBlockedCustomerRepository>;
       customerBalanceRepository?: ICustomerBalanceRepository;
+      fiscalEmissionService?: { emitForOrder: jest.Mock };
     } = {},
   ) {
     const orderRepository: Partial<IOrderRepository> = {
@@ -382,6 +383,8 @@ describe('OrdersController', () => {
     };
     const customerBalanceRepository = overrides.customerBalanceRepository ?? buildFakeCustomerBalanceRepository();
     const customerBalanceService = new CustomerBalanceService(customerBalanceRepository);
+    // specs/0091-integracao-fiscal-focusnfe REQ-2 — só o método usado pelo gatilho de "entregue".
+    const fiscalEmissionService = overrides.fiscalEmissionService ?? { emitForOrder: jest.fn().mockResolvedValue(undefined) };
     const { application, routes } = buildFakeApplication();
     new OrdersController(
       orderRepository as IOrderRepository,
@@ -400,6 +403,8 @@ describe('OrdersController', () => {
       rawMaterialRepository as IRawMaterialRepository,
       blockedCustomerRepository as IBlockedCustomerRepository,
       customerBalanceService,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      fiscalEmissionService as any,
     ).initializeRoutes(application);
     return {
       orderRepository,
@@ -416,6 +421,7 @@ describe('OrdersController', () => {
       rawMaterialRepository,
       blockedCustomerRepository,
       customerBalanceRepository,
+      fiscalEmissionService,
       routes,
     };
   }
@@ -1473,6 +1479,36 @@ describe('OrdersController', () => {
       },
     });
     (cashRegisterService.addAutomaticEntry as jest.Mock).mockRejectedValue(new Error('sessão de caixa indisponível'));
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/status'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'entregue' } },
+      { json },
+    );
+
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ status: 'entregue' }));
+  });
+
+  it('specs/0091-integracao-fiscal-focusnfe REQ-2: pedido entregue dispara a emissão fiscal (fire-and-forget)', async () => {
+    const { fiscalEmissionService, routes } = setup({
+      orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ status: 'saiuParaEntrega' })) },
+    });
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/status'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'entregue' } },
+      { json: jest.fn() },
+    );
+
+    expect(fiscalEmissionService.emitForOrder).toHaveBeenCalledWith(expect.objectContaining({ status: 'entregue' }));
+  });
+
+  it('specs/0091-integracao-fiscal-focusnfe REQ-4: falha na emissão fiscal não impede a resposta 200 da mudança de status', async () => {
+    const { routes } = setup({
+      orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ status: 'saiuParaEntrega' })) },
+      fiscalEmissionService: { emitForOrder: jest.fn().mockRejectedValue(new Error('FocusNFe indisponível')) },
+    });
     const json = jest.fn();
 
     await runOperatorChain(

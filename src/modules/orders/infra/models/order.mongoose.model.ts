@@ -90,6 +90,17 @@ const tableWaiterSchema = new Schema(
   { _id: false },
 );
 
+// specs/0091-integracao-fiscal-focusnfe (ver IOrderFiscal).
+const orderFiscalSchema = new Schema(
+  {
+    status: { type: String, enum: ['pendente', 'emitido', 'rejeitado', 'cancelado'], required: true },
+    ref: { type: String },
+    documentUrl: { type: String },
+    rejectedReason: { type: String },
+  },
+  { _id: false },
+);
+
 const orderSchema = new Schema(
   {
     _id: { type: String, default: () => randomUUID() },
@@ -140,6 +151,8 @@ const orderSchema = new Schema(
     estimatedDeliveryAt: { type: Date },
     // specs/0139-impressao-automatica-bridge REQ-3.
     autoPrintStatus: { type: String, enum: ['printed'] },
+    // specs/0091-integracao-fiscal-focusnfe — ausente = sem integração fiscal/ainda não emitido.
+    fiscal: { type: orderFiscalSchema, default: undefined },
   },
   { _id: false, timestamps: { createdAt: true, updatedAt: false } },
 );

@@ -1,4 +1,4 @@
-import { IOrder, IOrderItem, ISalesSummary, OrderStatus, OrderType, PaymentMethod } from '../entities/order.entity';
+import { IOrder, IOrderFiscal, IOrderItem, ISalesSummary, OrderStatus, OrderType, PaymentMethod } from '../entities/order.entity';
 
 /**
  * specs/0005-checkout REQ-2/REQ-5 — `create()` gera `orderNumber` (sequencial por
@@ -173,4 +173,9 @@ export interface IOrderRepository {
 
   /** specs/0139-impressao-automatica-bridge REQ-3 — idempotente: confirmar de novo o mesmo pedido não dá erro. */
   markAutoPrinted(id: string, restaurantId: string): Promise<void>;
+
+  /** specs/0091-integracao-fiscal-focusnfe — substitui `Order.fiscal` por completo (nunca
+   * PATCH/merge parcial — quem chama, `FiscalEmissionService`, já monta o objeto inteiro a cada
+   * transição de status fiscal). */
+  updateFiscal(id: string, fiscal: IOrderFiscal): Promise<IOrder>;
 }

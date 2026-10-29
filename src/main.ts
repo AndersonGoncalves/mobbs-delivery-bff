@@ -31,6 +31,11 @@ import { IFoodOnboardingController } from './modules/ifood-integration/presentat
 import { IFoodAuthService } from './modules/ifood-integration/infra/ifood-auth.service';
 import { IFoodClient } from './modules/ifood-integration/infra/ifood-client';
 import { IFoodPollingWorker } from './modules/ifood-integration/domain/ifood-polling-worker';
+import { FiscalConfigMongooseRepository } from './modules/fiscal-integration/infra/repositories/fiscal-config.mongoose.repository';
+import { FiscalEmissionService } from './modules/fiscal-integration/domain/services/fiscal-emission.service';
+import { FiscalConfigController } from './modules/fiscal-integration/presentation/fiscal-config.controller';
+import { FiscalWebhookController } from './modules/fiscal-integration/presentation/fiscal-webhook.controller';
+import { FiscalOrderActionsController } from './modules/fiscal-integration/presentation/fiscal-order-actions.controller';
 import { PlatformResellersController } from './modules/resellers/presentation/platform-resellers.controller';
 import { buildResellerMiddleware } from './shared/http/reseller.middleware';
 import { RestaurantOperatorsController } from './modules/restaurant-operators/presentation/restaurant-operators.controller';
@@ -318,6 +323,15 @@ const ifoodPollingWorker = new IFoodPollingWorker(
   ifoodAuthService,
   ifoodClient,
 );
+// specs/0091-integracao-fiscal-focusnfe — diferente de `ifood`/`asaas`/`mercadoPago` acima: sem
+// nenhuma variável de ambiente nova (`FiscalEmissionService` resolve a URL base a partir de
+// `FiscalConfig.environment`, não de `process.env` — as duas URLs da FocusNFe são fixas por
+// ambiente, documentadas direto no cliente HTTP, `focus-nfe-client.ts`).
+const fiscalConfigRepository = new FiscalConfigMongooseRepository();
+const fiscalEmissionService = new FiscalEmissionService(fiscalConfigRepository, orderRepository, productRepository, {
+  homologacao: 'https://homologacao.focusnfe.com.br',
+  producao: 'https://api.focusnfe.com.br',
+});
 const platformBillingCycleService = new PlatformBillingCycleService({
   restaurantRepository,
   obligationRepository,
@@ -403,6 +417,7 @@ server
       rawMaterialRepository,
       blockedCustomerRepository,
       customerBalanceService,
+      fiscalEmissionService,
     ),
     new BillingController(restaurantRepository, orderRepository, restaurantOperatorMiddleware, billingSettingsRepository),
     // Pedido explícito do usuário — página "Bloquear cliente".
@@ -573,6 +588,10 @@ server
     ),
     // specs/0090-integracao-ifood REQ-9 — cadastro das credenciais da integração.
     new IFoodOnboardingController(restaurantRepository, restaurantOperatorMiddleware),
+    // specs/0091-integracao-fiscal-focusnfe REQ-1/REQ-3/REQ-4/REQ-6.
+    new FiscalConfigController(fiscalConfigRepository, restaurantOperatorMiddleware),
+    new FiscalWebhookController(fiscalConfigRepository, orderRepository, fiscalEmissionService),
+    new FiscalOrderActionsController(orderRepository, fiscalConfigRepository, fiscalEmissionService, restaurantOperatorMiddleware),
     // specs/0189-painel-revenda.
     new ResellerController(resellerRepository, resellerProspectRepository, resellerClientRepository, restaurantRepository, resellerMiddleware),
     new PlatformResellersController(

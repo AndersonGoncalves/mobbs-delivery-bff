@@ -28,6 +28,7 @@ import { AsaasClient } from '../../payments-asaas/infra/asaas-client';
 import { MercadoPagoClient } from '../../payments-mercadopago/infra/mercado-pago-client';
 import { IFoodAuthService } from '../../ifood-integration/infra/ifood-auth.service';
 import { IFoodClient } from '../../ifood-integration/infra/ifood-client';
+import { FiscalEmissionService } from '../../fiscal-integration/domain/services/fiscal-emission.service';
 import { ConfirmOnlinePaymentService } from '../domain/services/confirm-online-payment.service';
 import { StockReservationService } from '../domain/services/stock-reservation.service';
 import { isOrderCancellableByOperator, isValidOrderStatusTransition } from '../domain/order-status-transitions';
@@ -96,6 +97,10 @@ export class OrdersController extends BaseRouter {
     // specs/0131-cashback-app + specs/0132-programa-fidelidade-app — saldo resgatável
     // compartilhado (resgate na criação, devolução no cancelamento, crédito na entrega).
     private readonly customerBalanceService?: CustomerBalanceService,
+    // specs/0091-integracao-fiscal-focusnfe REQ-2 — emissão fiscal automática no mesmo gatilho
+    // ("entregue") do recálculo de faturamento/caixa acima; `undefined` = integração fiscal
+    // desligada neste BFF (nunca deveria acontecer em produção, só defesa de teste/composição).
+    private readonly fiscalEmissionService?: FiscalEmissionService,
   ) {
     super();
     if (rawMaterialRepository) {
@@ -600,6 +605,15 @@ export class OrdersController extends BaseRouter {
           } catch (error) {
             console.error(`[customer-balance] erro inesperado creditando cashback/fidelidade do pedido ${updated.id}:`, error);
           }
+        }
+
+        // specs/0091-integracao-fiscal-focusnfe REQ-2 — emissão fiscal automática, em paralelo,
+        // nunca bloqueando a resposta (o próprio serviço nunca lança — ver `FiscalEmissionService`
+        // — este catch é só defesa extra, mesmo padrão fire-and-forget do WhatsApp acima).
+        if (status === 'entregue' && this.fiscalEmissionService) {
+          void this.fiscalEmissionService.emitForOrder(updated).catch((error) => {
+            console.error(`[fiscal-integration] erro inesperado emitindo documento fiscal do pedido ${updated.id}:`, error);
+          });
         }
 
         res.json(200, updated);

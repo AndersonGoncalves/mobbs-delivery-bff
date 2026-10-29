@@ -1,6 +1,6 @@
 import { randomBytes } from 'crypto';
 
-import { IOrder, IOrderItem, ISalesSummary, OrderStatus, OrderType, PaymentMethod } from '../../domain/entities/order.entity';
+import { IOrder, IOrderFiscal, IOrderItem, ISalesSummary, OrderStatus, OrderType, PaymentMethod } from '../../domain/entities/order.entity';
 import { IOrderRepository, NewOrderInput } from '../../domain/repositories/order.repository.interface';
 import { OrderCounterModel } from '../models/order-counter.mongoose.model';
 import { OrderModel } from '../models/order.mongoose.model';
@@ -44,6 +44,7 @@ interface OrderLeanDocument {
   createdAt: Date;
   estimatedDeliveryAt?: Date;
   autoPrintStatus?: 'printed';
+  fiscal?: IOrderFiscal;
 }
 
 function toEntity(doc: OrderLeanDocument): IOrder {
@@ -90,6 +91,7 @@ function toEntity(doc: OrderLeanDocument): IOrder {
     createdAt: doc.createdAt.toISOString(),
     estimatedDeliveryAt: doc.estimatedDeliveryAt?.toISOString(),
     autoPrintStatus: doc.autoPrintStatus,
+    fiscal: doc.fiscal,
   };
 }
 
@@ -202,6 +204,11 @@ export class OrderMongooseRepository implements IOrderRepository {
   async assignDeliveryMotoboy(id: string, motoboy?: { id: string; name: string }): Promise<IOrder> {
     const update = motoboy ? { $set: { deliveryMotoboy: motoboy } } : { $unset: { deliveryMotoboy: 1 } };
     const doc = await OrderModel.findByIdAndUpdate(id, update, { new: true }).lean<OrderLeanDocument>();
+    return toEntity(doc as OrderLeanDocument);
+  }
+
+  async updateFiscal(id: string, fiscal: IOrderFiscal): Promise<IOrder> {
+    const doc = await OrderModel.findByIdAndUpdate(id, { $set: { fiscal } }, { new: true }).lean<OrderLeanDocument>();
     return toEntity(doc as OrderLeanDocument);
   }
 
