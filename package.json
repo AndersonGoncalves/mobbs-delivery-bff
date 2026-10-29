@@ -24,6 +24,7 @@
     "@whiskeysockets/baileys": "^7.0.0-rc14",
     "dotenv": "^16.4.5",
     "firebase-admin": "^13.10.0",
+    "json-bigint": "^1.0.0",
     "mongoose": "^8.6.0",
     "nodemailer": "^10.0.3",
     "pino": "^10.3.1",
@@ -33,6 +34,7 @@
   },
   "devDependencies": {
     "@types/jest": "^29.5.12",
+    "@types/json-bigint": "^1.0.4",
     "@types/node": "^20.14.0",
     "@types/nodemailer": "^8.0.1",
     "@types/restify": "^8.5.12",

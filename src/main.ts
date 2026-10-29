@@ -31,6 +31,10 @@ import { IFoodOnboardingController } from './modules/ifood-integration/presentat
 import { IFoodAuthService } from './modules/ifood-integration/infra/ifood-auth.service';
 import { IFoodClient } from './modules/ifood-integration/infra/ifood-client';
 import { IFoodPollingWorker } from './modules/ifood-integration/domain/ifood-polling-worker';
+import { NinetyNineFoodClient } from './modules/ninety-nine-food-integration/infra/ninety-nine-food-client';
+import { NinetyNineFoodAuthService } from './modules/ninety-nine-food-integration/infra/ninety-nine-food-auth.service';
+import { NinetyNineFoodOnboardingController } from './modules/ninety-nine-food-integration/presentation/ninety-nine-food-onboarding.controller';
+import { NinetyNineFoodWebhookController } from './modules/ninety-nine-food-integration/presentation/ninety-nine-food-webhook.controller';
 import { FiscalConfigMongooseRepository } from './modules/fiscal-integration/infra/repositories/fiscal-config.mongoose.repository';
 import { FiscalEmissionService } from './modules/fiscal-integration/domain/services/fiscal-emission.service';
 import { FiscalConfigController } from './modules/fiscal-integration/presentation/fiscal-config.controller';
@@ -330,6 +334,17 @@ const ifoodPollingWorker = new IFoodPollingWorker(
   ifoodAuthService,
   ifoodClient,
 );
+// specs/0122-integracao-99food — diferente do iFood acima: modelo é webhook (não polling), por
+// isso não há worker aqui, só o cliente/serviço de auth compartilhados entre os 2 controllers
+// (`NinetyNineFoodOnboardingController` gera o link; `NinetyNineFoodWebhookController` recebe o
+// `shopBindStatus`/`orderNew`). `OrdersController` instancia seu próprio par internamente (mesmo
+// padrão do `ifoodAuthService`/`ifoodClient` dele) pra confirmar/cancelar.
+const ninetyNineFoodClient = new NinetyNineFoodClient(environment.ninetyNineFood.baseUrl);
+const ninetyNineFoodAuthService = new NinetyNineFoodAuthService(
+  ninetyNineFoodClient,
+  environment.ninetyNineFood.appId ?? '',
+  environment.ninetyNineFood.appSecret ?? '',
+);
 // specs/0091-integracao-fiscal-focusnfe — diferente de `ifood`/`asaas`/`mercadoPago` acima: sem
 // nenhuma variável de ambiente nova (`FiscalEmissionService` resolve a URL base a partir de
 // `FiscalConfig.environment`, não de `process.env` — as duas URLs da FocusNFe são fixas por
@@ -612,6 +627,20 @@ server
     ),
     // specs/0090-integracao-ifood REQ-9 — cadastro das credenciais da integração.
     new IFoodOnboardingController(restaurantRepository, restaurantOperatorMiddleware),
+    // specs/0122-integracao-99food REQ-1/REQ-2/REQ-4.
+    new NinetyNineFoodOnboardingController(
+      restaurantRepository,
+      ninetyNineFoodAuthService,
+      restaurantOperatorMiddleware,
+      Boolean(environment.ninetyNineFood.appId && environment.ninetyNineFood.appSecret),
+    ),
+    new NinetyNineFoodWebhookController(
+      restaurantRepository,
+      customerRepository,
+      orderRepository,
+      ninetyNineFoodAuthService,
+      environment.ninetyNineFood.appSecret ?? '',
+    ),
     // specs/0091-integracao-fiscal-focusnfe REQ-1/REQ-3/REQ-4/REQ-6.
     new FiscalConfigController(fiscalConfigRepository, restaurantOperatorMiddleware),
     new FiscalWebhookController(fiscalConfigRepository, orderRepository, fiscalEmissionService),

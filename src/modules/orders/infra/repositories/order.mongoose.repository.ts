@@ -15,7 +15,8 @@ interface OrderLeanDocument {
   restaurantId: string;
   items: IOrderItem[];
   orderType: OrderType;
-  source?: 'totem' | 'operador-web' | 'operador-extensao' | 'ifood' | 'comanda';
+  source?: 'totem' | 'operador-web' | 'operador-extensao' | 'ifood' | 'comanda' | '99food';
+  ninetyNineFoodOrderId?: string;
   operatorId?: string;
   deliveryAddress?: string;
   deliveryMotoboy?: { id: string; name: string };
@@ -59,6 +60,7 @@ function toEntity(doc: OrderLeanDocument): IOrder {
     items: doc.items ?? [],
     orderType: doc.orderType,
     source: doc.source,
+    ninetyNineFoodOrderId: doc.ninetyNineFoodOrderId,
     operatorId: doc.operatorId,
     deliveryAddress: doc.deliveryAddress,
     deliveryMotoboy: doc.deliveryMotoboy,
@@ -113,6 +115,7 @@ export class OrderMongooseRepository implements IOrderRepository {
       items: input.items,
       orderType: input.orderType,
       source: input.source,
+      ninetyNineFoodOrderId: input.ninetyNineFoodOrderId,
       operatorId: input.operatorId,
       deliveryAddress: input.deliveryAddress,
       notes: input.notes,

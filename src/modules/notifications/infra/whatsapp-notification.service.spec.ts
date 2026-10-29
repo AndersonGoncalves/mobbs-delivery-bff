@@ -97,6 +97,15 @@ describe('WhatsAppNotificationService', () => {
       expect(whatsAppConnectionService.sendMessage).not.toHaveBeenCalled();
     });
 
+    // specs/0122-integracao-99food AC-5/REQ-7.
+    it('AC-5: pedido de origem 99Food nunca dispara mensagem automática', async () => {
+      const { service, whatsAppConnectionService } = setup();
+
+      await service.sendOrderReceipt(buildOrder({ source: '99food' }));
+
+      expect(whatsAppConnectionService.sendMessage).not.toHaveBeenCalled();
+    });
+
     it('specs/0069: notifyCustomerOnOrderCreated false não envia o recibo', async () => {
       const { service, whatsAppConnectionService } = setup({
         restaurant: { id: 'r-1', name: 'Prime Pizza', slug: 'primepizza', whatsappConnected: true, notifyCustomerOnOrderCreated: false },

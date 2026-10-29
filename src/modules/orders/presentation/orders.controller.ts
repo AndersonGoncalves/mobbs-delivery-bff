@@ -28,6 +28,8 @@ import { AsaasClient } from '../../payments-asaas/infra/asaas-client';
 import { MercadoPagoClient } from '../../payments-mercadopago/infra/mercado-pago-client';
 import { IFoodAuthService } from '../../ifood-integration/infra/ifood-auth.service';
 import { IFoodClient } from '../../ifood-integration/infra/ifood-client';
+import { NinetyNineFoodAuthService } from '../../ninety-nine-food-integration/infra/ninety-nine-food-auth.service';
+import { NinetyNineFoodClient } from '../../ninety-nine-food-integration/infra/ninety-nine-food-client';
 import { FiscalEmissionService } from '../../fiscal-integration/domain/services/fiscal-emission.service';
 import { ConfirmOnlinePaymentService } from '../domain/services/confirm-online-payment.service';
 import { StockReservationService } from '../domain/services/stock-reservation.service';
@@ -67,6 +69,15 @@ export class OrdersController extends BaseRouter {
   // chamada (mesmo padrão de `FacebookGraphClient`), por isso pode ser uma instância só.
   private readonly ifoodAuthService = new IFoodAuthService(environment.ifood.baseUrl);
   private readonly ifoodClient = new IFoodClient(environment.ifood.baseUrl);
+  // specs/0122-integracao-99food — mesmo raciocínio acima; `ninetyNineFoodAuthService` guarda
+  // só `appId`/`appSecret` (nível de app), a renovação de token em si olha pro `auth_token`
+  // persistido no `Restaurant` passado em cada chamada (não um cache em memória).
+  private readonly ninetyNineFoodClient = new NinetyNineFoodClient(environment.ninetyNineFood.baseUrl);
+  private readonly ninetyNineFoodAuthService = new NinetyNineFoodAuthService(
+    this.ninetyNineFoodClient,
+    environment.ninetyNineFood.appId ?? '',
+    environment.ninetyNineFood.appSecret ?? '',
+  );
 
   constructor(
     private readonly orderRepository: IOrderRepository,
@@ -539,6 +550,8 @@ export class OrdersController extends BaseRouter {
         // também confirma na API deles.
         if (status === 'confirmado') {
           await this.tryConfirmOrderViaIFood(updated);
+          // specs/0122-integracao-99food REQ-5 — mesmo raciocínio, API diferente.
+          await this.tryConfirmOrderVia99Food(updated);
         }
 
         await this.handleStatusChangeSideEffects(updated, status);
@@ -606,6 +619,8 @@ export class OrdersController extends BaseRouter {
         // specs/0090-integracao-ifood REQ-6 — cancelar na retaguarda um pedido de origem iFood
         // também solicita o cancelamento na API deles.
         await this.tryCancelOrderViaIFood(updated, reason);
+        // specs/0122-integracao-99food REQ-5 — mesmo raciocínio, API diferente.
+        await this.tryCancelOrderVia99Food(updated, reason);
 
         void this.whatsAppNotificationService.sendOrderStatusUpdate(updated, reason).catch((error) => {
           console.error(`[whatsapp] erro inesperado enviando atualização de status do pedido ${updated.id}:`, error);
@@ -991,6 +1006,57 @@ export class OrdersController extends BaseRouter {
     } catch (error) {
       console.error(`[ifood-integration] erro inesperado cancelando o pedido ${order.id} no iFood:`, error);
     }
+  }
+
+  /** specs/0122-integracao-99food REQ-5 — mesmo raciocínio de `tryConfirmOrderViaIFood`
+   * (nunca bloqueia a confirmação local), mas usa `order.ninetyNineFoodOrderId` — NUNCA
+   * `order.id` (ver `plan.md`, "Risco real encontrado no código existente" sobre o equivalente
+   * do iFood). */
+  private async tryConfirmOrderVia99Food(order: IOrder): Promise<void> {
+    if (order.source !== '99food' || !order.ninetyNineFoodOrderId) return;
+    const restaurant = await this.restaurantRepository.findById(order.restaurantId);
+    if (!restaurant?.ninetyNineFoodAppShopId || !restaurant.ninetyNineFoodAuthToken) return;
+
+    try {
+      const authToken = await this.ensureFresh99FoodAuthToken(restaurant);
+      await this.ninetyNineFoodClient.confirmOrder(authToken, order.ninetyNineFoodOrderId);
+    } catch (error) {
+      console.error(`[99food-integration] erro inesperado confirmando o pedido ${order.ninetyNineFoodOrderId} no 99Food:`, error);
+    }
+  }
+
+  /** specs/0122-integracao-99food REQ-5 — mesmo raciocínio de `tryCancelOrderViaIFood`.
+   * `reason_id` sempre `1080` ("Other reason") com o texto do operador em `reason` — a 99Food
+   * exige descrição nesse caso (doc oficial); não há correspondência confiável entre o texto
+   * livre digitado na retaguarda e a lista fixa de `reason_id` deles (`plan.md`). */
+  private async tryCancelOrderVia99Food(order: IOrder, reason: string): Promise<void> {
+    if (order.source !== '99food' || !order.ninetyNineFoodOrderId) return;
+    const restaurant = await this.restaurantRepository.findById(order.restaurantId);
+    if (!restaurant?.ninetyNineFoodAppShopId || !restaurant.ninetyNineFoodAuthToken) return;
+
+    try {
+      const authToken = await this.ensureFresh99FoodAuthToken(restaurant);
+      await this.ninetyNineFoodClient.cancelOrder(authToken, order.ninetyNineFoodOrderId, 1080, reason);
+    } catch (error) {
+      console.error(`[99food-integration] erro inesperado cancelando o pedido ${order.ninetyNineFoodOrderId} no 99Food:`, error);
+    }
+  }
+
+  /** Renova o `auth_token` da loja se estiver perto de expirar, persistindo o resultado — ver
+   * `NinetyNineFoodAuthService.ensureFreshAuthToken`. */
+  private async ensureFresh99FoodAuthToken(restaurant: IRestaurant): Promise<string> {
+    const { authToken, refreshed } = await this.ninetyNineFoodAuthService.ensureFreshAuthToken(restaurant.ninetyNineFoodAppShopId!, {
+      authToken: restaurant.ninetyNineFoodAuthToken!,
+      tokenExpiresAt: restaurant.ninetyNineFoodTokenExpiresAt,
+    });
+    if (refreshed) {
+      await this.restaurantRepository.saveNinetyNineFoodBinding(restaurant.id, {
+        appShopId: restaurant.ninetyNineFoodAppShopId!,
+        authToken: refreshed.authToken,
+        tokenExpiresAt: refreshed.tokenExpiresAt,
+      });
+    }
+    return authToken;
   }
 
   /** specs/0170-integracao-mercado-pago (REQ-2) — cria a preferência de Checkout Pro em nome do

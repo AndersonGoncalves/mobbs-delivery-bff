@@ -235,4 +235,33 @@ export interface IRestaurantRepository {
    * `disconnectAsaasSubaccount`: não há "reconectar sem redigitar" aqui, o operador digita de
    * novo se quiser reconectar — são só 3 campos, sem KYC/subconta por trás). */
   disconnectIFood(id: string): Promise<IRestaurant>;
+
+  /** specs/0122-integracao-99food — marca "link de autorização gerado, aguardando o dono
+   * confirmar no site da 99Food" (`NinetyNineFoodOnboardingController`). Limpo por
+   * `saveNinetyNineFoodBinding`/`disconnectNinetyNineFood`. */
+  markNinetyNineFoodAuthorizationPending(id: string): Promise<IRestaurant>;
+
+  /** specs/0122-integracao-99food — persiste o resultado da autorização (webhook
+   * `shopBindStatus` + `Get Authtoken`, `NinetyNineFoodWebhookController`), ou uma renovação de
+   * token (`NinetyNineFoodAuthService.ensureFreshAuthToken`). Marca `ninetyNineFoodConnectedAt`
+   * só na primeira vez (preserva a data original numa renovação) e sempre limpa
+   * `ninetyNineFoodAuthorizationPendingAt`. */
+  saveNinetyNineFoodBinding(
+    id: string,
+    data: { appShopId: string; authToken: string; tokenExpiresAt: string },
+  ): Promise<IRestaurant>;
+
+  /** specs/0122-integracao-99food — desvincula a integração (apaga os campos locais; não chama
+   * "Unbind Store" na API — mesma simplicidade de `disconnectIFood`). */
+  disconnectNinetyNineFood(id: string): Promise<IRestaurant>;
+
+  /** specs/0122-integracao-99food — casa um webhook `shopBindStatus` recebido com o restaurante
+   * que gerou o link de autorização mais antigo ainda pendente (FIFO — limitação de design
+   * documentada em `plan.md`: a API não deixa escolher o restaurante no momento de gerar o
+   * link). `null` se não houver nenhum pendente. */
+  findOldestPendingNinetyNineFoodAuthorization(): Promise<IRestaurant | null>;
+
+  /** specs/0122-integracao-99food — resolve o restaurante de um webhook `orderNew` a partir do
+   * `app_shop_id` recebido. `null` se a loja foi desvinculada nesse meio tempo. */
+  findByNinetyNineFoodAppShopId(appShopId: string): Promise<IRestaurant | null>;
 }

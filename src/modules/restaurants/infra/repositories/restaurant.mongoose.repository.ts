@@ -128,6 +128,11 @@ interface RestaurantLeanDocument {
   ifoodClientId?: string;
   ifoodClientSecret?: string;
   ifoodConnectedAt?: string;
+  ninetyNineFoodAppShopId?: string;
+  ninetyNineFoodAuthToken?: string;
+  ninetyNineFoodTokenExpiresAt?: string;
+  ninetyNineFoodConnectedAt?: string;
+  ninetyNineFoodAuthorizationPendingAt?: string;
 }
 
 const ALL_PAYMENT_METHODS: PaymentMethod[] = ['creditCard', 'debitCard', 'pix', 'cash'];
@@ -241,6 +246,11 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     ifoodClientId: doc.ifoodClientId,
     ifoodClientSecret: doc.ifoodClientSecret,
     ifoodConnectedAt: doc.ifoodConnectedAt,
+    ninetyNineFoodAppShopId: doc.ninetyNineFoodAppShopId,
+    ninetyNineFoodAuthToken: doc.ninetyNineFoodAuthToken,
+    ninetyNineFoodTokenExpiresAt: doc.ninetyNineFoodTokenExpiresAt,
+    ninetyNineFoodConnectedAt: doc.ninetyNineFoodConnectedAt,
+    ninetyNineFoodAuthorizationPendingAt: doc.ninetyNineFoodAuthorizationPendingAt,
   };
 }
 
@@ -543,6 +553,67 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
       { new: true },
     ).lean<RestaurantLeanDocument>();
     return toEntity(doc as RestaurantLeanDocument);
+  }
+
+  // specs/0122-integracao-99food — mesmo molde de `disconnectIFood`/`saveIFoodCredentials`
+  // acima, ver docstrings na interface.
+  async markNinetyNineFoodAuthorizationPending(id: string): Promise<IRestaurant> {
+    const doc = await RestaurantModel.findByIdAndUpdate(
+      id,
+      { $set: { ninetyNineFoodAuthorizationPendingAt: new Date().toISOString() } },
+      { new: true },
+    ).lean<RestaurantLeanDocument>();
+    return toEntity(doc as RestaurantLeanDocument);
+  }
+
+  async saveNinetyNineFoodBinding(
+    id: string,
+    data: { appShopId: string; authToken: string; tokenExpiresAt: string },
+  ): Promise<IRestaurant> {
+    const existing = await RestaurantModel.findById(id).lean<RestaurantLeanDocument>();
+    const doc = await RestaurantModel.findByIdAndUpdate(
+      id,
+      {
+        $set: {
+          ninetyNineFoodAppShopId: data.appShopId,
+          ninetyNineFoodAuthToken: data.authToken,
+          ninetyNineFoodTokenExpiresAt: data.tokenExpiresAt,
+          ninetyNineFoodConnectedAt: existing?.ninetyNineFoodConnectedAt ?? new Date().toISOString(),
+        },
+        $unset: { ninetyNineFoodAuthorizationPendingAt: 1 },
+      },
+      { new: true },
+    ).lean<RestaurantLeanDocument>();
+    return toEntity(doc as RestaurantLeanDocument);
+  }
+
+  async disconnectNinetyNineFood(id: string): Promise<IRestaurant> {
+    const doc = await RestaurantModel.findByIdAndUpdate(
+      id,
+      {
+        $unset: {
+          ninetyNineFoodAppShopId: 1,
+          ninetyNineFoodAuthToken: 1,
+          ninetyNineFoodTokenExpiresAt: 1,
+          ninetyNineFoodConnectedAt: 1,
+          ninetyNineFoodAuthorizationPendingAt: 1,
+        },
+      },
+      { new: true },
+    ).lean<RestaurantLeanDocument>();
+    return toEntity(doc as RestaurantLeanDocument);
+  }
+
+  async findOldestPendingNinetyNineFoodAuthorization(): Promise<IRestaurant | null> {
+    const doc = await RestaurantModel.findOne({ ninetyNineFoodAuthorizationPendingAt: { $exists: true } })
+      .sort({ ninetyNineFoodAuthorizationPendingAt: 1 })
+      .lean<RestaurantLeanDocument>();
+    return doc ? toEntity(doc) : null;
+  }
+
+  async findByNinetyNineFoodAppShopId(appShopId: string): Promise<IRestaurant | null> {
+    const doc = await RestaurantModel.findOne({ ninetyNineFoodAppShopId: appShopId }).lean<RestaurantLeanDocument>();
+    return doc ? toEntity(doc) : null;
   }
 
   async markAsaasCheckoutWebhookRegistered(id: string): Promise<IRestaurant> {

@@ -15,8 +15,11 @@ export interface NewOrderInput {
   items: IOrderItem[];
   orderType: OrderType;
   /** specs/0155-app-totem-autoatendimento REQ-14 / specs/0174-pdv-extensao-chrome-lateral REQ-22
-   * / specs/0090-integracao-ifood REQ-3 — ver `IOrder.source`. */
-  source?: 'totem' | 'operador-web' | 'operador-extensao' | 'ifood' | 'comanda';
+   * / specs/0090-integracao-ifood REQ-3 / specs/0122-integracao-99food REQ-4 — ver
+   * `IOrder.source`. */
+  source?: 'totem' | 'operador-web' | 'operador-extensao' | 'ifood' | 'comanda' | '99food';
+  /** specs/0122-integracao-99food — ver `IOrder.ninetyNineFoodOrderId`. */
+  ninetyNineFoodOrderId?: string;
   /** specs/0174-pdv-extensao-chrome-lateral REQ-22 — ver `IOrder.operatorId`. */
   operatorId?: string;
   deliveryAddress?: string;

@@ -17,6 +17,8 @@ import { AsaasClient } from '../../payments-asaas/infra/asaas-client';
 import { MercadoPagoClient } from '../../payments-mercadopago/infra/mercado-pago-client';
 import { IFoodAuthService } from '../../ifood-integration/infra/ifood-auth.service';
 import { IFoodClient } from '../../ifood-integration/infra/ifood-client';
+import { NinetyNineFoodAuthService } from '../../ninety-nine-food-integration/infra/ninety-nine-food-auth.service';
+import { NinetyNineFoodClient } from '../../ninety-nine-food-integration/infra/ninety-nine-food-client';
 import { CustomerBalanceService } from '../../customer-balance/domain/services/customer-balance.service';
 import { ICustomerBalanceRepository } from '../../customer-balance/domain/repositories/customer-balance.repository.interface';
 import { OrdersController } from './orders.controller';
@@ -33,6 +35,10 @@ jest.mock('../../payments-mercadopago/infra/mercado-pago-client');
 // via construtor).
 jest.mock('../../ifood-integration/infra/ifood-auth.service');
 jest.mock('../../ifood-integration/infra/ifood-client');
+// specs/0122-integracao-99food — mesmo raciocínio acima, pra `tryConfirmOrderVia99Food`/
+// `tryCancelOrderVia99Food`.
+jest.mock('../../ninety-nine-food-integration/infra/ninety-nine-food-auth.service');
+jest.mock('../../ninety-nine-food-integration/infra/ninety-nine-food-client');
 
 type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & {
   user?: { uid: string; email?: string };
@@ -120,6 +126,10 @@ function buildRestaurant(
     // specs/0090-integracao-ifood.
     ifoodClientId: string;
     ifoodClientSecret: string;
+    // specs/0122-integracao-99food.
+    ninetyNineFoodAppShopId: string;
+    ninetyNineFoodAuthToken: string;
+    ninetyNineFoodTokenExpiresAt: string;
   }> = {},
 ) {
   return {
@@ -1410,6 +1420,89 @@ describe('OrdersController', () => {
           updateStatus: jest.fn().mockResolvedValue(buildOrder({ source: 'ifood', status: 'confirmado' })),
         },
         restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ ifoodClientId: 'client-1', ifoodClientSecret: 'secret-1' })) },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/status'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'confirmado' } },
+        { json },
+      );
+
+      expect(orderRepository.updateStatus).toHaveBeenCalled();
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ status: 'confirmado' }));
+    });
+  });
+
+  describe('specs/0122-integracao-99food REQ-5 — confirmar/cancelar propaga pra API do 99Food', () => {
+    const MockedNinetyNineFoodAuthService = NinetyNineFoodAuthService as jest.MockedClass<typeof NinetyNineFoodAuthService>;
+    const MockedNinetyNineFoodClient = NinetyNineFoodClient as jest.MockedClass<typeof NinetyNineFoodClient>;
+
+    beforeEach(() => {
+      MockedNinetyNineFoodAuthService.mockClear();
+      MockedNinetyNineFoodClient.mockClear();
+      MockedNinetyNineFoodAuthService.prototype.ensureFreshAuthToken = jest.fn().mockResolvedValue({ authToken: 'token-1' });
+      MockedNinetyNineFoodClient.prototype.confirmOrder = jest.fn().mockResolvedValue(undefined);
+      MockedNinetyNineFoodClient.prototype.cancelOrder = jest.fn().mockResolvedValue(undefined);
+    });
+
+    it('confirmar um pedido de origem 99Food chama NinetyNineFoodClient.confirmOrder com ninetyNineFoodOrderId (nunca order.id)', async () => {
+      const { restaurantRepository, routes } = setup({
+        orderRepository: {
+          findById: jest.fn().mockResolvedValue(buildOrder({ source: '99food', ninetyNineFoodOrderId: '5764656197621845665' })),
+          updateStatus: jest.fn().mockResolvedValue(buildOrder({ source: '99food', ninetyNineFoodOrderId: '5764656197621845665', status: 'confirmado' })),
+        },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ ninetyNineFoodAppShopId: 'shop-1', ninetyNineFoodAuthToken: 'token-0' })) },
+      });
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/status'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'confirmado' } },
+        { json: jest.fn() },
+      );
+
+      expect(MockedNinetyNineFoodClient.prototype.confirmOrder).toHaveBeenCalledWith('token-1', '5764656197621845665');
+      expect(restaurantRepository.findById).toHaveBeenCalled();
+    });
+
+    it('confirmar um pedido de origem própria (sem source) NÃO chama o 99Food', async () => {
+      const { routes } = setup({ orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ source: undefined })) } });
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/status'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'confirmado' } },
+        { json: jest.fn() },
+      );
+
+      expect(MockedNinetyNineFoodClient.prototype.confirmOrder).not.toHaveBeenCalled();
+    });
+
+    it('cancelar um pedido de origem 99Food chama NinetyNineFoodClient.cancelOrder com reason_id 1080 e o motivo', async () => {
+      const { routes } = setup({
+        orderRepository: {
+          findById: jest.fn().mockResolvedValue(buildOrder({ source: '99food', ninetyNineFoodOrderId: '5764656197621845665', status: 'confirmado' })),
+          updateStatus: jest.fn().mockResolvedValue(buildOrder({ source: '99food', ninetyNineFoodOrderId: '5764656197621845665', status: 'cancelado' })),
+        },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ ninetyNineFoodAppShopId: 'shop-1', ninetyNineFoodAuthToken: 'token-0' })) },
+      });
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/cancel'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { reason: 'Produto em falta' } },
+        { json: jest.fn() },
+      );
+
+      expect(MockedNinetyNineFoodClient.prototype.cancelOrder).toHaveBeenCalledWith('token-1', '5764656197621845665', 1080, 'Produto em falta');
+    });
+
+    it('falha ao confirmar no 99Food não impede a confirmação local (erro só logado)', async () => {
+      MockedNinetyNineFoodClient.prototype.confirmOrder = jest.fn().mockRejectedValue(new Error('99Food fora do ar'));
+      const { orderRepository, routes } = setup({
+        orderRepository: {
+          findById: jest.fn().mockResolvedValue(buildOrder({ source: '99food', ninetyNineFoodOrderId: '5764656197621845665' })),
+          updateStatus: jest.fn().mockResolvedValue(buildOrder({ source: '99food', ninetyNineFoodOrderId: '5764656197621845665', status: 'confirmado' })),
+        },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ ninetyNineFoodAppShopId: 'shop-1', ninetyNineFoodAuthToken: 'token-0' })) },
       });
       const json = jest.fn();
 

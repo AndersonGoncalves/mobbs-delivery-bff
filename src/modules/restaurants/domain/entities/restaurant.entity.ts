@@ -410,6 +410,23 @@ export interface IRestaurant {
   ifoodClientId?: string;
   ifoodClientSecret?: string;
   ifoodConnectedAt?: string;
+  /**
+   * specs/0122-integracao-99food — vínculo self-service com a API do 99Food (diferente do iFood
+   * acima: `app_id`/`app_secret` são credenciais de NÍVEL DE APP, da plataforma mobbs,
+   * configuradas uma única vez em `environment.ninetyNineFood` — nunca por restaurante). O que é
+   * por restaurante é só o resultado da autorização: `ninetyNineFoodAppShopId` (gerado pela
+   * própria 99Food no fluxo self-service, "Get Authorization Web Page") e o `auth_token`
+   * correspondente. `ninetyNineFoodAuthToken` nunca deve aparecer numa resposta de API (ver
+   * `toOperatorRestaurant`), mesmo cuidado de `ifoodClientSecret`.
+   * `ninetyNineFoodAuthorizationPendingAt` marca "link gerado, aguardando o dono autorizar no
+   * site da 99Food" — usado só pra casar o webhook `shopBindStatus` seguinte (FIFO, ver
+   * `plan.md`), limpo ao conectar ou desconectar.
+   */
+  ninetyNineFoodAppShopId?: string;
+  ninetyNineFoodAuthToken?: string;
+  ninetyNineFoodTokenExpiresAt?: string;
+  ninetyNineFoodConnectedAt?: string;
+  ninetyNineFoodAuthorizationPendingAt?: string;
   /** Pedido explícito do usuário (follow-up) — vínculo OAuth (Facebook Login for Business) da
    * conta Instagram Business do restaurante, mesmo modelo do Mercado Pago acima.
    * `instagramAccessToken` nunca deve aparecer numa resposta de API (ver

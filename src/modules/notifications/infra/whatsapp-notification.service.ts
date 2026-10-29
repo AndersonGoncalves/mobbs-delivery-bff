@@ -86,6 +86,11 @@ export class WhatsAppNotificationService implements IWhatsAppNotificationService
       console.warn(`[whatsapp] pedido ${order.id}: mensagem não enviada — pedido de origem iFood`);
       return true;
     }
+    // specs/0122-integracao-99food REQ-7 — mesmo raciocínio do iFood acima.
+    if (order.source === '99food') {
+      console.warn(`[whatsapp] pedido ${order.id}: mensagem não enviada — pedido de origem 99Food`);
+      return true;
+    }
     if (!customer?.phone) {
       console.warn(`[whatsapp] pedido ${order.id}: mensagem não enviada — cliente sem telefone cadastrado`);
       return true;

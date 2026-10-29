@@ -118,8 +118,12 @@ export interface IOrder {
    * specs/0199-painel-pedidos-por-periodo AC-4 — `'comanda'` marca uma mesa aberta pelo app
    * `mobbs-delivery-comanda` (garçom no tablet), distinto de uma mesa aberta pela retaguarda web
    * (`TableServicePage.tsx`, que grava `source` ausente, igual sempre foi).
+   *
+   * specs/0122-integracao-99food REQ-4 — `'99food'` marca um pedido recebido via webhook da API
+   * do 99Food (`NinetyNineFoodWebhookController`, evento `orderNew`), nunca criado pelo
+   * cliente/operador/totem diretamente.
    */
-  source?: 'totem' | 'operador-web' | 'operador-extensao' | 'ifood' | 'comanda';
+  source?: 'totem' | 'operador-web' | 'operador-extensao' | 'ifood' | 'comanda' | '99food';
   /** specs/0174-pdv-extensao-chrome-lateral REQ-22 — id do operador que finalizou a venda, só
    * presente quando `source` é `'operador-web'`/`'operador-extensao'`. Rastreabilidade, nunca usado
    * pra autorização (quem decide o que o operador pode fazer é `req.operatorRole`, resolvido a
@@ -193,6 +197,14 @@ export interface IOrder {
    * `delivered`→`entregue`, `canceled`/`returned`→`cancelado`.
    */
   uberDelivery?: IOrderUberDelivery;
+  /**
+   * specs/0122-integracao-99food — id do pedido no sistema da 99Food (inteiro de 64 bits,
+   * guardado como string pra não perder precisão — `json-bigint` no webhook). Só presente quando
+   * `source === '99food'`; usado por `tryConfirmOrderVia99Food`/`tryCancelOrderVia99Food` pra
+   * confirmar/cancelar na API deles. Nunca usar `order.id` (nosso `_id` interno) pra isso — ver
+   * nota de risco em `specs/0122-integracao-99food/plan.md` sobre o equivalente do iFood.
+   */
+  ninetyNineFoodOrderId?: string;
 }
 
 export type FiscalDocumentStatus = 'pendente' | 'emitido' | 'rejeitado' | 'cancelado';

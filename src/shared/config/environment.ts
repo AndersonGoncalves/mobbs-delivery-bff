@@ -104,4 +104,14 @@ export const environment = {
   ifood: {
     baseUrl: process.env.IFOOD_BASE_URL || 'https://merchant-api.ifood.com.br',
   },
+  /** specs/0122-integracao-99food — diferente do iFood acima: `appId`/`appSecret` SÃO
+   * credenciais de nível de app (plataforma mobbs, cadastradas uma única vez no portal de
+   * parceiro 99Food), nunca por restaurante — o que é por restaurante é só `auth_token`
+   * (`Restaurant.ninetyNineFoodAuthToken`, obtido depois da autorização self-service). Ver
+   * `docs/99FOOD.md`. */
+  ninetyNineFood: {
+    baseUrl: process.env.NINETY_NINE_FOOD_BASE_URL || 'https://openapi.99food.com',
+    appId: process.env.NINETY_NINE_FOOD_APP_ID,
+    appSecret: process.env.NINETY_NINE_FOOD_APP_SECRET,
+  },
 };

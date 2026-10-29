@@ -217,6 +217,13 @@ const restaurantSchema = new Schema(
     ifoodClientId: { type: String },
     ifoodClientSecret: { type: String },
     ifoodConnectedAt: { type: String },
+    // specs/0122-integracao-99food — vínculo self-service (`app_id`/`app_secret` de nível de
+    // app, fora do schema, em `environment.ninetyNineFood`).
+    ninetyNineFoodAppShopId: { type: String },
+    ninetyNineFoodAuthToken: { type: String },
+    ninetyNineFoodTokenExpiresAt: { type: String },
+    ninetyNineFoodConnectedAt: { type: String },
+    ninetyNineFoodAuthorizationPendingAt: { type: String },
     // Pedido explícito do usuário — tempo médio de atendimento mostrado no app do cliente, por
     // modalidade; defaults vindos do exemplo mostrado (40-60min delivery, 20-40min balcão).
     deliveryTimeMinMinutes: { type: Number, required: true, default: 40 },
