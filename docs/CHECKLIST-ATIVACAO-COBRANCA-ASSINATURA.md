@@ -69,12 +69,13 @@ qualquer deploy em produção:
 
 ## 5. Operação/monitoramento
 
-- O ciclo (`PlatformBillingCycleService.runCycle`) roda uma vez no boot do BFF (fire-and-forget,
-  erro só logado — nunca derruba o servidor). Sem `setInterval`/cron real neste BFF ainda (ver
-  `specs/0175/tasks.md`, "Achados de leitura de código") — pra cobrir o caso do processo ficar no
-  ar por muito tempo sem reiniciar, configurar um cron EXTERNO (ex. `curl` autenticado como
-  administrador da plataforma pra algum endpoint de reprocessamento, ou simplesmente reiniciar o
-  processo periodicamente) até uma automação própria existir.
+- O ciclo (`PlatformBillingCycleService.runCycle`) roda uma vez no boot do BFF **e também a cada 5
+  minutos** (`setInterval` em `main.ts`, adicionado em 2026-10-29 — achado real: uma obligation
+  criada depois do sweep do boot ficava `awaiting_issue` pra sempre até o processo reiniciar,
+  nenhum Pix era emitido). Fire-and-forget em ambos os casos, erro só logado — nunca derruba o
+  servidor. Sem cron externo necessário agora; o endpoint administrativo de reprocessamento
+  (`POST /platform/billing/restaurants/:id/reprocess`) continua disponível pra forçar uma
+  emissão específica sem esperar os 5 minutos.
 - Falha de emissão (`issue_failed`) aparece como "Falha de emissão" no painel administrativo
   (`/plataforma`) e no aviso da retaguarda do próprio restaurante — nunca silenciosa.
 - Nunca logar `BILLING_PIX_KEY`/`ASAAS_BILLING_WEBHOOK_TOKEN`/documentos completos de pagador.

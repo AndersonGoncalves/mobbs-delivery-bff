@@ -698,15 +698,32 @@ server
       console.error('[platform-billing] erro inesperado no ciclo disparado no boot:', error);
     }),
   )
+  // Pedido explícito do usuário (achado real, 2026-10-29) — contratação anual só emitia o Pix
+  // se o processo tivesse acabado de subir: sem temporizador nenhum, uma obligation criada
+  // depois do sweep do boot ficava `awaiting_issue` pra sempre, só desbloqueada reiniciando o
+  // BFF ou chamando manualmente o endpoint administrativo de reprocessamento
+  // (`docs/CHECKLIST-ATIVACAO-COBRANCA-ASSINATURA.md` §5, "configurar um cron EXTERNO... até uma
+  // automação própria existir" — essa automação). Seguro adicionar: `runCycle`/`issuePending` já
+  // são idempotentes por design (REQ-9/REQ-11 — nunca dependem de rodar num horário exato nem
+  // duplicam emissão em execuções concorrentes), então este `setInterval` só adianta o que o
+  // próximo boot faria de qualquer jeito. 5 minutos: rápido o bastante pra o Pix aparecer pouco
+  // depois de "Contratar Anual"/fechamento mensal, sem bater na API do Asaas sem necessidade.
+  .then(() => {
+    setInterval(() => {
+      platformBillingCycleService.runCycle(new Date()).catch((error) => {
+        // eslint-disable-next-line no-console
+        console.error('[platform-billing] erro inesperado no ciclo periódico:', error);
+      });
+    }, 5 * 60_000);
+  })
   // Pedido explícito do usuário (follow-up) — automação de postagens no Instagram precisa de
   // execução autônoma de verdade pra cumprir o que promete ("agendadas"): diferente do ciclo de
-  // cobrança acima (que tolera um empurrão externo — `docs/CHECKLIST-ATIVACAO-COBRANCA-ASSINATURA.md`
-  // §5 documenta "sem setInterval/cron real neste BFF ainda... até uma automação própria
-  // existir"), uma postagem agendada sem ninguém rodando o publicador simplesmente nunca sai. Por
-  // isso, primeiro `setInterval` em processo deste BFF — desvio deliberado e documentado da
-  // decisão anterior, não um precedente esquecido. 60s: intervalo curto o bastante pra o horário
-  // agendado "bater" com precisão aceitável pro caso de uso (postagem de rede social, não
-  // cobrança financeira), sem sobrecarregar a Graph API com polling agressivo.
+  // cobrança acima (que agora também tem seu próprio `setInterval`, ver comentário lá), uma
+  // postagem agendada sem ninguém rodando o publicador simplesmente nunca sai. Por isso, primeiro
+  // `setInterval` em processo deste BFF (histórico — hoje já não é mais o único). 60s: intervalo
+  // curto o bastante pra o horário agendado "bater" com precisão aceitável pro caso de uso
+  // (postagem de rede social, não cobrança financeira), sem sobrecarregar a Graph API com
+  // polling agressivo.
   .then(() => {
     setInterval(() => {
       publishDueInstagramPostsService.run().catch((error) => {
