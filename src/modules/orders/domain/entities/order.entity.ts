@@ -181,6 +181,14 @@ export interface IOrder {
    * usado depois pra consultar/cancelar o documento.
    */
   fiscal?: IOrderFiscal;
+  /**
+   * specs/0121-integracao-uber-entregas REQ-2/REQ-3/REQ-4/REQ-6 — entrega avulsa via Uber Direct,
+   * despachada manualmente pelo operador (REQ-4, nunca automático). Ausente = pedido sem entrega
+   * via Uber (usa motoboy próprio, ou ainda não despachado). Status mapeado do enum bruto da
+   * Uber: `pending`→`solicitado`, `pickup`/`pickup_complete`→`aceito`, `dropoff`→`a_caminho`,
+   * `delivered`→`entregue`, `canceled`/`returned`→`cancelado`.
+   */
+  uberDelivery?: IOrderUberDelivery;
 }
 
 export type FiscalDocumentStatus = 'pendente' | 'emitido' | 'rejeitado' | 'cancelado';
@@ -193,6 +201,16 @@ export interface IOrderFiscal {
   documentUrl?: string;
   /** Motivo da rejeição (SEFAZ) ou mensagem de erro técnico, só quando `status === 'rejeitado'`. */
   rejectedReason?: string;
+}
+
+export type UberDeliveryStatus = 'solicitado' | 'aceito' | 'a_caminho' | 'entregue' | 'cancelado';
+
+export interface IOrderUberDelivery {
+  status: UberDeliveryStatus;
+  /** Id da entrega na Uber Direct (prefixo `del_`), usado pra resolver o pedido no webhook. */
+  deliveryId?: string;
+  quoteId?: string;
+  trackingUrl?: string;
 }
 
 /**

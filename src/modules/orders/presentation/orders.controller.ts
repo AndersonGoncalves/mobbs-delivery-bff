@@ -23,7 +23,7 @@ import { isRestaurantOpenNow } from '../../restaurants/domain/is-restaurant-open
 import { environment } from '../../../shared/config/environment';
 import { IRestaurant } from '../../restaurants/domain/entities/restaurant.entity';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
-import { IOrder, IOrderItem, IPayment } from '../domain/entities/order.entity';
+import { IOrder, IOrderItem, IPayment, OrderStatus } from '../domain/entities/order.entity';
 import { AsaasClient } from '../../payments-asaas/infra/asaas-client';
 import { MercadoPagoClient } from '../../payments-mercadopago/infra/mercado-pago-client';
 import { IFoodAuthService } from '../../ifood-integration/infra/ifood-auth.service';
@@ -541,80 +541,7 @@ export class OrdersController extends BaseRouter {
           await this.tryConfirmOrderViaIFood(updated);
         }
 
-        // specs/0013-notificacoes-whatsapp REQ-2/REQ-4 — mesma lógica fire-and-forget do REQ-1.
-        void this.whatsAppNotificationService.sendOrderStatusUpdate(updated).catch((error) => {
-          console.error(`[whatsapp] erro inesperado enviando atualização de status do pedido ${updated.id}:`, error);
-        });
-
-        // specs/0014-financeiro REQ-5 — delivery e retirada lançam o movimento ao chegar em
-        // "entregue" (não há status separado pros dois). Pedido de mesa lança um movimento por
-        // pagamento, no `TableOrderService`, e não de novo aqui. Sem sessão aberta o serviço
-        // não grava nada. Protegido por try/catch: falha na contabilização não reverte o status.
-        if (status === 'entregue' && this.recomputeRestaurantBilling) {
-          void this.recomputeRestaurantBilling.call(updated.restaurantId).catch((error) => {
-            console.error(`[billing] falha ao recalcular faturamento do restaurante ${updated.restaurantId}:`, error);
-          });
-        }
-        if (status === 'entregue' && updated.orderType !== 'table') {
-          try {
-            await this.cashRegisterService.addAutomaticEntry({
-              restaurantId: updated.restaurantId,
-              orderId: updated.id,
-              orderNumber: updated.orderNumber,
-              amount: updated.total,
-              paymentMethod: updated.paymentMethod,
-            });
-          } catch (error) {
-            console.error(`[financeiro] erro inesperado lançando movimento automático de caixa do pedido ${updated.id}:`, error);
-          }
-
-        }
-        // specs/0131-cashback-app REQ-2 / specs/0132-programa-fidelidade-app REQ-2/REQ-3 — mesmo
-        // corte de `orderType !== 'table'` e mesmo try/catch não-bloqueante do caixa automático
-        // acima: falha ao creditar nunca reverte o status, que já avançou.
-        if (status === 'entregue' && updated.orderType !== 'table' && this.customerBalanceService) {
-          try {
-            const restaurant = await this.restaurantRepository.findById(updated.restaurantId);
-            if (restaurant?.cashbackPercent) {
-              // `updated.total` já é líquido do cashback resgatado no mesmo pedido (`total =
-              // subtotal + deliveryFee - discount - cashbackUsed`) — "sem contar o cashback já
-              // resgatado nesse mesmo pedido" (REQ-2) cai de graça da própria definição de `total`.
-              const cashbackAmount = Math.round((restaurant.cashbackPercent / 100) * updated.total * 100) / 100;
-              if (cashbackAmount > 0) {
-                await this.customerBalanceService.creditCashback(updated.customerId, updated.restaurantId, cashbackAmount, updated.id);
-              }
-            }
-            // specs/0192-ajustes-banner-fidelidade-pix-asaas REQ-5/REQ-6 — mesma base de
-            // `updated.total` usada acima pro cashback percentual (já líquida do cashback
-            // resgatado no mesmo pedido); pedido abaixo do mínimo configurado não gera carimbo
-            // nenhum (nem avança nem retrocede o contador atual). Sem mínimo configurado
-            // (ausente/0), `?? 0` preserva o comportamento de antes desta spec: todo pedido conta.
-            const meetsLoyaltyMinOrderValue = updated.total >= (restaurant?.loyaltyMinOrderValue ?? 0);
-            if (restaurant?.loyaltyGoalOrders && meetsLoyaltyMinOrderValue) {
-              const stampCount = await this.customerBalanceService.incrementLoyaltyStamp(updated.customerId, updated.restaurantId);
-              if (stampCount >= restaurant.loyaltyGoalOrders) {
-                await this.customerBalanceService.creditLoyaltyReward(
-                  updated.customerId,
-                  updated.restaurantId,
-                  restaurant.loyaltyRewardValue ?? 0,
-                  updated.id,
-                );
-                await this.customerBalanceService.resetLoyaltyStamp(updated.customerId, updated.restaurantId);
-              }
-            }
-          } catch (error) {
-            console.error(`[customer-balance] erro inesperado creditando cashback/fidelidade do pedido ${updated.id}:`, error);
-          }
-        }
-
-        // specs/0091-integracao-fiscal-focusnfe REQ-2 — emissão fiscal automática, em paralelo,
-        // nunca bloqueando a resposta (o próprio serviço nunca lança — ver `FiscalEmissionService`
-        // — este catch é só defesa extra, mesmo padrão fire-and-forget do WhatsApp acima).
-        if (status === 'entregue' && this.fiscalEmissionService) {
-          void this.fiscalEmissionService.emitForOrder(updated).catch((error) => {
-            console.error(`[fiscal-integration] erro inesperado emitindo documento fiscal do pedido ${updated.id}:`, error);
-          });
-        }
+        await this.handleStatusChangeSideEffects(updated, status);
 
         res.json(200, updated);
       },
@@ -852,6 +779,105 @@ export class OrdersController extends BaseRouter {
     const order = await this.orderRepository.findById(id);
     if (!order || order.restaurantId !== restaurantId) throw new NotFoundError('Pedido não encontrado');
     return order;
+  }
+
+  /**
+   * Efeitos colaterais de uma mudança de status (WhatsApp/caixa automático/cashback-fidelidade/
+   * emissão fiscal quando "entregue") — extraído do handler de `PATCH /orders/:id/status` pra
+   * poder ser reusado por `markDeliveredViaExternalCourier` (specs/0121-integracao-uber-entregas
+   * REQ-6), sem duplicar a lógica quando uma entrega via Uber Direct é marcada como concluída.
+   */
+  private async handleStatusChangeSideEffects(updated: IOrder, status: OrderStatus): Promise<void> {
+    // specs/0013-notificacoes-whatsapp REQ-2/REQ-4 — mesma lógica fire-and-forget do REQ-1.
+    void this.whatsAppNotificationService.sendOrderStatusUpdate(updated).catch((error) => {
+      console.error(`[whatsapp] erro inesperado enviando atualização de status do pedido ${updated.id}:`, error);
+    });
+
+    // specs/0014-financeiro REQ-5 — delivery e retirada lançam o movimento ao chegar em
+    // "entregue" (não há status separado pros dois). Pedido de mesa lança um movimento por
+    // pagamento, no `TableOrderService`, e não de novo aqui. Sem sessão aberta o serviço
+    // não grava nada. Protegido por try/catch: falha na contabilização não reverte o status.
+    if (status === 'entregue' && this.recomputeRestaurantBilling) {
+      void this.recomputeRestaurantBilling.call(updated.restaurantId).catch((error) => {
+        console.error(`[billing] falha ao recalcular faturamento do restaurante ${updated.restaurantId}:`, error);
+      });
+    }
+    if (status === 'entregue' && updated.orderType !== 'table') {
+      try {
+        await this.cashRegisterService.addAutomaticEntry({
+          restaurantId: updated.restaurantId,
+          orderId: updated.id,
+          orderNumber: updated.orderNumber,
+          amount: updated.total,
+          paymentMethod: updated.paymentMethod,
+        });
+      } catch (error) {
+        console.error(`[financeiro] erro inesperado lançando movimento automático de caixa do pedido ${updated.id}:`, error);
+      }
+    }
+    // specs/0131-cashback-app REQ-2 / specs/0132-programa-fidelidade-app REQ-2/REQ-3 — mesmo
+    // corte de `orderType !== 'table'` e mesmo try/catch não-bloqueante do caixa automático
+    // acima: falha ao creditar nunca reverte o status, que já avançou.
+    if (status === 'entregue' && updated.orderType !== 'table' && this.customerBalanceService) {
+      try {
+        const restaurant = await this.restaurantRepository.findById(updated.restaurantId);
+        if (restaurant?.cashbackPercent) {
+          // `updated.total` já é líquido do cashback resgatado no mesmo pedido (`total =
+          // subtotal + deliveryFee - discount - cashbackUsed`) — "sem contar o cashback já
+          // resgatado nesse mesmo pedido" (REQ-2) cai de graça da própria definição de `total`.
+          const cashbackAmount = Math.round((restaurant.cashbackPercent / 100) * updated.total * 100) / 100;
+          if (cashbackAmount > 0) {
+            await this.customerBalanceService.creditCashback(updated.customerId, updated.restaurantId, cashbackAmount, updated.id);
+          }
+        }
+        // specs/0192-ajustes-banner-fidelidade-pix-asaas REQ-5/REQ-6 — mesma base de
+        // `updated.total` usada acima pro cashback percentual (já líquida do cashback
+        // resgatado no mesmo pedido); pedido abaixo do mínimo configurado não gera carimbo
+        // nenhum (nem avança nem retrocede o contador atual). Sem mínimo configurado
+        // (ausente/0), `?? 0` preserva o comportamento de antes desta spec: todo pedido conta.
+        const meetsLoyaltyMinOrderValue = updated.total >= (restaurant?.loyaltyMinOrderValue ?? 0);
+        if (restaurant?.loyaltyGoalOrders && meetsLoyaltyMinOrderValue) {
+          const stampCount = await this.customerBalanceService.incrementLoyaltyStamp(updated.customerId, updated.restaurantId);
+          if (stampCount >= restaurant.loyaltyGoalOrders) {
+            await this.customerBalanceService.creditLoyaltyReward(
+              updated.customerId,
+              updated.restaurantId,
+              restaurant.loyaltyRewardValue ?? 0,
+              updated.id,
+            );
+            await this.customerBalanceService.resetLoyaltyStamp(updated.customerId, updated.restaurantId);
+          }
+        }
+      } catch (error) {
+        console.error(`[customer-balance] erro inesperado creditando cashback/fidelidade do pedido ${updated.id}:`, error);
+      }
+    }
+
+    // specs/0091-integracao-fiscal-focusnfe REQ-2 — emissão fiscal automática, em paralelo,
+    // nunca bloqueando a resposta (o próprio serviço nunca lança — ver `FiscalEmissionService`
+    // — este catch é só defesa extra, mesmo padrão fire-and-forget do WhatsApp acima).
+    if (status === 'entregue' && this.fiscalEmissionService) {
+      void this.fiscalEmissionService.emitForOrder(updated).catch((error) => {
+        console.error(`[fiscal-integration] erro inesperado emitindo documento fiscal do pedido ${updated.id}:`, error);
+      });
+    }
+  }
+
+  /**
+   * specs/0121-integracao-uber-entregas REQ-6 — chamado pelo webhook da Uber Direct quando a
+   * entrega é marcada como "delivered". Só avança o status se o pedido estiver em
+   * `saiuParaEntrega` (transição válida, `isValidOrderStatusTransition`) — se estiver em outro
+   * estado (ex. ainda `emPreparo`), é um no-op silencioso: só quem chama
+   * (`UberDeliveryWebhookController`) já atualizou `Order.uberDelivery`, sem tentar forçar uma
+   * transição de status inválida.
+   */
+  async markDeliveredViaExternalCourier(orderId: string, restaurantId: string): Promise<void> {
+    const order = await this.orderRepository.findById(orderId);
+    if (!order || order.restaurantId !== restaurantId) return;
+    if (!isValidOrderStatusTransition(order.status, 'entregue')) return;
+
+    const updated = await this.orderRepository.updateStatus(order.id, 'entregue', restaurantId);
+    await this.handleStatusChangeSideEffects(updated, 'entregue');
   }
 
   private toPaymentSummary(payment: IPayment): Pick<IPayment, 'method' | 'status'> {

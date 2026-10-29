@@ -386,7 +386,7 @@ describe('OrdersController', () => {
     // specs/0091-integracao-fiscal-focusnfe REQ-2 — só o método usado pelo gatilho de "entregue".
     const fiscalEmissionService = overrides.fiscalEmissionService ?? { emitForOrder: jest.fn().mockResolvedValue(undefined) };
     const { application, routes } = buildFakeApplication();
-    new OrdersController(
+    const controller = new OrdersController(
       orderRepository as IOrderRepository,
       restaurantRepository as IRestaurantRepository,
       restaurantOperatorMiddleware,
@@ -405,8 +405,10 @@ describe('OrdersController', () => {
       customerBalanceService,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       fiscalEmissionService as any,
-    ).initializeRoutes(application);
+    );
+    controller.initializeRoutes(application);
     return {
+      controller,
       orderRepository,
       restaurantRepository,
       whatsAppNotificationService,
@@ -2804,5 +2806,43 @@ describe('OrdersController', () => {
         expect(orderRepository.updateStatus).not.toHaveBeenCalled();
       },
     );
+  });
+
+  // specs/0121-integracao-uber-entregas REQ-6 — chamado pelo webhook da Uber Direct quando a
+  // entrega é marcada como "delivered" (fora do fluxo normal de PATCH /status, que é só do
+  // operador logado).
+  describe('markDeliveredViaExternalCourier (specs/0121-integracao-uber-entregas REQ-6)', () => {
+    it('AC-5: pedido em "saiuParaEntrega" avança pra "entregue" e roda os mesmos efeitos colaterais (WhatsApp/caixa)', async () => {
+      const { controller, orderRepository, whatsAppNotificationService, cashRegisterService } = setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ status: 'saiuParaEntrega' })) },
+      });
+
+      await controller.markDeliveredViaExternalCourier('o-1', 'r-1');
+
+      expect(orderRepository.updateStatus).toHaveBeenCalledWith('o-1', 'entregue', 'r-1');
+      expect(whatsAppNotificationService.sendOrderStatusUpdate).toHaveBeenCalled();
+      expect(cashRegisterService.addAutomaticEntry).toHaveBeenCalled();
+    });
+
+    it('pedido ainda em "emPreparo" (transição inválida) é um no-op silencioso, nunca força o avanço', async () => {
+      const { controller, orderRepository, whatsAppNotificationService } = setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ status: 'emPreparo' })) },
+      });
+
+      await controller.markDeliveredViaExternalCourier('o-1', 'r-1');
+
+      expect(orderRepository.updateStatus).not.toHaveBeenCalled();
+      expect(whatsAppNotificationService.sendOrderStatusUpdate).not.toHaveBeenCalled();
+    });
+
+    it('pedido de outro restaurante nunca é alterado', async () => {
+      const { controller, orderRepository } = setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ status: 'saiuParaEntrega', restaurantId: 'r-2' })) },
+      });
+
+      await controller.markDeliveredViaExternalCourier('o-1', 'r-1');
+
+      expect(orderRepository.updateStatus).not.toHaveBeenCalled();
+    });
   });
 });

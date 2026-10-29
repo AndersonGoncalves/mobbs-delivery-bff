@@ -36,6 +36,13 @@ import { FiscalEmissionService } from './modules/fiscal-integration/domain/servi
 import { FiscalConfigController } from './modules/fiscal-integration/presentation/fiscal-config.controller';
 import { FiscalWebhookController } from './modules/fiscal-integration/presentation/fiscal-webhook.controller';
 import { FiscalOrderActionsController } from './modules/fiscal-integration/presentation/fiscal-order-actions.controller';
+import { UberDeliveryConfigMongooseRepository } from './modules/uber-direct-integration/infra/repositories/uber-delivery-config.mongoose.repository';
+import { UberDirectAuthService } from './modules/uber-direct-integration/infra/uber-direct-auth.service';
+import { UberDirectClient } from './modules/uber-direct-integration/infra/uber-direct-client';
+import { UberDeliveryDispatchService } from './modules/uber-direct-integration/domain/services/uber-delivery-dispatch.service';
+import { UberDeliveryConfigController } from './modules/uber-direct-integration/presentation/uber-delivery-config.controller';
+import { UberDeliveryWebhookController } from './modules/uber-direct-integration/presentation/uber-delivery-webhook.controller';
+import { UberDeliveryOrderActionsController } from './modules/uber-direct-integration/presentation/uber-delivery-order-actions.controller';
 import { PlatformResellersController } from './modules/resellers/presentation/platform-resellers.controller';
 import { buildResellerMiddleware } from './shared/http/reseller.middleware';
 import { RestaurantOperatorsController } from './modules/restaurant-operators/presentation/restaurant-operators.controller';
@@ -343,6 +350,49 @@ const platformBillingCycleService = new PlatformBillingCycleService({
   obligationIssuanceService,
   reconciliationService,
 });
+// specs/0121-integracao-uber-entregas — sem variável de ambiente nova (credenciais são por
+// restaurante, mesmo padrão do iFood/fiscal acima); `UberDirectAuthService`/`UberDirectClient`
+// são instâncias únicas compartilhadas (mesmo raciocínio de `ifoodAuthService`/`ifoodClient`).
+const uberDeliveryConfigRepository = new UberDeliveryConfigMongooseRepository();
+const uberDeliveryDispatchService = new UberDeliveryDispatchService(
+  orderRepository,
+  restaurantRepository,
+  customerRepository,
+  new UberDirectAuthService(),
+  new UberDirectClient(),
+);
+
+// specs/0121-integracao-uber-entregas REQ-6 — `UberDeliveryWebhookController` precisa chamar
+// `ordersController.markDeliveredViaExternalCourier` (reusa os mesmos efeitos colaterais do PATCH
+// /status), por isso a instância é guardada numa constante em vez de criada só dentro do array
+// de `bootstrap([...])` como os outros controllers abaixo.
+const ordersController = new OrdersController(
+  orderRepository,
+  restaurantRepository,
+  restaurantOperatorMiddleware,
+  whatsAppNotificationService,
+  cashRegisterService,
+  paymentRepository,
+  couponRepository,
+  productRepository,
+  stockMovementRepository,
+  customerRepository,
+  // specs/0137-papeis-garcom-motoboy REQ-6 — atribuição de motoboy ao pedido agora valida
+  // contra `RestaurantOperator` (papel `motoboy`), não mais contra `IMotoboyRepository`.
+  restaurantOperatorRepository,
+  // specs/0042 — faixa de faturamento recalculada a cada pedido entregue.
+  new RecomputeRestaurantBillingUseCase({
+    restaurantRepository,
+    orderRepository,
+    notifier: new BillingNotifier(whatsAppConnectionService),
+    billingSettingsRepository,
+  }),
+  new RestaurantTableMongooseRepository(),
+  rawMaterialRepository,
+  blockedCustomerRepository,
+  customerBalanceService,
+  fiscalEmissionService,
+);
 
 server
   .bootstrap([
@@ -392,33 +442,7 @@ server
       stockMovementRepository,
       restaurantRepository,
     ),
-    new OrdersController(
-      orderRepository,
-      restaurantRepository,
-      restaurantOperatorMiddleware,
-      whatsAppNotificationService,
-      cashRegisterService,
-      paymentRepository,
-      couponRepository,
-      productRepository,
-      stockMovementRepository,
-      customerRepository,
-      // specs/0137-papeis-garcom-motoboy REQ-6 — atribuição de motoboy ao pedido agora valida
-      // contra `RestaurantOperator` (papel `motoboy`), não mais contra `IMotoboyRepository`.
-      restaurantOperatorRepository,
-      // specs/0042 — faixa de faturamento recalculada a cada pedido entregue.
-      new RecomputeRestaurantBillingUseCase({
-        restaurantRepository,
-        orderRepository,
-        notifier: new BillingNotifier(whatsAppConnectionService),
-        billingSettingsRepository,
-      }),
-      new RestaurantTableMongooseRepository(),
-      rawMaterialRepository,
-      blockedCustomerRepository,
-      customerBalanceService,
-      fiscalEmissionService,
-    ),
+    ordersController,
     new BillingController(restaurantRepository, orderRepository, restaurantOperatorMiddleware, billingSettingsRepository),
     // Pedido explícito do usuário — página "Bloquear cliente".
     new CustomerBlockingController(blockedCustomerRepository, customerRepository, restaurantOperatorMiddleware),
@@ -592,6 +616,10 @@ server
     new FiscalConfigController(fiscalConfigRepository, restaurantOperatorMiddleware),
     new FiscalWebhookController(fiscalConfigRepository, orderRepository, fiscalEmissionService),
     new FiscalOrderActionsController(orderRepository, fiscalConfigRepository, fiscalEmissionService, restaurantOperatorMiddleware),
+    // specs/0121-integracao-uber-entregas REQ-1/REQ-2/REQ-3/REQ-4/REQ-5/REQ-6.
+    new UberDeliveryConfigController(uberDeliveryConfigRepository, restaurantOperatorMiddleware),
+    new UberDeliveryWebhookController(uberDeliveryConfigRepository, orderRepository, ordersController),
+    new UberDeliveryOrderActionsController(orderRepository, uberDeliveryConfigRepository, uberDeliveryDispatchService, restaurantOperatorMiddleware),
     // specs/0189-painel-revenda.
     new ResellerController(resellerRepository, resellerProspectRepository, resellerClientRepository, restaurantRepository, resellerMiddleware),
     new PlatformResellersController(

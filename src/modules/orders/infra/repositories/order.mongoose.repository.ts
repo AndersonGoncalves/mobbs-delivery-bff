@@ -1,6 +1,6 @@
 import { randomBytes } from 'crypto';
 
-import { IOrder, IOrderFiscal, IOrderItem, ISalesSummary, OrderStatus, OrderType, PaymentMethod } from '../../domain/entities/order.entity';
+import { IOrder, IOrderFiscal, IOrderItem, IOrderUberDelivery, ISalesSummary, OrderStatus, OrderType, PaymentMethod } from '../../domain/entities/order.entity';
 import { IOrderRepository, NewOrderInput } from '../../domain/repositories/order.repository.interface';
 import { OrderCounterModel } from '../models/order-counter.mongoose.model';
 import { OrderModel } from '../models/order.mongoose.model';
@@ -45,6 +45,7 @@ interface OrderLeanDocument {
   estimatedDeliveryAt?: Date;
   autoPrintStatus?: 'printed';
   fiscal?: IOrderFiscal;
+  uberDelivery?: IOrderUberDelivery;
 }
 
 function toEntity(doc: OrderLeanDocument): IOrder {
@@ -92,6 +93,7 @@ function toEntity(doc: OrderLeanDocument): IOrder {
     estimatedDeliveryAt: doc.estimatedDeliveryAt?.toISOString(),
     autoPrintStatus: doc.autoPrintStatus,
     fiscal: doc.fiscal,
+    uberDelivery: doc.uberDelivery,
   };
 }
 
@@ -210,6 +212,16 @@ export class OrderMongooseRepository implements IOrderRepository {
   async updateFiscal(id: string, fiscal: IOrderFiscal): Promise<IOrder> {
     const doc = await OrderModel.findByIdAndUpdate(id, { $set: { fiscal } }, { new: true }).lean<OrderLeanDocument>();
     return toEntity(doc as OrderLeanDocument);
+  }
+
+  async updateUberDelivery(id: string, uberDelivery: IOrderUberDelivery): Promise<IOrder> {
+    const doc = await OrderModel.findByIdAndUpdate(id, { $set: { uberDelivery } }, { new: true }).lean<OrderLeanDocument>();
+    return toEntity(doc as OrderLeanDocument);
+  }
+
+  async findByUberDeliveryId(restaurantId: string, deliveryId: string): Promise<IOrder | null> {
+    const doc = await OrderModel.findOne({ restaurantId, 'uberDelivery.deliveryId': deliveryId }).lean<OrderLeanDocument>();
+    return doc ? toEntity(doc) : null;
   }
 
   async findActiveTableOrder(restaurantId: string, tableId?: string): Promise<IOrder | null> {

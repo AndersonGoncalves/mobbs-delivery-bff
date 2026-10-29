@@ -1,4 +1,4 @@
-import { IOrder, IOrderFiscal, IOrderItem, ISalesSummary, OrderStatus, OrderType, PaymentMethod } from '../entities/order.entity';
+import { IOrder, IOrderFiscal, IOrderItem, IOrderUberDelivery, ISalesSummary, OrderStatus, OrderType, PaymentMethod } from '../entities/order.entity';
 
 /**
  * specs/0005-checkout REQ-2/REQ-5 — `create()` gera `orderNumber` (sequencial por
@@ -178,4 +178,13 @@ export interface IOrderRepository {
    * PATCH/merge parcial — quem chama, `FiscalEmissionService`, já monta o objeto inteiro a cada
    * transição de status fiscal). */
   updateFiscal(id: string, fiscal: IOrderFiscal): Promise<IOrder>;
+
+  /** specs/0121-integracao-uber-entregas — substitui `Order.uberDelivery` por completo (mesmo
+   * padrão de `updateFiscal`, nunca PATCH/merge parcial). */
+  updateUberDelivery(id: string, uberDelivery: IOrderUberDelivery): Promise<IOrder>;
+
+  /** specs/0121-integracao-uber-entregas REQ-3 — resolve o pedido a partir do `delivery_id` que
+   * a própria Uber escolhe (diferente da FocusNFe, cujo `ref` É o `Order.id` — aqui precisa de
+   * uma busca dedicada, já que o webhook só manda o `delivery_id` da Uber). */
+  findByUberDeliveryId(restaurantId: string, deliveryId: string): Promise<IOrder | null>;
 }

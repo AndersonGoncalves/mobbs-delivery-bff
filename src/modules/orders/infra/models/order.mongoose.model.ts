@@ -101,6 +101,17 @@ const orderFiscalSchema = new Schema(
   { _id: false },
 );
 
+// specs/0121-integracao-uber-entregas (ver IOrderUberDelivery).
+const orderUberDeliverySchema = new Schema(
+  {
+    status: { type: String, enum: ['solicitado', 'aceito', 'a_caminho', 'entregue', 'cancelado'], required: true },
+    deliveryId: { type: String },
+    quoteId: { type: String },
+    trackingUrl: { type: String },
+  },
+  { _id: false },
+);
+
 const orderSchema = new Schema(
   {
     _id: { type: String, default: () => randomUUID() },
@@ -153,6 +164,8 @@ const orderSchema = new Schema(
     autoPrintStatus: { type: String, enum: ['printed'] },
     // specs/0091-integracao-fiscal-focusnfe — ausente = sem integração fiscal/ainda não emitido.
     fiscal: { type: orderFiscalSchema, default: undefined },
+    // specs/0121-integracao-uber-entregas — ausente = sem entrega via Uber Direct.
+    uberDelivery: { type: orderUberDeliverySchema, default: undefined },
   },
   { _id: false, timestamps: { createdAt: true, updatedAt: false } },
 );
