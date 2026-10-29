@@ -82,4 +82,68 @@ describe('mapNinetyNineFoodOrderToNewOrderInput (specs/0122-integracao-99food RE
 
     expect(input.orderType).not.toBe('table');
   });
+
+  // specs/0130-integracao-99-entrega.
+  describe('ninetyNineFoodDeliveryAddress', () => {
+    it('extrai o endereço estruturado quando os campos mínimos estão presentes', () => {
+      const orderInfo = buildOrderInfo({
+        receive_address: {
+          name: 'Ana',
+          street_name: 'Rua Ceara',
+          street_number: '469',
+          complement: 'Apto 283',
+          district: 'Centro',
+          city: 'Andradina',
+          state: 'SP',
+          country: 'BRASIL',
+          postal_code: '06053-020',
+          poi_lat: -21.1162,
+          poi_lng: -51.67721,
+        },
+      });
+
+      const input = mapNinetyNineFoodOrderToNewOrderInput(orderInfo, 'restaurant-1', 'customer-1');
+
+      expect(input.ninetyNineFoodDeliveryAddress).toEqual({
+        street: 'Rua Ceara',
+        number: '469',
+        complement: 'Apto 283',
+        neighborhood: 'Centro',
+        city: 'Andradina',
+        state: 'SP',
+        country: 'BRASIL',
+        zipCode: '06053-020',
+        lat: -21.1162,
+        lng: -51.67721,
+      });
+    });
+
+    it('usa house_number quando street_number não vem', () => {
+      const orderInfo = buildOrderInfo({
+        receive_address: { street_name: 'Rua X', house_number: '10', district: 'Bairro', city: 'SP', state: 'SP', postal_code: '01000-000' },
+      });
+
+      const input = mapNinetyNineFoodOrderToNewOrderInput(orderInfo, 'restaurant-1', 'customer-1');
+
+      expect(input.ninetyNineFoodDeliveryAddress?.number).toBe('10');
+    });
+
+    it('fica ausente quando faltam campos mínimos (endereço mascarado por privacidade, plan.md "Riscos")', () => {
+      const orderInfo = buildOrderInfo({
+        receive_address: { name: 'privacy protection', poi_address: 'privacy protection' },
+      });
+
+      const input = mapNinetyNineFoodOrderToNewOrderInput(orderInfo, 'restaurant-1', 'customer-1');
+
+      expect(input.ninetyNineFoodDeliveryAddress).toBeUndefined();
+    });
+
+    it('fica ausente quando receive_address não vem', () => {
+      const orderInfo = buildOrderInfo({ receive_address: undefined });
+
+      const input = mapNinetyNineFoodOrderToNewOrderInput(orderInfo, 'restaurant-1', 'customer-1');
+
+      expect(input.ninetyNineFoodDeliveryAddress).toBeUndefined();
+    });
+  });
 });

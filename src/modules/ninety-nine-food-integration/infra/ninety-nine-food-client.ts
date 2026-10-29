@@ -18,10 +18,13 @@ interface NinetyNineFoodApiResponse<T> {
 export class NinetyNineFoodClient {
   constructor(private readonly baseUrl: string) {}
 
-  private async request<T>(method: string, path: string, params: Record<string, string>): Promise<T> {
+  private async request<T>(method: string, path: string, params: Record<string, unknown>): Promise<T> {
     let response: Response;
     if (method === 'GET') {
-      const query = new URLSearchParams(params).toString();
+      // specs/0130-integracao-99-entrega — `Get Entrega Order Details` é o único GET com params
+      // (sempre strings planas: auth_token + order_id/entrega_order_id), por isso o cast abaixo
+      // é seguro; nenhum endpoint GET desta classe usa objeto aninhado.
+      const query = new URLSearchParams(params as Record<string, string>).toString();
       response = await fetch(`${this.baseUrl}${path}?${query}`, { method: 'GET' });
     } else {
       response = await fetch(`${this.baseUrl}${path}`, {
@@ -87,4 +90,140 @@ export class NinetyNineFoodClient {
       ...(reason ? { reason } : {}),
     });
   }
+
+  // --- specs/0130-integracao-99-entrega — seção "Entrega API" do mesmo portal, mesmo
+  // `auth_token` de loja das chamadas acima. Ver `plan.md`, "Resumo da API real".
+
+  /** `POST /v3/entrega/authorization/register` — REQ-1, uma vez por loja. */
+  async activateEntregaService(authToken: string): Promise<void> {
+    await this.request<Record<string, never>>('POST', '/v3/entrega/authorization/register', { auth_token: authToken });
+  }
+
+  /** `POST /v3/entrega/order/estimation` — devolve o `estimate_id` (só serve pra uma entrega) e
+   * o preço em centavos. */
+  async estimateEntregaPrice(authToken: string, address: EntregaEstimationAddresses): Promise<EntregaEstimation> {
+    const data = await this.request<{
+      id: string;
+      fee: number;
+      currency: string;
+      created_time: number;
+      expires_time: number;
+      delivery_distance: number;
+      delivery_duration: number;
+    }>('POST', '/v3/entrega/order/estimation', {
+      auth_token: authToken,
+      vehicle_type: 'entrega_moto',
+      pickup_info: toEntregaLocationInfo(address.pickup),
+      dropoff_info: toEntregaLocationInfo(address.dropoff),
+    });
+    return { estimateId: data.id, fee: data.fee, currency: data.currency, expiresAt: data.expires_time };
+  }
+
+  /** `POST /v3/entrega/order/place` — `orderId` é o id do pedido no sistema da 99Food
+   * ("99Food order ID" na doc), não o nosso `Order.id`. Endereços devem ser IDÊNTICOS aos usados
+   * na cotação (doc oficial). */
+  async placeEntregaOrder(authToken: string, orderId: string, estimateId: string, address: EntregaEstimationAddresses): Promise<EntregaPlacedOrder> {
+    const data = await this.request<{ entrega: { order_id: string }; order_id: string }>('POST', '/v3/entrega/order/place', {
+      auth_token: authToken,
+      vehicle_type: 'entrega_moto',
+      order_id: orderId,
+      pickup_info: toEntregaContactInfo(address.pickup),
+      dropoff_info: toEntregaContactInfo(address.dropoff),
+      // Sem rastreio de peso real do pedido — aproximação documentada em `plan.md`.
+      package_info: { package_type: 'food', package_weight: '5kg' },
+      estimate_id: estimateId,
+    });
+    return { entregaOrderId: data.entrega.order_id };
+  }
+
+  /** `GET /v3/entrega/order/detail` — exatamente um de `orderId`/`entregaOrderId`. */
+  async getEntregaOrderDetails(authToken: string, ids: { orderId?: string; entregaOrderId?: string }): Promise<EntregaOrderDetails> {
+    const data = await this.request<{
+      status: EntregaRawStatus;
+      tracking_link?: string;
+      driver_info?: { name?: string; phone?: string };
+    }>('GET', '/v3/entrega/order/detail', {
+      auth_token: authToken,
+      ...(ids.orderId ? { order_id: ids.orderId } : {}),
+      ...(ids.entregaOrderId ? { entrega_order_id: ids.entregaOrderId } : {}),
+    });
+    return { status: data.status, trackingLink: data.tracking_link, courierName: data.driver_info?.name, courierPhone: data.driver_info?.phone };
+  }
+
+  /** `POST /v3/entrega/order/cancel` — `410018` é o único `reason_id` suportado pela doc
+   * ("Delivery no longer needed"). */
+  async cancelEntregaOrder(authToken: string, ids: { orderId?: string; entregaOrderId?: string }): Promise<void> {
+    await this.request<boolean>('POST', '/v3/entrega/order/cancel', {
+      auth_token: authToken,
+      ...(ids.orderId ? { order_id: ids.orderId } : {}),
+      ...(ids.entregaOrderId ? { entrega_order_id: ids.entregaOrderId } : {}),
+      reason_id: '410018',
+    });
+  }
+}
+
+export interface EntregaAddress {
+  street: string;
+  number?: string;
+  complement?: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+  country: string;
+  zipCode: string;
+  lat?: number;
+  lng?: number;
+  name: string;
+  phone?: string;
+  note?: string;
+}
+
+export interface EntregaEstimationAddresses {
+  pickup: EntregaAddress;
+  dropoff: EntregaAddress;
+}
+
+export interface EntregaEstimation {
+  estimateId: string;
+  fee: number;
+  currency: string;
+  expiresAt: number;
+}
+
+export interface EntregaPlacedOrder {
+  entregaOrderId: string;
+}
+
+export type EntregaRawStatus = 'finding' | 'waiting' | 'delivering' | 'completed' | 'canceled' | 'closed' | 'sendback' | 'sendbackCompleted';
+
+export interface EntregaOrderDetails {
+  status: EntregaRawStatus;
+  trackingLink?: string;
+  courierName?: string;
+  courierPhone?: string;
+}
+
+function toEntregaLocationInfo(address: EntregaAddress) {
+  return {
+    structured_address: {
+      street: address.street,
+      number: address.number,
+      complement: address.complement,
+      neighborhood: address.neighborhood,
+      city: address.city,
+      state: address.state,
+      country: address.country,
+      cep: address.zipCode,
+    },
+    ...(address.lat !== undefined && address.lng !== undefined ? { location: { lat: address.lat, lng: address.lng } } : {}),
+  };
+}
+
+function toEntregaContactInfo(address: EntregaAddress) {
+  return {
+    ...toEntregaLocationInfo(address),
+    name: address.name,
+    phone: address.phone,
+    note: address.note ?? '',
+  };
 }

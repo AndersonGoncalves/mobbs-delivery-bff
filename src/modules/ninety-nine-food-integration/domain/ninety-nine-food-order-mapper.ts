@@ -1,4 +1,4 @@
-import { IOrderItem } from '../../orders/domain/entities/order.entity';
+import { INinetyNineFoodDeliveryAddress, IOrderItem } from '../../orders/domain/entities/order.entity';
 import { NewOrderInput } from '../../orders/domain/repositories/order.repository.interface';
 
 /** Payload `data.order_info` do webhook `orderNew` (`plan.md`, "Resumo da API real") — campos de
@@ -20,6 +20,19 @@ export interface NinetyNineFoodOrderInfo {
     phone?: string;
     poi_address?: string;
     poi_display_name?: string;
+    // specs/0130-integracao-99-entrega — endereço estruturado, só usado pra montar
+    // `dropoff_info` da API de 99 Entrega (ver `ninetyNineFoodDeliveryAddress` abaixo).
+    street_name?: string;
+    street_number?: string;
+    house_number?: string;
+    complement?: string;
+    district?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    postal_code?: string;
+    poi_lat?: number;
+    poi_lng?: number;
   };
   order_items: {
     app_item_id: string;
@@ -57,6 +70,27 @@ export function mapNinetyNineFoodOrderToNewOrderInput(
   // ordem de probabilidade, documentado como risco em `plan.md`.
   const total = orderInfo.price.real_pay_price ?? orderInfo.price.customer_need_paying_money ?? orderInfo.price.order_price;
 
+  // specs/0130-integracao-99-entrega — endereço estruturado pra `dropoff_info` da Entrega; só
+  // existe se os campos mínimos (logradouro, bairro, cidade, estado, CEP) vierem presentes —
+  // ausentes na variante "Being Processed" da Política de Privacidade da 99Food
+  // (`plan.md`, "Riscos"), caso em que o despacho de Entrega não poderá ser feito pra este pedido.
+  const address = orderInfo.receive_address;
+  const ninetyNineFoodDeliveryAddress: INinetyNineFoodDeliveryAddress | undefined =
+    address?.street_name && address?.district && address?.city && address?.state && address?.postal_code
+      ? {
+          street: address.street_name,
+          number: address.street_number || address.house_number,
+          complement: address.complement,
+          neighborhood: address.district,
+          city: address.city,
+          state: address.state,
+          country: address.country || 'BRASIL',
+          zipCode: address.postal_code,
+          lat: address.poi_lat,
+          lng: address.poi_lng,
+        }
+      : undefined;
+
   return {
     customerId,
     restaurantId,
@@ -66,6 +100,7 @@ export function mapNinetyNineFoodOrderToNewOrderInput(
     source: '99food',
     ninetyNineFoodOrderId: orderInfo.order_id,
     deliveryAddress: orderInfo.receive_address?.poi_address || orderInfo.receive_address?.poi_display_name,
+    ninetyNineFoodDeliveryAddress,
     notes: orderInfo.remark,
     subtotal,
     deliveryFee,

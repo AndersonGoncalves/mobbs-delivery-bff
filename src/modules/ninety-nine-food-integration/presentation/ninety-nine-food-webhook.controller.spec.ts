@@ -40,6 +40,7 @@ describe('NinetyNineFoodWebhookController (specs/0122-integracao-99food REQ-1/RE
     customerRepository?: Partial<ICustomerRepository>;
     orderRepository?: Partial<IOrderRepository>;
     ninetyNineFoodAuthService?: Partial<NinetyNineFoodAuthService>;
+    ordersController?: { markDeliveredViaExternalCourier: jest.Mock };
   } = {}) {
     const restaurantRepository: Partial<IRestaurantRepository> = {
       findOldestPendingNinetyNineFoodAuthorization: jest.fn().mockResolvedValue(buildRestaurant()),
@@ -53,12 +54,15 @@ describe('NinetyNineFoodWebhookController (specs/0122-integracao-99food REQ-1/RE
     };
     const orderRepository: Partial<IOrderRepository> = {
       create: jest.fn().mockResolvedValue({ id: 'order-1' }),
+      findByNinetyNineFoodOrderId: jest.fn().mockResolvedValue(null),
+      updateEntregaDelivery: jest.fn().mockResolvedValue({ id: 'order-1', restaurantId: 'restaurant-1' }),
       ...overrides.orderRepository,
     };
     const ninetyNineFoodAuthService: Partial<NinetyNineFoodAuthService> = {
       getAuthtokenForNewBinding: jest.fn().mockResolvedValue({ authToken: 'token-novo', tokenExpiresAt: '2026-11-05T00:00:00.000Z' }),
       ...overrides.ninetyNineFoodAuthService,
     };
+    const ordersController = overrides.ordersController ?? { markDeliveredViaExternalCourier: jest.fn().mockResolvedValue(undefined) };
 
     const { application, routes } = buildApp();
     new NinetyNineFoodWebhookController(
@@ -67,9 +71,10 @@ describe('NinetyNineFoodWebhookController (specs/0122-integracao-99food REQ-1/RE
       orderRepository as IOrderRepository,
       ninetyNineFoodAuthService as NinetyNineFoodAuthService,
       APP_SECRET,
+      ordersController,
     ).initializeRoutes(application);
 
-    return { restaurantRepository, customerRepository, orderRepository, ninetyNineFoodAuthService, routes };
+    return { restaurantRepository, customerRepository, orderRepository, ninetyNineFoodAuthService, ordersController, routes };
   }
 
   it('assinatura inválida responde 401 sem processar o payload', async () => {
@@ -184,6 +189,80 @@ describe('NinetyNineFoodWebhookController (specs/0122-integracao-99food REQ-1/RE
       await routes['POST /webhooks/99food'][0](signedRequest(rawBody), { send });
 
       expect(orderRepository.create).not.toHaveBeenCalled();
+      expect(send).toHaveBeenCalledWith(200);
+    });
+  });
+
+  describe('deliveryStatus (specs/0130-integracao-99-entrega REQ-5/REQ-7)', () => {
+    function buildOrderWithEntrega(overrides: Record<string, unknown> = {}) {
+      return {
+        id: 'order-1',
+        restaurantId: 'restaurant-1',
+        entregaDelivery: { status: 'aceito', entregaOrderId: 'entrega-1', estimateId: 'estimate-1', fee: 600 },
+        ...overrides,
+      };
+    }
+
+    it('delivery_status 160 (FINISH) marca entregaDelivery.status "entregue" e chama markDeliveredViaExternalCourier', async () => {
+      const { orderRepository, ordersController, routes } = setup({
+        orderRepository: { findByNinetyNineFoodOrderId: jest.fn().mockResolvedValue(buildOrderWithEntrega()) },
+      });
+      const rawBody = JSON.stringify({ app_id: '123', type: 'deliveryStatus', timestamp: 1, data: { order_id: 1, delivery_status: 160 } });
+      const send = jest.fn();
+
+      await routes['POST /webhooks/99food'][0](signedRequest(rawBody), { send });
+
+      expect(orderRepository.updateEntregaDelivery).toHaveBeenCalledWith('order-1', expect.objectContaining({ status: 'entregue' }));
+      expect(ordersController.markDeliveredViaExternalCourier).toHaveBeenCalledWith('order-1', 'restaurant-1');
+      expect(send).toHaveBeenCalledWith(200);
+    });
+
+    it('delivery_status 140 (TAKEN) marca "a_caminho" sem chamar markDeliveredViaExternalCourier', async () => {
+      const { orderRepository, ordersController, routes } = setup({
+        orderRepository: { findByNinetyNineFoodOrderId: jest.fn().mockResolvedValue(buildOrderWithEntrega()) },
+      });
+      const rawBody = JSON.stringify({ app_id: '123', type: 'deliveryStatus', timestamp: 1, data: { order_id: 1, delivery_status: 140 } });
+      const send = jest.fn();
+
+      await routes['POST /webhooks/99food'][0](signedRequest(rawBody), { send });
+
+      expect(orderRepository.updateEntregaDelivery).toHaveBeenCalledWith('order-1', expect.objectContaining({ status: 'a_caminho' }));
+      expect(ordersController.markDeliveredViaExternalCourier).not.toHaveBeenCalled();
+    });
+
+    it('delivery_status 170 (CANCEL) marca "cancelado" sem marcar entregue', async () => {
+      const { orderRepository, ordersController, routes } = setup({
+        orderRepository: { findByNinetyNineFoodOrderId: jest.fn().mockResolvedValue(buildOrderWithEntrega()) },
+      });
+      const rawBody = JSON.stringify({ app_id: '123', type: 'deliveryStatus', timestamp: 1, data: { order_id: 1, delivery_status: 170 } });
+      const send = jest.fn();
+
+      await routes['POST /webhooks/99food'][0](signedRequest(rawBody), { send });
+
+      expect(orderRepository.updateEntregaDelivery).toHaveBeenCalledWith('order-1', expect.objectContaining({ status: 'cancelado' }));
+      expect(ordersController.markDeliveredViaExternalCourier).not.toHaveBeenCalled();
+    });
+
+    it('pedido sem entregaDelivery (entrega da própria 99Food, nunca despachada por nós) não faz nada', async () => {
+      const { orderRepository, routes } = setup({
+        orderRepository: { findByNinetyNineFoodOrderId: jest.fn().mockResolvedValue({ id: 'order-2', restaurantId: 'restaurant-1' }) },
+      });
+      const rawBody = JSON.stringify({ app_id: '123', type: 'deliveryStatus', timestamp: 1, data: { order_id: 1, delivery_status: 160 } });
+      const send = jest.fn();
+
+      await routes['POST /webhooks/99food'][0](signedRequest(rawBody), { send });
+
+      expect(orderRepository.updateEntregaDelivery).not.toHaveBeenCalled();
+      expect(send).toHaveBeenCalledWith(200);
+    });
+
+    it('order_id desconhecido responde 200 sem erro', async () => {
+      const { routes } = setup({ orderRepository: { findByNinetyNineFoodOrderId: jest.fn().mockResolvedValue(null) } });
+      const rawBody = JSON.stringify({ app_id: '123', type: 'deliveryStatus', timestamp: 1, data: { order_id: 1, delivery_status: 160 } });
+      const send = jest.fn();
+
+      await routes['POST /webhooks/99food'][0](signedRequest(rawBody), { send });
+
       expect(send).toHaveBeenCalledWith(200);
     });
   });

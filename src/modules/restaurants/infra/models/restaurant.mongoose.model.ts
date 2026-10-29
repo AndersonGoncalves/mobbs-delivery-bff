@@ -224,6 +224,8 @@ const restaurantSchema = new Schema(
     ninetyNineFoodTokenExpiresAt: { type: String },
     ninetyNineFoodConnectedAt: { type: String },
     ninetyNineFoodAuthorizationPendingAt: { type: String },
+    // specs/0130-integracao-99-entrega.
+    ninetyNineFoodEntregaActivatedAt: { type: String },
     // Pedido explícito do usuário — tempo médio de atendimento mostrado no app do cliente, por
     // modalidade; defaults vindos do exemplo mostrado (40-60min delivery, 20-40min balcão).
     deliveryTimeMinMinutes: { type: Number, required: true, default: 40 },

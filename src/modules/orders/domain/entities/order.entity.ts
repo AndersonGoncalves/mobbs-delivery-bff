@@ -205,6 +205,58 @@ export interface IOrder {
    * nota de risco em `specs/0122-integracao-99food/plan.md` sobre o equivalente do iFood.
    */
   ninetyNineFoodOrderId?: string;
+  /**
+   * specs/0130-integracao-99-entrega — endereço estruturado do cliente, capturado a partir do
+   * `receive_address` do webhook `orderNew` (specs/0122). Só presente em pedidos `source ===
+   * '99food'`; existe exclusivamente pra alimentar `dropoff_info` da API de 99 Entrega
+   * (`Order.deliveryAddress` é só uma string formatada, insuficiente pro contrato estruturado
+   * daquela API). Pode vir ausente/mascarado se o `receive_address` original estiver na variante
+   * "Being Processed" da Política de Privacidade da 99Food — nesse caso o despacho de Entrega
+   * falha por endereço inválido, sem solução possível do nosso lado (`plan.md`, "Riscos").
+   */
+  ninetyNineFoodDeliveryAddress?: INinetyNineFoodDeliveryAddress;
+  /**
+   * specs/0130-integracao-99-entrega REQ-2/REQ-4/REQ-5/REQ-9 — entrega avulsa via 99 Entrega,
+   * despachada manualmente pelo operador, só disponível pra pedidos de origem `99food` (a API
+   * exige um `order_id` que é o id do pedido no sistema da 99Food — ver `plan.md`, "Resumo da
+   * API real"). Ausente = pedido sem entrega via 99 Entrega (usa motoboy próprio, ou ainda não
+   * despachado). Status mapeado do `delivery_status` bruto da 99Food: `120 ASSIGNED`/
+   * `130 ARRIVED_AT_B`→`aceito`, `140 TAKEN`/`150 ARRIVED_AT_C`→`a_caminho`,
+   * `160 FINISH`→`entregue`, `170 CANCEL`/`190 ABORTED`→`cancelado`,
+   * `180 REASSIGNED`→`aceito` (reatribuído, ainda ativo).
+   */
+  entregaDelivery?: IOrderEntregaDelivery;
+}
+
+/** specs/0130-integracao-99-entrega — ver `IOrder.ninetyNineFoodDeliveryAddress`. */
+export interface INinetyNineFoodDeliveryAddress {
+  street: string;
+  number?: string;
+  complement?: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+  country: string;
+  zipCode: string;
+  lat?: number;
+  lng?: number;
+}
+
+export type EntregaDeliveryStatus = 'solicitado' | 'aceito' | 'a_caminho' | 'entregue' | 'cancelado';
+
+/** specs/0130-integracao-99-entrega — ver `IOrder.entregaDelivery`. */
+export interface IOrderEntregaDelivery {
+  status: EntregaDeliveryStatus;
+  /** Id da entrega no sistema da 99Entrega (distinto do `ninetyNineFoodOrderId`, que é o id do
+   * pedido no 99Food) — usado pra consultar/cancelar via `entrega_order_id`. */
+  entregaOrderId?: string;
+  /** Id da cotação usada pra criar esta entrega — só serve pra uma entrega, nunca reaproveitado. */
+  estimateId?: string;
+  /** Preço cotado, em centavos. */
+  fee?: number;
+  trackingLink?: string;
+  courierName?: string;
+  courierPhone?: string;
 }
 
 export type FiscalDocumentStatus = 'pendente' | 'emitido' | 'rejeitado' | 'cancelado';

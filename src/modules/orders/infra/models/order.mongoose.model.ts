@@ -112,6 +112,37 @@ const orderUberDeliverySchema = new Schema(
   { _id: false },
 );
 
+// specs/0130-integracao-99-entrega (ver INinetyNineFoodDeliveryAddress).
+const ninetyNineFoodDeliveryAddressSchema = new Schema(
+  {
+    street: { type: String, required: true },
+    number: { type: String },
+    complement: { type: String },
+    neighborhood: { type: String, required: true },
+    city: { type: String, required: true },
+    state: { type: String, required: true },
+    country: { type: String, required: true },
+    zipCode: { type: String, required: true },
+    lat: { type: Number },
+    lng: { type: Number },
+  },
+  { _id: false },
+);
+
+// specs/0130-integracao-99-entrega (ver IOrderEntregaDelivery).
+const orderEntregaDeliverySchema = new Schema(
+  {
+    status: { type: String, enum: ['solicitado', 'aceito', 'a_caminho', 'entregue', 'cancelado'], required: true },
+    entregaOrderId: { type: String },
+    estimateId: { type: String },
+    fee: { type: Number },
+    trackingLink: { type: String },
+    courierName: { type: String },
+    courierPhone: { type: String },
+  },
+  { _id: false },
+);
+
 const orderSchema = new Schema(
   {
     _id: { type: String, default: () => randomUUID() },
@@ -126,8 +157,11 @@ const orderSchema = new Schema(
     // todo documento já existente antes desta spec).
     source: { type: String, enum: ['totem', 'operador-web', 'operador-extensao', 'ifood', 'comanda', '99food'] },
     // specs/0122-integracao-99food — id do pedido no sistema da 99Food (string, nunca number —
-    // inteiro de 64 bits perderia precisão).
-    ninetyNineFoodOrderId: { type: String },
+    // inteiro de 64 bits perderia precisão). Índice não-único — specs/0130 resolve o pedido a
+    // partir disso no webhook deliveryStatus (findByNinetyNineFoodOrderId).
+    ninetyNineFoodOrderId: { type: String, index: true },
+    // specs/0130-integracao-99-entrega.
+    ninetyNineFoodDeliveryAddress: { type: ninetyNineFoodDeliveryAddressSchema, default: undefined },
     // specs/0174-pdv-extensao-chrome-lateral REQ-22.
     operatorId: { type: String },
     deliveryAddress: { type: String },
@@ -169,6 +203,8 @@ const orderSchema = new Schema(
     fiscal: { type: orderFiscalSchema, default: undefined },
     // specs/0121-integracao-uber-entregas — ausente = sem entrega via Uber Direct.
     uberDelivery: { type: orderUberDeliverySchema, default: undefined },
+    // specs/0130-integracao-99-entrega.
+    entregaDelivery: { type: orderEntregaDeliverySchema, default: undefined },
   },
   { _id: false, timestamps: { createdAt: true, updatedAt: false } },
 );

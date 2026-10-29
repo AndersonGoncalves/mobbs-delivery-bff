@@ -1,6 +1,7 @@
 import type { Request, Response, Server } from 'restify';
 
 import { BaseRouter } from '../../../shared/router/base.router';
+import { EntregaDeliveryStatus } from '../../orders/domain/entities/order.entity';
 import { ICustomerRepository } from '../../customers/domain/repositories/customer.repository.interface';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
@@ -15,6 +16,23 @@ interface NinetyNineFoodWebhookPayload {
   timestamp: number;
   data: unknown;
 }
+
+interface OrdersControllerLike {
+  markDeliveredViaExternalCourier(orderId: string, restaurantId: string): Promise<void>;
+}
+
+/** specs/0130-integracao-99-entrega — `plan.md`, "Domain". `180 REASSIGNED` continua `aceito`
+ * (entregador trocado, entrega ainda ativa). */
+const DELIVERY_STATUS_MAP: Record<number, EntregaDeliveryStatus> = {
+  120: 'aceito',
+  130: 'aceito',
+  140: 'a_caminho',
+  150: 'a_caminho',
+  160: 'entregue',
+  170: 'cancelado',
+  180: 'aceito',
+  190: 'cancelado',
+};
 
 /**
  * specs/0122-integracao-99food REQ-1/REQ-2/REQ-4 — endpoint único (`app_id` é de nível de app,
@@ -31,6 +49,10 @@ export class NinetyNineFoodWebhookController extends BaseRouter {
     private readonly orderRepository: IOrderRepository,
     private readonly ninetyNineFoodAuthService: NinetyNineFoodAuthService,
     private readonly appSecret: string,
+    // specs/0130-integracao-99-entrega REQ-5 — reusa o mesmo método já existente desde
+    // specs/0121-integracao-uber-entregas (`markDeliveredViaExternalCourier`), sem duplicar a
+    // lógica de efeitos colaterais da transição pra "entregue".
+    private readonly ordersController: OrdersControllerLike,
   ) {
     super();
   }
@@ -54,6 +76,11 @@ export class NinetyNineFoodWebhookController extends BaseRouter {
           await this.handleShopBindStatus(payload.data as { appShopIDList: string[]; bindStatus: string });
         } else if (payload.type === 'orderNew') {
           await this.handleOrderNew(payload.app_shop_id, payload.data as { order_id: string; order_info: NinetyNineFoodOrderInfo });
+        } else if (payload.type === 'deliveryStatus') {
+          // specs/0130-integracao-99-entrega REQ-5/REQ-7 — mesmo endpoint de webhook, evento
+          // novo (99Food Protocol > Logistics > Logistics Webhooks, reaproveitado pela Entrega
+          // API conforme a doc oficial, `plan.md`).
+          await this.handleDeliveryStatus(payload.data as { order_id: string; delivery_status: number; rider_name?: string; rider_phone?: string });
         }
         // Outros `type` (orderConfirm/orderReady/orderCancel/orderPartialCancel/orderFinish/
         // orderCancelApply/orderRefundApply/shopStatus/imageAuditStatus/autoOnlineResult):
@@ -102,5 +129,29 @@ export class NinetyNineFoodWebhookController extends BaseRouter {
     );
     const input = mapNinetyNineFoodOrderToNewOrderInput(orderInfo, restaurant.id, customer.id);
     await this.orderRepository.create(input);
+  }
+
+  private async handleDeliveryStatus(data: { order_id: string; delivery_status: number; rider_name?: string; rider_phone?: string }): Promise<void> {
+    const order = await this.orderRepository.findByNinetyNineFoodOrderId(data.order_id);
+    if (!order || !order.entregaDelivery) {
+      // Pedido sem entrega 99 Entrega ativa (ex.: evento do delivery_type=1, entrega da própria
+      // 99Food, nunca despachada por nós) — nada a fazer, mesmo raciocínio de "sem efeito" acima.
+      return;
+    }
+
+    const status = DELIVERY_STATUS_MAP[data.delivery_status] ?? order.entregaDelivery.status;
+    const updated = await this.orderRepository.updateEntregaDelivery(order.id, {
+      ...order.entregaDelivery,
+      status,
+      courierName: data.rider_name ?? order.entregaDelivery.courierName,
+      courierPhone: data.rider_phone ?? order.entregaDelivery.courierPhone,
+    });
+
+    // REQ-5 — só tenta a transição de status quando a 99Food confirma "FINISH" (160); no-op
+    // silencioso se o pedido não estiver num estado que permita ir pra "entregue" (ver docstring
+    // de `markDeliveredViaExternalCourier`).
+    if (status === 'entregue') {
+      await this.ordersController.markDeliveredViaExternalCourier(updated.id, updated.restaurantId);
+    }
   }
 }

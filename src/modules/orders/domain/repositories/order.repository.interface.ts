@@ -1,4 +1,4 @@
-import { IOrder, IOrderFiscal, IOrderItem, IOrderUberDelivery, ISalesSummary, OrderStatus, OrderType, PaymentMethod } from '../entities/order.entity';
+import { INinetyNineFoodDeliveryAddress, IOrder, IOrderEntregaDelivery, IOrderFiscal, IOrderItem, IOrderUberDelivery, ISalesSummary, OrderStatus, OrderType, PaymentMethod } from '../entities/order.entity';
 
 /**
  * specs/0005-checkout REQ-2/REQ-5 — `create()` gera `orderNumber` (sequencial por
@@ -20,6 +20,8 @@ export interface NewOrderInput {
   source?: 'totem' | 'operador-web' | 'operador-extensao' | 'ifood' | 'comanda' | '99food';
   /** specs/0122-integracao-99food — ver `IOrder.ninetyNineFoodOrderId`. */
   ninetyNineFoodOrderId?: string;
+  /** specs/0130-integracao-99-entrega — ver `IOrder.ninetyNineFoodDeliveryAddress`. */
+  ninetyNineFoodDeliveryAddress?: INinetyNineFoodDeliveryAddress;
   /** specs/0174-pdv-extensao-chrome-lateral REQ-22 — ver `IOrder.operatorId`. */
   operatorId?: string;
   deliveryAddress?: string;
@@ -190,4 +192,13 @@ export interface IOrderRepository {
    * a própria Uber escolhe (diferente da FocusNFe, cujo `ref` É o `Order.id` — aqui precisa de
    * uma busca dedicada, já que o webhook só manda o `delivery_id` da Uber). */
   findByUberDeliveryId(restaurantId: string, deliveryId: string): Promise<IOrder | null>;
+
+  /** specs/0130-integracao-99-entrega — mesmo padrão de `updateFiscal`/`updateUberDelivery`
+   * acima, substitui `Order.entregaDelivery` por completo. */
+  updateEntregaDelivery(id: string, entregaDelivery: IOrderEntregaDelivery): Promise<IOrder>;
+
+  /** specs/0130-integracao-99-entrega — resolve o pedido a partir do `order_id` (99Food order
+   * ID) que o webhook `deliveryStatus` manda — diferente de `findByUberDeliveryId`, não precisa
+   * do `restaurantId` antes porque `ninetyNineFoodOrderId` já é globalmente único. */
+  findByNinetyNineFoodOrderId(orderId: string): Promise<IOrder | null>;
 }

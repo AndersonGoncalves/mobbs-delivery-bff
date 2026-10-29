@@ -1,6 +1,6 @@
 import { randomBytes } from 'crypto';
 
-import { IOrder, IOrderFiscal, IOrderItem, IOrderUberDelivery, ISalesSummary, OrderStatus, OrderType, PaymentMethod } from '../../domain/entities/order.entity';
+import { INinetyNineFoodDeliveryAddress, IOrder, IOrderEntregaDelivery, IOrderFiscal, IOrderItem, IOrderUberDelivery, ISalesSummary, OrderStatus, OrderType, PaymentMethod } from '../../domain/entities/order.entity';
 import { IOrderRepository, NewOrderInput } from '../../domain/repositories/order.repository.interface';
 import { OrderCounterModel } from '../models/order-counter.mongoose.model';
 import { OrderModel } from '../models/order.mongoose.model';
@@ -17,6 +17,7 @@ interface OrderLeanDocument {
   orderType: OrderType;
   source?: 'totem' | 'operador-web' | 'operador-extensao' | 'ifood' | 'comanda' | '99food';
   ninetyNineFoodOrderId?: string;
+  ninetyNineFoodDeliveryAddress?: INinetyNineFoodDeliveryAddress;
   operatorId?: string;
   deliveryAddress?: string;
   deliveryMotoboy?: { id: string; name: string };
@@ -47,6 +48,7 @@ interface OrderLeanDocument {
   autoPrintStatus?: 'printed';
   fiscal?: IOrderFiscal;
   uberDelivery?: IOrderUberDelivery;
+  entregaDelivery?: IOrderEntregaDelivery;
 }
 
 function toEntity(doc: OrderLeanDocument): IOrder {
@@ -61,6 +63,7 @@ function toEntity(doc: OrderLeanDocument): IOrder {
     orderType: doc.orderType,
     source: doc.source,
     ninetyNineFoodOrderId: doc.ninetyNineFoodOrderId,
+    ninetyNineFoodDeliveryAddress: doc.ninetyNineFoodDeliveryAddress,
     operatorId: doc.operatorId,
     deliveryAddress: doc.deliveryAddress,
     deliveryMotoboy: doc.deliveryMotoboy,
@@ -96,6 +99,7 @@ function toEntity(doc: OrderLeanDocument): IOrder {
     autoPrintStatus: doc.autoPrintStatus,
     fiscal: doc.fiscal,
     uberDelivery: doc.uberDelivery,
+    entregaDelivery: doc.entregaDelivery,
   };
 }
 
@@ -116,6 +120,7 @@ export class OrderMongooseRepository implements IOrderRepository {
       orderType: input.orderType,
       source: input.source,
       ninetyNineFoodOrderId: input.ninetyNineFoodOrderId,
+      ninetyNineFoodDeliveryAddress: input.ninetyNineFoodDeliveryAddress,
       operatorId: input.operatorId,
       deliveryAddress: input.deliveryAddress,
       notes: input.notes,
@@ -224,6 +229,18 @@ export class OrderMongooseRepository implements IOrderRepository {
 
   async findByUberDeliveryId(restaurantId: string, deliveryId: string): Promise<IOrder | null> {
     const doc = await OrderModel.findOne({ restaurantId, 'uberDelivery.deliveryId': deliveryId }).lean<OrderLeanDocument>();
+    return doc ? toEntity(doc) : null;
+  }
+
+  // specs/0130-integracao-99-entrega — mesmo molde de `updateUberDelivery`/`findByUberDeliveryId`
+  // acima.
+  async updateEntregaDelivery(id: string, entregaDelivery: IOrderEntregaDelivery): Promise<IOrder> {
+    const doc = await OrderModel.findByIdAndUpdate(id, { $set: { entregaDelivery } }, { new: true }).lean<OrderLeanDocument>();
+    return toEntity(doc as OrderLeanDocument);
+  }
+
+  async findByNinetyNineFoodOrderId(orderId: string): Promise<IOrder | null> {
+    const doc = await OrderModel.findOne({ ninetyNineFoodOrderId: orderId }).lean<OrderLeanDocument>();
     return doc ? toEntity(doc) : null;
   }
 

@@ -427,6 +427,10 @@ export interface IRestaurant {
   ninetyNineFoodTokenExpiresAt?: string;
   ninetyNineFoodConnectedAt?: string;
   ninetyNineFoodAuthorizationPendingAt?: string;
+  /** specs/0130-integracao-99-entrega REQ-1 — ativado uma vez via `Activate Entrega Service`
+   * (mesmo `auth_token` acima, sem credencial nova). Habilita o despacho de 99 Entrega pros
+   * pedidos de origem `99food` deste restaurante. */
+  ninetyNineFoodEntregaActivatedAt?: string;
   /** Pedido explícito do usuário (follow-up) — vínculo OAuth (Facebook Login for Business) da
    * conta Instagram Business do restaurante, mesmo modelo do Mercado Pago acima.
    * `instagramAccessToken` nunca deve aparecer numa resposta de API (ver

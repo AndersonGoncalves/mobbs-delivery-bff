@@ -264,4 +264,8 @@ export interface IRestaurantRepository {
   /** specs/0122-integracao-99food — resolve o restaurante de um webhook `orderNew` a partir do
    * `app_shop_id` recebido. `null` se a loja foi desvinculada nesse meio tempo. */
   findByNinetyNineFoodAppShopId(appShopId: string): Promise<IRestaurant | null>;
+
+  /** specs/0130-integracao-99-entrega REQ-1 — marca `ninetyNineFoodEntregaActivatedAt` após
+   * `Activate Entrega Service` responder com sucesso. */
+  activateNinetyNineFoodEntrega(id: string): Promise<IRestaurant>;
 }

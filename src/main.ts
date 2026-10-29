@@ -35,6 +35,8 @@ import { NinetyNineFoodClient } from './modules/ninety-nine-food-integration/inf
 import { NinetyNineFoodAuthService } from './modules/ninety-nine-food-integration/infra/ninety-nine-food-auth.service';
 import { NinetyNineFoodOnboardingController } from './modules/ninety-nine-food-integration/presentation/ninety-nine-food-onboarding.controller';
 import { NinetyNineFoodWebhookController } from './modules/ninety-nine-food-integration/presentation/ninety-nine-food-webhook.controller';
+import { NinetyNineFoodEntregaController } from './modules/ninety-nine-food-integration/presentation/ninety-nine-food-entrega.controller';
+import { NinetyNineFoodEntregaDispatchService } from './modules/ninety-nine-food-integration/domain/services/ninety-nine-food-entrega-dispatch.service';
 import { FiscalConfigMongooseRepository } from './modules/fiscal-integration/infra/repositories/fiscal-config.mongoose.repository';
 import { FiscalEmissionService } from './modules/fiscal-integration/domain/services/fiscal-emission.service';
 import { FiscalConfigController } from './modules/fiscal-integration/presentation/fiscal-config.controller';
@@ -345,6 +347,12 @@ const ninetyNineFoodAuthService = new NinetyNineFoodAuthService(
   environment.ninetyNineFood.appId ?? '',
   environment.ninetyNineFood.appSecret ?? '',
 );
+// specs/0130-integracao-99-entrega — mesmo `ninetyNineFoodClient` acima, sem credencial nova.
+const ninetyNineFoodEntregaDispatchService = new NinetyNineFoodEntregaDispatchService(
+  orderRepository,
+  customerRepository,
+  ninetyNineFoodClient,
+);
 // specs/0091-integracao-fiscal-focusnfe — diferente de `ifood`/`asaas`/`mercadoPago` acima: sem
 // nenhuma variável de ambiente nova (`FiscalEmissionService` resolve a URL base a partir de
 // `FiscalConfig.environment`, não de `process.env` — as duas URLs da FocusNFe são fixas por
@@ -640,6 +648,15 @@ server
       orderRepository,
       ninetyNineFoodAuthService,
       environment.ninetyNineFood.appSecret ?? '',
+      ordersController,
+    ),
+    // specs/0130-integracao-99-entrega REQ-1/REQ-2/REQ-8/REQ-9.
+    new NinetyNineFoodEntregaController(
+      orderRepository,
+      restaurantRepository,
+      ninetyNineFoodEntregaDispatchService,
+      ninetyNineFoodClient,
+      restaurantOperatorMiddleware,
     ),
     // specs/0091-integracao-fiscal-focusnfe REQ-1/REQ-3/REQ-4/REQ-6.
     new FiscalConfigController(fiscalConfigRepository, restaurantOperatorMiddleware),

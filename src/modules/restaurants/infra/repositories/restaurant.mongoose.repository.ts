@@ -133,6 +133,7 @@ interface RestaurantLeanDocument {
   ninetyNineFoodTokenExpiresAt?: string;
   ninetyNineFoodConnectedAt?: string;
   ninetyNineFoodAuthorizationPendingAt?: string;
+  ninetyNineFoodEntregaActivatedAt?: string;
 }
 
 const ALL_PAYMENT_METHODS: PaymentMethod[] = ['creditCard', 'debitCard', 'pix', 'cash'];
@@ -251,6 +252,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     ninetyNineFoodTokenExpiresAt: doc.ninetyNineFoodTokenExpiresAt,
     ninetyNineFoodConnectedAt: doc.ninetyNineFoodConnectedAt,
     ninetyNineFoodAuthorizationPendingAt: doc.ninetyNineFoodAuthorizationPendingAt,
+    ninetyNineFoodEntregaActivatedAt: doc.ninetyNineFoodEntregaActivatedAt,
   };
 }
 
@@ -614,6 +616,16 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
   async findByNinetyNineFoodAppShopId(appShopId: string): Promise<IRestaurant | null> {
     const doc = await RestaurantModel.findOne({ ninetyNineFoodAppShopId: appShopId }).lean<RestaurantLeanDocument>();
     return doc ? toEntity(doc) : null;
+  }
+
+  // specs/0130-integracao-99-entrega.
+  async activateNinetyNineFoodEntrega(id: string): Promise<IRestaurant> {
+    const doc = await RestaurantModel.findByIdAndUpdate(
+      id,
+      { $set: { ninetyNineFoodEntregaActivatedAt: new Date().toISOString() } },
+      { new: true },
+    ).lean<RestaurantLeanDocument>();
+    return toEntity(doc as RestaurantLeanDocument);
   }
 
   async markAsaasCheckoutWebhookRegistered(id: string): Promise<IRestaurant> {

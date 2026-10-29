@@ -42,7 +42,23 @@ ao mesmo tempo (ver `plan.md`, "Limitação conhecida de design").
   pedido novo, senão a 99Food cancela automaticamente.
 - Nenhuma notificação de WhatsApp automática é enviada pra pedido de origem 99Food (REQ-7).
 
-## 4. Variáveis de ambiente
+## 4. 99 Entrega (`specs/0130-integracao-99-entrega`)
+
+Com a integração 99Food conectada, dá pra solicitar um entregador avulso da 99 pros pedidos
+recebidos do marketplace quando a entrega própria não é suficiente — **só pra pedidos de origem
+99Food** (a API exige um "99Food order ID", não funciona pra pedido do canal próprio).
+
+1. Em **Integrações → 99Food**, clique **"Ativar 99 Entrega"** (uma vez por loja, reaproveita o
+   mesmo `auth_token` acima — nenhuma credencial nova).
+2. No pedido (origem 99Food, delivery, em preparo, sem motoboy próprio), clique **"Despachar via
+   99 Entrega"** — cotação e criação da entrega acontecem numa única ação.
+3. O status (chip no card do pedido) atualiza automaticamente via webhook (`deliveryStatus`, mesmo
+   endpoint acima); ao concluir (`FINISH`), o pedido muda pra "entregue" sozinho.
+
+**Limitação real**: se o endereço do cliente vier mascarado pela Política de Privacidade da
+99Food, o despacho falha por endereço inválido — sem solução possível do nosso lado.
+
+## 5. Variáveis de ambiente
 
 ```dotenv
 NINETY_NINE_FOOD_BASE_URL=https://openapi.99food.com
@@ -58,7 +74,8 @@ um ambiente de testes com URL diferente.
 ## Fora de escopo (v1)
 
 - Sincronização de cardápio — o cardápio no painel da 99Food continua gerenciado manualmente.
-- Despacho de entregador via a malha logística da própria 99Food.
+- Despacho de entregador via a malha logística da própria 99Food (coberto pela seção 4, "99
+  Entrega", mas só pra pedidos de origem 99Food).
 - Conciliação financeira automática do repasse da 99Food.
 - Resposta automática a `orderCancelApply`/`orderRefundApply` (pedidos de cancelamento/reembolso
   feitos pelo cliente) — a própria 99Food decide automaticamente se não respondermos no prazo.
