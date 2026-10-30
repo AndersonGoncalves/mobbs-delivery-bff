@@ -3,6 +3,7 @@ import restify, { Server as RestifyServer } from 'restify';
 import { environment } from '../config/environment';
 import { MongooseConnection } from '../database/mongoose.connection';
 import type { BaseRouter } from '../router/base.router';
+import { BUILD_VERSION } from '../../buildInfo';
 import { handleError } from './error.handler';
 
 export class Server {
@@ -63,6 +64,8 @@ export class Server {
     this.application.listen(environment.server.port, () => {
       // eslint-disable-next-line no-console
       console.log(`mobbs-delivery-bff ouvindo na porta ${environment.server.port}`);
+      // eslint-disable-next-line no-console
+      console.log(`mobbs-delivery-bff — versão ${BUILD_VERSION}`);
     });
   }
 }
