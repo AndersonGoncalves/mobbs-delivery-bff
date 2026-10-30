@@ -128,7 +128,12 @@ export class OperatorDraftsController extends BaseRouter {
       const { phone } = parseBody(customerByPhoneQuerySchema, req.query);
       const normalized = normalizePhoneNumber(phone);
       const customer = await this.customerRepository.findByPhone(normalized);
-      const blocked = await this.blockedCustomerRepository.isBlocked(req.restaurantId!, normalized);
+      // Pedido explícito do usuário (achado real) — mesmo raciocínio de `OrdersController`: o
+      // liga/desliga do restaurante (`customerBlockingEnabled`) precisa governar se a lista de
+      // bloqueados é sequer consultada também aqui no PDV, não só no checkout do app do cliente.
+      const restaurant = await this.restaurantRepository.findById(req.restaurantId!);
+      const blocked = !!restaurant?.customerBlockingEnabled
+        && (await this.blockedCustomerRepository.isBlocked(req.restaurantId!, normalized));
       if (!customer) {
         res.json(200, { customer: null, addresses: [], blocked });
         return;
@@ -199,7 +204,9 @@ export class OperatorDraftsController extends BaseRouter {
       paymentMethod: current.paymentMethod,
     });
 
-    if (current.customerPhone) {
+    // Pedido explícito do usuário (achado real) — mesmo raciocínio do GET .../customers acima:
+    // sem `customerBlockingEnabled`, nem consulta a lista de bloqueados.
+    if (restaurant.customerBlockingEnabled && current.customerPhone) {
       const normalizedPhone = normalizePhoneNumber(current.customerPhone);
       if (await this.blockedCustomerRepository.isBlocked(restaurantId, normalizedPhone)) {
         throw new ForbiddenError('Cliente bloqueado neste restaurante');
