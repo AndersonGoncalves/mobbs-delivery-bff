@@ -165,9 +165,11 @@ const restaurantSchema = new Schema(
     instagramUrl: { type: String },
     // specs/0118-controle-caixa-automatico-redes-sociais REQ-7/REQ-8.
     facebookUrl: { type: String },
-    // specs/0118-controle-caixa-automatico-redes-sociais REQ-1 — default 'manual' preserva o
-    // comportamento atual de todo restaurante já existente.
-    cashRegisterMode: { type: String, enum: ['manual', 'automatic'], required: true, default: 'manual' },
+    // specs/0118-controle-caixa-automatico-redes-sociais REQ-13 (2026-10-30) — default
+    // 'automatic' só pra restaurante NOVO a partir de agora (pedido explícito do usuário); quem
+    // já existia manteve o que já tinha configurado (este default só vale na criação do
+    // documento, nunca sobrescreve um restaurante já existente).
+    cashRegisterMode: { type: String, enum: ['manual', 'automatic'], required: true, default: 'automatic' },
     // Pedido explícito do usuário — default desligado preserva o comportamento atual (sem
     // nenhuma restrição) de todo restaurante já existente.
     customerBlockingEnabled: { type: Boolean, required: true, default: false },
