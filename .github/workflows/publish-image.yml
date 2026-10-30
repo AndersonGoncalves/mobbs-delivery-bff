@@ -32,6 +32,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Calcular build number (specs/0200)
+        run: echo "BUILD_NUMBER=$(git rev-list --count HEAD)" >> "$GITHUB_ENV"
+
+      - name: Write build info (specs/0200)
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          cat > src/buildInfo.ts <<EOF
+          export const BUILD_VERSION = '${VERSION}+${BUILD_NUMBER}';
+          EOF
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 

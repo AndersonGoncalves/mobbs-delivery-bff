@@ -1,6 +1,6 @@
 {
   "name": "mobbs-delivery-bff",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "BFF (Node.js/Restify) do ecossistema mobbs-delivery — consumido por mobbs-delivery-app e mobbs-delivery-web.",
   "main": "dist/main.js",
