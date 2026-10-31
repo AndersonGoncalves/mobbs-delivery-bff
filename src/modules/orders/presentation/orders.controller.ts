@@ -1234,14 +1234,21 @@ export class OrdersController extends BaseRouter {
   }
 
   /** specs/0066 REQ-4 — nome/telefone do cliente pra retaguarda mostrar nos pedidos em andamento
-   * (`IOrder` só guarda `customerId`). Poucos pedidos ativos, então `findById` por cliente único. */
+   * (`IOrder` só guarda `customerId`).
+   *
+   * Achado de performance da auditoria pré-produção (31/10/2026) — antes, uma query por
+   * cliente único e uma por motoboy (`findById` em loop, N+1), em vez de uma única consulta
+   * `$in` por lote (mesmo padrão já usado ao lado em `attachPaymentSummaries`, nunca
+   * reaproveitado aqui). Em pico (dezenas/centenas de pedidos ativos), multiplicado pelo poll
+   * de 15s do quadro de pedidos e por todos os restaurantes simultâneos, era tráfego de banco
+   * evitável. */
   private async attachCustomers<T extends IOrder>(orders: T[]): Promise<(T & { customer?: { name: string; phone?: string } })[]> {
     const customerIds = [...new Set(orders.map((order) => order.customerId))];
-    const customers = await Promise.all(customerIds.map((id) => this.customerRepository.findById(id)));
-    const customerById = new Map(customerIds.map((id, index) => [id, customers[index]]));
+    const customers = await this.customerRepository.findManyByIds(customerIds);
+    const customerById = new Map(customers.map((customer) => [customer.id, customer]));
     const motoboyIds = [...new Set(orders.flatMap((order) => order.deliveryMotoboy ? [order.deliveryMotoboy.id] : []))];
-    const motoboys = await Promise.all(motoboyIds.map((id) => this.restaurantOperatorRepository.findById(id)));
-    const motoboyById = new Map(motoboyIds.map((id, index) => [id, motoboys[index]]));
+    const motoboys = await this.restaurantOperatorRepository.findManyByIds(motoboyIds);
+    const motoboyById = new Map(motoboys.map((motoboy) => [motoboy.id, motoboy]));
 
     return orders.map((order) => {
       const customer = customerById.get(order.customerId);

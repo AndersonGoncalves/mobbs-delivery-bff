@@ -90,6 +90,12 @@ export class RestaurantOperatorMongooseRepository implements IRestaurantOperator
     return doc ? toEntity(doc) : null;
   }
 
+  async findManyByIds(ids: string[]): Promise<IRestaurantOperator[]> {
+    if (ids.length === 0) return [];
+    const docs = await RestaurantOperatorModel.find({ _id: { $in: ids } }).lean<RestaurantOperatorLeanDocument[]>();
+    return docs.map(toEntity);
+  }
+
   async updateRole(id: string, role: OperatorRole): Promise<void> {
     await RestaurantOperatorModel.findByIdAndUpdate(id, {
       $set: { role, ...(role === 'gerente' ? {} : { hasFullAccess: false }) },

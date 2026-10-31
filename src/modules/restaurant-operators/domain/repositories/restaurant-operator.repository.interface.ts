@@ -33,6 +33,11 @@ export interface IRestaurantOperatorRepository {
   ): Promise<IRestaurantOperator>;
   deactivate(id: string): Promise<void>;
   findById(id: string): Promise<IRestaurantOperator | null>;
+  /** Achado de performance da auditoria pré-produção (31/10/2026) — mesmo papel de
+   * `IPaymentRepository.findManyByOrderIds`: uma única consulta `$in`, pra quem chama nunca
+   * cair num loop de `findById` por id único (ex.: `OrdersController.attachCustomers`,
+   * resolução de motoboy no quadro de pedidos ativos). `[]` devolve `[]` sem consultar o banco. */
+  findManyByIds(ids: string[]): Promise<IRestaurantOperator[]>;
   /** specs/0021-papeis-operador REQ-8 — troca o papel de um operador já cadastrado. */
   updateRole(id: string, role: OperatorRole): Promise<void>;
   updateFullAccess(id: string, hasFullAccess: boolean): Promise<void>;

@@ -371,12 +371,20 @@ describe('OrdersController', () => {
     };
     const customerRepository: Partial<ICustomerRepository> = {
       findById: jest.fn().mockResolvedValue({ id: 'customer-1', name: 'Ana', email: 'ana@exemplo.com', phone: '85984224877' }),
+      // Achado de performance da auditoria pré-produção (31/10/2026) — `attachCustomers` agora
+      // busca em lote (`$in`), não mais `findById` por id único; mock default alinhado ao
+      // `findById` default acima (mesmo customer-1/Ana) pra não quebrar os testes que não se
+      // importam com o cliente exibido.
+      findManyByIds: jest.fn().mockResolvedValue([{ id: 'customer-1', name: 'Ana', email: 'ana@exemplo.com', phone: '85984224877' }]),
       ...overrides.customerRepository,
     };
     // specs/0137-papeis-garcom-motoboy REQ-6 — `RestaurantOperator` com papel `motoboy` (substitui
     // o antigo mock de `IMotoboyRepository` neste controller).
     const restaurantOperatorRepository: Partial<IRestaurantOperatorRepository> = {
       findById: jest.fn().mockResolvedValue({ id: 'm-1', restaurantId: 'r-1', email: 'carlos@exemplo.com', role: 'motoboy', isActive: true, createdAt: new Date() }),
+      // Achado de performance da auditoria pré-produção (31/10/2026) — mesmo motivo do
+      // `customerRepository` acima, pro motoboy resolvido em `attachCustomers`.
+      findManyByIds: jest.fn().mockResolvedValue([{ id: 'm-1', restaurantId: 'r-1', email: 'carlos@exemplo.com', role: 'motoboy', isActive: true, createdAt: new Date() }]),
       ...overrides.restaurantOperatorRepository,
     };
     const tableRepository: Partial<IRestaurantTableRepository> = {
@@ -1227,7 +1235,7 @@ describe('OrdersController', () => {
 
   it('specs/0066 AC-4: GET /restaurants/me/orders inclui customer { name, phone } de cada pedido', async () => {
     const { routes } = setup({
-      customerRepository: { findById: jest.fn().mockResolvedValue({ id: 'customer-1', name: 'Michelle', email: 'm@exemplo.com', phone: '85984224877' }) },
+      customerRepository: { findManyByIds: jest.fn().mockResolvedValue([{ id: 'customer-1', name: 'Michelle', email: 'm@exemplo.com', phone: '85984224877' }]) },
     });
     const json = jest.fn();
 
@@ -1246,7 +1254,7 @@ describe('OrdersController', () => {
     const { routes } = setup({
       orderRepository: { findActiveByRestaurant: jest.fn().mockResolvedValue([order]) },
       restaurantOperatorRepository: {
-        findById: jest.fn().mockResolvedValue({ id: 'm-1', restaurantId, isActive: false, whatsapp: '5585999999999' }),
+        findManyByIds: jest.fn().mockResolvedValue([{ id: 'm-1', restaurantId, isActive: false, whatsapp: '5585999999999' }]),
       },
     });
     const json = jest.fn();

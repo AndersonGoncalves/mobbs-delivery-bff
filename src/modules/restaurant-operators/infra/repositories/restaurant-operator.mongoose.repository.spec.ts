@@ -1,6 +1,32 @@
 import { RestaurantOperatorModel } from '../models/restaurant-operator.mongoose.model';
 import { RestaurantOperatorMongooseRepository } from './restaurant-operator.mongoose.repository';
 
+// Achado de performance da auditoria pré-produção (31/10/2026) — nova consulta em lote,
+// substitui o loop de `findById` por id único em `OrdersController.attachCustomers`.
+describe('RestaurantOperatorMongooseRepository.findManyByIds', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('[] não consulta o banco', async () => {
+    const find = jest.spyOn(RestaurantOperatorModel, 'find');
+    const result = await new RestaurantOperatorMongooseRepository().findManyByIds([]);
+    expect(result).toEqual([]);
+    expect(find).not.toHaveBeenCalled();
+  });
+
+  it('busca todos os ids numa única consulta $in', async () => {
+    const docs = [
+      { _id: 'm-1', restaurantId: 'r-1', email: 'carlos@exemplo.com', role: 'motoboy', isActive: true, createdAt: new Date() },
+      { _id: 'm-2', restaurantId: 'r-1', email: 'ana@exemplo.com', role: 'garcom', isActive: true, createdAt: new Date() },
+    ];
+    const find = jest.spyOn(RestaurantOperatorModel, 'find').mockReturnValue({ lean: jest.fn().mockResolvedValue(docs) } as never);
+
+    const result = await new RestaurantOperatorMongooseRepository().findManyByIds(['m-1', 'm-2']);
+
+    expect(find).toHaveBeenCalledWith({ _id: { $in: ['m-1', 'm-2'] } });
+    expect(result.map((operator) => operator.id)).toEqual(['m-1', 'm-2']);
+  });
+});
+
 describe('RestaurantOperatorMongooseRepository.updateProfile', () => {
   afterEach(() => jest.restoreAllMocks());
 
