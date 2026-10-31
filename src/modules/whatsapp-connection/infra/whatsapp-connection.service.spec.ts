@@ -128,6 +128,20 @@ describe('WhatsAppConnectionService — quedas de conexão (specs/0067)', () => 
     expect(clearWhatsAppSession).toHaveBeenCalledWith('r-1');
     expect(restaurantRepository.setWhatsappConnected).toHaveBeenCalledWith('r-1', false);
   });
+
+  // Achado crítico da auditoria pós-merge (31/10/2026) — "listener do WhatsApp com await fora
+  // de try/catch": uma falha num `await` qualquer dentro do listener (ex. Mongo indisponível na
+  // hora do `setWhatsappConnected`) não pode mais virar uma rejeição não tratada do listener —
+  // precisa ser capturada e logada, nunca propagar.
+  it('achado de auditoria (2026-10-31): uma falha dentro do listener (ex. Mongo indisponível) é capturada, logada, e nunca propaga', async () => {
+    const { service, handlers, restaurantRepository } = setup();
+    await service.restoreConnectedSessions();
+    (restaurantRepository.setWhatsappConnected as jest.Mock).mockRejectedValueOnce(new Error('Mongo indisponível'));
+
+    await expect(handlers[0]({ connection: 'open' })).resolves.toBeUndefined();
+
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining('falha não tratada no connection.update'), expect.any(Error));
+  });
 });
 
 // Achado de auditoria (2026-10-31, crítico) — reconectar sem nenhum atraso, em loop, era um

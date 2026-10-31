@@ -151,56 +151,67 @@ export class WhatsAppConnectionService implements IWhatsAppConnectionService {
 
     socket.ev.on('creds.update', saveCreds);
 
+    // Achado crítico da auditoria pós-merge (31/10/2026) — "listener do WhatsApp com await fora
+    // de try/catch": o handler global de exceção (main.ts, mesclado hoje) contém uma rejeição
+    // não tratada aqui, mas só como último recurso — sem try/catch próprio, uma falha num
+    // `await` qualquer (ex. Mongo indisponível bem na hora do `setWhatsappConnected`) ainda
+    // deixava a sessão deste restaurante num estado indefinido, sem log nenhum do que
+    // aconteceu. Todo o corpo do listener agora está protegido; uma falha aqui nunca mais
+    // depende só da rede de segurança do processo pra não se perder em silêncio.
     socket.ev.on('connection.update', async (update) => {
-      if (update.qr) {
-        entry.qr = update.qr;
-      }
-
-      if (update.connection === 'open') {
-        entry.connected = true;
-        entry.everConnected = true;
-        entry.qr = null;
-        this.reconnectAttempts.delete(restaurantId);
-        await this.restaurantRepository.setWhatsappConnected(restaurantId, true);
-      }
-
-      if (update.connection === 'close') {
-        entry.connected = false;
-        // `disconnect()` já tirou a entrada do mapa antes do `logout()` — nesse caso não há o que
-        // reconectar. Só remove a própria entrada: um reconector pode ter posto um socket novo.
-        const wasCurrent = this.sessions.get(restaurantId) === entry;
-        if (wasCurrent) this.sessions.delete(restaurantId);
-
-        const statusCode = (update.lastDisconnect?.error as { output?: { statusCode?: number } } | undefined)?.output
-          ?.statusCode;
-        if (statusCode === DisconnectReason.loggedOut) {
-          await this.restaurantRepository.setWhatsappConnected(restaurantId, false);
-          await clearWhatsAppSession(restaurantId);
-          return;
+      try {
+        if (update.qr) {
+          entry.qr = update.qr;
         }
-        if (!wasCurrent) return;
 
-        // specs/0067 — depois de ler o QR o WhatsApp encerra o socket com `restartRequired` (515) e
-        // exige abrir um novo com as credenciais recém-salvas; sem isto o pareamento nunca
-        // completava. Uma queda de sessão que já esteve conectada também reconecta (rede/timeout);
-        // um QR que expirou sem ninguém ler NÃO reconecta (o operador clica de novo).
-        if (statusCode !== DisconnectReason.restartRequired && !entry.everConnected) {
-          await this.restaurantRepository.setWhatsappConnected(restaurantId, false);
-          return;
+        if (update.connection === 'open') {
+          entry.connected = true;
+          entry.everConnected = true;
+          entry.qr = null;
+          this.reconnectAttempts.delete(restaurantId);
+          await this.restaurantRepository.setWhatsappConnected(restaurantId, true);
         }
-        const attempt = (this.reconnectAttempts.get(restaurantId) ?? 0) + 1;
-        this.reconnectAttempts.set(restaurantId, attempt);
-        const delayMs = Math.min(RECONNECT_BASE_DELAY_MS * 2 ** (attempt - 1), RECONNECT_MAX_DELAY_MS);
-        console.log(
-          `[whatsapp] conexão do restaurante ${restaurantId} fechou (código ${statusCode}); reconectando em ${delayMs}ms (tentativa ${attempt})`,
-        );
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-        try {
-          await this.connect(restaurantId);
-        } catch (error) {
-          await this.restaurantRepository.setWhatsappConnected(restaurantId, false);
-          console.error(`[whatsapp] falha ao reconectar o restaurante ${restaurantId}:`, error);
+
+        if (update.connection === 'close') {
+          entry.connected = false;
+          // `disconnect()` já tirou a entrada do mapa antes do `logout()` — nesse caso não há o que
+          // reconectar. Só remove a própria entrada: um reconector pode ter posto um socket novo.
+          const wasCurrent = this.sessions.get(restaurantId) === entry;
+          if (wasCurrent) this.sessions.delete(restaurantId);
+
+          const statusCode = (update.lastDisconnect?.error as { output?: { statusCode?: number } } | undefined)?.output
+            ?.statusCode;
+          if (statusCode === DisconnectReason.loggedOut) {
+            await this.restaurantRepository.setWhatsappConnected(restaurantId, false);
+            await clearWhatsAppSession(restaurantId);
+            return;
+          }
+          if (!wasCurrent) return;
+
+          // specs/0067 — depois de ler o QR o WhatsApp encerra o socket com `restartRequired` (515) e
+          // exige abrir um novo com as credenciais recém-salvas; sem isto o pareamento nunca
+          // completava. Uma queda de sessão que já esteve conectada também reconecta (rede/timeout);
+          // um QR que expirou sem ninguém ler NÃO reconecta (o operador clica de novo).
+          if (statusCode !== DisconnectReason.restartRequired && !entry.everConnected) {
+            await this.restaurantRepository.setWhatsappConnected(restaurantId, false);
+            return;
+          }
+          const attempt = (this.reconnectAttempts.get(restaurantId) ?? 0) + 1;
+          this.reconnectAttempts.set(restaurantId, attempt);
+          const delayMs = Math.min(RECONNECT_BASE_DELAY_MS * 2 ** (attempt - 1), RECONNECT_MAX_DELAY_MS);
+          console.log(
+            `[whatsapp] conexão do restaurante ${restaurantId} fechou (código ${statusCode}); reconectando em ${delayMs}ms (tentativa ${attempt})`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          try {
+            await this.connect(restaurantId);
+          } catch (error) {
+            await this.restaurantRepository.setWhatsappConnected(restaurantId, false);
+            console.error(`[whatsapp] falha ao reconectar o restaurante ${restaurantId}:`, error);
+          }
         }
+      } catch (error) {
+        console.error(`[whatsapp] falha não tratada no connection.update do restaurante ${restaurantId}:`, error);
       }
     });
   }

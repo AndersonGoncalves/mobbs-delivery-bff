@@ -1,3 +1,5 @@
+import { loadBaileys } from './load-baileys';
+import { clearWhatsAppSession } from './mongo-auth-state';
 import { PlatformWhatsAppConnectionService } from './platform-whatsapp-connection.service';
 import { WhatsAppSessionModel } from './models/whatsapp-session.mongoose.model';
 
@@ -68,5 +70,49 @@ describe('PlatformWhatsAppConnectionService (specs/0124-campanha-whatsapp-prospe
     await expect(service.sendImageMessage('85986404604', 'https://img', 'legenda')).rejects.toThrow(
       'WhatsApp da plataforma não conectado',
     );
+  });
+});
+
+// Achado crítico da auditoria pós-merge (31/10/2026) — "listener do WhatsApp com await fora de
+// try/catch", mesmo achado de `WhatsAppConnectionService`.
+describe('PlatformWhatsAppConnectionService — listener do connection.update', () => {
+  type Handler = (update: Record<string, unknown>) => Promise<void>;
+
+  function setupWithRealConnect() {
+    const handlers: Handler[] = [];
+    const makeWASocket = jest.fn().mockImplementation(() => ({
+      ev: {
+        on: (event: string, handler: Handler) => {
+          if (event === 'connection.update') handlers.push(handler);
+        },
+      },
+      logout: jest.fn().mockResolvedValue(undefined),
+    }));
+    (loadBaileys as jest.Mock).mockResolvedValue({
+      makeWASocket,
+      makeCacheableSignalKeyStore: jest.fn(),
+      DisconnectReason: { loggedOut: 401, restartRequired: 515 },
+    });
+    const service = new PlatformWhatsAppConnectionService();
+    return { service, handlers };
+  }
+
+  beforeEach(() => {
+    jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('achado de auditoria (2026-10-31): uma falha dentro do listener é capturada, logada, e nunca propaga', async () => {
+    const { service, handlers } = setupWithRealConnect();
+    (WhatsAppSessionModel.exists as jest.Mock).mockResolvedValue({ _id: 'platform' });
+    (clearWhatsAppSession as jest.Mock).mockRejectedValueOnce(new Error('Mongo indisponível'));
+    // `restoreConnectedSession` chama `connect()` direto, sem o polling de `waitForQr()` (que
+    // `startPairing()` faria, lento de verdade sem fake timers).
+    await service.restoreConnectedSession();
+
+    await expect(handlers[0]({ connection: 'close', lastDisconnect: { error: { output: { statusCode: 401 } } } })).resolves.toBeUndefined();
+
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining('falha não tratada no connection.update'), expect.any(Error));
   });
 });
