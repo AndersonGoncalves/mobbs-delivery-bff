@@ -238,4 +238,11 @@ orderSchema.index({ restaurantId: 1, status: 1 });
 // confirmado contra um Mongo real antes de decidir por este índice composto cheio).
 orderSchema.index({ restaurantId: 1, autoPrintStatus: 1, createdAt: 1 });
 
+// Achado de auditoria (31/10/2026) — a correção acima cobriu `{restaurantId, status}`, não
+// intervalo de data: relatório financeiro/vendas por período (`findByRestaurantBetween`,
+// `findDeliveredByRestaurantBetween`, `getSalesSummary` etc., todos filtrando
+// `{restaurantId, createdAt: {$gte, $lt/$lte}}`) não tinha nenhum índice cobrindo o próprio
+// filtro — varria o histórico inteiro do restaurante antes de aplicar o intervalo.
+orderSchema.index({ restaurantId: 1, createdAt: 1 });
+
 export const OrderModel = model('Order', orderSchema, 'order');
