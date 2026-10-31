@@ -9,7 +9,7 @@ import { requireOperatorRole } from '../../../shared/http/require-operator-role.
 import { IAdditionalGroupTemplateRepository } from '../../additional-group-templates/domain/repositories/additional-group-template.repository.interface';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { IMenuCategory } from '../domain/entities/menu-category.entity';
-import { IProduct } from '../domain/entities/product.entity';
+import { IProduct, IProductAdditionalGroupInput } from '../domain/entities/product.entity';
 import { IMenuCategoryRepository } from '../domain/repositories/menu-category.repository.interface';
 import { IProductImageStorage } from '../domain/product-image-storage';
 import { IProductRepository } from '../domain/repositories/product.repository.interface';
@@ -324,6 +324,7 @@ export class CatalogController extends BaseRouter {
 
     application.post('/restaurants/me/products', ...authenticated, async (req: Request, res: Response) => {
       const payload = parseBody(saveProductSchema, req.body);
+      await this.rejectForeignAdditionalReferences(req.restaurantId!, payload.additionalGroups);
       const product = await this.productRepository.create(req.restaurantId!, payload);
       res.json(201, product);
     });
@@ -331,6 +332,7 @@ export class CatalogController extends BaseRouter {
     application.put('/restaurants/me/products/:id', ...authenticated, async (req: Request, res: Response) => {
       const payload = parseBody(updateProductSchema, req.body);
       const existing = await this.findOwnedProduct(req.params.id, req.restaurantId!);
+      await this.rejectForeignAdditionalReferences(req.restaurantId!, payload.additionalGroups);
       const product = await this.productRepository.update(req.params.id, payload);
       // specs/0109-galeria-fotos-produto REQ-13 — foto removida da galeria só é apagada do S3 se
       // nenhum outro produto do restaurante ainda a referencia (checado antes de cada exclusão).
@@ -477,6 +479,21 @@ export class CatalogController extends BaseRouter {
       throw new NotFoundError('Produto não encontrado');
     }
     return product;
+  }
+
+  /**
+   * Achado de auditoria (2026-10-31, crítico) — chamado antes de `create`/`update` de produto:
+   * rejeita (400) se algum `rawMaterialId`/`linkedProductId`/`templateId` referenciado em
+   * `additionalGroups` (recursivo) pertencer a OUTRO restaurante. Sem isso, um operador podia
+   * vincular adicional ao produto/matéria-prima/template de outro restaurante (ids descobertos
+   * via rota pública de cardápio), vazando nome/preço/disponibilidade de quem não é dono.
+   */
+  private async rejectForeignAdditionalReferences(restaurantId: string, groups: IProductAdditionalGroupInput[] | undefined): Promise<void> {
+    if (!groups || groups.length === 0) return;
+    const foreign = await this.productRepository.findForeignAdditionalReferences(restaurantId, groups);
+    if (foreign.length > 0) {
+      throw new BadRequestError(`additionalGroups referencia recurso que não pertence a este restaurante: ${foreign.join(', ')}`);
+    }
   }
 
   private async isStockControlEnabled(restaurantId: string): Promise<boolean> {

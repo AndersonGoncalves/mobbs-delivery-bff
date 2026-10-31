@@ -111,6 +111,9 @@ describe('CatalogController', () => {
       remove: jest.fn().mockResolvedValue(undefined),
       findAnyByLinkedProductId: jest.fn().mockResolvedValue([]),
       existsProductWithImageUrl: jest.fn().mockResolvedValue(false),
+      // Achado de auditoria (2026-10-31) — por padrão, nenhuma referência estrangeira (mesmo
+      // comportamento de antes do fix); testes específicos sobrescrevem pra simular o bloqueio.
+      findForeignAdditionalReferences: jest.fn().mockResolvedValue([]),
       ...overrides.productRepository,
     };
     const orderRepository: Partial<IOrderRepository> = {
@@ -579,6 +582,36 @@ describe('CatalogController', () => {
 
     expect(productRepository.create).toHaveBeenCalledWith('r-1', expect.objectContaining({ name: 'Pizza' }));
     expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ id: 'p-2' }));
+  });
+
+  // Achado de auditoria (2026-10-31, crítico) — opção de adicional apontando pra recurso de
+  // outro restaurante é rejeitada (400) antes de criar o produto.
+  it('POST /restaurants/me/products rejeita (400) quando additionalGroups referencia recurso de outro restaurante', async () => {
+    const { productRepository, routes } = setup({
+      productRepository: { findForeignAdditionalReferences: jest.fn().mockResolvedValue(['prod-outro-restaurante']) },
+    });
+    const body = {
+      menuCategoryId: 'c-1',
+      name: 'Pizza',
+      price: 50,
+      isAvailable: true,
+      additionalGroups: [
+        {
+          id: 'g-1',
+          productId: 'p-2',
+          name: 'Bebida',
+          required: true,
+          minSelections: 1,
+          maxSelections: 1,
+          options: [{ id: 'o-1', groupId: 'g-1', name: 'Refri', linkedProductId: 'prod-outro-restaurante' }],
+        },
+      ],
+    };
+
+    await expect(
+      runOperatorChain(routes['POST /restaurants/me/products'], { restaurantId: 'r-1', body }, { json: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(productRepository.create).not.toHaveBeenCalled();
   });
 
   it('AC-4: POST /restaurants/me/products rejeita produto sem preço', async () => {

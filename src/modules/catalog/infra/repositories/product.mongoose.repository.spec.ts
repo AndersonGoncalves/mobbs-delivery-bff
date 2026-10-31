@@ -1,7 +1,9 @@
-import { IProductAdditionalGroup, IProductAdditionalOption } from '../../domain/entities/product.entity';
+import { IProductAdditionalGroup, IProductAdditionalGroupInput, IProductAdditionalOption } from '../../domain/entities/product.entity';
 import { IPromotion } from '../../../promotions/domain/entities/promotion.entity';
 import { IPromotionRepository } from '../../../promotions/domain/repositories/promotion.repository.interface';
 import { ProductModel } from '../models/product.mongoose.model';
+import { RawMaterialModel } from '../../../raw-materials/infra/models/raw-material.mongoose.model';
+import { AdditionalGroupTemplateModel } from '../../../additional-group-templates/infra/models/additional-group-template.mongoose.model';
 import {
   AdditionalGroupTemplateLeanDocument,
   ProductMongooseRepository,
@@ -398,5 +400,92 @@ describe('ProductMongooseRepository.decrementStock', () => {
     );
 
     updateOne.mockRestore();
+  });
+});
+
+// Achado de auditoria (2026-10-31, crítico) — `rawMaterialId`/`linkedProductId`/`templateId` de
+// outro restaurante nunca eram validados ao salvar um produto. Mocka `Model.find(...).select(...)
+// .lean(...)` devolvendo só os ids que de fato pertencem ao restaurante (simulando o filtro
+// `restaurantId` do Mongo) — o que sobra fora dessa lista é o que o método deve reportar como
+// estrangeiro.
+describe('ProductMongooseRepository.findForeignAdditionalReferences (achado de auditoria 2026-10-31)', () => {
+  function mockFind(model: typeof RawMaterialModel | typeof ProductModel | typeof AdditionalGroupTemplateModel, ownedIds: string[]) {
+    return jest.spyOn(model, 'find').mockReturnValue({
+      select: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue(ownedIds.map((_id) => ({ _id }))),
+      }),
+    } as never);
+  }
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('nenhuma referência estrangeira quando rawMaterialId/linkedProductId/templateId pertencem ao restaurante', async () => {
+    mockFind(RawMaterialModel, ['mat-own']);
+    mockFind(ProductModel, ['prod-own']);
+    mockFind(AdditionalGroupTemplateModel, ['tpl-own']);
+    const repository = new ProductMongooseRepository({} as IPromotionRepository);
+
+    const groups: IProductAdditionalGroupInput[] = [
+      {
+        id: 'g1', productId: 'p1', name: 'Tamanho', type: 'adicionar', required: true, minSelections: 1, maxSelections: 1,
+        options: [
+          { id: 'o1', groupId: 'g1', name: 'Com molho', rawMaterialId: 'mat-own' },
+          { id: 'o2', groupId: 'g1', name: 'Refri', linkedProductId: 'prod-own' },
+        ],
+      },
+      { id: 'g2', productId: 'p1', templateId: 'tpl-own' },
+    ];
+
+    await expect(repository.findForeignAdditionalReferences('r-1', groups)).resolves.toEqual([]);
+  });
+
+  it('reporta rawMaterialId, linkedProductId e templateId que pertencem a OUTRO restaurante', async () => {
+    mockFind(RawMaterialModel, []); // mat-foreign não pertence a r-1
+    mockFind(ProductModel, []); // prod-foreign não pertence a r-1
+    mockFind(AdditionalGroupTemplateModel, []); // tpl-foreign não pertence a r-1
+    const repository = new ProductMongooseRepository({} as IPromotionRepository);
+
+    const groups: IProductAdditionalGroupInput[] = [
+      {
+        id: 'g1', productId: 'p1', name: 'Tamanho', type: 'adicionar', required: true, minSelections: 1, maxSelections: 1,
+        options: [
+          { id: 'o1', groupId: 'g1', name: 'Com molho', rawMaterialId: 'mat-foreign' },
+          { id: 'o2', groupId: 'g1', name: 'Refri de outro restaurante', linkedProductId: 'prod-foreign' },
+        ],
+      },
+      { id: 'g2', productId: 'p1', templateId: 'tpl-foreign' },
+    ];
+
+    const foreign = await repository.findForeignAdditionalReferences('r-1', groups);
+    expect(foreign).toEqual(expect.arrayContaining(['mat-foreign', 'prod-foreign', 'tpl-foreign']));
+    expect(foreign).toHaveLength(3);
+  });
+
+  it('detecta linkedProductId estrangeiro dentro de nestedAdditionalGroups (produto composto)', async () => {
+    mockFind(RawMaterialModel, []);
+    mockFind(ProductModel, []); // combo-foreign não pertence a r-1
+    mockFind(AdditionalGroupTemplateModel, []);
+    const repository = new ProductMongooseRepository({} as IPromotionRepository);
+
+    const groups: IProductAdditionalGroupInput[] = [
+      {
+        id: 'g1', productId: 'p1', name: 'Combo', type: 'adicionar', required: true, minSelections: 1, maxSelections: 1,
+        options: [
+          {
+            id: 'o1', groupId: 'g1', name: 'Combo completo', priceDelta: 0,
+            nestedAdditionalGroups: [
+              {
+                id: 'g1-1', productId: 'p1', name: 'Bebida', type: 'adicionar', required: true, minSelections: 1, maxSelections: 1,
+                options: [{ id: 'o1-1', groupId: 'g1-1', name: 'Refri', linkedProductId: 'combo-foreign' }],
+              },
+            ],
+          },
+        ],
+      },
+    ];
+
+    await expect(repository.findForeignAdditionalReferences('r-1', groups)).resolves.toEqual(['combo-foreign']);
   });
 });

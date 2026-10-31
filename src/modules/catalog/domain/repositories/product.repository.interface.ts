@@ -157,4 +157,14 @@ export interface IProductRepository {
    * `excludingProductId`) ainda tem `url` em `images`/`imageUrl`, não deve ser apagada do S3 ao
    * ser removida da galeria do produto atual (ou do produto sendo excluído). */
   existsProductWithImageUrl(restaurantId: string, url: string, excludingProductId: string): Promise<boolean>;
+
+  /**
+   * Achado de auditoria (2026-10-31, crítico) — confirma que todo `rawMaterialId`/
+   * `linkedProductId`/`templateId` referenciado em `groups` (recursivo, incluindo grupos-
+   * referência a template) pertence a este restaurante. Sem isso, salvar um adicional apontando
+   * pra um recurso de OUTRO restaurante (descoberto via rota pública de cardápio) fazia o nome/
+   * preço/disponibilidade desse recurso vazar pro cardápio de quem não é dono. Devolve os ids
+   * que NÃO pertencem (vazio = tudo ok) — quem chama decide como rejeitar.
+   */
+  findForeignAdditionalReferences(restaurantId: string, groups: IProductAdditionalGroupInput[]): Promise<string[]>;
 }

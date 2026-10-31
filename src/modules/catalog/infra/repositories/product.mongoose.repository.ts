@@ -1,4 +1,4 @@
-import { IProduct, IProductAdditionalGroup, IProductAdditionalOption } from '../../domain/entities/product.entity';
+import { IProduct, IProductAdditionalGroup, IProductAdditionalGroupInput, IProductAdditionalOption } from '../../domain/entities/product.entity';
 import {
   IAffectedProduct,
   IProductListFilters,
@@ -173,14 +173,23 @@ function collectRawMaterialIds(groups: IProductAdditionalGroup[], acc: Set<strin
 
 // Mesma ordem de `resolveLinkedProducts`: depois de `resolveTemplates`, pra cobrir opções vindas de
 // template reutilizável também.
+//
+// Achado de auditoria (2026-10-31, crítico) — filtra por `restaurantId` além de `_id`: sem isso,
+// uma opção com `rawMaterialId` apontando pra matéria-prima de OUTRO restaurante (salva sem
+// validação de posse, ver `catalog.controller.ts`) resolvia normalmente, vazando nome/preço de
+// um recurso que não pertence a quem está vendo. `docs` sempre vem de uma única query já
+// escopada por restaurante (todo chamador usa `restaurantId` ou busca um produto específico já
+// carregado) — por isso é seguro derivar `restaurantId` do primeiro doc do lote.
 async function resolveLinkedRawMaterials(docs: ProductLeanDocument[]): Promise<void> {
+  if (docs.length === 0) return;
+  const restaurantId = docs[0].restaurantId;
   const rawMaterialIds = new Set<string>();
   for (const doc of docs) {
     collectRawMaterialIds(doc.additionalGroups ?? [], rawMaterialIds);
   }
   if (rawMaterialIds.size === 0) return;
 
-  const rawMaterials = await RawMaterialModel.find({ _id: { $in: [...rawMaterialIds] } })
+  const rawMaterials = await RawMaterialModel.find({ _id: { $in: [...rawMaterialIds] }, restaurantId })
     .select('_id name priceDelta description imageUrl tracksStock currentStock')
     .lean<LinkedRawMaterialLeanDocument[]>();
   const rawMaterialsById = new Map(rawMaterials.map((rawMaterial) => [rawMaterial._id, rawMaterial]));
@@ -280,7 +289,12 @@ export function resolveGroup(
   };
 }
 
+// Achado de auditoria (2026-10-31, crítico) — mesmo raciocínio de `resolveLinkedRawMaterials`:
+// filtra por `restaurantId` além de `_id`, pra um `templateId` de outro restaurante nunca
+// resolver.
 async function resolveTemplates(docs: ProductLeanDocument[]): Promise<void> {
+  if (docs.length === 0) return;
+  const restaurantId = docs[0].restaurantId;
   const templateIds = new Set<string>();
   for (const doc of docs) {
     for (const group of doc.additionalGroups ?? []) {
@@ -289,7 +303,7 @@ async function resolveTemplates(docs: ProductLeanDocument[]): Promise<void> {
   }
   if (templateIds.size === 0) return;
 
-  const templates = await AdditionalGroupTemplateModel.find({ _id: { $in: [...templateIds] } }).lean<
+  const templates = await AdditionalGroupTemplateModel.find({ _id: { $in: [...templateIds] }, restaurantId }).lean<
     AdditionalGroupTemplateLeanDocument[]
   >();
   const templatesById = new Map(templates.map((template) => [template._id, template]));
@@ -312,14 +326,20 @@ function collectLinkedProductIds(groups: IProductAdditionalGroup[], acc: Set<str
 // (nunca antes): um grupo vinculado a template só revela suas opções — e um `linkedProductId`
 // eventual dentro delas — depois de resolvido; chamar na ordem contrária deixaria de resolver o
 // nome/imagem de opções vindas de template.
+// Achado de auditoria (2026-10-31, crítico) — mesmo raciocínio de `resolveLinkedRawMaterials`:
+// filtra por `restaurantId` além de `_id`. Sem isso, um `linkedProductId` apontando pra produto
+// de outro restaurante (descoberto via rota pública de cardápio) exibia nome/preço/disponibilidade
+// desse produto como se fosse um adicional do próprio cardápio, sem consentimento do dono.
 async function resolveLinkedProducts(docs: ProductLeanDocument[], promotionsByProductId: Map<string, IPromotion>): Promise<void> {
+  if (docs.length === 0) return;
+  const restaurantId = docs[0].restaurantId;
   const linkedProductIds = new Set<string>();
   for (const doc of docs) {
     collectLinkedProductIds(doc.additionalGroups ?? [], linkedProductIds);
   }
   if (linkedProductIds.size === 0) return;
 
-  const linkedProducts = await ProductModel.find({ _id: { $in: [...linkedProductIds] } })
+  const linkedProducts = await ProductModel.find({ _id: { $in: [...linkedProductIds] }, restaurantId })
     .select('_id name price description tracksStock stockQuantity')
     .lean<LinkedProductLeanDocument[]>();
   const productsById = new Map(linkedProducts.map((product) => [product._id, product]));
@@ -629,5 +649,55 @@ export class ProductMongooseRepository implements IProductRepository {
     return docs
       .filter((doc) => referencesLinkedProduct(doc.additionalGroups ?? [], linkedProductId))
       .map((doc) => ({ id: doc._id, name: doc.name }));
+  }
+
+  async findForeignAdditionalReferences(restaurantId: string, groups: IProductAdditionalGroupInput[]): Promise<string[]> {
+    const rawMaterialIds = new Set<string>();
+    const linkedProductIds = new Set<string>();
+    const templateIds = new Set<string>();
+    collectAdditionalReferenceIds(groups, rawMaterialIds, linkedProductIds, templateIds);
+
+    const foreign: string[] = [];
+
+    if (rawMaterialIds.size > 0) {
+      const owned = await RawMaterialModel.find({ _id: { $in: [...rawMaterialIds] }, restaurantId }).select('_id').lean<{ _id: string }[]>();
+      const ownedIds = new Set(owned.map((doc) => doc._id));
+      for (const id of rawMaterialIds) if (!ownedIds.has(id)) foreign.push(id);
+    }
+    if (linkedProductIds.size > 0) {
+      const owned = await ProductModel.find({ _id: { $in: [...linkedProductIds] }, restaurantId }).select('_id').lean<{ _id: string }[]>();
+      const ownedIds = new Set(owned.map((doc) => doc._id));
+      for (const id of linkedProductIds) if (!ownedIds.has(id)) foreign.push(id);
+    }
+    if (templateIds.size > 0) {
+      const owned = await AdditionalGroupTemplateModel.find({ _id: { $in: [...templateIds] }, restaurantId }).select('_id').lean<{ _id: string }[]>();
+      const ownedIds = new Set(owned.map((doc) => doc._id));
+      for (const id of templateIds) if (!ownedIds.has(id)) foreign.push(id);
+    }
+
+    return foreign;
+  }
+}
+
+// Achado de auditoria (2026-10-31, crítico) — mesmo papel de `collectRawMaterialIds`/
+// `collectLinkedProductIds` acima, mas operando no tipo de ENTRADA (`IProductAdditionalGroupInput`,
+// aceito em `saveProductSchema`/`updateProductSchema`), que inclui o grupo-referência a template
+// ({id, productId, templateId}, sem `options` próprias) além do grupo inline completo — por isso
+// não dá pra reaproveitar os coletores existentes (que só conhecem a forma de leitura, já
+// resolvida). Usado só por `findForeignAdditionalReferences`, chamado ANTES de persistir.
+function collectAdditionalReferenceIds(
+  groups: IProductAdditionalGroupInput[],
+  rawMaterialIds: Set<string>,
+  linkedProductIds: Set<string>,
+  templateIds: Set<string>,
+): void {
+  for (const group of groups) {
+    if (group.templateId) templateIds.add(group.templateId);
+    if (!('options' in group)) continue;
+    for (const option of group.options) {
+      if (option.rawMaterialId) rawMaterialIds.add(option.rawMaterialId);
+      if (option.linkedProductId) linkedProductIds.add(option.linkedProductId);
+      if (option.nestedAdditionalGroups) collectAdditionalReferenceIds(option.nestedAdditionalGroups, rawMaterialIds, linkedProductIds, templateIds);
+    }
   }
 }
