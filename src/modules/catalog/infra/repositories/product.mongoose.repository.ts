@@ -43,6 +43,13 @@ interface LinkedProductLeanDocument {
   stockQuantity?: number;
 }
 
+function buildListQuery(restaurantId: string, filters?: IProductListFilters): Record<string, unknown> {
+  const query: Record<string, unknown> = { restaurantId };
+  if (filters?.name) query.name = { $regex: escapeRegex(filters.name), $options: 'i' };
+  if (filters?.isAvailable !== undefined) query.isAvailable = filters.isAvailable;
+  return query;
+}
+
 function toEntity(doc: ProductLeanDocument): IProduct {
   return {
     id: doc._id,
@@ -396,15 +403,34 @@ export class ProductMongooseRepository implements IProductRepository {
   }
 
   async listByRestaurant(restaurantId: string, filters?: IProductListFilters): Promise<IProduct[]> {
-    const query: Record<string, unknown> = { restaurantId };
-    if (filters?.name) query.name = { $regex: escapeRegex(filters.name), $options: 'i' };
-    if (filters?.isAvailable !== undefined) query.isAvailable = filters.isAvailable;
-    const docs = await ProductModel.find(query).lean<ProductLeanDocument[]>();
+    const docs = await ProductModel.find(buildListQuery(restaurantId, filters)).lean<ProductLeanDocument[]>();
     const promotionsByProductId = await resolvePromotions(docs, this.promotionRepository);
     await resolveTemplates(docs);
     await resolveLinkedProducts(docs, promotionsByProductId);
     await resolveLinkedRawMaterials(docs);
     return docs.map(toEntity);
+  }
+
+  // Achado da auditoria pré-produção (31/10/2026) — "listas carregam tudo de uma vez; paginação
+  // só no front": `listByRestaurant` acima continua intacto (vários consumidores internos do
+  // BFF precisam da lista inteira); este método paginado é só pra tela de lista de produtos da
+  // retaguarda. `createdAt` desc como ordenação estável (sem isso, skip/limit sobre `_id`
+  // aleatório — UUID, não ObjectId sequencial — não garante página alguma consistente).
+  async listByRestaurantPage(
+    restaurantId: string,
+    filters: IProductListFilters,
+    pagination: { skip: number; limit: number },
+  ): Promise<{ items: IProduct[]; total: number }> {
+    const query = buildListQuery(restaurantId, filters);
+    const [docs, total] = await Promise.all([
+      ProductModel.find(query).sort({ createdAt: -1 }).skip(pagination.skip).limit(pagination.limit).lean<ProductLeanDocument[]>(),
+      ProductModel.countDocuments(query),
+    ]);
+    const promotionsByProductId = await resolvePromotions(docs, this.promotionRepository);
+    await resolveTemplates(docs);
+    await resolveLinkedProducts(docs, promotionsByProductId);
+    await resolveLinkedRawMaterials(docs);
+    return { items: docs.map(toEntity), total };
   }
 
   async create(restaurantId: string, input: NewProductInput): Promise<IProduct> {

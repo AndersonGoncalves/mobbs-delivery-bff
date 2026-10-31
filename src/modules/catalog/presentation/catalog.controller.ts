@@ -16,6 +16,7 @@ import { IProductRepository } from '../domain/repositories/product.repository.in
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IStockMovementRepository } from '../../raw-materials/domain/repositories/stock-movement.repository.interface';
 import { stockAdjustmentSchema } from '../../raw-materials/presentation/raw-material.schemas';
+import { resolvePagination } from '../../../shared/http/pagination';
 import {
   listProductsQuerySchema,
   menuCategoryNameSchema,
@@ -313,13 +314,23 @@ export class CatalogController extends BaseRouter {
 
     // REQ-2 (retaguarda): produtos completos (com `additionalGroups`) do restaurante do operador.
     // specs/0026-selecao-clonar-excluir-busca-web REQ-7 — `name`/`isAvailable` filtram no servidor.
+    // Achado da auditoria pré-produção (31/10/2026) — "listas carregam tudo de uma vez;
+    // paginação só no front": `page`/`pageSize` OPCIONAIS (ver `resolvePagination`) — omitidos,
+    // devolve a lista inteira exatamente como antes (as outras ~20 telas da retaguarda que
+    // consomem este mesmo endpoint sem paginar nunca quebram); só a tela de lista de produtos
+    // manda os dois, e aí o total real vai no header `X-Total-Count` (nunca no corpo, que
+    // continua sendo só o array — contrato igual nos dois casos).
     application.get('/restaurants/me/products', ...catalogReadWithWaiterAuthenticated, async (req: Request, res: Response) => {
       const query = parseBody(listProductsQuerySchema, req.query ?? {});
-      const products = await this.productRepository.listByRestaurant(req.restaurantId!, {
-        name: query.name,
-        isAvailable: query.isAvailable === undefined ? undefined : query.isAvailable === 'true',
-      });
-      res.json(200, products);
+      const filters = { name: query.name, isAvailable: query.isAvailable === undefined ? undefined : query.isAvailable === 'true' };
+      const pagination = resolvePagination(query);
+      if (!pagination) {
+        res.json(200, await this.productRepository.listByRestaurant(req.restaurantId!, filters));
+        return;
+      }
+      const { items, total } = await this.productRepository.listByRestaurantPage(req.restaurantId!, filters, pagination);
+      res.header('X-Total-Count', String(total));
+      res.json(200, items);
     });
 
     application.post('/restaurants/me/products', ...authenticated, async (req: Request, res: Response) => {

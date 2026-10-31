@@ -31,6 +31,12 @@ export class Server {
       res.header('Access-Control-Allow-Origin', '*');
       res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
       res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+      // Achado da auditoria pré-produção (31/10/2026) — "listas carregam tudo de uma vez;
+      // paginação só no front": `X-Total-Count` (total de registros, nunca o total da página)
+      // pros endpoints paginados (produtos, clientes, financeiro); sem isto, o CORS bloqueia o
+      // JavaScript do navegador de LER um header customizado da resposta, mesmo ele estando lá
+      // ("CORS-safelisted" cobre só Content-Type/Content-Length/etc., nunca um header próprio).
+      res.header('Access-Control-Expose-Headers', 'X-Total-Count');
       return next();
     });
 

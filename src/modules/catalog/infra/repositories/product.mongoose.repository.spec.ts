@@ -489,3 +489,43 @@ describe('ProductMongooseRepository.findForeignAdditionalReferences (achado de a
     await expect(repository.findForeignAdditionalReferences('r-1', groups)).resolves.toEqual(['combo-foreign']);
   });
 });
+
+// Achado da auditoria pré-produção (31/10/2026) — "listas carregam tudo de uma vez; paginação
+// só no front".
+describe('ProductMongooseRepository.listByRestaurantPage (achado de auditoria 2026-10-31)', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('pagina no servidor (sort/skip/limit) e devolve o total real, não o total da página', async () => {
+    const leanMock = jest.fn().mockResolvedValue([{ _id: 'p-2', restaurantId: 'r-1', name: 'Produto 2', price: 10, isAvailable: true, additionalGroups: [] }]);
+    const limitMock = jest.fn().mockReturnValue({ lean: leanMock });
+    const skipMock = jest.fn().mockReturnValue({ limit: limitMock });
+    const sortMock = jest.fn().mockReturnValue({ skip: skipMock });
+    jest.spyOn(ProductModel, 'find').mockReturnValue({ sort: sortMock } as never);
+    jest.spyOn(ProductModel, 'countDocuments').mockResolvedValue(37);
+    const promotionRepository: Partial<IPromotionRepository> = { findActiveByRestaurantId: jest.fn().mockResolvedValue([]) };
+    const repository = new ProductMongooseRepository(promotionRepository as IPromotionRepository);
+
+    const result = await repository.listByRestaurantPage('r-1', {}, { skip: 25, limit: 25 });
+
+    expect(ProductModel.find).toHaveBeenCalledWith({ restaurantId: 'r-1' });
+    expect(sortMock).toHaveBeenCalledWith({ createdAt: -1 });
+    expect(skipMock).toHaveBeenCalledWith(25);
+    expect(limitMock).toHaveBeenCalledWith(25);
+    expect(result.total).toBe(37);
+    expect(result.items.map((p) => p.id)).toEqual(['p-2']);
+  });
+
+  it('aplica os mesmos filtros name/isAvailable de listByRestaurant na query paginada', async () => {
+    const leanMock = jest.fn().mockResolvedValue([]);
+    const limitMock = jest.fn().mockReturnValue({ lean: leanMock });
+    const skipMock = jest.fn().mockReturnValue({ limit: limitMock });
+    const sortMock = jest.fn().mockReturnValue({ skip: skipMock });
+    const findSpy = jest.spyOn(ProductModel, 'find').mockReturnValue({ sort: sortMock } as never);
+    jest.spyOn(ProductModel, 'countDocuments').mockResolvedValue(0);
+    const repository = new ProductMongooseRepository({} as IPromotionRepository);
+
+    await repository.listByRestaurantPage('r-1', { name: 'Pizza', isAvailable: true }, { skip: 0, limit: 25 });
+
+    expect(findSpy).toHaveBeenCalledWith({ restaurantId: 'r-1', name: { $regex: 'Pizza', $options: 'i' }, isAvailable: true });
+  });
+});

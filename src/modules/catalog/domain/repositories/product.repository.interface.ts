@@ -51,8 +51,21 @@ export interface IProductRepository {
   /** REQ-3: produto completo (com `additionalGroups`) — `null` se o `id` não existir. */
   findById(id: string): Promise<IProduct | null>;
 
-  /** REQ-2 (retaguarda) — todos os produtos do restaurante do operador, com `additionalGroups`. */
+  /** REQ-2 (retaguarda) — todos os produtos do restaurante do operador, com `additionalGroups`.
+   * Usado por vários consumidores internos do BFF que precisam da lista INTEIRA (cozinha,
+   * emissão fiscal, totem, checklist de onboarding) — nunca paginado; ver `listByRestaurantPage`
+   * pra paginação real. */
   listByRestaurant(restaurantId: string, filters?: IProductListFilters): Promise<IProduct[]>;
+
+  /** Achado da auditoria pré-produção (31/10/2026) — "listas carregam tudo de uma vez;
+   * paginação só no front": método NOVO, separado de `listByRestaurant` de propósito (que
+   * continua devolvendo tudo, sem paginar, pros consumidores que precisam da lista inteira) —
+   * só a tela de lista de produtos da retaguarda usa este aqui. */
+  listByRestaurantPage(
+    restaurantId: string,
+    filters: IProductListFilters,
+    pagination: { skip: number; limit: number },
+  ): Promise<{ items: IProduct[]; total: number }>;
 
   create(restaurantId: string, input: NewProductInput): Promise<IProduct>;
 

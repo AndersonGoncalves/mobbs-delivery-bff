@@ -13,7 +13,7 @@ type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & {
   operatorRole?: Request['operatorRole'];
   user?: { uid: string };
 };
-type FakeResponse = Pick<Response, 'json'> & Partial<Pick<Response, 'send'>>;
+type FakeResponse = Pick<Response, 'json'> & Partial<Pick<Response, 'send' | 'header'>>;
 type RouteHandler = (req: FakeRequest, res: FakeResponse) => Promise<void>;
 
 function buildFakeApplication() {
@@ -114,6 +114,10 @@ describe('CatalogController', () => {
       // Achado de auditoria (2026-10-31) — por padrão, nenhuma referência estrangeira (mesmo
       // comportamento de antes do fix); testes específicos sobrescrevem pra simular o bloqueio.
       findForeignAdditionalReferences: jest.fn().mockResolvedValue([]),
+      // Achado de auditoria (2026-10-31) — só usado quando a requisição manda page/pageSize
+      // (ver `resolvePagination`); default devolve 1 produto / total 1, testes específicos
+      // sobrescrevem.
+      listByRestaurantPage: jest.fn().mockResolvedValue({ items: [buildProduct()], total: 1 }),
       ...overrides.productRepository,
     };
     const orderRepository: Partial<IOrderRepository> = {
@@ -1109,6 +1113,43 @@ describe('CatalogController', () => {
     );
 
     expect(productRepository.listByRestaurant).toHaveBeenCalledWith('r-1', { name: 'piz', isAvailable: true });
+  });
+
+  // Achado da auditoria pré-produção (31/10/2026) — "listas carregam tudo de uma vez;
+  // paginação só no front".
+  it('achado de auditoria (2026-10-31): sem page/pageSize, GET /restaurants/me/products continua devolvendo a lista inteira (sem header de total)', async () => {
+    const { productRepository, routes } = setup();
+    const json = jest.fn();
+    const header = jest.fn();
+
+    await runOperatorChain(routes['GET /restaurants/me/products'], { restaurantId: 'r-1', query: {} }, { json, header });
+
+    expect(productRepository.listByRestaurant).toHaveBeenCalledTimes(1);
+    expect(productRepository.listByRestaurantPage).not.toHaveBeenCalled();
+    expect(header).not.toHaveBeenCalled();
+  });
+
+  it('achado de auditoria (2026-10-31): com page/pageSize, pagina no servidor e manda o total real no header X-Total-Count', async () => {
+    const { productRepository, routes } = setup({
+      productRepository: { listByRestaurantPage: jest.fn().mockResolvedValue({ items: [buildProduct()], total: 142 }) },
+    });
+    const json = jest.fn();
+    const header = jest.fn();
+
+    await runOperatorChain(
+      routes['GET /restaurants/me/products'],
+      { restaurantId: 'r-1', query: { page: '3', pageSize: '20', name: 'piz' } },
+      { json, header },
+    );
+
+    expect(productRepository.listByRestaurant).not.toHaveBeenCalled();
+    expect(productRepository.listByRestaurantPage).toHaveBeenCalledWith(
+      'r-1',
+      { name: 'piz', isAvailable: undefined },
+      { skip: 40, limit: 20 },
+    );
+    expect(header).toHaveBeenCalledWith('X-Total-Count', '142');
+    expect(json).toHaveBeenCalledWith(200, [expect.objectContaining({ id: 'p-1' })]);
   });
 
   it('AC-3: DELETE /restaurants/me/products/:id sem uso em pedidos exclui de verdade (204)', async () => {
