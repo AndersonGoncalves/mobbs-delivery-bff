@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from '../../../shared/utils/fetch-with-timeout';
+
 /**
  * Pedido explícito do usuário (follow-up) — cliente HTTP pra Graph API do Facebook/Instagram,
  * `fetch` nativo (mesmo padrão de `MercadoPagoClient`/`AsaasClient`, sem SDK). Contrato conferido
@@ -115,12 +117,12 @@ export class FacebookGraphClient {
   }
 
   private async get<T>(path: string): Promise<T> {
-    const response = await fetch(`${this.graphBaseUrl}${path}`);
+    const response = await fetchWithTimeout(`${this.graphBaseUrl}${path}`);
     return this.parse<T>(response, 'GET', path);
   }
 
   private async post<T>(path: string, body: Record<string, string>): Promise<T> {
-    const response = await fetch(`${this.graphBaseUrl}${path}`, {
+    const response = await fetchWithTimeout(`${this.graphBaseUrl}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams(body).toString(),

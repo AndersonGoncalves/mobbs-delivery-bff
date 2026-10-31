@@ -1,4 +1,5 @@
 import { IPlacesSearchService, PlacesSearchInput, PlacesSearchResultItem } from '../../domain/services/i-places-search.service';
+import { fetchWithTimeout } from '../../../../shared/utils/fetch-with-timeout';
 
 const SEARCH_NEARBY_URL = 'https://places.googleapis.com/v1/places:searchNearby';
 
@@ -35,7 +36,7 @@ export class GooglePlacesService implements IPlacesSearchService {
       throw new Error('GOOGLE_PLACES_API_KEY não configurada — prospecção indisponível até a chave ser definida.');
     }
 
-    const response = await fetch(SEARCH_NEARBY_URL, {
+    const response = await fetchWithTimeout(SEARCH_NEARBY_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

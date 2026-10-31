@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from '../../../shared/utils/fetch-with-timeout';
+
 /**
  * specs/0121-integracao-uber-entregas — cliente HTTP pra API da Uber Direct (`fetch` nativo,
  * mesmo padrão de `IFoodClient`/`AsaasClient`). Contrato confirmado na doc pública
@@ -56,7 +58,7 @@ function toAddressJson(address: UberDeliveryAddress): string {
 
 export class UberDirectClient {
   private async request<T>(accessToken: string, customerId: string, method: string, path: string, body?: unknown): Promise<T> {
-    const response = await fetch(`https://api.uber.com/v1/customers/${encodeURIComponent(customerId)}${path}`, {
+    const response = await fetchWithTimeout(`https://api.uber.com/v1/customers/${encodeURIComponent(customerId)}${path}`, {
       method,
       headers: {
         'Content-Type': 'application/json',

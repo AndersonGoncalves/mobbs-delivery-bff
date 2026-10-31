@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from '../../../shared/utils/fetch-with-timeout';
+
 /**
  * specs/0122-integracao-99food — cliente HTTP pra API do 99Food Open Platform (`fetch` nativo,
  * mesmo padrão de `IFoodClient`/`UberDirectClient`: sem SDK de terceiro). Contrato capturado
@@ -25,9 +27,9 @@ export class NinetyNineFoodClient {
       // (sempre strings planas: auth_token + order_id/entrega_order_id), por isso o cast abaixo
       // é seguro; nenhum endpoint GET desta classe usa objeto aninhado.
       const query = new URLSearchParams(params as Record<string, string>).toString();
-      response = await fetch(`${this.baseUrl}${path}?${query}`, { method: 'GET' });
+      response = await fetchWithTimeout(`${this.baseUrl}${path}?${query}`, { method: 'GET' });
     } else {
-      response = await fetch(`${this.baseUrl}${path}`, {
+      response = await fetchWithTimeout(`${this.baseUrl}${path}`, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params),

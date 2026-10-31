@@ -43,6 +43,7 @@ describe('FacebookGraphClient (follow-up — automação de postagens no Instagr
 
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining('https://graph.facebook.com/v21.0/oauth/access_token?client_id=app-id&client_secret=app-secret'),
+      expect.objectContaining({ signal: expect.anything() }),
     );
     expect(result).toEqual({ accessToken: 'short-token', expiresIn: 3600 });
   });
@@ -52,8 +53,8 @@ describe('FacebookGraphClient (follow-up — automação de postagens no Instagr
 
     const result = await client.getLongLivedToken('short-token');
 
-    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('grant_type=fb_exchange_token'));
-    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('fb_exchange_token=short-token'));
+    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('grant_type=fb_exchange_token'), expect.objectContaining({ signal: expect.anything() }));
+    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('fb_exchange_token=short-token'), expect.objectContaining({ signal: expect.anything() }));
     expect(result).toEqual({ accessToken: 'long-token', expiresIn: 5184000 });
   });
 

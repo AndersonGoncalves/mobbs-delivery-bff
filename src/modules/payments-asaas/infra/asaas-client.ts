@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from '../../../shared/utils/fetch-with-timeout';
+
 /**
  * specs/0101-integracao-asaas (fase 1, só Pix) — cliente HTTP pro Asaas, `fetch` nativo (mesmo
  * padrão de `GooglePlacesService`, sem SDK/axios). Contrato conferido na documentação oficial
@@ -98,7 +100,7 @@ export class AsaasClient {
   ) {}
 
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${path}`, {
+    const response = await fetchWithTimeout(`${this.baseUrl}${path}`, {
       method,
       headers: { 'Content-Type': 'application/json', access_token: this.apiKey },
       body: body === undefined ? undefined : JSON.stringify(body),

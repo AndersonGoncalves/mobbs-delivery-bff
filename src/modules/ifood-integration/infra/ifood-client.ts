@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from '../../../shared/utils/fetch-with-timeout';
+
 /**
  * specs/0090-integracao-ifood — cliente HTTP pra API de pedidos do iFood (`fetch` nativo, mesmo
  * padrão de `AsaasClient`: sem SDK de terceiro). Contrato (polling de eventos, acknowledgment,
@@ -61,7 +63,7 @@ export class IFoodClient {
     body?: unknown,
     extraHeaders?: Record<string, string>,
   ): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${path}`, {
+    const response = await fetchWithTimeout(`${this.baseUrl}${path}`, {
       method,
       headers: {
         'Content-Type': 'application/json',

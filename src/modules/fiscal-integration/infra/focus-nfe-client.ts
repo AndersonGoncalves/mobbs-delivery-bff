@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from '../../../shared/utils/fetch-with-timeout';
+
 /**
  * specs/0091-integracao-fiscal-focusnfe — cliente HTTP pra API da FocusNFe (`fetch` nativo, mesmo
  * padrão de `AsaasClient`/`IFoodClient`). Contrato conferido na documentação oficial
@@ -88,14 +90,20 @@ export class FocusNfeApiClient {
   ) {}
 
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${path}`, {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Basic ${Buffer.from(`${this.token}:`).toString('base64')}`,
+    // specs/0091 — emissão é síncrona e envolve um roundtrip real com a SEFAZ (pode legitimamente
+    // demorar mais que uma chamada comum); 15s (teto da faixa recomendada) em vez do default.
+    const response = await fetchWithTimeout(
+      `${this.baseUrl}${path}`,
+      {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Basic ${Buffer.from(`${this.token}:`).toString('base64')}`,
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
       },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
+      15_000,
+    );
 
     const text = await response.text();
 
