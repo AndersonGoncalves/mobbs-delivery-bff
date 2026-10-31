@@ -179,6 +179,29 @@ não são limpas automaticamente por uma rodada nova do script (ele só age sobr
 ainda existe no Mongo); precisam ser apagadas à parte, uma vez, via `aws s3 rm
 s3://mobbs-delivery-images/restaurants/<id>/ --recursive`.
 
+## Teste de carga (`scripts/load-test/`)
+
+Ferramenta pra popular a base local com ~1 ano de movimentação sintética (500 restaurantes,
+300mil clientes, ~2,7 milhões de pedidos) e opcionalmente rodar tráfego concorrente (k6) contra a
+API — guia completo, com todos os comandos e o porquê de cada etapa, em
+[`scripts/load-test/README.md`](../scripts/load-test/README.md).
+
+Resumo:
+
+```bash
+# Fase A — popular o banco (sempre apaga e recria do zero; pede confirmação)
+docker compose -f docker-compose.yml -f docker-compose.loadtest.yml up -d mongo
+npm run loadtest:seed
+
+# Fase B — tráfego concorrente via k6 (precisa do Firebase Auth Emulator — rotas de
+# cliente exigem ID token real, e os clientes sintéticos não existem no Firebase de verdade)
+npm run loadtest:emulator     # terminal 1
+npm run loadtest:api          # terminal 2 (API numa porta separada, 3099)
+npm run loadtest:fixtures     # terminal 3 — amostra restaurantes/clientes + gera tokens
+docker run --rm --network=host -e API_BASE_URL=http://localhost:3099 \
+  -v "$PWD/scripts/load-test/k6":/work -w /work grafana/k6 run scenario.js
+```
+
 ## Pendências
 
 - **Documentação da API (Swagger/OpenAPI)** — decidido em `docs/architecture/patterns.md` §16.7

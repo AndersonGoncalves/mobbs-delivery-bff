@@ -13,3 +13,7 @@ tsconfig.tsbuildinfo
 # Notas pessoais com comandos prontos que incluem credenciais reais (ex. senha do Mongo de
 # produção) — nunca comitar, mesmo raciocínio do .env.
 NOTES-*.md
+
+# Teste de carga (scripts/load-test) — gerado a cada rodada, tem ID tokens (do Firebase Auth
+# Emulator local, nunca do Firebase real) e IDs de dados sintéticos.
+scripts/load-test/k6/fixtures.json
