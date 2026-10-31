@@ -7,7 +7,7 @@ import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middl
 import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { IAccountReceivableRepository } from '../domain/repositories/account-receivable.repository.interface';
 import { ICashRegisterRepository } from '../domain/repositories/cash-register.repository.interface';
-import { markAccountReceivablePaidSchema, saveAccountReceivableSchema } from './financeiro.schemas';
+import { accountListQuerySchema, markAccountReceivablePaidSchema, saveAccountReceivableSchema } from './financeiro.schemas';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
@@ -36,8 +36,15 @@ export class AccountsReceivableController extends BaseRouter {
     ];
 
     // AC-3
+    // Achado de performance da auditoria pré-produção (31/10/2026) — `from`/`to` opcionais
+    // (ver `accountListQuerySchema`); sem eles, `listByRestaurant` já aplica um default que
+    // evita carregar o histórico inteiro de anos.
     application.get('/restaurants/me/accounts-receivable', ...authenticated, async (req: Request, res: Response) => {
-      const accounts = await this.accountReceivableRepository.listByRestaurant(req.restaurantId!);
+      const { from, to } = parseBody(accountListQuerySchema, req.query ?? {});
+      const accounts = await this.accountReceivableRepository.listByRestaurant(req.restaurantId!, {
+        from: from ? new Date(from) : undefined,
+        to: to ? new Date(to) : undefined,
+      });
       res.json(200, accounts);
     });
 

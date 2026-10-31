@@ -4,7 +4,7 @@ import { IAccountReceivableRepository } from '../domain/repositories/account-rec
 import { ICashRegisterRepository } from '../domain/repositories/cash-register.repository.interface';
 import { AccountsReceivableController } from './accounts-receivable.controller';
 
-type FakeRequest = Partial<Pick<Request, 'params' | 'body'>> & { restaurantId?: string };
+type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & { restaurantId?: string };
 type FakeResponse = Pick<Response, 'json'>;
 type RouteHandler = (req: FakeRequest, res: FakeResponse) => Promise<void>;
 
@@ -84,8 +84,34 @@ describe('AccountsReceivableController', () => {
 
     await runOperatorChain(routes['GET /restaurants/me/accounts-receivable'], { restaurantId: 'r-1' }, { json });
 
-    expect(accountReceivableRepository.listByRestaurant).toHaveBeenCalledWith('r-1');
+    expect(accountReceivableRepository.listByRestaurant).toHaveBeenCalledWith('r-1', { from: undefined, to: undefined });
     expect(json).toHaveBeenCalledWith(200, [expect.objectContaining({ id: 'ar-1' })]);
+  });
+
+  // Achado de performance da auditoria pré-produção (31/10/2026) — "listas de contas a pagar/
+  // receber sem paginação nem filtro de período obrigatório".
+  it('achado de auditoria (2026-10-31): GET aceita from/to opcionais e repassa como Date pro repositório', async () => {
+    const { accountReceivableRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['GET /restaurants/me/accounts-receivable'],
+      { restaurantId: 'r-1', query: { from: '2026-01-01T00:00:00.000Z', to: '2026-01-31T23:59:59.000Z' } },
+      { json },
+    );
+
+    expect(accountReceivableRepository.listByRestaurant).toHaveBeenCalledWith('r-1', {
+      from: new Date('2026-01-01T00:00:00.000Z'),
+      to: new Date('2026-01-31T23:59:59.000Z'),
+    });
+  });
+
+  it('achado de auditoria (2026-10-31): GET rejeita (400) from/to com data inválida', async () => {
+    const { routes } = setup();
+
+    await expect(
+      runOperatorChain(routes['GET /restaurants/me/accounts-receivable'], { restaurantId: 'r-1', query: { from: 'não-é-uma-data' } }, { json: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 400 });
   });
 
   it('AC-3: POST /restaurants/me/accounts-receivable cria um título a receber em aberto', async () => {

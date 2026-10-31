@@ -3,6 +3,7 @@ import {
   AccountReceivableInput,
   IAccountReceivableRepository,
 } from '../../domain/repositories/account-receivable.repository.interface';
+import { AccountListFilters, buildAccountListQuery } from '../../domain/build-account-list-query';
 import { AccountReceivableModel } from '../models/account-receivable.mongoose.model';
 
 interface AccountReceivableLeanDocument {
@@ -34,8 +35,8 @@ function toEntity(doc: AccountReceivableLeanDocument): IAccountReceivable {
 }
 
 export class AccountReceivableMongooseRepository implements IAccountReceivableRepository {
-  async listByRestaurant(restaurantId: string): Promise<IAccountReceivable[]> {
-    const docs = await AccountReceivableModel.find({ restaurantId })
+  async listByRestaurant(restaurantId: string, filters?: AccountListFilters): Promise<IAccountReceivable[]> {
+    const docs = await AccountReceivableModel.find(buildAccountListQuery(restaurantId, filters))
       .sort({ dueDate: 1 })
       .lean<AccountReceivableLeanDocument[]>();
     return docs.map(toEntity);

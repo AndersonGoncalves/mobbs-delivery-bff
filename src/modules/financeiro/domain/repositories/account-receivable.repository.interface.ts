@@ -1,4 +1,5 @@
 import { IAccountReceivable } from '../entities/account.entity';
+import { AccountListFilters } from '../build-account-list-query';
 
 export interface AccountReceivableInput {
   description: string;
@@ -9,7 +10,9 @@ export interface AccountReceivableInput {
 }
 
 export interface IAccountReceivableRepository {
-  listByRestaurant(restaurantId: string): Promise<IAccountReceivable[]>;
+  /** Achado de performance da auditoria pré-produção (31/10/2026) — `filters` opcional; sem ele,
+   * o default (ver `buildAccountListQuery`) já evita carregar o histórico inteiro de anos. */
+  listByRestaurant(restaurantId: string, filters?: AccountListFilters): Promise<IAccountReceivable[]>;
   findById(id: string): Promise<IAccountReceivable | null>;
   create(restaurantId: string, input: AccountReceivableInput): Promise<IAccountReceivable>;
   update(id: string, input: AccountReceivableInput): Promise<IAccountReceivable>;

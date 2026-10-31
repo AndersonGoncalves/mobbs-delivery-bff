@@ -57,6 +57,15 @@ export const closeCashRegisterSchema = z.object({
   countedValue: z.number().nonnegative('Valor contado não pode ser negativo'),
 });
 
+/** Achado de performance da auditoria pré-produção (31/10/2026) — `from`/`to` OPCIONAIS: sem
+ * eles, o repositório já aplica um default que evita carregar o histórico inteiro (ver
+ * `buildAccountListQuery`); existem pra uma tela futura oferecer escolher o período
+ * explicitamente, sem exigir nada novo do client hoje. */
+export const accountListQuerySchema = z.object({
+  from: isoDateString.optional(),
+  to: isoDateString.optional(),
+});
+
 /** specs/0127 — período ISO com início anterior ao limite final exclusivo. */
 export const motoboyPayoutPeriodSchema = z
   .object({ from: isoDateString, to: isoDateString })

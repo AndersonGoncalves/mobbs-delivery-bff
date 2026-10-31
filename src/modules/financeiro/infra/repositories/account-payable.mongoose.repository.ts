@@ -3,6 +3,7 @@ import {
   AccountPayableInput,
   IAccountPayableRepository,
 } from '../../domain/repositories/account-payable.repository.interface';
+import { AccountListFilters, buildAccountListQuery } from '../../domain/build-account-list-query';
 import { AccountPayableModel } from '../models/account-payable.mongoose.model';
 
 interface AccountPayableLeanDocument {
@@ -34,8 +35,8 @@ function toEntity(doc: AccountPayableLeanDocument): IAccountPayable {
 }
 
 export class AccountPayableMongooseRepository implements IAccountPayableRepository {
-  async listByRestaurant(restaurantId: string): Promise<IAccountPayable[]> {
-    const docs = await AccountPayableModel.find({ restaurantId })
+  async listByRestaurant(restaurantId: string, filters?: AccountListFilters): Promise<IAccountPayable[]> {
+    const docs = await AccountPayableModel.find(buildAccountListQuery(restaurantId, filters))
       .sort({ dueDate: 1 })
       .lean<AccountPayableLeanDocument[]>();
     return docs.map(toEntity);
