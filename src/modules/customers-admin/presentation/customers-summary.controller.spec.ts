@@ -9,7 +9,7 @@ import { ICustomerBalanceRepository } from '../../customer-balance/domain/reposi
 import { CustomersSummaryController } from './customers-summary.controller';
 
 type FakeRequest = Partial<Pick<Request, 'params' | 'query' | 'body'>> & { restaurantId?: string };
-type FakeResponse = Pick<Response, 'json'>;
+type FakeResponse = Pick<Response, 'json'> & Partial<Pick<Response, 'header'>>;
 type RouteHandler = (req: FakeRequest, res: FakeResponse) => Promise<void>;
 
 function buildFakeApplication() {
@@ -91,6 +91,9 @@ describe('CustomersSummaryController (specs/0016-clientes-retaguarda)', () => {
   ) {
     const customerSummaryRepository: Partial<ICustomerSummaryRepository> = {
       listByRestaurant: jest.fn().mockResolvedValue([buildSummary()]),
+      // Achado de auditoria (2026-10-31) — só usado quando a requisição manda page/pageSize (ver
+      // `resolvePagination`); default devolve 1 cliente / total 1, testes específicos sobrescrevem.
+      listByRestaurantPage: jest.fn().mockResolvedValue({ items: [buildSummary()], total: 1 }),
       ...overrides.customerSummaryRepository,
     };
     const orderRepository: Partial<IOrderRepository> = {
@@ -180,6 +183,39 @@ describe('CustomersSummaryController (specs/0016-clientes-retaguarda)', () => {
 
     const [, body] = json.mock.calls[0];
     expect(body.map((item: { customerId: string }) => item.customerId)).toEqual(['cust-1', 'cust-2']);
+  });
+
+  // Achado de auditoria pré-produção (31/10/2026) — "customers-summary sem paginação, agrega o
+  // histórico inteiro", mesmo padrão de `/restaurants/me/products`.
+  it('achado de auditoria (2026-10-31): sem page/pageSize, GET .../customers-summary continua devolvendo a lista inteira (sem header de total)', async () => {
+    const { customerSummaryRepository, routes } = setup();
+    const json = jest.fn();
+    const header = jest.fn();
+
+    await runOperatorChain(routes['GET /restaurants/me/customers-summary'], { restaurantId: 'r-1', query: {} }, { json, header });
+
+    expect(customerSummaryRepository.listByRestaurant).toHaveBeenCalledTimes(1);
+    expect(customerSummaryRepository.listByRestaurantPage).not.toHaveBeenCalled();
+    expect(header).not.toHaveBeenCalled();
+  });
+
+  it('achado de auditoria (2026-10-31): com page/pageSize, pagina no servidor e manda o total real no header X-Total-Count', async () => {
+    const { customerSummaryRepository, routes } = setup({
+      customerSummaryRepository: { listByRestaurantPage: jest.fn().mockResolvedValue({ items: [buildSummary()], total: 142 }) },
+    });
+    const json = jest.fn();
+    const header = jest.fn();
+
+    await runOperatorChain(
+      routes['GET /restaurants/me/customers-summary'],
+      { restaurantId: 'r-1', query: { page: '3', pageSize: '20', search: 'Maria' } },
+      { json, header },
+    );
+
+    expect(customerSummaryRepository.listByRestaurant).not.toHaveBeenCalled();
+    expect(customerSummaryRepository.listByRestaurantPage).toHaveBeenCalledWith('r-1', { skip: 40, limit: 20 }, 'Maria', undefined, undefined);
+    expect(header).toHaveBeenCalledWith('X-Total-Count', '142');
+    expect(json).toHaveBeenCalledWith(200, [expect.objectContaining({ customerId: 'cust-1' })]);
   });
 
   it('AC-3: GET .../customers-summary/:customerId/orders busca o histórico escopado ao restaurante do operador', async () => {

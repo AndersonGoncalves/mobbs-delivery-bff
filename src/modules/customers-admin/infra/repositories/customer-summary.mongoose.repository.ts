@@ -21,6 +21,21 @@ interface StandaloneCustomerDocument {
   allowedPaymentMethods?: PaymentMethod[];
 }
 
+interface CustomerSummaryPageItem {
+  customerId: string;
+  name: string;
+  phone?: string;
+  totalOrders: number;
+  totalSpent: number;
+  lastOrderAt: Date | null;
+  allowedPaymentMethods?: PaymentMethod[];
+}
+
+interface CustomerSummaryFacetResult {
+  items: CustomerSummaryPageItem[];
+  totalCount: Array<{ count: number }>;
+}
+
 // Escapa caracteres especiais de regex antes de usar `search` num `$regex` — sem isso, um cliente
 // buscando por um telefone com parênteses/`+` (ex.: "(11) 99999-0000") quebraria o pipeline ou
 // casaria de forma inesperada.
@@ -111,5 +126,115 @@ export class CustomerSummaryMongooseRepository implements ICustomerSummaryReposi
     }));
 
     return [...fromOrders, ...fromStandalone].sort((a, b) => b.totalSpent - a.totalSpent);
+  }
+
+  // Achado de auditoria pré-produção (31/10/2026) — "customers-summary sem paginação, agrega o
+  // histórico inteiro": método NOVO, separado de `listByRestaurant` acima de propósito (que
+  // continua intacto, sem paginar). Combina as duas fontes (pedidos + cadastro manual) num só
+  // pipeline via `$unionWith` — diferente de `listByRestaurant`, que busca as duas separado e
+  // junta em memória — porque aqui o `$skip`/`$limit` precisa valer sobre o resultado JÁ
+  // combinado e ordenado (senão a página 1 nunca veria um cliente cadastrado manualmente, que
+  // só apareceria depois de paginar todos os clientes com pedido). O `$group` final por
+  // `customerId` dedup a união sozinho (`$max` nos totais, `$first` no resto) — substitui o
+  // `alreadyListed`/`$nin` de `listByRestaurant` sem precisar replicá-lo.
+  async listByRestaurantPage(
+    restaurantId: string,
+    pagination: { skip: number; limit: number },
+    search?: string,
+    fromDate?: Date,
+    toDate?: Date,
+  ): Promise<{ items: ICustomerSummary[]; total: number }> {
+    const isInPeriod =
+      fromDate || toDate
+        ? { $and: [{ $gte: ['$createdAt', fromDate ?? new Date(0)] }, { $lte: ['$createdAt', toDate ?? new Date('9999-12-31')] }] }
+        : { $literal: true };
+
+    const pipeline: PipelineStage[] = [
+      { $match: { restaurantId } },
+      {
+        $group: {
+          _id: '$customerId',
+          totalOrders: { $sum: { $cond: [isInPeriod, 1, 0] } },
+          totalSpent: { $sum: { $cond: [isInPeriod, '$total', 0] } },
+          lastOrderAt: { $max: '$createdAt' },
+        },
+      },
+      { $lookup: { from: 'customer', localField: '_id', foreignField: '_id', as: 'customer' } },
+      { $unwind: '$customer' },
+      {
+        $project: {
+          _id: 0,
+          customerId: '$_id',
+          name: '$customer.name',
+          phone: '$customer.phone',
+          totalOrders: 1,
+          totalSpent: 1,
+          lastOrderAt: 1,
+          allowedPaymentMethods: '$customer.allowedPaymentMethods',
+        },
+      },
+      {
+        // (achado real, pedido explícito do usuário) — mesmo papel do `fromStandalone` de
+        // `listByRestaurant`: cliente cadastrado manualmente ("NOVO" em Clientes) ANTES de
+        // qualquer pedido. `totalOrders`/`totalSpent` zerados, `lastOrderAt` nulo.
+        $unionWith: {
+          coll: 'customer',
+          pipeline: [
+            { $match: { createdByRestaurantId: restaurantId } },
+            {
+              $project: {
+                _id: 0,
+                customerId: '$_id',
+                name: 1,
+                phone: 1,
+                totalOrders: { $literal: 0 },
+                totalSpent: { $literal: 0 },
+                lastOrderAt: { $literal: null },
+                allowedPaymentMethods: 1,
+              },
+            },
+          ],
+        },
+      },
+      {
+        $group: {
+          _id: '$customerId',
+          name: { $first: '$name' },
+          phone: { $first: '$phone' },
+          totalOrders: { $max: '$totalOrders' },
+          totalSpent: { $max: '$totalSpent' },
+          lastOrderAt: { $max: '$lastOrderAt' },
+          allowedPaymentMethods: { $first: '$allowedPaymentMethods' },
+        },
+      },
+    ];
+
+    // REQ-2 — nome ou telefone, parcial, case-insensitive; mesmo `$match` de `listByRestaurant`.
+    if (search) {
+      const regex = new RegExp(escapeRegex(search), 'i');
+      pipeline.push({ $match: { $or: [{ name: regex }, { phone: regex }] } });
+    }
+
+    pipeline.push({ $sort: { totalSpent: -1 } });
+    pipeline.push({
+      $facet: {
+        items: [{ $skip: pagination.skip }, { $limit: pagination.limit }],
+        totalCount: [{ $count: 'count' }],
+      },
+    });
+
+    const [result] = await OrderModel.aggregate<CustomerSummaryFacetResult>(pipeline);
+
+    const items = (result?.items ?? []).map((item) => ({
+      customerId: item.customerId,
+      name: item.name,
+      phone: item.phone,
+      totalOrders: item.totalOrders,
+      totalSpent: item.totalSpent,
+      lastOrderAt: item.lastOrderAt ? new Date(item.lastOrderAt).toISOString() : undefined,
+      allowedPaymentMethods: item.allowedPaymentMethods,
+    }));
+
+    return { items, total: result?.totalCount[0]?.count ?? 0 };
   }
 }

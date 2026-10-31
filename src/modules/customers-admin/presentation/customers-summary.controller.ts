@@ -5,6 +5,7 @@ import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
 import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { normalizePhoneNumber } from '../../../shared/utils/normalize-phone-number';
+import { resolvePagination } from '../../../shared/http/pagination';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { IAddressRepository } from '../../customers/domain/repositories/address.repository.interface';
 import { ICustomerRepository } from '../../customers/domain/repositories/customer.repository.interface';
@@ -64,17 +65,32 @@ export class CustomersSummaryController extends BaseRouter {
     );
 
     // AC-1/AC-2/AC-4
+    // Achado de auditoria pré-produção (31/10/2026) — "customers-summary sem paginação, agrega o
+    // histórico inteiro": `page`/`pageSize` OPCIONAIS (ver `resolvePagination`), mesmo padrão de
+    // `/restaurants/me/products` — omitidos, devolve a lista inteira exatamente como antes; só
+    // informados, pagina de verdade no servidor e o total real vai no header `X-Total-Count`
+    // (nunca no corpo, que continua sendo só o array — contrato igual nos dois casos).
     application.get('/restaurants/me/customers-summary', ...authenticated, async (req: Request, res: Response) => {
-      const { search, fromDate, toDate } = parseBody(customersSummaryQuerySchema, req.query);
+      const query = parseBody(customersSummaryQuerySchema, req.query);
       // `toDate` inclusive até o fim do dia (23:59:59.999) — um pedido feito às 22h no último dia
       // do período não pode ficar de fora por `toDate` ter sido interpretado como meia-noite.
-      const summaries = await this.customerSummaryRepository.listByRestaurant(
+      const fromDate = query.fromDate ? new Date(`${query.fromDate}T00:00:00.000`) : undefined;
+      const toDate = query.toDate ? new Date(`${query.toDate}T23:59:59.999`) : undefined;
+      const pagination = resolvePagination(query);
+      if (!pagination) {
+        const summaries = await this.customerSummaryRepository.listByRestaurant(req.restaurantId!, query.search, fromDate, toDate);
+        res.json(200, summaries);
+        return;
+      }
+      const { items, total } = await this.customerSummaryRepository.listByRestaurantPage(
         req.restaurantId!,
-        search,
-        fromDate ? new Date(`${fromDate}T00:00:00.000`) : undefined,
-        toDate ? new Date(`${toDate}T23:59:59.999`) : undefined,
+        pagination,
+        query.search,
+        fromDate,
+        toDate,
       );
-      res.json(200, summaries);
+      res.header('X-Total-Count', String(total));
+      res.json(200, items);
     });
 
     // AC-3 — `findManyByCustomerAndRestaurant` já garante o isolamento (REQ-3); sem checagem
