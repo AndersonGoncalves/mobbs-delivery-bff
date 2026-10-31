@@ -235,7 +235,7 @@ describe('TableServiceController', () => {
 
     await runOperatorChain(
       routes['POST /restaurants/me/table-orders/:id/items'],
-      { restaurantId: 'r-1', params: { id: 'o-table' }, body: { productId: 'p-1', quantity: 2, selections: [] } },
+      { restaurantId: 'r-1', params: { id: 'o-table' }, body: { productId: 'p-1', quantity: 2, selections: [], operationId: 'pos-add-1' } },
       { json, send: jest.fn() },
     );
 
@@ -244,6 +244,47 @@ describe('TableServiceController', () => {
       items: [expect.objectContaining({ productId: 'p-1', unitPrice: 20, quantity: 2 })],
     }));
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ total: 44 }));
+  });
+
+  // Achado crítico da auditoria pré-produção (31/10/2026) — "sem idempotência real — nem no
+  // app, nem no servidor": um retry com a MESMA operationId (rede caiu depois do pedido já ter
+  // sido incluído, o app do garçom reenvia) nunca pode duplicar a linha.
+  it('achado de auditoria (2026-10-31): reenviar a MESMA operationId não duplica o item, devolve o pedido já atualizado', async () => {
+    const order = {
+      id: 'o-table', restaurantId: 'r-1', orderType: 'table', tableId: 't-1', tableName: '1', status: 'confirmado',
+      items: [{ id: 'pos-add-1', productId: 'p-1', productName: 'Pizza', quantity: 2, unitPrice: 20 }],
+      subtotal: 40, deliveryFee: 0, discount: 0, total: 44, serviceChargePercent: 10, serviceChargeAmount: 4,
+      coverCharge: 0, tablePayments: [],
+    };
+    const { orderRepository, routes } = setup({
+      orderRepository: { findById: jest.fn().mockResolvedValue(order), updateTableOrder: jest.fn() },
+      productRepository: {
+        findById: jest.fn().mockResolvedValue({ id: 'p-1', restaurantId: 'r-1', name: 'Pizza', price: 20, isAvailable: true, additionalGroups: [] }),
+      },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/table-orders/:id/items'],
+      { restaurantId: 'r-1', params: { id: 'o-table' }, body: { productId: 'p-1', quantity: 2, selections: [], operationId: 'pos-add-1' } },
+      { json, send: jest.fn() },
+    );
+
+    expect(orderRepository.updateTableOrder).not.toHaveBeenCalled();
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ items: order.items, total: 44 }));
+  });
+
+  it('rejeita (400) a requisição sem operationId, sem incluir o item', async () => {
+    const { orderRepository, routes } = setup();
+
+    await expect(
+      runOperatorChain(
+        routes['POST /restaurants/me/table-orders/:id/items'],
+        { restaurantId: 'r-1', params: { id: 'o-table' }, body: { productId: 'p-1', quantity: 2, selections: [] } },
+        { json: jest.fn(), send: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(orderRepository.updateTableOrder).not.toHaveBeenCalled();
   });
 
   // Pedido explícito do usuário — motivo do ajuste (ex. "quebrou um copo"), opcional.
@@ -385,7 +426,7 @@ describe('TableServiceController', () => {
 
     await expect(runOperatorChain(
       routes['POST /restaurants/me/table-orders/:id/items'],
-      { restaurantId: 'r-1', params: { id: 'o-table' }, body: { productId: 'p-1', quantity: 2, selections: [] } },
+      { restaurantId: 'r-1', params: { id: 'o-table' }, body: { productId: 'p-1', quantity: 2, selections: [], operationId: 'pos-add-2' } },
       { json: jest.fn(), send: jest.fn() },
     )).rejects.toMatchObject({ statusCode: 409 });
     expect(orderRepository.updateTableOrder).not.toHaveBeenCalled();
@@ -420,6 +461,7 @@ describe('TableServiceController', () => {
         restaurantId: 'r-1', params: { id: 'o-table' }, body: {
           productId: 'p-1', quantity: 1,
           selections: [{ groupName: 'Tamanho', optionName: 'Grande', nestedSelections: [{ groupName: 'Borda', optionName: 'Cheddar' }] }],
+          operationId: 'pos-add-3',
         },
       },
       { json: jest.fn(), send: jest.fn() },

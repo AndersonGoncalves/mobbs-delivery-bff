@@ -62,7 +62,12 @@ export const openTableOrderSchema = z.object({
   origin: z.enum(['web', 'comanda']).optional(),
 });
 
-export const updateTableOrderItemQuantitySchema = z.object({ quantity: z.number().int().min(0).max(99), operationId: z.string().min(1).optional() });
+// Achado crítico da auditoria pré-produção (31/10/2026) — "sem idempotência real — nem no app,
+// nem no servidor": operationId era opcional e o controller gerava uma chave ALEATÓRIA quando
+// ausente (`table-service.controller.ts`), o que anula a própria deduplicação — um retry que
+// não manda a MESMA chave nunca é reconhecido como repetição. Agora obrigatória nos dois
+// schemas; o app (mobbs-delivery-comanda) já gera e reaproveita a sua.
+export const updateTableOrderItemQuantitySchema = z.object({ quantity: z.number().int().min(0).max(99), operationId: z.string().min(1) });
 export const transferTableOrderSchema = z.object({ tableId: z.string().min(1) });
 
 export const addTableOrderItemSchema = z.object({
@@ -70,7 +75,7 @@ export const addTableOrderItemSchema = z.object({
   quantity: z.number().int().min(1).max(99),
   selections: z.array(tableSelectionSchema).default([]),
   notes: z.string().max(500).optional(),
-  operationId: z.string().min(1).optional(),
+  operationId: z.string().min(1),
 });
 
 export const tableOrderAdjustmentsSchema = z.object({

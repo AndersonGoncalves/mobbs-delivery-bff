@@ -173,6 +173,17 @@ export class TableOrderService {
 
   async addItem(restaurantId: string, orderId: string, input: { productId: string; quantity: number; selections: SelectionInput[]; notes?: string; operationId: string }) {
     const order = await this.findOpenOrder(restaurantId, orderId);
+
+    // Achado crítico da auditoria pré-produção (31/10/2026) — "sem idempotência real": antes,
+    // `operationId` só servia de prefixo pra reserva de estoque (e nem isso de forma confiável,
+    // já que o `item.id` abaixo era sorteado de novo em CADA chamada, quebrando até aquele
+    // dedup); a linha do pedido em si nunca checava se já tinha sido adicionada. Usar
+    // `operationId` como o próprio `id` do item resolve os dois problemas de uma vez: um retry
+    // com a MESMA chave encontra o item já lançado e devolve o pedido sem duplicar a linha
+    // (nem tentar reservar estoque de novo).
+    const alreadyAdded = order.items.find((item) => item.id === input.operationId);
+    if (alreadyAdded) return order;
+
     const layout = order.tableId ? await this.layoutRepository.getByRestaurant(restaurantId) : null;
     if (order.tableId) {
       const currentBalance = this.balanceDue(order);
@@ -185,7 +196,7 @@ export class TableOrderService {
     if (!product || product.restaurantId !== restaurantId || !product.isAvailable) throw new NotFoundError('Produto disponível não encontrado');
     const selections = resolveSelections(product.additionalGroups ?? [], input.selections);
     const item: IOrderItem = {
-      id: randomUUID(),
+      id: input.operationId,
       productId: product.id,
       productName: product.name,
       quantity: input.quantity,
