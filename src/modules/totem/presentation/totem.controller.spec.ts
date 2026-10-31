@@ -98,8 +98,11 @@ function buildController(overrides: {
     listByRestaurant: jest.fn().mockResolvedValue([]),
     ...overrides.menuCategoryRepository,
   };
+  // Preço (25) bate com o `unitPrice` default de `buildItem()` — achado de auditoria 2026-10-31,
+  // `resolveItemsLinkedProducts` agora rejeita o pedido quando `unitPrice` não bate com o preço
+  // real do produto buscado aqui.
   const productRepository: Partial<IProductRepository> = {
-    findById: jest.fn().mockResolvedValue(null),
+    findById: jest.fn().mockResolvedValue({ id: 'p-1', restaurantId: 'r-1', price: 25, additionalGroups: [] }),
     listByRestaurant: jest.fn().mockResolvedValue([]),
     ...overrides.productRepository,
   };
@@ -236,6 +239,31 @@ describe('TotemController (specs/0155-app-totem-autoatendimento)', () => {
         }),
       );
       expect(json).toHaveBeenCalledWith(201, { pixCode: undefined });
+    });
+
+    // Achado crítico da auditoria pré-produção (31/10/2026) — "preço do pedido nunca é
+    // revalidado contra o catálogo real", mesma checagem de `OrdersController`.
+    it('achado de auditoria (2026-10-31): rejeita (400) quando unitPrice não bate com o preço real do produto, sem criar o pedido', async () => {
+      const { routes, orderRepository } = buildController();
+      const json = jest.fn();
+      const body = buildValidBody({ items: [buildItem({ unitPrice: 1 })] });
+
+      await expect(runTotemChain(routes['POST /restaurants/me/totem/orders'], { restaurantId: 'r-1', body }, { json })).rejects.toMatchObject({
+        statusCode: 400,
+      });
+      expect(orderRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('achado de auditoria (2026-10-31): rejeita (400) quando productId é de outro restaurante, mesmo com unitPrice "correto"', async () => {
+      const { routes, orderRepository } = buildController({
+        productRepository: { findById: jest.fn().mockResolvedValue({ id: 'p-1', restaurantId: 'outro-restaurante', price: 25, additionalGroups: [] }) },
+      });
+      const json = jest.fn();
+
+      await expect(
+        runTotemChain(routes['POST /restaurants/me/totem/orders'], { restaurantId: 'r-1', body: buildValidBody() }, { json }),
+      ).rejects.toMatchObject({ statusCode: 400 });
+      expect(orderRepository.create).not.toHaveBeenCalled();
     });
 
     it('AC-6: não exige nenhum token de autenticação Firebase — só passa pelo totemApiKeyMiddleware (pulado no teste, resolve req.restaurantId direto)', async () => {

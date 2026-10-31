@@ -168,7 +168,7 @@ function buildPayment(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function buildItem(overrides: Partial<{ unitPrice: number; quantity: number }> = {}) {
+function buildItem(overrides: Partial<{ unitPrice: number; quantity: number; selections: unknown[] }> = {}) {
   return {
     id: 'i-1',
     productId: 'p-1',
@@ -350,9 +350,12 @@ describe('OrdersController', () => {
       incrementUsageIfWithinLimit: jest.fn().mockImplementation(async (id) => ({ ...buildCoupon({ id }), usageCount: 1 })),
       ...overrides.couponRepository,
     };
-    // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16.
+    // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16. Preço (25) bate com o
+    // `unitPrice` default de `buildItem()` — achado de auditoria 2026-10-31, `resolveItemsLinkedProducts`
+    // agora rejeita o pedido quando `unitPrice` não bate com o preço real do produto buscado aqui;
+    // testes que mandam um `unitPrice`/produto diferente sobrescrevem este mock.
     const productRepository: Partial<IProductRepository> = {
-      findById: jest.fn().mockResolvedValue(null),
+      findById: jest.fn().mockResolvedValue({ id: 'p-1', restaurantId: 'r-1', price: 25, additionalGroups: [] }),
       decrementStock: jest.fn().mockResolvedValue(false),
       decrementStockIfAvailable: jest.fn().mockResolvedValue(false),
       restoreStock: jest.fn().mockResolvedValue(true),
@@ -454,6 +457,120 @@ describe('OrdersController', () => {
     expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ id: 'o-1', orderNumber: 1 }));
   });
 
+  // Achado crítico da auditoria pré-produção (31/10/2026) — "preço do pedido nunca é revalidado
+  // contra o catálogo real".
+  describe('achado crítico de auditoria (2026-10-31): revalidação de preço contra o catálogo real', () => {
+    it('rejeita (400) quando unitPrice enviado não bate com o preço real do produto, sem criar o pedido', async () => {
+      const { orderRepository, routes } = setup();
+
+      await expect(
+        runAuthenticatedChain(
+          routes['POST /orders'],
+          { body: buildValidBody({ items: [buildItem({ unitPrice: 1 })] }), user: { uid: 'customer-1' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 400 });
+      expect(orderRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('rejeita (400) quando productId não existe mais (produto apagado), sem criar o pedido', async () => {
+      const { orderRepository, routes } = setup({ productRepository: { findById: jest.fn().mockResolvedValue(null) } });
+
+      await expect(
+        runAuthenticatedChain(routes['POST /orders'], { body: buildValidBody(), user: { uid: 'customer-1' } }, { json: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 400 });
+      expect(orderRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('rejeita (400) quando productId é de outro restaurante (defesa contra cross-tenant), mesmo com unitPrice "correto"', async () => {
+      const { orderRepository, routes } = setup({
+        productRepository: { findById: jest.fn().mockResolvedValue({ id: 'p-1', restaurantId: 'outro-restaurante', price: 25, additionalGroups: [] }) },
+      });
+
+      await expect(
+        runAuthenticatedChain(routes['POST /orders'], { body: buildValidBody(), user: { uid: 'customer-1' } }, { json: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 400 });
+      expect(orderRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('soma o priceDelta real do adicional (catálogo) ao preço base — aceita unitPrice que inclui o adicional corretamente', async () => {
+      const { orderRepository, routes } = setup({
+        productRepository: {
+          findById: jest.fn().mockResolvedValue({
+            id: 'p-1',
+            restaurantId: 'r-1',
+            price: 25,
+            additionalGroups: [
+              {
+                id: 'g-1',
+                productId: 'p-1',
+                name: 'Bebida',
+                type: 'adicionar',
+                required: true,
+                minSelections: 1,
+                maxSelections: 1,
+                options: [{ id: 'o-1', groupId: 'g-1', name: 'Coca-Cola 1L', priceDelta: 8 }],
+              },
+            ],
+          }),
+        },
+      });
+
+      await runAuthenticatedChain(
+        routes['POST /orders'],
+        {
+          body: buildValidBody({
+            items: [buildItem({ unitPrice: 33, selections: [{ groupName: 'Bebida', optionName: 'Coca-Cola 1L', priceDelta: 8 }] })],
+          }),
+          user: { uid: 'customer-1' },
+        },
+        { json: jest.fn() },
+      );
+
+      expect(orderRepository.create).toHaveBeenCalledWith(expect.objectContaining({ subtotal: 33 }));
+    });
+
+    it('rejeita (400) quando o priceDelta do adicional mandado pelo client não bate com o real do catálogo, mesmo "batendo" com o unitPrice mandado', async () => {
+      const { orderRepository, routes } = setup({
+        productRepository: {
+          findById: jest.fn().mockResolvedValue({
+            id: 'p-1',
+            restaurantId: 'r-1',
+            price: 25,
+            additionalGroups: [
+              {
+                id: 'g-1',
+                productId: 'p-1',
+                name: 'Bebida',
+                type: 'adicionar',
+                required: true,
+                minSelections: 1,
+                maxSelections: 1,
+                options: [{ id: 'o-1', groupId: 'g-1', name: 'Coca-Cola 1L', priceDelta: 8 }],
+              },
+            ],
+          }),
+        },
+      });
+
+      await expect(
+        runAuthenticatedChain(
+          routes['POST /orders'],
+          {
+            // client manda priceDelta: 0 (de graça) na seleção — real no catálogo é 8; unitPrice
+            // "25" bate com a seleção mentida, mas não com o preço real recalculado (33).
+            body: buildValidBody({
+              items: [buildItem({ unitPrice: 25, selections: [{ groupName: 'Bebida', optionName: 'Coca-Cola 1L', priceDelta: 0 }] })],
+            }),
+            user: { uid: 'customer-1' },
+          },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 400 });
+      expect(orderRepository.create).not.toHaveBeenCalled();
+    });
+  });
+
   // specs/0151-confirmacao-automatica-por-forma-pagamento REQ-3/AC-2.
   it('specs/0151 AC-2: forma de pagamento configurada em autoConfirmPaymentMethods faz o pedido nascer confirmado', async () => {
     const { orderRepository, whatsAppNotificationService, routes } = setup({
@@ -543,7 +660,7 @@ describe('OrdersController', () => {
     const { orderRepository, productRepository, stockMovementRepository, routes } = setup({
       restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ stockControlEnabled: true })) },
       productRepository: {
-        findById: jest.fn().mockResolvedValue({ id: 'p-1', restaurantId: 'r-1', tracksStock: true, stockQuantity: 1, additionalGroups: [] }),
+        findById: jest.fn().mockResolvedValue({ id: 'p-1', restaurantId: 'r-1', price: 25, tracksStock: true, stockQuantity: 1, additionalGroups: [] }),
         decrementStockIfAvailable: jest.fn().mockResolvedValue(false),
       },
     });
@@ -562,7 +679,7 @@ describe('OrdersController', () => {
     const { orderRepository, productRepository, stockMovementRepository, routes } = setup({
       restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ stockControlEnabled: true })) },
       productRepository: {
-        findById: jest.fn().mockResolvedValue({ id: 'p-1', restaurantId: 'r-1', tracksStock: true, stockQuantity: 8, additionalGroups: [] }),
+        findById: jest.fn().mockResolvedValue({ id: 'p-1', restaurantId: 'r-1', price: 25, tracksStock: true, stockQuantity: 8, additionalGroups: [] }),
         decrementStockIfAvailable: jest.fn().mockResolvedValue(true),
       },
     });
@@ -2577,7 +2694,10 @@ describe('OrdersController', () => {
   describe('specs/0131-cashback-app + specs/0132-programa-fidelidade-app', () => {
     it('AC-4/AC-6: POST /orders debita o cashback pedido (capado pelo saldo real) e abate do total', async () => {
       const customerBalanceRepository = buildFakeCustomerBalanceRepository({ balance: 5 });
-      const { orderRepository, routes } = setup({ customerBalanceRepository });
+      const { orderRepository, routes } = setup({
+        customerBalanceRepository,
+        productRepository: { findById: jest.fn().mockResolvedValue({ id: 'p-1', restaurantId: 'r-1', price: 50, additionalGroups: [] }) },
+      });
 
       await runAuthenticatedChain(
         routes['POST /orders'],
@@ -2591,7 +2711,10 @@ describe('OrdersController', () => {
 
     it('AC-6: resgate nunca deixa o total negativo — capa no total do pedido mesmo com saldo maior', async () => {
       const customerBalanceRepository = buildFakeCustomerBalanceRepository({ balance: 20 });
-      const { orderRepository, routes } = setup({ customerBalanceRepository });
+      const { orderRepository, routes } = setup({
+        customerBalanceRepository,
+        productRepository: { findById: jest.fn().mockResolvedValue({ id: 'p-1', restaurantId: 'r-1', price: 10, additionalGroups: [] }) },
+      });
 
       await runAuthenticatedChain(
         routes['POST /orders'],

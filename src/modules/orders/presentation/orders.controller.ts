@@ -38,6 +38,7 @@ import { buildOrderPixCode } from '../domain/build-order-pix-code';
 import { computeOrderPricing } from '../domain/compute-order-pricing';
 import { resolveInitialOrderStatus } from '../domain/resolve-initial-order-status';
 import { resolveOrderItemLinkedProducts } from '../domain/resolve-order-item-linked-products';
+import { findOrderItemPriceMismatches } from '../domain/validate-order-item-price';
 import { IOrderRepository } from '../domain/repositories/order.repository.interface';
 import { IRestaurantTableRepository } from '../../table-service/domain/repositories/table.repository.interface';
 import { IPaymentRepository } from '../domain/repositories/payment.repository.interface';
@@ -204,7 +205,7 @@ export class OrdersController extends BaseRouter {
 
       // Resolve os vínculos atuais e reserva saldo antes de aceitar o pedido. O corpo enviado pelo
       // cliente nunca fornece ids de estoque; só nomes de grupo/opção são casados com o catálogo.
-      const resolvedItems = await this.resolveItemsLinkedProducts(payload.items);
+      const resolvedItems = await this.resolveItemsLinkedProducts(payload.items, payload.restaurantId);
       const orderId = randomUUID();
 
       // specs/0131-cashback-app REQ-4/REQ-5/REQ-7 — nunca confia no valor pedido pelo app: capa
@@ -766,10 +767,26 @@ export class OrdersController extends BaseRouter {
   // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16 — busca o `Product` de cada
   // item só uma vez (mesmo produto pode se repetir entre itens do carrinho), pra resolver
   // `linkedProductId` de cada seleção contra a árvore atual de `additionalGroups`.
-  private async resolveItemsLinkedProducts(items: IOrderItem[]): Promise<IOrderItem[]> {
+  //
+  // Achado crítico da auditoria pré-produção (31/10/2026) — "preço do pedido nunca é revalidado
+  // contra o catálogo real": além de resolver os vínculos de estoque, agora também rejeita (400)
+  // quando `unitPrice` de algum item não bate com o preço recalculado do catálogo atual
+  // (`findOrderItemPriceMismatches`). O filtro por `restaurantId` abaixo fecha de quebra um
+  // segundo buraco — `productRepository.findById` busca por id GLOBAL, sem filtro de
+  // restaurante — que deixaria um `productId` de outro restaurante ser tratado como "real" tanto
+  // pra resolução de estoque quanto pra esta validação de preço.
+  private async resolveItemsLinkedProducts(items: IOrderItem[], restaurantId: string): Promise<IOrderItem[]> {
     const productIds = [...new Set(items.map((item) => item.productId))];
     const products = await Promise.all(productIds.map((id) => this.productRepository.findById(id)));
-    const productsById = new Map(products.filter((product) => product !== null).map((product) => [product.id, product]));
+    const productsById = new Map(
+      products.filter((product) => product !== null && product.restaurantId === restaurantId).map((product) => [product.id, product]),
+    );
+
+    const mismatches = findOrderItemPriceMismatches(items, productsById);
+    if (mismatches.length > 0) {
+      const description = mismatches.map((mismatch) => `${mismatch.productName} (enviado R$ ${mismatch.sentUnitPrice})`).join(', ');
+      throw new BadRequestError(`Preço divergente do catálogo atual: ${description}`);
+    }
 
     return items.map((item) => {
       if (!item.selections || item.selections.length === 0) return item;

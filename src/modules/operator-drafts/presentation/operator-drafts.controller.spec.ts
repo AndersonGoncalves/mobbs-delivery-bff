@@ -4,6 +4,7 @@ import { IAddressRepository } from '../../customers/domain/repositories/address.
 import { ICustomerRepository } from '../../customers/domain/repositories/customer.repository.interface';
 import { IBlockedCustomerRepository } from '../../customer-blocking/domain/repositories/blocked-customer.repository.interface';
 import { ICouponRepository } from '../../coupons/domain/repositories/coupon.repository.interface';
+import { IProductRepository } from '../../catalog/domain/repositories/product.repository.interface';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IOperatorDraft, OperatorDraftPatch, emptyDraftPatch } from '../domain/entities/operator-draft.entity';
@@ -168,6 +169,7 @@ function buildController(overrides: {
   restaurantRepository?: Partial<IRestaurantRepository>;
   blockedCustomerRepository?: Partial<IBlockedCustomerRepository>;
   customerRepository?: Partial<ICustomerRepository>;
+  productRepository?: Partial<IProductRepository>;
 } = {}) {
   const operatorDraftRepository = overrides.operatorDraftRepository ?? new FakeOperatorDraftRepository();
   const createdOrders = new Map<string, Record<string, unknown>>();
@@ -199,6 +201,11 @@ function buildController(overrides: {
   };
   const couponRepository: Partial<ICouponRepository> = { findByCode: jest.fn().mockResolvedValue(null) };
 
+  // Achado de auditoria (2026-10-31) — opcional (`undefined` por default) pra não quebrar os
+  // testes acima que não têm nada a ver com preço: sem `productRepository`,
+  // `rejeitaPriceMismatches` nem roda (mesmo padrão do `stockReservationService` logo abaixo).
+  const productRepository: Partial<IProductRepository> | undefined = overrides.productRepository;
+
   const { application, routes } = buildFakeApplication();
   const noopMiddleware = async () => {};
   new OperatorDraftsController(
@@ -210,6 +217,9 @@ function buildController(overrides: {
     blockedCustomerRepository as IBlockedCustomerRepository,
     couponRepository as ICouponRepository,
     noopMiddleware,
+    undefined,
+    undefined,
+    productRepository as IProductRepository | undefined,
   ).initializeRoutes(application);
 
   return { routes, operatorDraftRepository, orderRepository, restaurantRepository, customerRepository, blockedCustomerRepository };
@@ -335,6 +345,66 @@ describe('OperatorDraftsController (specs/0174-pdv-extensao-chrome-lateral)', ()
         runOperatorChain(routes['POST /restaurants/me/operator-drafts/:slot/finalize'], financeiroReq('1', { revision: 1, clientRequestId: 'r-3' }), res),
       ).rejects.toMatchObject({ statusCode: 400 });
       expect(orderRepository.create).not.toHaveBeenCalled();
+    });
+
+    // Achado crítico da auditoria pré-produção (31/10/2026) — "preço do pedido nunca é
+    // revalidado contra o catálogo real": diferente de `OrdersController`/`TotemController`, o
+    // PDV não tinha `productRepository` nenhum antes (ver construtor). `productRepository` é
+    // opcional (os testes acima não passam, e continuam passando sem essa checagem — mesmo
+    // padrão de `stockReservationService`); só quando é passado (como aqui) a validação roda.
+    describe('achado de auditoria (2026-10-31): revalidação de preço contra o catálogo real', () => {
+      it('rejeita (400) quando unitPrice do rascunho não bate com o preço real do produto, sem criar pedido', async () => {
+        const { routes, orderRepository } = buildController({
+          productRepository: { findById: jest.fn().mockResolvedValue({ id: 'p-1', restaurantId: 'r-1', price: 20, additionalGroups: [] }) },
+        });
+        const putRes = { json: jest.fn() };
+        await runOperatorChain(
+          routes['PUT /restaurants/me/operator-drafts/:slot'],
+          financeiroReq('1', { revision: 0, modality: 'counter', items: [buildItem({ unitPrice: 1 })], paymentMethod: 'cash' }),
+          putRes,
+        );
+
+        const res = { json: jest.fn() };
+        await expect(
+          runOperatorChain(routes['POST /restaurants/me/operator-drafts/:slot/finalize'], financeiroReq('1', { revision: 1, clientRequestId: 'r-preco-1' }), res),
+        ).rejects.toMatchObject({ statusCode: 400 });
+        expect(orderRepository.create).not.toHaveBeenCalled();
+      });
+
+      it('rejeita (400) quando productId do rascunho é de outro restaurante, mesmo com unitPrice "correto"', async () => {
+        const { routes, orderRepository } = buildController({
+          productRepository: { findById: jest.fn().mockResolvedValue({ id: 'p-1', restaurantId: 'outro-restaurante', price: 20, additionalGroups: [] }) },
+        });
+        const putRes = { json: jest.fn() };
+        await runOperatorChain(
+          routes['PUT /restaurants/me/operator-drafts/:slot'],
+          financeiroReq('1', { revision: 0, modality: 'counter', items: [buildItem()], paymentMethod: 'cash' }),
+          putRes,
+        );
+
+        const res = { json: jest.fn() };
+        await expect(
+          runOperatorChain(routes['POST /restaurants/me/operator-drafts/:slot/finalize'], financeiroReq('1', { revision: 1, clientRequestId: 'r-preco-2' }), res),
+        ).rejects.toMatchObject({ statusCode: 400 });
+        expect(orderRepository.create).not.toHaveBeenCalled();
+      });
+
+      it('finaliza normalmente quando unitPrice bate com o preço real do produto', async () => {
+        const { routes, orderRepository } = buildController({
+          productRepository: { findById: jest.fn().mockResolvedValue({ id: 'p-1', restaurantId: 'r-1', price: 20, additionalGroups: [] }) },
+        });
+        const putRes = { json: jest.fn() };
+        await runOperatorChain(
+          routes['PUT /restaurants/me/operator-drafts/:slot'],
+          financeiroReq('1', { revision: 0, modality: 'counter', items: [buildItem()], paymentMethod: 'cash' }),
+          putRes,
+        );
+
+        const res = { json: jest.fn() };
+        await runOperatorChain(routes['POST /restaurants/me/operator-drafts/:slot/finalize'], financeiroReq('1', { revision: 1, clientRequestId: 'r-preco-3' }), res);
+
+        expect(orderRepository.create).toHaveBeenCalledWith(expect.objectContaining({ subtotal: 20 }));
+      });
     });
 
     it('AC-9: retirada sem telefone é rejeitada (400) antes de criar pedido', async () => {

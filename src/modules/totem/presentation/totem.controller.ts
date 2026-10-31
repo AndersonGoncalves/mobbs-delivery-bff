@@ -17,6 +17,7 @@ import { buildOrderPixCode } from '../../orders/domain/build-order-pix-code';
 import { computeOrderPricing } from '../../orders/domain/compute-order-pricing';
 import { resolveInitialOrderStatus } from '../../orders/domain/resolve-initial-order-status';
 import { resolveOrderItemLinkedProducts } from '../../orders/domain/resolve-order-item-linked-products';
+import { findOrderItemPriceMismatches } from '../../orders/domain/validate-order-item-price';
 import { isRestaurantOpenNow } from '../../restaurants/domain/is-restaurant-open-now';
 import { IOrderItem } from '../../orders/domain/entities/order.entity';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
@@ -168,7 +169,7 @@ export class TotemController extends BaseRouter {
         return;
       }
 
-      const resolvedItems = await this.resolveItemsLinkedProducts(payload.items);
+      const resolvedItems = await this.resolveItemsLinkedProducts(payload.items, restaurant.id);
       const { subtotal, total } = computeOrderPricing({ items: resolvedItems, deliveryFee: 0, discount: 0, cashbackUsed: 0 });
       const initialStatus = resolveInitialOrderStatus(payload.paymentMethod, restaurant);
 
@@ -256,11 +257,23 @@ export class TotemController extends BaseRouter {
 
   /** Mesmo papel de `OrdersController.resolveItemsLinkedProducts` (REQ-16 de
    * specs/0047-ajustes-diversos-onboarding-estoque-pagamento) — reaproveita a mesma função pura
-   * `resolveOrderItemLinkedProducts`, só muda a orquestração de I/O em volta dela. */
-  private async resolveItemsLinkedProducts(items: IOrderItem[]): Promise<IOrderItem[]> {
+   * `resolveOrderItemLinkedProducts`, só muda a orquestração de I/O em volta dela.
+   *
+   * Achado crítico da auditoria pré-produção (31/10/2026) — mesma validação de preço (e mesmo
+   * filtro de `restaurantId`, ver comentário gêmeo em `OrdersController`) adicionada aqui também:
+   * o totem é outro ponto de criação de pedido que nunca revalidava `unitPrice`. */
+  private async resolveItemsLinkedProducts(items: IOrderItem[], restaurantId: string): Promise<IOrderItem[]> {
     const productIds = [...new Set(items.map((item) => item.productId))];
     const products = await Promise.all(productIds.map((id) => this.productRepository.findById(id)));
-    const productsById = new Map(products.filter((product) => product !== null).map((product) => [product.id, product]));
+    const productsById = new Map(
+      products.filter((product) => product !== null && product.restaurantId === restaurantId).map((product) => [product.id, product]),
+    );
+
+    const mismatches = findOrderItemPriceMismatches(items, productsById);
+    if (mismatches.length > 0) {
+      const description = mismatches.map((mismatch) => `${mismatch.productName} (enviado R$ ${mismatch.sentUnitPrice})`).join(', ');
+      throw new BadRequestError(`Preço divergente do catálogo atual: ${description}`);
+    }
 
     return items.map((item) => {
       if (!item.selections || item.selections.length === 0) return item;

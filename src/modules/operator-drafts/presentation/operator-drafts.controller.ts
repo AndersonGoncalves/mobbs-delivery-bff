@@ -17,7 +17,9 @@ import { validateCoupon } from '../../coupons/domain/services/coupon-validator';
 import { IProductRepository } from '../../catalog/domain/repositories/product.repository.interface';
 import { computeOrderPricing } from '../../orders/domain/compute-order-pricing';
 import { resolveInitialOrderStatus } from '../../orders/domain/resolve-initial-order-status';
-import { OrderType, PaymentMethod } from '../../orders/domain/entities/order.entity';
+import { findOrderItemPriceMismatches } from '../../orders/domain/validate-order-item-price';
+import { IProduct } from '../../catalog/domain/entities/product.entity';
+import { IOrderItem, OrderType, PaymentMethod } from '../../orders/domain/entities/order.entity';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { StockReservationService } from '../../orders/domain/services/stock-reservation.service';
 import { resolveDeliveryFee } from '../../orders/presentation/orders.controller';
@@ -71,7 +73,7 @@ export class OperatorDraftsController extends BaseRouter {
     private readonly restaurantOperatorMiddleware: AsyncHandler,
     stockMovementRepository?: IStockMovementRepository,
     rawMaterialRepository?: IRawMaterialRepository,
-    productRepository?: IProductRepository,
+    private readonly productRepository?: IProductRepository,
   ) {
     super();
     if (productRepository && rawMaterialRepository && stockMovementRepository) {
@@ -204,6 +206,17 @@ export class OperatorDraftsController extends BaseRouter {
       paymentMethod: current.paymentMethod,
     });
 
+    // Achado crítico da auditoria pré-produção (31/10/2026) — "preço do pedido nunca é
+    // revalidado contra o catálogo real": diferente de `OrdersController`/`TotemController`, o
+    // PDV salva o rascunho livremente via PUT (tela de montagem, sem essa checagem — não há
+    // dinheiro em jogo ainda) e só valida de verdade aqui no finalize, pouco antes do claim
+    // atômico. `productRepository` é opcional só pra não quebrar testes que não o passam
+    // (mesmo padrão já usado acima pro `StockReservationService`); em produção (`main.ts`) é
+    // sempre injetado, então esta checagem sempre roda de verdade.
+    if (this.productRepository) {
+      await this.rejectPriceMismatches(restaurantId, current.items);
+    }
+
     // Pedido explícito do usuário (achado real) — mesmo raciocínio do GET .../customers acima:
     // sem `customerBlockingEnabled`, nem consulta a lista de bloqueados.
     if (restaurant.customerBlockingEnabled && current.customerPhone) {
@@ -306,6 +319,27 @@ export class OperatorDraftsController extends BaseRouter {
       // desfaz o claim pra o operador poder tentar de novo com os mesmos dados.
       await this.operatorDraftRepository.rollbackClaim(restaurantId, operatorId, slot);
       throw error;
+    }
+  }
+
+  /** Mesmo papel de `OrdersController.resolveItemsLinkedProducts`/`TotemController` (ver
+   * comentário gêmeo lá) — busca cada `Product` só uma vez e rejeita (400) se `unitPrice` de
+   * algum item não bater com o preço recalculado do catálogo atual. Filtra por `restaurantId`
+   * pelo mesmo motivo: `productRepository.findById` busca por id GLOBAL, sem isso um
+   * `productId` de outro restaurante passaria como "real". Diferente das outras duas rotas, o
+   * PDV não precisa do retorno (não resolve `linkedProductId`/`rawMaterialId` aqui — reserva de
+   * estoque do PDV é tratada separadamente por `stockReservationService.reserveOrderItems`). */
+  private async rejectPriceMismatches(restaurantId: string, items: IOrderItem[]): Promise<void> {
+    const productIds = [...new Set(items.map((item) => item.productId))];
+    const products = await Promise.all(productIds.map((id) => this.productRepository!.findById(id)));
+    const productsById = new Map<string, IProduct>(
+      products.filter((product): product is IProduct => product !== null && product.restaurantId === restaurantId).map((product) => [product.id, product]),
+    );
+
+    const mismatches = findOrderItemPriceMismatches(items, productsById);
+    if (mismatches.length > 0) {
+      const description = mismatches.map((mismatch) => `${mismatch.productName} (enviado R$ ${mismatch.sentUnitPrice})`).join(', ');
+      throw new BadRequestError(`Preço divergente do catálogo atual: ${description}`);
     }
   }
 
