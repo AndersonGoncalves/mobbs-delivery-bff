@@ -617,7 +617,7 @@ server
       customerRepository,
     ),
     new CustomerBalanceController(customerBalanceService, restaurantRepository),
-    new CustomerPaymentMethodsController(customerRepository, restaurantRepository, restaurantOperatorMiddleware),
+    new CustomerPaymentMethodsController(customerRepository, restaurantRepository, orderRepository, restaurantOperatorMiddleware),
     new WhatsAppConnectionController(whatsAppConnectionService, restaurantOperatorMiddleware),
     new AccountsPayableController(new AccountPayableMongooseRepository(), cashRegisterRepository, restaurantOperatorMiddleware),
     new AccountsReceivableController(new AccountReceivableMongooseRepository(), cashRegisterRepository, restaurantOperatorMiddleware),

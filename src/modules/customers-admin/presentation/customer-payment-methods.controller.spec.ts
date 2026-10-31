@@ -1,6 +1,7 @@
 import type { Request, Response, Server } from 'restify';
 
 import { ICustomerRepository } from '../../customers/domain/repositories/customer.repository.interface';
+import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IRestaurant } from '../../restaurants/domain/entities/restaurant.entity';
 import { CustomerPaymentMethodsController } from './customer-payment-methods.controller';
@@ -38,6 +39,7 @@ describe('CustomerPaymentMethodsController', () => {
   function setup(overrides: {
     customerRepository?: Partial<ICustomerRepository>;
     restaurantRepository?: Partial<IRestaurantRepository>;
+    orderRepository?: Partial<IOrderRepository>;
   } = {}) {
     const customerRepository: Partial<ICustomerRepository> = {
       updateAllowedPaymentMethods: jest.fn().mockResolvedValue(buildCustomer()),
@@ -47,13 +49,21 @@ describe('CustomerPaymentMethodsController', () => {
       findById: jest.fn().mockResolvedValue(buildRestaurant()),
       ...overrides.restaurantRepository,
     };
+    // Achado crítico da auditoria pré-produção (31/10/2026) — default com 1 pedido (cliente JÁ
+    // pediu neste restaurante), pra não quebrar os testes que não se importam com a checagem de
+    // posse em si; o teste dedicado abaixo sobrescreve pra `[]`.
+    const orderRepository: Partial<IOrderRepository> = {
+      findManyByCustomerAndRestaurant: jest.fn().mockResolvedValue([{ id: 'o-1' }]),
+      ...overrides.orderRepository,
+    };
     const { application, routes } = buildApp();
     new CustomerPaymentMethodsController(
       customerRepository as ICustomerRepository,
       restaurantRepository as IRestaurantRepository,
+      orderRepository as IOrderRepository,
       jest.fn(),
     ).initializeRoutes(application);
-    return { customerRepository, restaurantRepository, routes };
+    return { customerRepository, restaurantRepository, orderRepository, routes };
   }
 
   it('AC-2/AC-3 — dono/gerente salva um subconjunto válido de acceptedPaymentMethods', async () => {
@@ -111,5 +121,24 @@ describe('CustomerPaymentMethodsController', () => {
         { json: jest.fn(), send: jest.fn() },
       ),
     ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  // Achado crítico da auditoria pré-produção (31/10/2026) — "forma de pagamento de um cliente
+  // pode ser alterada sem checar vínculo com o restaurante".
+  it('achado de auditoria (2026-10-31): rejeita (404) um customerId que nunca pediu neste restaurante, sem alterar nada', async () => {
+    const { customerRepository, orderRepository, routes } = setup({
+      orderRepository: { findManyByCustomerAndRestaurant: jest.fn().mockResolvedValue([]) },
+    });
+
+    await expect(
+      runOperatorChain(
+        routes['PUT /restaurants/me/customers/:customerId/payment-methods'],
+        { restaurantId: 'r-1', params: { customerId: 'c-outro-restaurante' }, body: { allowedPaymentMethods: ['pix'] } },
+        { json: jest.fn(), send: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 404 });
+
+    expect(orderRepository.findManyByCustomerAndRestaurant).toHaveBeenCalledWith('c-outro-restaurante', 'r-1');
+    expect(customerRepository.updateAllowedPaymentMethods).not.toHaveBeenCalled();
   });
 });
