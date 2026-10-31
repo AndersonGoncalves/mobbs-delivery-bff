@@ -31,6 +31,7 @@ interface OrderLeanDocument {
   tablePeopleCount?: number;
   tablePayments?: IOrder['tablePayments'];
   tableClosedAt?: string;
+  tableCloseClientRequestId?: string;
   tableMergedIntoOrderId?: string;
   notes?: string;
   status: IOrder['status'];
@@ -77,6 +78,7 @@ function toEntity(doc: OrderLeanDocument): IOrder {
     tablePeopleCount: doc.tablePeopleCount,
     tablePayments: doc.tablePayments ?? [],
     tableClosedAt: doc.tableClosedAt,
+    tableCloseClientRequestId: doc.tableCloseClientRequestId,
     tableMergedIntoOrderId: doc.tableMergedIntoOrderId,
     notes: doc.notes,
     status: doc.status,
@@ -278,6 +280,32 @@ export class OrderMongooseRepository implements IOrderRepository {
     const doc = await OrderModel.findOneAndUpdate(
       { _id: id, restaurantId, orderType: 'table', status: { $nin: ['entregue', 'cancelado'] } },
       { $push: { tablePayments: payment } },
+      { new: true },
+    ).lean<OrderLeanDocument>();
+    return doc ? toEntity(doc) : null;
+  }
+
+  /**
+   * Achado crítico da auditoria pré-produção (31/10/2026) — "fechar comanda ... idempotência
+   * certa desde o início": pagamentos + `tableClosedAt` + `status: 'entregue'` + histórico, TUDO
+   * num único `findOneAndUpdate` atômico (o filtro `status: $nin [...]` só casa pro primeiro a
+   * chegar) — nunca a sequência de escritas separadas que deixava uma janela entre "pagamento
+   * aplicado" e "status fechado" onde uma segunda chamada concorrente podia duplicar.
+   */
+  async closeTableOrder(
+    id: string,
+    restaurantId: string,
+    input: { payments: NonNullable<IOrder['tablePayments']>; closedAt: string; clientRequestId: string; changedBy: string },
+  ): Promise<IOrder | null> {
+    const doc = await OrderModel.findOneAndUpdate(
+      { _id: id, restaurantId, orderType: 'table', status: { $nin: ['entregue', 'cancelado'] } },
+      {
+        $push: {
+          ...(input.payments.length > 0 ? { tablePayments: { $each: input.payments } } : {}),
+          statusHistory: { status: 'entregue', changedAt: new Date(), changedBy: input.changedBy },
+        },
+        $set: { status: 'entregue', tableClosedAt: input.closedAt, tableCloseClientRequestId: input.clientRequestId },
+      },
       { new: true },
     ).lean<OrderLeanDocument>();
     return doc ? toEntity(doc) : null;

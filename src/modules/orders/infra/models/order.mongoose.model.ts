@@ -176,6 +176,9 @@ const orderSchema = new Schema(
     tablePeopleCount: { type: Number, min: 1 },
     tablePayments: { type: [tableOrderPaymentSchema], default: [] },
     tableClosedAt: { type: String },
+    // Achado crítico da auditoria pré-produção (31/10/2026) — idempotência de "fechar comanda"
+    // (ver `order.entity.ts`, `TableOrderService.closeOrder`).
+    tableCloseClientRequestId: { type: String },
     tableMergedIntoOrderId: { type: String },
     notes: { type: String },
     status: {

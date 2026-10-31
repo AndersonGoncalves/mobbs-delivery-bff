@@ -143,6 +143,16 @@ export interface IOrder {
   tablePeopleCount?: number;
   tablePayments?: ITableOrderPayment[];
   tableClosedAt?: string;
+  /**
+   * Achado crítico da auditoria pré-produção (31/10/2026) — "Fechar comanda ainda não
+   * implementado no app ... vale desenhar a idempotência certa desde o início, não repetir o
+   * mesmo problema do lançamento de item" (mesmo achado do `operationId` em `addItem`/
+   * `setItemQuantity`). Guarda a `clientRequestId` que fechou este pedido — um retry com a
+   * MESMA chave (resposta perdida na rede, ou um segundo toque antes do primeiro voltar)
+   * reconhece que já fechou e devolve o mesmo resultado, em vez de 404/409 — nunca cobra em
+   * duplicidade. Ver `TableOrderService.closeOrder`/`OrderMongooseRepository.closeTableOrder`.
+   */
+  tableCloseClientRequestId?: string;
   tableMergedIntoOrderId?: string;
   notes?: string;
   status: OrderStatus;

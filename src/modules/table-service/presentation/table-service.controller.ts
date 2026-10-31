@@ -121,8 +121,8 @@ export class TableServiceController extends BaseRouter {
     });
 
     application.post('/restaurants/me/table-orders/:id/close', ...authenticated, async (req: Request, res: Response) => {
-      const { payments } = parseBody(closeTableOrderSchema, req.body);
-      res.json(200, await this.tableOrders.closeOrder(req.restaurantId!, req.params.id, payments, req.user!.uid));
+      const { payments, clientRequestId } = parseBody(closeTableOrderSchema, req.body);
+      res.json(200, await this.tableOrders.closeOrder(req.restaurantId!, req.params.id, payments, req.user!.uid, clientRequestId));
     });
 
     application.post('/restaurants/me/table-orders/:id/transfer', ...authenticated, async (req: Request, res: Response) => {

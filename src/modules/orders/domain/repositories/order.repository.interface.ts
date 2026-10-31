@@ -80,6 +80,22 @@ export interface IOrderRepository {
   addTablePayment(id: string, restaurantId: string, payment: NonNullable<IOrder['tablePayments']>[number]): Promise<IOrder | null>;
 
   /**
+   * Achado crítico da auditoria pré-produção (31/10/2026) — "fechar comanda ... vale desenhar a
+   * idempotência certa desde o início": UMA chamada atômica (filtro + `$push`/`$set` num único
+   * `findOneAndUpdate`, mesmo documento) em vez da sequência de 3 escritas separadas que o
+   * código antigo fazia (pagamento por pagamento, depois `tableClosedAt`, depois `status`) — só
+   * UMA chamada concorrente (seja ela um retry com a mesma `clientRequestId` ou um fechamento
+   * genuinamente concorrente de outro operador) consegue casar o filtro `status não aberto` e
+   * fechar de verdade; todas as outras recebem `null` (`TableOrderService.closeOrder` decide
+   * depois se é uma repetição segura ou um conflito real).
+   */
+  closeTableOrder(
+    id: string,
+    restaurantId: string,
+    input: { payments: NonNullable<IOrder['tablePayments']>; closedAt: string; clientRequestId: string; changedBy: string },
+  ): Promise<IOrder | null>;
+
+  /**
    * specs/0008-acompanhamento-vendas REQ-1 — pedidos em andamento (exclui `entregue`/
    * `cancelado`) do restaurante do operador logado, mais antigo primeiro (fila de atendimento —
    * diferente de `findManyByCustomer`, que é histórico e por isso mais recente primeiro).

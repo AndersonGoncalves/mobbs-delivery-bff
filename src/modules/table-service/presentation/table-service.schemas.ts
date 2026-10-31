@@ -96,7 +96,15 @@ const tablePaymentSchema = z.object({
 });
 
 export const addTablePaymentSchema = tablePaymentSchema;
-export const closeTableOrderSchema = z.object({ payments: z.array(tablePaymentSchema).default([]) });
+// Achado crítico da auditoria pré-produção (31/10/2026) — "fechar comanda ... vale desenhar a
+// idempotência certa desde o início, não repetir o mesmo problema do lançamento de item":
+// `clientRequestId` obrigatório, mesmo padrão de `operationId` em `addTableOrderItemSchema`/
+// `updateTableOrderItemQuantitySchema` — o app (mobbs-delivery-comanda) gera uma vez por
+// tentativa de fechar e reenvia a MESMA em qualquer retry.
+export const closeTableOrderSchema = z.object({
+  payments: z.array(tablePaymentSchema).default([]),
+  clientRequestId: z.string().min(1),
+});
 const tableHistoryDateSchema = z.string().refine((value) => !Number.isNaN(Date.parse(value)), 'Data inválida');
 export const tableOrderHistoryQuerySchema = z.object({ from: tableHistoryDateSchema, to: tableHistoryDateSchema })
   .refine(({ from, to }) => new Date(from).getTime() < new Date(to).getTime(), 'Período inválido');
