@@ -137,6 +137,7 @@ import { BillingController } from './modules/billing/presentation/billing.contro
 import { BillingSettingsController } from './modules/billing/presentation/billing-settings.controller';
 import { PlatformController } from './modules/platform/presentation/platform.controller';
 import { buildPlatformAdminMiddleware, parsePlatformAdminEmails } from './shared/http/platform-admin.middleware';
+import { startPeriodicWorker } from './shared/utils/periodic-worker';
 import { ProspectsController } from './modules/prospects/presentation/prospects.controller';
 import { ProspectMongooseRepository } from './modules/prospects/infra/repositories/prospect.mongoose.repository';
 import { GooglePlacesService } from './modules/prospects/infra/services/google-places.service';
@@ -487,7 +488,7 @@ server
     ordersController,
     new BillingController(restaurantRepository, orderRepository, restaurantOperatorMiddleware, billingSettingsRepository),
     // Pedido explícito do usuário — página "Bloquear cliente".
-    new CustomerBlockingController(blockedCustomerRepository, customerRepository, restaurantOperatorMiddleware),
+    new CustomerBlockingController(blockedCustomerRepository, customerRepository, orderRepository, restaurantOperatorMiddleware),
     // Pedido explícito do usuário — impressão automática (specs/0139).
     new AutoPrintController(
       orderRepository,
@@ -727,13 +728,14 @@ server
   // duplicam emissão em execuções concorrentes), então este `setInterval` só adianta o que o
   // próximo boot faria de qualquer jeito. 5 minutos: rápido o bastante pra o Pix aparecer pouco
   // depois de "Contratar Anual"/fechamento mensal, sem bater na API do Asaas sem necessidade.
+  //
+  // Achado de auditoria pré-produção (31/10/2026) — "workers periódicos sem guarda contra
+  // execução concorrente": mitigado em parte pelo timeout de HTTP já mesclado, mas uma chamada
+  // externa ainda lenta podia deixar ticks se empilharem sem limite — `startPeriodicWorker`
+  // (ver `shared/utils/periodic-worker.ts`) ignora qualquer tick que chegue enquanto o anterior
+  // do MESMO worker ainda não terminou, nos três `setInterval` abaixo (billing/Instagram/iFood).
   .then(() => {
-    setInterval(() => {
-      platformBillingCycleService.runCycle(new Date()).catch((error) => {
-        // eslint-disable-next-line no-console
-        console.error('[platform-billing] erro inesperado no ciclo periódico:', error);
-      });
-    }, 5 * 60_000);
+    startPeriodicWorker('platform-billing', 5 * 60_000, () => platformBillingCycleService.runCycle(new Date()));
   })
   // Pedido explícito do usuário (follow-up) — automação de postagens no Instagram precisa de
   // execução autônoma de verdade pra cumprir o que promete ("agendadas"): diferente do ciclo de
@@ -744,24 +746,14 @@ server
   // (postagem de rede social, não cobrança financeira), sem sobrecarregar a Graph API com
   // polling agressivo.
   .then(() => {
-    setInterval(() => {
-      publishDueInstagramPostsService.run().catch((error) => {
-        // eslint-disable-next-line no-console
-        console.error('[instagram-automation] erro inesperado no publicador:', error);
-      });
-    }, 60_000);
+    startPeriodicWorker('instagram-automation', 60_000, () => publishDueInstagramPostsService.run());
   })
   // specs/0090-integracao-ifood REQ-2 — mesmo desvio deliberado do publicador de Instagram acima
   // (ver comentário lá): polling de eventos do iFood não tem webhook, precisa mesmo de um "tick"
   // em processo. ~30s (plan.md) — rápido o bastante pro pedido aparecer na retaguarda sem
   // demora perceptível, sem sobrecarregar a API do iFood com polling agressivo.
   .then(() => {
-    setInterval(() => {
-      ifoodPollingWorker.run().catch((error) => {
-        // eslint-disable-next-line no-console
-        console.error('[ifood-integration] erro inesperado no polling:', error);
-      });
-    }, 30_000);
+    startPeriodicWorker('ifood-integration', 30_000, () => ifoodPollingWorker.run());
   })
   .catch((error) => {
     // eslint-disable-next-line no-console
