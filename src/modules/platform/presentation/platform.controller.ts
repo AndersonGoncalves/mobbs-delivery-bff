@@ -76,6 +76,34 @@ export class PlatformController extends BaseRouter {
     const orders = await this.orderRepository.findDeliveredByRestaurantBetween(restaurant.id, start, end);
     const revenueCents = sumRevenueCents(orders);
     const lastDelivered = await this.orderRepository.findLastDeliveredAt(restaurant.id);
+    return this.toRow(restaurant, month, settings, revenueCents, lastDelivered);
+  }
+
+  // Achado crítico de auditoria pré-produção (31/10/2026) — "painel da plataforma: 1 query
+  // completa por restaurante + soma em JS": `GET /platform/restaurants` precisa da lista de
+  // TODOS os restaurantes cadastrados, então usa as agregações em lote
+  // (`getMonthlyRevenueCentsByRestaurant`/`getLastDeliveredAtByRestaurant`, 2 queries no TOTAL,
+  // não 2 por restaurante) em vez de `buildRow` por restaurante. `buildRow` continua intacto —
+  // ainda usado por `PATCH .../billing`, que só precisa de UM restaurante por chamada, onde o
+  // N+1 não existe.
+  private async buildRows(restaurants: IRestaurant[], month: string, settings: BillingSettings): Promise<PlatformRestaurantRow[]> {
+    const { start, end } = monthRange(month);
+    const [revenueByRestaurant, lastDeliveredByRestaurant] = await Promise.all([
+      this.orderRepository.getMonthlyRevenueCentsByRestaurant(start, end),
+      this.orderRepository.getLastDeliveredAtByRestaurant(),
+    ]);
+    return restaurants.map((restaurant) =>
+      this.toRow(restaurant, month, settings, revenueByRestaurant.get(restaurant.id) ?? 0, lastDeliveredByRestaurant.get(restaurant.id) ?? null),
+    );
+  }
+
+  private toRow(
+    restaurant: IRestaurant,
+    month: string,
+    settings: BillingSettings,
+    revenueCents: number,
+    lastDelivered: Date | null,
+  ): PlatformRestaurantRow {
     const billing = restaurant.billing ?? defaultBilling(month);
     return {
       id: restaurant.id,
@@ -101,7 +129,7 @@ export class PlatformController extends BaseRouter {
       const month = monthKeyOf(new Date());
       const settings = await this.billingSettingsRepository.get();
       const restaurants = await this.restaurantRepository.listAll();
-      const rows = await Promise.all(restaurants.map((restaurant) => this.buildRow(restaurant, month, settings)));
+      const rows = await this.buildRows(restaurants, month, settings);
       res.json(200, rows);
     });
 

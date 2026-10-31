@@ -320,6 +320,30 @@ export class OrderMongooseRepository implements IOrderRepository {
     return doc ? doc.createdAt : null;
   }
 
+  // Achado crítico de auditoria pré-produção (31/10/2026) — "painel da plataforma: 1 query
+  // completa por restaurante + soma em JS": agregação ÚNICA pra TODOS os restaurantes, em vez
+  // de `findDeliveredByRestaurantBetween` chamada uma vez por restaurante só pra somar `total`
+  // em JS (`PlatformController.buildRow`/`buildRows`). `$round` arredonda cada pedido pra
+  // centavos ANTES do `$sum` — mesmo papel de `Math.round` por pedido em `sumRevenueCents`
+  // (`billing.ts`), nunca soma os `total` crus e arredonda só no final.
+  async getMonthlyRevenueCentsByRestaurant(start: Date, end: Date): Promise<Map<string, number>> {
+    const results = await OrderModel.aggregate<{ _id: string; revenueCents: number }>([
+      { $match: { status: 'entregue', createdAt: { $gte: start, $lt: end } } },
+      { $group: { _id: '$restaurantId', revenueCents: { $sum: { $round: [{ $multiply: ['$total', 100] }, 0] } } } },
+    ]);
+    return new Map(results.map((result) => [result._id, result.revenueCents]));
+  }
+
+  // Mesmo raciocínio de `getMonthlyRevenueCentsByRestaurant` acima — `findLastDeliveredAt`
+  // chamada uma vez por restaurante, agora numa única agregação pra todos.
+  async getLastDeliveredAtByRestaurant(): Promise<Map<string, Date>> {
+    const results = await OrderModel.aggregate<{ _id: string; lastDeliveredAt: Date }>([
+      { $match: { status: 'entregue' } },
+      { $group: { _id: '$restaurantId', lastDeliveredAt: { $max: '$createdAt' } } },
+    ]);
+    return new Map(results.map((result) => [result._id, result.lastDeliveredAt]));
+  }
+
   async findDeliveredByRestaurantBetween(restaurantId: string, start: Date, end: Date): Promise<IOrder[]> {
     const docs = await OrderModel.find({ restaurantId, status: 'entregue', createdAt: { $gte: start, $lt: end } })
       .sort({ createdAt: 1 })

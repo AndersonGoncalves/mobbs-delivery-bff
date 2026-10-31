@@ -121,6 +121,19 @@ export interface IOrderRepository {
   /** specs/0106 REQ-2 — data do pedido entregue mais recente do restaurante (ou `null`). */
   findLastDeliveredAt(restaurantId: string): Promise<Date | null>;
 
+  /**
+   * Achado crítico de auditoria pré-produção (31/10/2026) — "painel da plataforma: 1 query
+   * completa por restaurante + soma em JS": `PlatformController.buildRow` chamava
+   * `findDeliveredByRestaurantBetween` (pedidos completos, só pra somar `total` em JS) + `findLastDeliveredAt`
+   * — DUAS queries por restaurante, escalando com o número de restaurantes cadastrados na
+   * plataforma. As duas agregações abaixo cobrem TODOS os restaurantes de uma vez, num só
+   * round-trip ao Mongo cada. `revenueCents` arredonda cada pedido antes de somar (`$round` no
+   * pipeline, mesmo papel de `Math.round` por pedido em `sumRevenueCents` — nunca soma os
+   * `total` crus e arredonda só no final, que divergiria em cascata com muitos pedidos).
+   */
+  getMonthlyRevenueCentsByRestaurant(start: Date, end: Date): Promise<Map<string, number>>;
+  getLastDeliveredAtByRestaurant(): Promise<Map<string, Date>>;
+
   /** REQ-4 — agregado por período, calculado on demand, nunca persistido. */
   getSalesSummary(restaurantId: string, periodStart: Date, periodEnd: Date): Promise<ISalesSummary>;
   getTableSalesBetween(restaurantId: string, from: Date, to: Date): Promise<number>;
