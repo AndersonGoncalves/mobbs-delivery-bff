@@ -136,7 +136,10 @@ export class TotemController extends BaseRouter {
     // autenticado pra ter saldo/histórico de uso).
     application.post('/restaurants/me/totem/orders', ...totemAuthenticated, async (req: Request, res: Response) => {
       const payload = parseBody(createTotemOrderSchema, req.body);
-      const idempotencyKey = payload.idempotencyKey ?? randomUUID();
+      // Achado crítico da auditoria pré-produção (31/10/2026) — `idempotencyKey` agora é
+      // obrigatória no schema (nunca mais `?? randomUUID()` aqui): gerar uma chave nova quando
+      // ausente anulava a própria deduplicação.
+      const idempotencyKey = payload.idempotencyKey;
 
       const restaurant = await this.restaurantRepository.findById(req.restaurantId!);
       if (!restaurant) throw new NotFoundError('Restaurante não encontrado');
@@ -161,9 +164,7 @@ export class TotemController extends BaseRouter {
         throw new BadRequestError('Restaurante não tem chave Pix cadastrada');
       }
 
-      const existingOrder = payload.idempotencyKey
-        ? await this.findByIdempotencyKey(req.restaurantId!, payload.idempotencyKey)
-        : null;
+      const existingOrder = await this.findByIdempotencyKey(req.restaurantId!, idempotencyKey);
       if (existingOrder) {
         res.json(200, existingOrder);
         return;

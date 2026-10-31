@@ -80,6 +80,8 @@ function buildItem(overrides: Record<string, unknown> = {}) {
 
 function buildValidBody(overrides: Record<string, unknown> = {}) {
   return {
+    // Achado de auditoria (2026-10-31) — idempotencyKey agora é obrigatória no schema.
+    idempotencyKey: 'totem-idem-1',
     customerName: 'Cliente Totem',
     items: [buildItem()],
     paymentMethod: 'cash',
@@ -239,6 +241,39 @@ describe('TotemController (specs/0155-app-totem-autoatendimento)', () => {
         }),
       );
       expect(json).toHaveBeenCalledWith(201, { pixCode: undefined });
+    });
+
+    // Achado crítico da auditoria pré-produção (31/10/2026) — "sem chave de idempotência real
+    // na criação de pedido": o servidor gerava uma chave ALEATÓRIA quando o totem não mandava
+    // uma, o que anulava a própria deduplicação (um retry sem a MESMA chave nunca era
+    // reconhecido como repetição).
+    describe('achado de auditoria (2026-10-31): idempotencyKey obrigatória e real', () => {
+      it('rejeita (400) a requisição sem idempotencyKey, sem criar o pedido', async () => {
+        const { routes, orderRepository } = buildController();
+        const json = jest.fn();
+        const body = buildValidBody();
+        delete (body as Record<string, unknown>).idempotencyKey;
+
+        await expect(runTotemChain(routes['POST /restaurants/me/totem/orders'], { restaurantId: 'r-1', body }, { json })).rejects.toMatchObject({
+          statusCode: 400,
+        });
+        expect(orderRepository.create).not.toHaveBeenCalled();
+      });
+
+      it('reenviar a MESMA idempotencyKey (retry) devolve o pedido já criado, sem criar um segundo', async () => {
+        const createdOrder = { id: 'o-1', restaurantId: 'r-1', idempotencyKey: 'totem-idem-1' };
+        const orderRepository: Partial<IOrderRepository> = {
+          findActiveByRestaurant: jest.fn().mockResolvedValue([createdOrder]),
+          create: jest.fn(),
+        };
+        const { routes } = buildController({ orderRepository });
+        const json = jest.fn();
+
+        await runTotemChain(routes['POST /restaurants/me/totem/orders'], { restaurantId: 'r-1', body: buildValidBody() }, { json });
+
+        expect(orderRepository.create).not.toHaveBeenCalled();
+        expect(json).toHaveBeenCalledWith(200, createdOrder);
+      });
     });
 
     // Achado crítico da auditoria pré-produção (31/10/2026) — "preço do pedido nunca é
