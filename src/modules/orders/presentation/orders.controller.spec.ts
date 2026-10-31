@@ -356,6 +356,11 @@ describe('OrdersController', () => {
     // testes que mandam um `unitPrice`/produto diferente sobrescrevem este mock.
     const productRepository: Partial<IProductRepository> = {
       findById: jest.fn().mockResolvedValue({ id: 'p-1', restaurantId: 'r-1', price: 25, additionalGroups: [] }),
+      // Achado crítico de auditoria (2026-10-31) — "N+1 sequencial por item/adicional":
+      // `StockReservationService.reserveOrderItems` agora busca produtos em lote
+      // (`findManyByIds`), não mais um `findById` por item/adicional; mesmo produto default do
+      // `findById` acima, pra não quebrar os testes que não se importam com estoque.
+      findManyByIds: jest.fn().mockResolvedValue([{ id: 'p-1', restaurantId: 'r-1', price: 25, additionalGroups: [] }]),
       decrementStock: jest.fn().mockResolvedValue(false),
       decrementStockIfAvailable: jest.fn().mockResolvedValue(false),
       restoreStock: jest.fn().mockResolvedValue(true),
@@ -366,6 +371,7 @@ describe('OrdersController', () => {
     };
     const stockMovementRepository: Partial<IStockMovementRepository> = {
       findByOperationId: jest.fn().mockResolvedValue(null),
+      findManyByOperationIds: jest.fn().mockResolvedValue([]),
       create: jest.fn().mockResolvedValue({}),
       ...overrides.stockMovementRepository,
     };
@@ -393,6 +399,7 @@ describe('OrdersController', () => {
     };
     const rawMaterialRepository: Partial<IRawMaterialRepository> = {
       findById: jest.fn().mockResolvedValue(null),
+      findManyByIds: jest.fn().mockResolvedValue([]),
       decrementStockIfAvailable: jest.fn().mockResolvedValue(false),
       incrementStock: jest.fn().mockResolvedValue({}),
       ...overrides.rawMaterialRepository,
@@ -669,6 +676,7 @@ describe('OrdersController', () => {
       restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ stockControlEnabled: true })) },
       productRepository: {
         findById: jest.fn().mockResolvedValue({ id: 'p-1', restaurantId: 'r-1', price: 25, tracksStock: true, stockQuantity: 1, additionalGroups: [] }),
+        findManyByIds: jest.fn().mockResolvedValue([{ id: 'p-1', restaurantId: 'r-1', price: 25, tracksStock: true, stockQuantity: 1, additionalGroups: [] }]),
         decrementStockIfAvailable: jest.fn().mockResolvedValue(false),
       },
     });
@@ -688,6 +696,7 @@ describe('OrdersController', () => {
       restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ stockControlEnabled: true })) },
       productRepository: {
         findById: jest.fn().mockResolvedValue({ id: 'p-1', restaurantId: 'r-1', price: 25, tracksStock: true, stockQuantity: 8, additionalGroups: [] }),
+        findManyByIds: jest.fn().mockResolvedValue([{ id: 'p-1', restaurantId: 'r-1', price: 25, tracksStock: true, stockQuantity: 8, additionalGroups: [] }]),
         decrementStockIfAvailable: jest.fn().mockResolvedValue(true),
       },
     });

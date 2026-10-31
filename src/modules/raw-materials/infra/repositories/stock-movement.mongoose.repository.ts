@@ -62,4 +62,14 @@ export class StockMovementMongooseRepository implements IStockMovementRepository
     const doc = await StockMovementModel.findOne({ restaurantId, operationId }).lean<StockMovementLeanDocument>();
     return doc ? toEntity(doc) : null;
   }
+
+  // Achado crítico de auditoria pré-produção (31/10/2026) — "reserva de estoque no checkout:
+  // N+1 sequencial por item/adicional": `StockReservationService` chamava `findByOperationId`
+  // até duas vezes por item/adicional do pedido (detecção de reserva existente + do rollback
+  // dela). Este método busca TODAS de uma vez, num só round-trip.
+  async findManyByOperationIds(restaurantId: string, operationIds: string[]): Promise<IStockMovement[]> {
+    if (operationIds.length === 0) return [];
+    const docs = await StockMovementModel.find({ restaurantId, operationId: { $in: operationIds } }).lean<StockMovementLeanDocument[]>();
+    return docs.map(toEntity);
+  }
 }

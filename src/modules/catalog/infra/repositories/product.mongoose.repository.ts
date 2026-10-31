@@ -402,6 +402,18 @@ export class ProductMongooseRepository implements IProductRepository {
     return toEntity(doc);
   }
 
+  // Achado crítico de auditoria pré-produção (31/10/2026) — "reserva de estoque no checkout:
+  // N+1 sequencial por item/adicional": `StockReservationService.isTracked` chamava `findById`
+  // (que por sua vez resolve promoção/template/produto e matéria-prima vinculados — caro) uma
+  // vez por produto de cada item/adicional do pedido. Este método busca TODOS de uma vez, num só
+  // round-trip, e de propósito NÃO resolve promoção/template/vínculos (quem usa este método só
+  // precisa de `restaurantId`/`tracksStock`, nunca dessas resoluções extras).
+  async findManyByIds(ids: string[]): Promise<IProduct[]> {
+    if (ids.length === 0) return [];
+    const docs = await ProductModel.find({ _id: { $in: ids } }).lean<ProductLeanDocument[]>();
+    return docs.map(toEntity);
+  }
+
   async listByRestaurant(restaurantId: string, filters?: IProductListFilters): Promise<IProduct[]> {
     const docs = await ProductModel.find(buildListQuery(restaurantId, filters)).lean<ProductLeanDocument[]>();
     const promotionsByProductId = await resolvePromotions(docs, this.promotionRepository);

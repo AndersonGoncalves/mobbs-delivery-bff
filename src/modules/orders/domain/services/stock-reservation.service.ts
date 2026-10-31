@@ -47,19 +47,65 @@ export class StockReservationService {
   ): Promise<IOrderItem[]> {
     if (!stockControlEnabled) return items;
 
+    // Achado crítico de auditoria pré-produção (31/10/2026) — "reserva de estoque no checkout:
+    // N+1 sequencial por item/adicional": as duas checagens de LEITURA que dominavam o
+    // round-trip (produto/matéria-prima rastreia estoque? já existe reserva/rollback deste
+    // operationId?) rodavam uma vez POR item/adicional — pedido com muitos itens acumulava
+    // dezenas de round-trips sequenciais antes de sequer começar a reservar. Agora rodam em
+    // lote, uma vez pra TODO o pedido. A escrita (`reserveResource`: decrementStockIfAvailable +
+    // movimento) continua sequencial por recurso, de propósito — é onde a reserva/compensação de
+    // verdade acontece, não dá pra paralelizar sem arriscar o invariante de rollback em cascata
+    // do `catch` abaixo.
+    const entries = items.flatMap((item) => collectResources(item).map((resource) => ({ item, resource })));
+    const productIds = [...new Set(entries.filter(({ resource }) => resource.resourceType === 'product').map(({ resource }) => resource.resourceId))];
+    const rawMaterialIds = [
+      ...new Set(entries.filter(({ resource }) => resource.resourceType === 'rawMaterial').map(({ resource }) => resource.resourceId)),
+    ];
+    const [products, rawMaterials] = await Promise.all([
+      this.productRepository.findManyByIds(productIds),
+      this.rawMaterialRepository.findManyByIds(rawMaterialIds),
+    ]);
+    const productById = new Map(products.map((product) => [product.id, product]));
+    const rawMaterialById = new Map(rawMaterials.map((material) => [material.id, material]));
+
+    const baseOperationIdOf = (item: IOrderItem, resource: Resource) =>
+      `${operationPrefix}:${item.id}:${resource.resourceType}:${resource.resourceId}`;
+
+    const trackedKeys = new Set(
+      entries
+        .filter(({ resource }) => {
+          if (resource.resourceType === 'product') {
+            const product = productById.get(resource.resourceId);
+            if (!product || product.restaurantId !== restaurantId) throw new NotFoundError('Produto não encontrado');
+            return product.tracksStock === true;
+          }
+          const material = rawMaterialById.get(resource.resourceId);
+          if (!material || material.restaurantId !== restaurantId) throw new NotFoundError('Matéria-prima não encontrada');
+          return material.tracksStock === true;
+        })
+        .map(({ item, resource }) => `${item.id}:${resource.resourceType}:${resource.resourceId}`),
+    );
+
+    const operationIdsToCheck = entries
+      .filter(({ item, resource }) => trackedKeys.has(`${item.id}:${resource.resourceType}:${resource.resourceId}`))
+      .flatMap(({ item, resource }) => {
+        const base = baseOperationIdOf(item, resource);
+        return [base, `${base}:rollback`];
+      });
+    const existingMovements = await this.movementRepository.findManyByOperationIds(restaurantId, operationIdsToCheck);
+    const movementByOperationId = new Map(existingMovements.map((movement) => [movement.operationId!, movement]));
+
     const reservedThisAttempt: IOrderItemStockReservation[] = [];
     try {
       const result: IOrderItem[] = [];
       for (const item of items) {
         const stockReservations: IOrderItemStockReservation[] = [];
         for (const resource of collectResources(item)) {
-          if (!(await this.isTracked(restaurantId, resource))) continue;
+          if (!trackedKeys.has(`${item.id}:${resource.resourceType}:${resource.resourceId}`)) continue;
           const quantity = resource.unitsPerItem * item.quantity;
-          const baseOperationId = `${operationPrefix}:${item.id}:${resource.resourceType}:${resource.resourceId}`;
-          const existing = await this.movementRepository.findByOperationId(restaurantId, baseOperationId);
-          const rolledBack = existing
-            ? await this.movementRepository.findByOperationId(restaurantId, `${baseOperationId}:rollback`)
-            : null;
+          const baseOperationId = baseOperationIdOf(item, resource);
+          const existing = movementByOperationId.get(baseOperationId) ?? null;
+          const rolledBack = existing ? movementByOperationId.get(`${baseOperationId}:rollback`) ?? null : null;
           const operationId = existing && rolledBack ? `${baseOperationId}:retry:${randomUUID()}` : baseOperationId;
           if (existing && !rolledBack) {
             stockReservations.push({ ...resource, quantity: existing.quantity, operationId });
@@ -169,17 +215,6 @@ export class StockReservationService {
       stockReservations: (item.stockReservations ?? []).filter((reservation) => !persistedOperationIds.has(reservation.operationId)),
     }));
     await this.releaseOrderReservations(restaurantId, orderId, orphanedItems);
-  }
-
-  private async isTracked(restaurantId: string, resource: Resource): Promise<boolean> {
-    if (resource.resourceType === 'product') {
-      const product = await this.productRepository.findById(resource.resourceId);
-      if (!product || product.restaurantId !== restaurantId) throw new NotFoundError('Produto não encontrado');
-      return product.tracksStock === true;
-    }
-    const material = await this.rawMaterialRepository.findById(resource.resourceId);
-    if (!material || material.restaurantId !== restaurantId) throw new NotFoundError('Matéria-prima não encontrada');
-    return material.tracksStock === true;
   }
 
   private async reserveResource(

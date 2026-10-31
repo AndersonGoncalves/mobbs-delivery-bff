@@ -100,9 +100,13 @@ describe('TableServiceController', () => {
       findById: jest.fn().mockResolvedValue({ id: 'r-1', stockControlEnabled: false }),
       ...overrides.restaurantRepository,
     };
-    const rawMaterialRepository = { findById: jest.fn() } as unknown as IRawMaterialRepository;
+    // Achado crítico de auditoria (2026-10-31) — "N+1 sequencial por item/adicional":
+    // `reserveOrderItems` agora busca matérias-primas/reservas existentes em lote
+    // (`findManyByIds`/`findManyByOperationIds`), não mais uma chamada por item/adicional.
+    const rawMaterialRepository = { findById: jest.fn(), findManyByIds: jest.fn().mockResolvedValue([]) } as unknown as IRawMaterialRepository;
     const stockMovementRepository: Partial<IStockMovementRepository> = {
       findByOperationId: jest.fn().mockResolvedValue(null),
+      findManyByOperationIds: jest.fn().mockResolvedValue([]),
       create: jest.fn().mockResolvedValue({}),
     };
     // specs/0137-papeis-garcom-motoboy REQ-7 — `RestaurantOperator` com papel `garcom`, usado
@@ -332,6 +336,7 @@ describe('TableServiceController', () => {
       restaurantRepository: { findById: jest.fn().mockResolvedValue({ id: 'r-1', stockControlEnabled: true }) },
       productRepository: {
         findById: jest.fn().mockResolvedValue(product),
+        findManyByIds: jest.fn().mockResolvedValue([product]),
         decrementStockIfAvailable: jest.fn().mockResolvedValue(true),
       },
       orderRepository: {

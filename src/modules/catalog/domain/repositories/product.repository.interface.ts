@@ -51,6 +51,14 @@ export interface IProductRepository {
   /** REQ-3: produto completo (com `additionalGroups`) — `null` se o `id` não existir. */
   findById(id: string): Promise<IProduct | null>;
 
+  /**
+   * Achado crítico de auditoria pré-produção (31/10/2026) — "reserva de estoque no checkout:
+   * N+1 sequencial por item/adicional": `StockReservationService` usa pra buscar TODOS os
+   * produtos de um pedido de uma vez, num só round-trip. De propósito NÃO resolve promoção/
+   * template/vínculos de `findById` (só precisa de `restaurantId`/`tracksStock` aqui).
+   */
+  findManyByIds(ids: string[]): Promise<IProduct[]>;
+
   /** REQ-2 (retaguarda) — todos os produtos do restaurante do operador, com `additionalGroups`.
    * Usado por vários consumidores internos do BFF que precisam da lista INTEIRA (cozinha,
    * emissão fiscal, totem, checklist de onboarding) — nunca paginado; ver `listByRestaurantPage`
