@@ -162,6 +162,25 @@ import { PlatformBillingCycleService } from './modules/platform-billing/domain/s
 import { PlatformBillingController } from './modules/platform-billing/presentation/platform-billing.controller';
 import { PlatformBillingWebhookController } from './modules/platform-billing/presentation/platform-billing-webhook.controller';
 
+// Achado de auditoria (2026-10-31, crítico) — sem isto, o comportamento padrão do Node pra uma
+// exceção não tratada/promise rejeitada sem `.catch()` é derrubar o processo de forma abrupta e
+// silenciosa (sem contexto claro no log) — e como é um único processo multi-tenant, qualquer bug
+// (próprio ou de dependência, ex. a biblioteca do WhatsApp) tira TODOS os restaurantes do ar de
+// uma vez, não só quem causou o erro. `docker-compose.yml` já tem `restart: always` no serviço
+// `api` — a rede de segurança real é deixar o processo morrer de forma CONTROLADA (nunca tentar
+// continuar rodando depois de `uncaughtException`: o estado pode estar corrompido, é a própria
+// recomendação do Node) e deixar o Docker reiniciar, só que agora com um log claro do motivo.
+process.on('unhandledRejection', (reason) => {
+  // eslint-disable-next-line no-console
+  console.error('[fatal] Promise rejeitada sem tratamento — reiniciando (docker-compose restart: always):', reason);
+  process.exit(1);
+});
+process.on('uncaughtException', (error) => {
+  // eslint-disable-next-line no-console
+  console.error('[fatal] Exceção não tratada — reiniciando (docker-compose restart: always):', error);
+  process.exit(1);
+});
+
 const server = new Server();
 
 const restaurantOperatorRepository = new RestaurantOperatorMongooseRepository();
