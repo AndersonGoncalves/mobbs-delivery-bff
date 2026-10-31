@@ -143,7 +143,18 @@ export class OperatorDraftsController extends BaseRouter {
       // REQ-15 — só mostra endereços de um cliente que já pediu neste restaurante (mesmo
       // raciocínio de isolamento de `CustomersSummaryController`), nunca de qualquer `customerId`.
       const ownOrders = await this.orderRepository.findManyByCustomerAndRestaurant(customer.id, req.restaurantId!);
-      const addresses = ownOrders.length > 0 ? await this.addressRepository.listByCustomer(customer.id) : [];
+      // Achado crítico de auditoria (31/10/2026) — "findByPhone global permite correlação de PII
+      // entre restaurantes": `customer` vem de uma busca GLOBAL por telefone — sem a guarda de
+      // relação abaixo, o nome/telefone de QUALQUER pessoa cadastrada (inclusive só pelo app, em
+      // outro restaurante) aparecia pra um operador que nunca atendeu esse cliente, só por digitar
+      // o número. Sem relação própria (nenhum pedido aqui nem cadastro manual aqui), trata como
+      // "não encontrado" — mesmo efeito que já existia só pros endereços, agora também pro nome.
+      const hasRelationship = ownOrders.length > 0 || customer.createdByRestaurantId === req.restaurantId;
+      if (!hasRelationship) {
+        res.json(200, { customer: null, addresses: [], blocked });
+        return;
+      }
+      const addresses = await this.addressRepository.listByCustomer(customer.id);
       res.json(200, { customer: { id: customer.id, name: customer.name, phone: customer.phone }, addresses, blocked });
     });
 
@@ -155,7 +166,20 @@ export class OperatorDraftsController extends BaseRouter {
       const normalized = normalizePhoneNumber(payload.phone);
       const existing = await this.customerRepository.findByPhone(normalized);
       if (existing) {
-        res.json(200, { id: existing.id, name: existing.name, phone: existing.phone });
+        const ownOrders = await this.orderRepository.findManyByCustomerAndRestaurant(existing.id, req.restaurantId!);
+        const hasRelationship = ownOrders.length > 0 || existing.createdByRestaurantId === req.restaurantId;
+        if (hasRelationship) {
+          res.json(200, { id: existing.id, name: existing.name, phone: existing.phone });
+          return;
+        }
+        // Achado crítico de auditoria (31/10/2026) — "findByPhone global permite correlação de
+        // PII entre restaurantes": mesmo telefone já existe globalmente (outro restaurante ou só
+        // o app), mas nunca teve relação com ESTE restaurante — nunca devolve o nome real
+        // cadastrado em outro lugar. Reaproveita o mesmo `id` (telefone é o identificador real da
+        // pessoa, evita duplicar o cliente), estabelece a relação com este restaurante agora, mas
+        // devolve o nome que o próprio operador digitou, nunca o de outro contexto.
+        const linked = await this.customerRepository.createByRestaurant(req.restaurantId!, payload.name, normalized);
+        res.json(200, { id: linked.id, name: payload.name, phone: linked.phone });
         return;
       }
       const created = await this.customerRepository.createStandalone(payload.name, normalized);

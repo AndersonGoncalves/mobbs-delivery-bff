@@ -7,6 +7,7 @@ import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middl
 import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { normalizePhoneNumber } from '../../../shared/utils/normalize-phone-number';
 import { ICustomerRepository } from '../../customers/domain/repositories/customer.repository.interface';
+import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { IBlockedCustomerRepository } from '../domain/repositories/blocked-customer.repository.interface';
 import { blockCustomerSchema } from './customer-blocking.schemas';
 
@@ -21,6 +22,7 @@ export class CustomerBlockingController extends BaseRouter {
   constructor(
     private readonly blockedCustomerRepository: IBlockedCustomerRepository,
     private readonly customerRepository: ICustomerRepository,
+    private readonly orderRepository: IOrderRepository,
     private readonly restaurantOperatorMiddleware: AsyncHandler,
   ) {
     super();
@@ -41,7 +43,15 @@ export class CustomerBlockingController extends BaseRouter {
       const { phone } = parseBody(blockCustomerSchema, req.body);
       const normalizedPhone = normalizePhoneNumber(phone);
       const customer = await this.customerRepository.findByPhone(normalizedPhone);
-      const blocked = await this.blockedCustomerRepository.block(req.restaurantId!, normalizedPhone, customer?.name);
+      // Achado crítico de auditoria (31/10/2026) — "findByPhone global permite correlação de PII
+      // entre restaurantes": `customer` vem de uma busca GLOBAL, sem nenhuma relação exigida com
+      // este restaurante — sem a guarda abaixo, bastava digitar qualquer telefone pra descobrir o
+      // nome real de alguém que nunca pediu aqui, sob o pretexto de bloquear o número.
+      const hasRelationship = !!customer && (
+        customer.createdByRestaurantId === req.restaurantId
+        || (await this.orderRepository.findManyByCustomerAndRestaurant(customer.id, req.restaurantId!)).length > 0
+      );
+      const blocked = await this.blockedCustomerRepository.block(req.restaurantId!, normalizedPhone, hasRelationship ? customer?.name : undefined);
       res.json(201, blocked);
     });
 

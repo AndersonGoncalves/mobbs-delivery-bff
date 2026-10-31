@@ -192,6 +192,7 @@ function buildController(overrides: {
     findByPhone: jest.fn().mockResolvedValue(null),
     findById: jest.fn().mockResolvedValue(null),
     createStandalone: jest.fn().mockResolvedValue({ id: 'c-1', name: 'Cliente', phone: '5511999999999' }),
+    createByRestaurant: jest.fn().mockResolvedValue({ id: 'c-1', name: 'Cliente', phone: '5511999999999', createdByRestaurantId: 'r-1' }),
     ...overrides.customerRepository,
   };
   const addressRepository: Partial<IAddressRepository> = { listByCustomer: jest.fn().mockResolvedValue([]) };
@@ -481,6 +482,107 @@ describe('OperatorDraftsController (specs/0174-pdv-extensao-chrome-lateral)', ()
       const res = { json: jest.fn() };
       await runOperatorChain(routes['GET /restaurants/me/operator-drafts/customers'], { ...baseReq, query: { phone: '5511999999999' } }, res);
       expect(res.json).toHaveBeenCalledWith(200, expect.objectContaining({ blocked: true }));
+    });
+
+    // Achado crítico de auditoria (31/10/2026) — "findByPhone global permite correlação de PII
+    // entre restaurantes": cliente existe (achado por `findByPhone`, busca GLOBAL), mas nunca
+    // pediu neste restaurante nem foi cadastrado manualmente aqui — nunca revela nome/telefone.
+    it('cliente existe globalmente mas nunca pediu/foi cadastrado neste restaurante: nunca revela o nome (trata como não encontrado)', async () => {
+      const { routes, orderRepository } = buildController({
+        customerRepository: {
+          findByPhone: jest.fn().mockResolvedValue({ id: 'c-outro', name: 'Fulano de Outro Restaurante', phone: '5511999999999' }),
+        },
+      });
+      orderRepository.findManyByCustomerAndRestaurant = jest.fn().mockResolvedValue([]);
+      const res = { json: jest.fn() };
+
+      await runOperatorChain(routes['GET /restaurants/me/operator-drafts/customers'], { ...baseReq, query: { phone: '5511999999999' } }, res);
+
+      expect(res.json).toHaveBeenCalledWith(200, { customer: null, addresses: [], blocked: false });
+    });
+
+    it('cliente já pediu neste restaurante: revela nome e endereços normalmente', async () => {
+      const { routes, orderRepository } = buildController({
+        customerRepository: {
+          findByPhone: jest.fn().mockResolvedValue({ id: 'c-1', name: 'Maria', phone: '5511999999999' }),
+        },
+      });
+      orderRepository.findManyByCustomerAndRestaurant = jest.fn().mockResolvedValue([{ id: 'o-1' }]);
+      const res = { json: jest.fn() };
+
+      await runOperatorChain(routes['GET /restaurants/me/operator-drafts/customers'], { ...baseReq, query: { phone: '5511999999999' } }, res);
+
+      expect(res.json).toHaveBeenCalledWith(200, expect.objectContaining({ customer: { id: 'c-1', name: 'Maria', phone: '5511999999999' } }));
+    });
+
+    it('cliente foi cadastrado manualmente por este restaurante (sem pedido ainda): revela o nome', async () => {
+      const { routes } = buildController({
+        customerRepository: {
+          findByPhone: jest.fn().mockResolvedValue({ id: 'c-1', name: 'Maria', phone: '5511999999999', createdByRestaurantId: 'r-1' }),
+        },
+      });
+      const res = { json: jest.fn() };
+
+      await runOperatorChain(routes['GET /restaurants/me/operator-drafts/customers'], { ...baseReq, query: { phone: '5511999999999' } }, res);
+
+      expect(res.json).toHaveBeenCalledWith(200, expect.objectContaining({ customer: { id: 'c-1', name: 'Maria', phone: '5511999999999' } }));
+    });
+  });
+
+  describe('POST .../operator-drafts/customers (cadastro rápido)', () => {
+    it('telefone desconhecido: cria um cliente avulso novo', async () => {
+      const { routes, customerRepository } = buildController();
+      const res = { json: jest.fn() };
+
+      await runOperatorChain(
+        routes['POST /restaurants/me/operator-drafts/customers'],
+        { ...baseReq, body: { name: 'Ana', phone: '5511999999999' } },
+        res,
+      );
+
+      expect(customerRepository.createStandalone).toHaveBeenCalledWith('Ana', '5511999999999');
+      expect(res.json).toHaveBeenCalledWith(201, { id: 'c-1', name: 'Cliente', phone: '5511999999999' });
+    });
+
+    it('telefone já tem relação com este restaurante: reaproveita o cliente existente', async () => {
+      const { routes, orderRepository } = buildController({
+        customerRepository: {
+          findByPhone: jest.fn().mockResolvedValue({ id: 'c-1', name: 'Ana', phone: '5511999999999', createdByRestaurantId: 'r-1' }),
+        },
+      });
+      orderRepository.findManyByCustomerAndRestaurant = jest.fn().mockResolvedValue([]);
+      const res = { json: jest.fn() };
+
+      await runOperatorChain(
+        routes['POST /restaurants/me/operator-drafts/customers'],
+        { ...baseReq, body: { name: 'Nome digitado agora', phone: '5511999999999' } },
+        res,
+      );
+
+      expect(res.json).toHaveBeenCalledWith(200, { id: 'c-1', name: 'Ana', phone: '5511999999999' });
+    });
+
+    // Achado crítico de auditoria (31/10/2026) — mesmo raciocínio do GET acima: telefone já
+    // existe globalmente (outro restaurante/app), mas nunca teve relação com ESTE restaurante —
+    // nunca devolve o nome real de outro contexto, só o que o operador digitou agora.
+    it('telefone existe globalmente mas sem relação com este restaurante: estabelece a relação agora e devolve o nome digitado pelo operador, nunca o de outro contexto', async () => {
+      const { routes, customerRepository, orderRepository } = buildController({
+        customerRepository: {
+          findByPhone: jest.fn().mockResolvedValue({ id: 'c-outro', name: 'Fulano de Outro Restaurante', phone: '5511999999999' }),
+          createByRestaurant: jest.fn().mockResolvedValue({ id: 'c-outro', name: 'Fulano de Outro Restaurante', phone: '5511999999999', createdByRestaurantId: 'r-1' }),
+        },
+      });
+      orderRepository.findManyByCustomerAndRestaurant = jest.fn().mockResolvedValue([]);
+      const res = { json: jest.fn() };
+
+      await runOperatorChain(
+        routes['POST /restaurants/me/operator-drafts/customers'],
+        { ...baseReq, body: { name: 'Nome digitado agora', phone: '5511999999999' } },
+        res,
+      );
+
+      expect(customerRepository.createByRestaurant).toHaveBeenCalledWith('r-1', 'Nome digitado agora', '5511999999999');
+      expect(res.json).toHaveBeenCalledWith(200, { id: 'c-outro', name: 'Nome digitado agora', phone: '5511999999999' });
     });
   });
 });

@@ -1,5 +1,6 @@
 import type { Request, Response, Server } from 'restify';
 import { ICustomerRepository } from '../../customers/domain/repositories/customer.repository.interface';
+import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { IBlockedCustomerRepository } from '../domain/repositories/blocked-customer.repository.interface';
 import { CustomerBlockingController } from './customer-blocking.controller';
 
@@ -31,6 +32,7 @@ describe('CustomerBlockingController', () => {
   function setup(overrides: {
     blockedCustomerRepository?: Partial<IBlockedCustomerRepository>;
     customerRepository?: Partial<ICustomerRepository>;
+    orderRepository?: Partial<IOrderRepository>;
   } = {}) {
     const blockedCustomerRepository: Partial<IBlockedCustomerRepository> = {
       listByRestaurant: jest.fn().mockResolvedValue([buildBlocked()]),
@@ -42,13 +44,18 @@ describe('CustomerBlockingController', () => {
       findByPhone: jest.fn().mockResolvedValue(null),
       ...overrides.customerRepository,
     };
+    const orderRepository: Partial<IOrderRepository> = {
+      findManyByCustomerAndRestaurant: jest.fn().mockResolvedValue([]),
+      ...overrides.orderRepository,
+    };
     const { application, routes } = buildApp();
     new CustomerBlockingController(
       blockedCustomerRepository as IBlockedCustomerRepository,
       customerRepository as ICustomerRepository,
+      orderRepository as IOrderRepository,
       jest.fn(),
     ).initializeRoutes(application);
-    return { blockedCustomerRepository, customerRepository, routes };
+    return { blockedCustomerRepository, customerRepository, orderRepository, routes };
   }
 
   it('GET /restaurants/me/blocked-customers lista os bloqueados do restaurante', async () => {
@@ -61,9 +68,11 @@ describe('CustomerBlockingController', () => {
     expect(json).toHaveBeenCalledWith(200, [buildBlocked()]);
   });
 
-  it('POST /restaurants/me/blocked-customers normaliza o telefone e resolve o nome do cliente, se existir', async () => {
+  it('POST /restaurants/me/blocked-customers resolve o nome do cliente já cadastrado por este restaurante', async () => {
     const { blockedCustomerRepository, customerRepository, routes } = setup({
-      customerRepository: { findByPhone: jest.fn().mockResolvedValue({ id: 'c-1', name: 'Michelle', email: 'm@x.com', phone: '5585984224877' }) },
+      customerRepository: {
+        findByPhone: jest.fn().mockResolvedValue({ id: 'c-1', name: 'Michelle', email: 'm@x.com', phone: '5585984224877', createdByRestaurantId: 'r-1' }),
+      },
     });
     const json = jest.fn();
 
@@ -78,8 +87,46 @@ describe('CustomerBlockingController', () => {
     expect(json).toHaveBeenCalledWith(201, buildBlocked());
   });
 
+  it('POST /restaurants/me/blocked-customers resolve o nome do cliente que já pediu neste restaurante', async () => {
+    const { blockedCustomerRepository, routes } = setup({
+      customerRepository: {
+        findByPhone: jest.fn().mockResolvedValue({ id: 'c-1', name: 'Michelle', email: 'm@x.com', phone: '5585984224877' }),
+      },
+      orderRepository: { findManyByCustomerAndRestaurant: jest.fn().mockResolvedValue([{ id: 'o-1' }]) },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/blocked-customers'],
+      { restaurantId: 'r-1', body: { phone: '85984224877' } },
+      { json, send: jest.fn() },
+    );
+
+    expect(blockedCustomerRepository.block).toHaveBeenCalledWith('r-1', '5585984224877', 'Michelle');
+  });
+
   it('POST /restaurants/me/blocked-customers funciona sem cliente cadastrado com esse telefone (nome fica undefined)', async () => {
     const { blockedCustomerRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/blocked-customers'],
+      { restaurantId: 'r-1', body: { phone: '85984224877' } },
+      { json, send: jest.fn() },
+    );
+
+    expect(blockedCustomerRepository.block).toHaveBeenCalledWith('r-1', '5585984224877', undefined);
+  });
+
+  // Achado crítico de auditoria (31/10/2026) — "findByPhone global permite correlação de PII
+  // entre restaurantes": cliente existe globalmente (outro restaurante/app), mas nunca teve
+  // nenhuma relação com ESTE restaurante — nunca devolve o nome real.
+  it('POST /restaurants/me/blocked-customers nunca revela o nome de um cliente sem relação com este restaurante', async () => {
+    const { blockedCustomerRepository, routes } = setup({
+      customerRepository: {
+        findByPhone: jest.fn().mockResolvedValue({ id: 'c-1', name: 'Michelle', email: 'm@x.com', phone: '5585984224877', createdByRestaurantId: 'outro-restaurante' }),
+      },
+    });
     const json = jest.fn();
 
     await runOperatorChain(
