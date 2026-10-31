@@ -19,6 +19,14 @@ interface SessionEntry {
 
 const logger = pino({ level: 'silent' });
 
+// Achado de auditoria (2026-10-31, crítico) — reconectar imediatamente, sem nenhum atraso, podia
+// virar um loop rápido e sem fim em degradação de rede, sobrecarregando o processo e batendo
+// repetidamente nos servidores do WhatsApp (risco real de banimento do número). Backoff
+// exponencial com teto: 2s, 4s, 8s... até no máximo 2 minutos entre tentativas; o contador zera
+// assim que a conexão abre de verdade.
+const RECONNECT_BASE_DELAY_MS = 2_000;
+const RECONNECT_MAX_DELAY_MS = 120_000;
+
 /**
  * specs/0013-notificacoes-whatsapp — implementação real via Baileys (decisão do usuário,
  * 2026-09-09). Uma instância de socket por restaurante, mantida em memória
@@ -32,6 +40,10 @@ const logger = pino({ level: 'silent' });
  */
 export class WhatsAppConnectionService implements IWhatsAppConnectionService {
   private readonly sessions = new Map<string, SessionEntry>();
+  // Achado de auditoria (2026-10-31) — tentativas de reconexão CONSECUTIVAS por restaurante,
+  // vive fora de `SessionEntry` (que é recriada a cada `connect()`) pra sobreviver entre elas;
+  // zerada assim que a conexão abre de verdade (`connection.update` com `connection === 'open'`).
+  private readonly reconnectAttempts = new Map<string, number>();
 
   constructor(private readonly restaurantRepository: IRestaurantRepository) {}
 
@@ -54,6 +66,7 @@ export class WhatsAppConnectionService implements IWhatsAppConnectionService {
       await entry.socket.logout().catch(() => undefined);
       this.sessions.delete(restaurantId);
     }
+    this.reconnectAttempts.delete(restaurantId);
     await clearWhatsAppSession(restaurantId);
     await this.restaurantRepository.setWhatsappConnected(restaurantId, false);
   }
@@ -147,6 +160,7 @@ export class WhatsAppConnectionService implements IWhatsAppConnectionService {
         entry.connected = true;
         entry.everConnected = true;
         entry.qr = null;
+        this.reconnectAttempts.delete(restaurantId);
         await this.restaurantRepository.setWhatsappConnected(restaurantId, true);
       }
 
@@ -174,7 +188,13 @@ export class WhatsAppConnectionService implements IWhatsAppConnectionService {
           await this.restaurantRepository.setWhatsappConnected(restaurantId, false);
           return;
         }
-        console.log(`[whatsapp] conexão do restaurante ${restaurantId} fechou (código ${statusCode}); reconectando`);
+        const attempt = (this.reconnectAttempts.get(restaurantId) ?? 0) + 1;
+        this.reconnectAttempts.set(restaurantId, attempt);
+        const delayMs = Math.min(RECONNECT_BASE_DELAY_MS * 2 ** (attempt - 1), RECONNECT_MAX_DELAY_MS);
+        console.log(
+          `[whatsapp] conexão do restaurante ${restaurantId} fechou (código ${statusCode}); reconectando em ${delayMs}ms (tentativa ${attempt})`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
         try {
           await this.connect(restaurantId);
         } catch (error) {

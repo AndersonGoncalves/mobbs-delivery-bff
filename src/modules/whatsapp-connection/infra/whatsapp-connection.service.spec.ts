@@ -130,6 +130,131 @@ describe('WhatsAppConnectionService — quedas de conexão (specs/0067)', () => 
   });
 });
 
+// Achado de auditoria (2026-10-31, crítico) — reconectar sem nenhum atraso, em loop, era um
+// risco real de banimento do número (bater repetidamente nos servidores do WhatsApp) e de
+// sobrecarregar o processo. Describe próprio com fake timers — os testes acima (sem fake timers)
+// continuam esperando o primeiro atraso real (2s, tolerável); aqui precisamos avançar por vários
+// atrasos crescentes, o que levaria dezenas de segundos reais sem timers falsos.
+describe('WhatsAppConnectionService — backoff de reconexão (achado de auditoria 2026-10-31)', () => {
+  type Handler = (update: Record<string, unknown>) => Promise<void>;
+  const RESTART_REQUIRED = 515;
+
+  function setup() {
+    const handlers: Handler[] = [];
+    const makeWASocket = jest.fn().mockImplementation(() => ({
+      ev: {
+        on: (event: string, handler: Handler) => {
+          if (event === 'connection.update') handlers.push(handler);
+        },
+      },
+      logout: jest.fn().mockResolvedValue(undefined),
+    }));
+    (loadBaileys as jest.Mock).mockResolvedValue({
+      makeWASocket,
+      makeCacheableSignalKeyStore: jest.fn(),
+      DisconnectReason: { loggedOut: 401, restartRequired: RESTART_REQUIRED },
+    });
+    const restaurantRepository: Partial<IRestaurantRepository> = {
+      setWhatsappConnected: jest.fn().mockResolvedValue(undefined),
+      findWhatsappConnectedIds: jest.fn().mockResolvedValue(['r-1']),
+    };
+    const service = new WhatsAppConnectionService(restaurantRepository as IRestaurantRepository);
+    // Dispara o handler (await real, sem travar) e devolve a promise ainda pendente no
+    // `setTimeout` do backoff — quem chama avança o fake timer e só depois aguarda.
+    const closeLatest = (statusCode: number) => handlers[handlers.length - 1]({ connection: 'close', lastDisconnect: { error: { output: { statusCode } } } });
+
+    return { service, makeWASocket, handlers, closeLatest };
+  }
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  it('espera 2s antes da primeira tentativa de reconexão', async () => {
+    const { service, makeWASocket, closeLatest } = setup();
+    await service.restoreConnectedSessions();
+    expect(makeWASocket).toHaveBeenCalledTimes(1);
+
+    const pending = closeLatest(RESTART_REQUIRED);
+    expect(makeWASocket).toHaveBeenCalledTimes(1); // ainda não reconectou — está esperando o atraso
+
+    await jest.advanceTimersByTimeAsync(2_000);
+    await pending;
+
+    expect(makeWASocket).toHaveBeenCalledTimes(2);
+  });
+
+  it('atraso cresce exponencialmente a cada queda consecutiva (2s, 4s, 8s)', async () => {
+    const { service, makeWASocket, closeLatest } = setup();
+    await service.restoreConnectedSessions();
+
+    const first = closeLatest(RESTART_REQUIRED);
+    await jest.advanceTimersByTimeAsync(2_000);
+    await first;
+    expect(makeWASocket).toHaveBeenCalledTimes(2);
+
+    const second = closeLatest(RESTART_REQUIRED);
+    await jest.advanceTimersByTimeAsync(3_999);
+    expect(makeWASocket).toHaveBeenCalledTimes(2); // 4s ainda não passou — não reconectou cedo
+    await jest.advanceTimersByTimeAsync(1);
+    await second;
+    expect(makeWASocket).toHaveBeenCalledTimes(3);
+
+    const third = closeLatest(RESTART_REQUIRED);
+    await jest.advanceTimersByTimeAsync(7_999);
+    expect(makeWASocket).toHaveBeenCalledTimes(3); // 8s ainda não passou
+    await jest.advanceTimersByTimeAsync(1);
+    await third;
+    expect(makeWASocket).toHaveBeenCalledTimes(4);
+  });
+
+  it('atraso tem teto de 2 minutos, não cresce pra sempre', async () => {
+    const { service, makeWASocket, closeLatest } = setup();
+    await service.restoreConnectedSessions();
+
+    // 2s, 4s, 8s, 16s, 32s, 64s, 128s (> teto de 120s, já deve ter sido limitado a 120s) — 7 quedas.
+    for (let i = 0; i < 7; i += 1) {
+      const pending = closeLatest(RESTART_REQUIRED);
+      await jest.advanceTimersByTimeAsync(120_000);
+      await pending;
+    }
+    expect(makeWASocket).toHaveBeenCalledTimes(8); // 1 inicial + 7 reconexões
+
+    // Mais uma: se o teto estivesse sendo ignorado, o atraso já passaria de 120s — confirma que
+    // 120s ainda é suficiente mesmo depois de várias quedas consecutivas.
+    const eighth = closeLatest(RESTART_REQUIRED);
+    await jest.advanceTimersByTimeAsync(120_000);
+    await eighth;
+    expect(makeWASocket).toHaveBeenCalledTimes(9);
+  });
+
+  it('conexão aberta com sucesso zera o contador — a próxima queda volta a esperar só 2s', async () => {
+    const { service, makeWASocket, handlers, closeLatest } = setup();
+    await service.restoreConnectedSessions();
+
+    const first = closeLatest(RESTART_REQUIRED);
+    await jest.advanceTimersByTimeAsync(2_000);
+    await first;
+    expect(makeWASocket).toHaveBeenCalledTimes(2);
+
+    // Conecta de verdade — zera o contador de tentativas consecutivas.
+    await handlers[handlers.length - 1]({ connection: 'open' });
+
+    const second = closeLatest(RESTART_REQUIRED);
+    await jest.advanceTimersByTimeAsync(1_999);
+    expect(makeWASocket).toHaveBeenCalledTimes(2); // ainda não passaram os 2s (não os 4s de antes)
+    await jest.advanceTimersByTimeAsync(1);
+    await second;
+    expect(makeWASocket).toHaveBeenCalledTimes(3);
+  });
+});
+
 describe('WhatsAppConnectionService.sendMessage — resolve o JID real (specs/0068)', () => {
   type Handler = (update: Record<string, unknown>) => Promise<void>;
 
