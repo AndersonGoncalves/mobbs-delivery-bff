@@ -14,6 +14,17 @@ export class CampaignOptOutMongooseRepository implements ICampaignOptOutReposito
     return !!doc?.optedOutAt;
   }
 
+  // Achado de auditoria pré-produção (31/10/2026) — "disparo de campanha WhatsApp: opt-out
+  // checado 1 cliente por vez": uma só query cobrindo TODOS os clientes descadastrados deste
+  // restaurante, em vez de `isOptedOut` por cliente (`CampaignDispatchService.dispatch`).
+  async listOptedOutCustomerIds(restaurantId: string): Promise<Set<string>> {
+    const docs = await CampaignOptOutModel.find(
+      { restaurantId, optedOutAt: { $exists: true } },
+      { customerId: 1 },
+    ).lean<CampaignOptOutLeanDocument[]>();
+    return new Set(docs.map((doc) => doc.customerId));
+  }
+
   /**
    * `findOneAndUpdate` com `upsert` + `setOnInsert` — cria o registro (token gerado pelo default
    * do schema) só se ainda não existir, atômico, sem corrida entre duas campanhas resolvendo o

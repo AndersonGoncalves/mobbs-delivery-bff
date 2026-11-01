@@ -48,6 +48,9 @@ describe('CampaignDispatchService', () => {
     };
     const campaignOptOutRepository: Partial<ICampaignOptOutRepository> = {
       isOptedOut: jest.fn().mockImplementation((_restaurantId: string, customerId: string) => Promise.resolve(optedOut.has(customerId))),
+      // Achado de auditoria (2026-10-31) — `dispatch` agora busca TODOS os descadastrados de
+      // uma vez (`listOptedOutCustomerIds`), não mais `isOptedOut` por cliente.
+      listOptedOutCustomerIds: jest.fn().mockResolvedValue(optedOut),
       getOrCreateToken: jest.fn().mockImplementation((_restaurantId: string, customerId: string) => Promise.resolve(`token-${customerId}`)),
     };
     const restaurantRepository: Partial<IRestaurantRepository> = {
@@ -100,6 +103,26 @@ describe('CampaignDispatchService', () => {
 
     expect(whatsAppConnectionService.sendMessage).toHaveBeenCalledTimes(1);
     expect((whatsAppConnectionService.sendMessage as jest.Mock).mock.calls[0][1]).toBe('11999990001');
+  });
+
+  // Achado de auditoria pré-produção (31/10/2026) — "disparo de campanha WhatsApp: opt-out
+  // checado 1 cliente por vez": independente de quantos clientes elegíveis existam, `dispatch`
+  // busca os descadastrados EXATAMENTE uma vez (nunca por cliente).
+  it('achado de auditoria (2026-10-31): busca os descadastrados em lote, uma vez por disparo (não uma vez por cliente)', async () => {
+    const { service, campaignOptOutRepository } = setup({
+      summaries: [
+        { customerId: 'c-1', name: 'Ana', phone: '11999990001', totalOrders: 3, totalSpent: 100 },
+        { customerId: 'c-2', name: 'Beto', phone: '11999990002', totalOrders: 1, totalSpent: 30 },
+        { customerId: 'c-3', name: 'Caio', phone: '11999990003', totalOrders: 1, totalSpent: 30 },
+      ],
+      optedOut: new Set(['c-2']),
+    });
+
+    await service.dispatch('camp-1');
+
+    expect(campaignOptOutRepository.listOptedOutCustomerIds).toHaveBeenCalledTimes(1);
+    expect(campaignOptOutRepository.listOptedOutCustomerIds).toHaveBeenCalledWith('r-1');
+    expect(campaignOptOutRepository.isOptedOut).not.toHaveBeenCalled();
   });
 
   // Pedido explícito do usuário (follow-up) — cliente excluído deste disparo específico (não é
