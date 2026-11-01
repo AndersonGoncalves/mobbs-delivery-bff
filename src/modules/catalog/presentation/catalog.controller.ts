@@ -16,7 +16,7 @@ import { IProductRepository } from '../domain/repositories/product.repository.in
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IStockMovementRepository } from '../../raw-materials/domain/repositories/stock-movement.repository.interface';
 import { stockAdjustmentSchema } from '../../raw-materials/presentation/raw-material.schemas';
-import { resolvePagination } from '../../../shared/http/pagination';
+import { paginationQuerySchema, resolvePagination } from '../../../shared/http/pagination';
 import {
   listProductsQuerySchema,
   menuCategoryNameSchema,
@@ -424,10 +424,20 @@ export class CatalogController extends BaseRouter {
       res.json(201, { product: updatedProduct, movement });
     });
 
+    // Achado de auditoria pré-produção (31/10/2026) — "listas sem paginação em financeiro,
+    // clientes e estoque": `page`/`pageSize` OPCIONAIS, mesmo padrão de `/restaurants/me/products`.
     application.get('/restaurants/me/products/:id/movements', ...authenticated, async (req: Request, res: Response) => {
       const product = await this.findOwnedProduct(req.params.id, req.restaurantId!);
       if (!product.tracksStock) throw new ConflictError('Produto não controla estoque');
-      res.json(200, await this.stockMovementRepository.listByProduct(product.id));
+      const query = parseBody(paginationQuerySchema, req.query ?? {});
+      const pagination = resolvePagination(query);
+      if (!pagination) {
+        res.json(200, await this.stockMovementRepository.listByProduct(product.id));
+        return;
+      }
+      const { items, total } = await this.stockMovementRepository.listByProductPage(product.id, pagination);
+      res.header('X-Total-Count', String(total));
+      res.json(200, items);
     });
 
     // specs/0026-selecao-clonar-excluir-busca-web REQ-4/REQ-5/REQ-6 — exclusão REAL (diferente

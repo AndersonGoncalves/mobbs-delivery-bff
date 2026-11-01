@@ -5,6 +5,7 @@ import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
 import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
+import { paginationQuerySchema, resolvePagination } from '../../../shared/http/pagination';
 import { IProductRepository } from '../../catalog/domain/repositories/product.repository.interface';
 import { IRawMaterialRepository } from '../domain/repositories/raw-material.repository.interface';
 import { IStockMovementRepository } from '../domain/repositories/stock-movement.repository.interface';
@@ -124,13 +125,22 @@ export class RawMaterialsController extends BaseRouter {
     );
 
     // specs/0015-estoque-compras REQ-6/AC-6 — histórico cronológico (mais antiga primeiro).
+    // Achado de auditoria pré-produção (31/10/2026) — "listas sem paginação em financeiro,
+    // clientes e estoque": `page`/`pageSize` OPCIONAIS, mesmo padrão de `/restaurants/me/products`.
     application.get(
       '/restaurants/me/raw-materials/:id/movements',
       ...authenticated,
       async (req: Request, res: Response) => {
         await this.findOwnedRawMaterial(req.params.id, req.restaurantId!);
-        const movements = await this.stockMovementRepository.listByRawMaterial(req.params.id);
-        res.json(200, movements);
+        const query = parseBody(paginationQuerySchema, req.query ?? {});
+        const pagination = resolvePagination(query);
+        if (!pagination) {
+          res.json(200, await this.stockMovementRepository.listByRawMaterial(req.params.id));
+          return;
+        }
+        const { items, total } = await this.stockMovementRepository.listByRawMaterialPage(req.params.id, pagination);
+        res.header('X-Total-Count', String(total));
+        res.json(200, items);
       },
     );
 

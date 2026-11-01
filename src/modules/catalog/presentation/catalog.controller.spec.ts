@@ -133,6 +133,8 @@ describe('CatalogController', () => {
     const stockMovementRepository: Partial<IStockMovementRepository> = {
       create: jest.fn().mockResolvedValue({}),
       listByProduct: jest.fn().mockResolvedValue([]),
+      // Achado de auditoria (2026-10-31) — só usado quando a requisição manda page/pageSize.
+      listByProductPage: jest.fn().mockResolvedValue({ items: [], total: 0 }),
       ...overrides.stockMovementRepository,
     };
     const restaurantRepository: Partial<IRestaurantRepository> = {
@@ -216,6 +218,27 @@ describe('CatalogController', () => {
 
     expect(stockMovementRepository.listByProduct).toHaveBeenCalledWith('p-1');
     expect(json).toHaveBeenCalledWith(200, [expect.objectContaining({ id: 'mv-1' })]);
+  });
+
+  // Achado de auditoria pré-produção (31/10/2026) — "listas sem paginação em financeiro,
+  // clientes e estoque", mesmo padrão de `/restaurants/me/products`.
+  it('achado de auditoria (2026-10-31): .../movements com page/pageSize pagina no servidor e manda o total real no header X-Total-Count', async () => {
+    const { stockMovementRepository, routes } = setup({
+      productRepository: { findById: jest.fn().mockResolvedValue(buildProduct({ tracksStock: true })) },
+      stockMovementRepository: { listByProductPage: jest.fn().mockResolvedValue({ items: [{ id: 'mv-1', productId: 'p-1' }], total: 61 }) },
+    });
+    const json = jest.fn();
+    const header = jest.fn();
+
+    await runOperatorChain(
+      routes['GET /restaurants/me/products/:id/movements'],
+      { restaurantId: 'r-1', params: { id: 'p-1' }, query: { page: '1', pageSize: '25' } },
+      { json, header },
+    );
+
+    expect(stockMovementRepository.listByProduct).not.toHaveBeenCalled();
+    expect(stockMovementRepository.listByProductPage).toHaveBeenCalledWith('p-1', { skip: 0, limit: 25 });
+    expect(header).toHaveBeenCalledWith('X-Total-Count', '61');
   });
 
   it('AC-3: GET /products/:id retorna o produto completo', async () => {

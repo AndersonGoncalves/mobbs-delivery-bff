@@ -58,6 +58,27 @@ export class StockMovementMongooseRepository implements IStockMovementRepository
     return docs.map(toEntity);
   }
 
+  // Achado de auditoria pré-produção (31/10/2026) — "listas sem paginação em financeiro,
+  // clientes e estoque": métodos NOVOS, separados dos acima de propósito (que continuam
+  // intactos, sem paginar).
+  async listByRawMaterialPage(rawMaterialId: string, pagination: { skip: number; limit: number }): Promise<{ items: IStockMovement[]; total: number }> {
+    const query = { rawMaterialId };
+    const [docs, total] = await Promise.all([
+      StockMovementModel.find(query).sort({ createdAt: 1 }).skip(pagination.skip).limit(pagination.limit).lean<StockMovementLeanDocument[]>(),
+      StockMovementModel.countDocuments(query),
+    ]);
+    return { items: docs.map(toEntity), total };
+  }
+
+  async listByProductPage(productId: string, pagination: { skip: number; limit: number }): Promise<{ items: IStockMovement[]; total: number }> {
+    const query = { productId };
+    const [docs, total] = await Promise.all([
+      StockMovementModel.find(query).sort({ createdAt: 1 }).skip(pagination.skip).limit(pagination.limit).lean<StockMovementLeanDocument[]>(),
+      StockMovementModel.countDocuments(query),
+    ]);
+    return { items: docs.map(toEntity), total };
+  }
+
   async findByOperationId(restaurantId: string, operationId: string): Promise<IStockMovement | null> {
     const doc = await StockMovementModel.findOne({ restaurantId, operationId }).lean<StockMovementLeanDocument>();
     return doc ? toEntity(doc) : null;

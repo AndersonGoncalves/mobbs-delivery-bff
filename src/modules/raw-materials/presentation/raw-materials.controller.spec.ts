@@ -6,7 +6,7 @@ import { IStockMovementRepository } from '../domain/repositories/stock-movement.
 import { RawMaterialsController } from './raw-materials.controller';
 
 type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & { restaurantId?: string; user?: { uid: string } };
-type FakeResponse = Pick<Response, 'json'> & Partial<Pick<Response, 'send'>>;
+type FakeResponse = Pick<Response, 'json'> & Partial<Pick<Response, 'send' | 'header'>>;
 type RouteHandler = (req: FakeRequest, res: FakeResponse) => Promise<void>;
 
 function buildFakeApplication() {
@@ -92,6 +92,8 @@ describe('RawMaterialsController', () => {
       create: jest.fn().mockResolvedValue(buildMovement()),
       listByRawMaterial: jest.fn().mockResolvedValue([buildMovement()]),
       listByProduct: jest.fn().mockResolvedValue([]),
+      // Achado de auditoria (2026-10-31) — só usado quando a requisição manda page/pageSize.
+      listByRawMaterialPage: jest.fn().mockResolvedValue({ items: [buildMovement()], total: 1 }),
       ...overrides.stockMovementRepository,
     };
     const restaurantOperatorMiddleware = jest.fn(async () => {});
@@ -337,6 +339,26 @@ describe('RawMaterialsController', () => {
 
     expect(stockMovementRepository.listByRawMaterial).toHaveBeenCalledWith('rm-1');
     expect(json).toHaveBeenCalledWith(200, [expect.objectContaining({ id: 'mv-1' })]);
+  });
+
+  // Achado de auditoria pré-produção (31/10/2026) — "listas sem paginação em financeiro,
+  // clientes e estoque", mesmo padrão de `/restaurants/me/products`.
+  it('achado de auditoria (2026-10-31): com page/pageSize, pagina no servidor e manda o total real no header X-Total-Count', async () => {
+    const { stockMovementRepository, routes } = setup({
+      stockMovementRepository: { listByRawMaterialPage: jest.fn().mockResolvedValue({ items: [buildMovement()], total: 73 }) },
+    });
+    const json = jest.fn();
+    const header = jest.fn();
+
+    await runOperatorChain(
+      routes['GET /restaurants/me/raw-materials/:id/movements'],
+      { restaurantId: 'r-1', params: { id: 'rm-1' }, query: { page: '2', pageSize: '20' } },
+      { json, header },
+    );
+
+    expect(stockMovementRepository.listByRawMaterial).not.toHaveBeenCalled();
+    expect(stockMovementRepository.listByRawMaterialPage).toHaveBeenCalledWith('rm-1', { skip: 20, limit: 20 });
+    expect(header).toHaveBeenCalledWith('X-Total-Count', '73');
   });
 
   it('lança 404 ao consultar movimentações de matéria-prima de outro restaurante', async () => {
