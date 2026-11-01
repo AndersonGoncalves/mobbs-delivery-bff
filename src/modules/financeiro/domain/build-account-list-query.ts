@@ -1,6 +1,13 @@
+import { escapeRegex } from '../../../shared/utils/escape-regex';
+
 export interface AccountListFilters {
   from?: Date;
   to?: Date;
+  /** Achado de auditoria pré-produção (31/10/2026) — "listas sem paginação em financeiro,
+   * clientes e estoque": filtro por descrição, parcial e case-insensitive — sem ele, migrar a
+   * tela pra paginação real no servidor quebraria a busca já existente (hoje feita no client
+   * sobre a lista inteira, que deixa de existir). */
+  search?: string;
 }
 
 /**
@@ -17,13 +24,17 @@ export interface AccountListFilters {
  * período comum (sem o `$or`), pronto pra uma tela futura oferecer escolher o período.
  */
 export function buildAccountListQuery(restaurantId: string, filters?: AccountListFilters): Record<string, unknown> {
+  const query: Record<string, unknown> = { restaurantId };
   if (filters?.from || filters?.to) {
     const dueDate: Record<string, Date> = {};
     if (filters.from) dueDate.$gte = filters.from;
     if (filters.to) dueDate.$lte = filters.to;
-    return { restaurantId, dueDate };
+    query.dueDate = dueDate;
+  } else {
+    const defaultFrom = new Date();
+    defaultFrom.setMonth(defaultFrom.getMonth() - 12);
+    query.$or = [{ status: 'aberto' }, { dueDate: { $gte: defaultFrom } }];
   }
-  const defaultFrom = new Date();
-  defaultFrom.setMonth(defaultFrom.getMonth() - 12);
-  return { restaurantId, $or: [{ status: 'aberto' }, { dueDate: { $gte: defaultFrom } }] };
+  if (filters?.search) query.description = { $regex: escapeRegex(filters.search), $options: 'i' };
+  return query;
 }

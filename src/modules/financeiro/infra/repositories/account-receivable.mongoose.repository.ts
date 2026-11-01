@@ -42,6 +42,22 @@ export class AccountReceivableMongooseRepository implements IAccountReceivableRe
     return docs.map(toEntity);
   }
 
+  // Achado de auditoria pré-produção (31/10/2026) — "listas sem paginação em financeiro,
+  // clientes e estoque": método NOVO, separado de `listByRestaurant` acima de propósito (que
+  // continua intacto, sem paginar).
+  async listByRestaurantPage(
+    restaurantId: string,
+    pagination: { skip: number; limit: number },
+    filters?: AccountListFilters,
+  ): Promise<{ items: IAccountReceivable[]; total: number }> {
+    const query = buildAccountListQuery(restaurantId, filters);
+    const [docs, total] = await Promise.all([
+      AccountReceivableModel.find(query).sort({ dueDate: 1 }).skip(pagination.skip).limit(pagination.limit).lean<AccountReceivableLeanDocument[]>(),
+      AccountReceivableModel.countDocuments(query),
+    ]);
+    return { items: docs.map(toEntity), total };
+  }
+
   async findById(id: string): Promise<IAccountReceivable | null> {
     const doc = await AccountReceivableModel.findById(id).lean<AccountReceivableLeanDocument>();
     return doc ? toEntity(doc) : null;

@@ -40,4 +40,34 @@ describe('buildAccountListQuery', () => {
 
     expect(query).toEqual({ restaurantId: 'r-1', dueDate: { $lte: to } });
   });
+
+  // Achado de auditoria pré-produção (31/10/2026) — "listas sem paginação em financeiro,
+  // clientes e estoque": `search` precisa continuar funcionando (filtro por descrição) ao migrar
+  // a busca de client-side pra server-side.
+  it('search filtra por descrição, parcial e case-insensitive, combinado com o filtro de período padrão', () => {
+    const now = new Date('2026-10-31T12:00:00.000Z');
+    jest.useFakeTimers().setSystemTime(now);
+
+    const query = buildAccountListQuery('r-1', { search: 'alu.guel' });
+
+    expect(query).toEqual({
+      restaurantId: 'r-1',
+      $or: [{ status: 'aberto' }, { dueDate: { $gte: new Date('2025-10-31T12:00:00.000Z') } }],
+      description: { $regex: 'alu\\.guel', $options: 'i' },
+    });
+    jest.useRealTimers();
+  });
+
+  it('search combinado com from/to explícito', () => {
+    const from = new Date('2026-01-01T00:00:00.000Z');
+    const to = new Date('2026-01-31T23:59:59.000Z');
+
+    const query = buildAccountListQuery('r-1', { from, to, search: 'aluguel' });
+
+    expect(query).toEqual({
+      restaurantId: 'r-1',
+      dueDate: { $gte: from, $lte: to },
+      description: { $regex: 'aluguel', $options: 'i' },
+    });
+  });
 });
