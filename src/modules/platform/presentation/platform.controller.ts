@@ -167,10 +167,14 @@ export class PlatformController extends BaseRouter {
     // real (dívida/pendência técnica), além do que `GET /platform/restaurants` já mostra. Sem
     // filtro no servidor de propósito: a lista já traz tudo (mesmo padrão de
     // `/platform/restaurants`, sem paginação) — a retaguarda web filtra/ordena via DataGrid.
+    //
+    // Achado de auditoria pré-produção (31/10/2026) — "painel administrativo da plataforma (1
+    // query por restaurante cadastrado)": a correção anterior só cobriu `GET /platform/restaurants`
+    // — esta rota irmã tinha o MESMO N+1 (`buildBillingRow` por restaurante, 2 queries cada).
+    // `buildBillingRows` abaixo usa as 2 agregações em lote (2 queries no TOTAL).
     application.get('/platform/billing/restaurants', ...adminAuthenticated, async (_req: Request, res: Response) => {
       const restaurants = await this.restaurantRepository.listAll();
-      const rows = await Promise.all(restaurants.map((restaurant) => this.buildBillingRow(restaurant)));
-      res.json(200, rows);
+      res.json(200, await this.buildBillingRows(restaurants));
     });
 
     // REQ-32 — histórico completo (obligations + eventos de cada uma) de um restaurante.
@@ -236,30 +240,36 @@ export class PlatformController extends BaseRouter {
     });
   }
 
-  /** specs/0175-cobranca-assinatura-asaas REQ-31 — linha enriquecida com dado de cobrança real
-   * (dívida em aberto/pendência técnica), além do que `buildRow` (specs/0106) já mostra. */
-  private async buildBillingRow(restaurant: IRestaurant) {
-    const [openObligations, annualSubscription] = await Promise.all([
-      this.obligationRepository.findOpenByRestaurantId(restaurant.id),
-      this.annualSubscriptionRepository.findActiveByRestaurantId(restaurant.id),
+  /**
+   * specs/0175-cobranca-assinatura-asaas REQ-31 — linha enriquecida com dado de cobrança real
+   * (dívida em aberto/pendência técnica), além do que `buildRow`/`buildRows` (specs/0106) já
+   * mostram. Achado de auditoria pré-produção (31/10/2026) — "painel administrativo da
+   * plataforma (1 query por restaurante cadastrado)": as 2 agregações em lote
+   * (`getOpenSummaryByRestaurant`/`getActiveRestaurantIds`, 2 queries no TOTAL) substituem
+   * `findOpenByRestaurantId`/`findActiveByRestaurantId` por restaurante.
+   */
+  private async buildBillingRows(restaurants: IRestaurant[]) {
+    const [openSummaryByRestaurant, activeAnnualRestaurantIds] = await Promise.all([
+      this.obligationRepository.getOpenSummaryByRestaurant(),
+      this.annualSubscriptionRepository.getActiveRestaurantIds(),
     ]);
-    const totalDueCents = openObligations.reduce((sum, obligation) => sum + obligation.amountCents, 0);
-    const hasPendingTechnicalIssue = openObligations.some((obligation) => obligation.status === 'issue_failed');
-    // REQ-34/AC-25 — `cycle: 'annual'` legado (anterior a esta integração) sem
-    // `IAnnualSubscription` real por trás nunca é convertido automaticamente; aparece aqui como
-    // pendência pro administrador conferir manualmente.
-    const hasLegacyAnnualConflict = restaurant.billing?.cycle === 'annual' && !annualSubscription;
-
-    return {
-      id: restaurant.id,
-      name: restaurant.name,
-      slug: restaurant.slug,
-      status: restaurant.billing?.status ?? 'ok',
-      cycle: restaurant.billing?.cycle ?? 'monthly',
-      openObligationsCount: openObligations.length,
-      totalDueCents,
-      hasPendingTechnicalIssue,
-      hasLegacyAnnualConflict,
-    };
+    return restaurants.map((restaurant) => {
+      const openSummary = openSummaryByRestaurant.get(restaurant.id);
+      // REQ-34/AC-25 — `cycle: 'annual'` legado (anterior a esta integração) sem
+      // `IAnnualSubscription` real por trás nunca é convertido automaticamente; aparece aqui
+      // como pendência pro administrador conferir manualmente.
+      const hasLegacyAnnualConflict = restaurant.billing?.cycle === 'annual' && !activeAnnualRestaurantIds.has(restaurant.id);
+      return {
+        id: restaurant.id,
+        name: restaurant.name,
+        slug: restaurant.slug,
+        status: restaurant.billing?.status ?? 'ok',
+        cycle: restaurant.billing?.cycle ?? 'monthly',
+        openObligationsCount: openSummary?.openObligationsCount ?? 0,
+        totalDueCents: openSummary?.totalDueCents ?? 0,
+        hasPendingTechnicalIssue: openSummary?.hasPendingTechnicalIssue ?? false,
+        hasLegacyAnnualConflict,
+      };
+    });
   }
 }

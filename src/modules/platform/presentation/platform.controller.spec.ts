@@ -63,8 +63,15 @@ function setup(options: { restaurants: IRestaurant[]; ordersByRestaurant?: Recor
     findById: jest.fn().mockResolvedValue(null),
     findByRestaurantId: jest.fn().mockResolvedValue([]),
     findOpenByRestaurantId: jest.fn().mockResolvedValue([]),
+    // Achado de auditoria (2026-10-31) — "painel administrativo da plataforma (1 query por
+    // restaurante cadastrado)": `GET /platform/billing/restaurants` usa a agregação em lote
+    // abaixo (`buildBillingRows`), não mais `findOpenByRestaurantId` por restaurante.
+    getOpenSummaryByRestaurant: jest.fn().mockResolvedValue(new Map()),
   };
-  const annualSubscriptionRepository = { findActiveByRestaurantId: jest.fn().mockResolvedValue(null) };
+  const annualSubscriptionRepository = {
+    findActiveByRestaurantId: jest.fn().mockResolvedValue(null),
+    getActiveRestaurantIds: jest.fn().mockResolvedValue(new Set()),
+  };
   const billingPayerRepository = { findByRestaurantId: jest.fn().mockResolvedValue(null) };
   const subscriptionEventRepository = { append: jest.fn().mockResolvedValue({ event: {}, wasAlreadyRecorded: false }), listByObligation: jest.fn().mockResolvedValue([]) };
   const pixAvailabilityExceptionRepository = { setAdminOverride: jest.fn().mockResolvedValue({ id: 'exc-1' }) };
@@ -208,10 +215,9 @@ describe('PlatformController (specs/0106)', () => {
   describe('visão administrativa da assinatura (REQ-31/REQ-32)', () => {
     it('REQ-31: GET /platform/billing/restaurants mostra dívida em aberto e pendência técnica', async () => {
       const { routes, obligationRepository } = setup({ restaurants: [buildRestaurant({ id: 'r-1' })] });
-      obligationRepository.findOpenByRestaurantId.mockResolvedValue([
-        { id: 'ob-1', amountCents: 7990, status: 'overdue' },
-        { id: 'ob-2', amountCents: 7990, status: 'issue_failed' },
-      ]);
+      obligationRepository.getOpenSummaryByRestaurant.mockResolvedValue(
+        new Map([['r-1', { openObligationsCount: 2, totalDueCents: 15980, hasPendingTechnicalIssue: true }]]),
+      );
       const json = jest.fn();
 
       await run(routes['GET /platform/billing/restaurants'], {}, { json });
@@ -219,6 +225,31 @@ describe('PlatformController (specs/0106)', () => {
       expect(json).toHaveBeenCalledWith(200, [
         expect.objectContaining({ id: 'r-1', openObligationsCount: 2, totalDueCents: 15980, hasPendingTechnicalIssue: true }),
       ]);
+    });
+
+    // Achado de auditoria pré-produção (31/10/2026) — "painel administrativo da plataforma (1
+    // query por restaurante cadastrado)": independente de quantos restaurantes existam,
+    // GET /platform/billing/restaurants chama as agregações em lote EXATAMENTE uma vez cada
+    // (nunca por restaurante) e nunca toca `findOpenByRestaurantId`/`findActiveByRestaurantId`.
+    it('achado de auditoria (2026-10-31): GET /platform/billing/restaurants agrega dívida/pendência de TODOS os restaurantes num só round-trip cada', async () => {
+      const { routes, obligationRepository, annualSubscriptionRepository } = setup({
+        restaurants: [buildRestaurant({ id: 'r-1' }), buildRestaurant({ id: 'r-2', name: 'Burger', slug: 'burger' })],
+      });
+      obligationRepository.getOpenSummaryByRestaurant.mockResolvedValue(
+        new Map([['r-1', { openObligationsCount: 1, totalDueCents: 5000, hasPendingTechnicalIssue: false }]]),
+      );
+      const json = jest.fn();
+
+      await run(routes['GET /platform/billing/restaurants'], {}, { json });
+
+      expect(obligationRepository.getOpenSummaryByRestaurant).toHaveBeenCalledTimes(1);
+      expect(annualSubscriptionRepository.getActiveRestaurantIds).toHaveBeenCalledTimes(1);
+      expect(obligationRepository.findOpenByRestaurantId).not.toHaveBeenCalled();
+      expect(annualSubscriptionRepository.findActiveByRestaurantId).not.toHaveBeenCalled();
+      const rows = json.mock.calls[0][1];
+      expect(rows).toHaveLength(2);
+      expect(rows[0]).toMatchObject({ id: 'r-1', totalDueCents: 5000 });
+      expect(rows[1]).toMatchObject({ id: 'r-2', totalDueCents: 0, openObligationsCount: 0, hasPendingTechnicalIssue: false });
     });
 
     it('REQ-34/AC-25: cycle "annual" legado sem IAnnualSubscription aparece como pendência (hasLegacyAnnualConflict)', async () => {

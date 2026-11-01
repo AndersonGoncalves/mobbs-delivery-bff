@@ -31,6 +31,14 @@ export interface ISubscriptionObligationRepository {
   /** Só as relevantes pra calcular bloqueio/exibir pendência — `status` != `paid`/`exempt`/
    * `cancelled` (usada por `recomputeAccessStatus` e pelo resumo exibido ao lojista). */
   findOpenByRestaurantId(restaurantId: string): Promise<ISubscriptionObligation[]>;
+  /**
+   * Achado de auditoria pré-produção (31/10/2026) — "painel administrativo da plataforma (1
+   * query por restaurante cadastrado)": `GET /platform/billing/restaurants` chamava
+   * `findOpenByRestaurantId` uma vez por restaurante só pra somar `totalDueCents`/checar
+   * `hasPendingTechnicalIssue` — a correção anterior (`GET /platform/restaurants`) não cobriu
+   * esta rota irmã. Agregação ÚNICA pra TODOS os restaurantes de uma vez.
+   */
+  getOpenSummaryByRestaurant(): Promise<Map<string, { openObligationsCount: number; totalDueCents: number; hasPendingTechnicalIssue: boolean }>>;
   /** `awaiting_issue`/`issue_failed` — elegíveis pra emissão (REQ-9/REQ-12). Filtra por
    * restaurante quando informado (reprocessamento administrativo de uma loja, REQ-32). */
   findEligibleForIssuance(restaurantId?: string): Promise<ISubscriptionObligation[]>;
