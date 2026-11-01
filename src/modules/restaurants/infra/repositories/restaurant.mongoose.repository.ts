@@ -1,4 +1,5 @@
 import { randomBytes } from 'crypto';
+import { escapeRegex } from '../../../../shared/utils/escape-regex';
 import { buildDefaultShareMessage } from '../../domain/default-share-message';
 import { OrderType, PaymentMethod } from '../../../orders/domain/entities/order.entity';
 import {
@@ -280,6 +281,19 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
   async listAll(): Promise<IRestaurant[]> {
     const docs = await RestaurantModel.find({}).sort({ name: 1 }).lean<RestaurantLeanDocument[]>();
     return docs.map(toEntity);
+  }
+
+  // Achado de auditoria pré-produção (31/10/2026) — "'Restaurantes da plataforma' não pagina
+  // nem filtra": método NOVO, separado de `listAll` acima de propósito (que continua intacto).
+  async listAllPage(pagination: { skip: number; limit: number }, search?: string): Promise<{ items: IRestaurant[]; total: number }> {
+    const query: Record<string, unknown> = search
+      ? { $or: [{ name: { $regex: escapeRegex(search), $options: 'i' } }, { slug: { $regex: escapeRegex(search), $options: 'i' } }] }
+      : {};
+    const [docs, total] = await Promise.all([
+      RestaurantModel.find(query).sort({ name: 1 }).skip(pagination.skip).limit(pagination.limit).lean<RestaurantLeanDocument[]>(),
+      RestaurantModel.countDocuments(query),
+    ]);
+    return { items: docs.map(toEntity), total };
   }
 
   async findBySlug(slug: string): Promise<IRestaurant | null> {

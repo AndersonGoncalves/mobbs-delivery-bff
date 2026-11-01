@@ -32,6 +32,8 @@ function delivered(total: number, createdAt = '2026-10-02T12:00:00Z'): IOrder {
 function setup(options: { restaurants: IRestaurant[]; ordersByRestaurant?: Record<string, IOrder[]>; lastDelivered?: Record<string, Date | null> }) {
   const restaurantRepository = {
     listAll: jest.fn().mockResolvedValue(options.restaurants),
+    // Achado de auditoria (2026-10-31) — só usado quando a requisição manda page/pageSize.
+    listAllPage: jest.fn().mockResolvedValue({ items: options.restaurants, total: options.restaurants.length }),
     findById: jest.fn().mockImplementation(async (id: string) => options.restaurants.find((r) => r.id === id) ?? null),
     updateBilling: jest.fn().mockImplementation(async (id: string, billing: unknown) => buildRestaurant({ id, billing: billing as IRestaurant['billing'] })),
   };
@@ -120,6 +122,38 @@ describe('PlatformController (specs/0106)', () => {
     expect(rows).toHaveLength(3);
     expect(rows[0]).toMatchObject({ id: 'r-1', revenueCents: 150000, lastDeliveredAt: '2026-10-02T12:00:00.000Z' });
     expect(rows[2]).toMatchObject({ id: 'r-3', revenueCents: 0, lastDeliveredAt: null });
+  });
+
+  // Achado de auditoria pré-produção (31/10/2026) — "'Restaurantes da plataforma' não pagina
+  // nem filtra", mesmo padrão de `/restaurants/me/products`.
+  it('achado de auditoria (2026-10-31): com page/pageSize/search, pagina e filtra no servidor e manda o total real no header X-Total-Count', async () => {
+    const { restaurantRepository, routes } = setup({
+      restaurants: [buildRestaurant({ id: 'r-2', name: 'Burger', slug: 'burger' })],
+    });
+    restaurantRepository.listAllPage = jest.fn().mockResolvedValue({ items: [buildRestaurant({ id: 'r-2', name: 'Burger', slug: 'burger' })], total: 523 });
+    const json = jest.fn();
+    const header = jest.fn();
+
+    await run(routes['GET /platform/restaurants'], { query: { page: '2', pageSize: '25', search: 'burg' } }, { json, header });
+
+    expect(restaurantRepository.listAll).not.toHaveBeenCalled();
+    expect(restaurantRepository.listAllPage).toHaveBeenCalledWith({ skip: 25, limit: 25 }, 'burg');
+    expect(header).toHaveBeenCalledWith('X-Total-Count', '523');
+    const rows = json.mock.calls[0][1];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: 'r-2' });
+  });
+
+  it('achado de auditoria (2026-10-31): sem page/pageSize, GET continua devolvendo a lista inteira (sem header de total)', async () => {
+    const { restaurantRepository, routes } = setup({ restaurants: [buildRestaurant()] });
+    const json = jest.fn();
+    const header = jest.fn();
+
+    await run(routes['GET /platform/restaurants'], { query: {} }, { json, header });
+
+    expect(restaurantRepository.listAll).toHaveBeenCalledTimes(1);
+    expect(restaurantRepository.listAllPage).not.toHaveBeenCalled();
+    expect(header).not.toHaveBeenCalled();
   });
 
   it('AC-3: bloquear grava status blocked e mantém faixa e ciclo', async () => {

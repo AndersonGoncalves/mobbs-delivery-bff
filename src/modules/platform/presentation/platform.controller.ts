@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { BaseRouter } from '../../../shared/router/base.router';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
 import { parseBody } from '../../../shared/http/validate';
+import { paginationQuerySchema, resolvePagination } from '../../../shared/http/pagination';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IRestaurant, IRestaurantBilling } from '../../restaurants/domain/entities/restaurant.entity';
@@ -33,6 +34,11 @@ const manualExceptionSchema = z.object({
   reason: z.string().min(1),
   graceDeadline: z.string().refine((value) => !Number.isNaN(Date.parse(value)), { message: 'Data inválida' }),
 });
+
+/** Achado de auditoria pré-produção (31/10/2026) — "'Restaurantes da plataforma' não pagina
+ * nem filtra": `search`/`page`/`pageSize` OPCIONAIS — omitidos, devolve a lista inteira
+ * exatamente como antes. */
+const listPlatformRestaurantsQuerySchema = z.object({ search: z.string().min(1).optional() }).merge(paginationQuerySchema);
 
 /** specs/0106 — linha do painel: um restaurante com o estado de cobrança do mês. */
 export interface PlatformRestaurantRow {
@@ -125,12 +131,24 @@ export class PlatformController extends BaseRouter {
       res.json(200, { email: req.user!.email });
     });
 
-    application.get('/platform/restaurants', ...adminAuthenticated, async (_req: Request, res: Response) => {
+    // Achado de auditoria pré-produção (31/10/2026) — "'Restaurantes da plataforma' não pagina
+    // nem filtra": cenário direto de "500+ restaurantes cadastrados" — buscava todos de uma vez,
+    // sempre. `search`/`page`/`pageSize` OPCIONAIS (ver `resolvePagination`) — omitidos, devolve
+    // a lista inteira exatamente como antes; informados, pagina/filtra de verdade no servidor e
+    // o total real vai no header `X-Total-Count`.
+    application.get('/platform/restaurants', ...adminAuthenticated, async (req: Request, res: Response) => {
       const month = monthKeyOf(new Date());
       const settings = await this.billingSettingsRepository.get();
-      const restaurants = await this.restaurantRepository.listAll();
-      const rows = await this.buildRows(restaurants, month, settings);
-      res.json(200, rows);
+      const query = parseBody(listPlatformRestaurantsQuerySchema, req.query ?? {});
+      const pagination = resolvePagination(query);
+      if (!pagination) {
+        const restaurants = await this.restaurantRepository.listAll();
+        res.json(200, await this.buildRows(restaurants, month, settings));
+        return;
+      }
+      const { items, total } = await this.restaurantRepository.listAllPage(pagination, query.search);
+      res.header('X-Total-Count', String(total));
+      res.json(200, await this.buildRows(items, month, settings));
     });
 
     application.patch('/platform/restaurants/:id/billing', ...adminAuthenticated, async (req: Request, res: Response) => {
