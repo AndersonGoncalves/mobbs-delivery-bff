@@ -98,12 +98,12 @@ export class TableServiceController extends BaseRouter {
 
     application.post('/restaurants/me/table-orders/:id/items', ...authenticated, async (req: Request, res: Response) => {
       const input = parseBody(addTableOrderItemSchema, req.body);
-      res.json(200, await this.tableOrders.addItem(req.restaurantId!, req.params.id, { ...input, operationId: input.operationId ?? randomUUID() }));
+      res.json(200, await this.tableOrders.addItem(req.restaurantId!, req.params.id, input));
     });
 
     application.patch('/restaurants/me/table-orders/:id/items/:itemId/quantity', ...authenticated, async (req: Request, res: Response) => {
       const { quantity, operationId } = parseBody(updateTableOrderItemQuantitySchema, req.body);
-      res.json(200, await this.tableOrders.setItemQuantity(req.restaurantId!, req.params.id, req.params.itemId, quantity, operationId ?? randomUUID()));
+      res.json(200, await this.tableOrders.setItemQuantity(req.restaurantId!, req.params.id, req.params.itemId, quantity, operationId));
     });
 
     application.post('/restaurants/me/table-orders/:id/items/group', ...authenticated, async (req: Request, res: Response) => {
@@ -121,8 +121,8 @@ export class TableServiceController extends BaseRouter {
     });
 
     application.post('/restaurants/me/table-orders/:id/close', ...authenticated, async (req: Request, res: Response) => {
-      const { payments } = parseBody(closeTableOrderSchema, req.body);
-      res.json(200, await this.tableOrders.closeOrder(req.restaurantId!, req.params.id, payments, req.user!.uid));
+      const { payments, clientRequestId } = parseBody(closeTableOrderSchema, req.body);
+      res.json(200, await this.tableOrders.closeOrder(req.restaurantId!, req.params.id, payments, req.user!.uid, clientRequestId));
     });
 
     application.post('/restaurants/me/table-orders/:id/transfer', ...authenticated, async (req: Request, res: Response) => {

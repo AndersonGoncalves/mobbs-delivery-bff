@@ -53,6 +53,34 @@ export class SubscriptionObligationMongooseRepository implements ISubscriptionOb
     return docs.map(toEntity);
   }
 
+  // Achado de auditoria pré-produção (31/10/2026) — "painel administrativo da plataforma (1
+  // query por restaurante cadastrado)": agregação ÚNICA pra TODOS os restaurantes, em vez de
+  // `findOpenByRestaurantId` chamada uma vez por restaurante (`PlatformController.buildBillingRow`).
+  async getOpenSummaryByRestaurant(): Promise<Map<string, { openObligationsCount: number; totalDueCents: number; hasPendingTechnicalIssue: boolean }>> {
+    const results = await SubscriptionObligationModel.aggregate<{
+      _id: string;
+      openObligationsCount: number;
+      totalDueCents: number;
+      hasPendingTechnicalIssue: boolean;
+    }>([
+      { $match: { status: { $in: OPEN_STATUSES } } },
+      {
+        $group: {
+          _id: '$restaurantId',
+          openObligationsCount: { $sum: 1 },
+          totalDueCents: { $sum: '$amountCents' },
+          hasPendingTechnicalIssue: { $max: { $eq: ['$status', 'issue_failed'] } },
+        },
+      },
+    ]);
+    return new Map(
+      results.map((result) => [
+        result._id,
+        { openObligationsCount: result.openObligationsCount, totalDueCents: result.totalDueCents, hasPendingTechnicalIssue: result.hasPendingTechnicalIssue },
+      ]),
+    );
+  }
+
   async findEligibleForIssuance(restaurantId?: string): Promise<ISubscriptionObligation[]> {
     const filter: Record<string, unknown> = { status: { $in: ['awaiting_issue', 'issue_failed'] } };
     if (restaurantId) filter.restaurantId = restaurantId;

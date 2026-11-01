@@ -2,6 +2,7 @@ import type { Request, Response, Server } from 'restify';
 import { UnauthorizedError } from 'restify-errors';
 
 import { BaseRouter } from '../../../shared/router/base.router';
+import { isValidWebhookToken } from '../../../shared/crypto/webhook-token';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { UberDeliveryStatus } from '../../orders/domain/entities/order.entity';
 import { IUberDeliveryConfigRepository } from '../domain/repositories/uber-delivery-config.repository.interface';
@@ -47,7 +48,7 @@ export class UberDeliveryWebhookController extends BaseRouter {
     application.post('/webhooks/uber-direct/:restaurantId', async (req: Request, res: Response) => {
       const config = await this.uberDeliveryConfigRepository.findByRestaurantId(req.params.restaurantId);
       const token = (req.query as Record<string, string> | undefined)?.token;
-      if (!config || token !== config.webhookToken) {
+      if (!config || !isValidWebhookToken(token, config.webhookToken)) {
         throw new UnauthorizedError('Token de webhook inválido');
       }
 

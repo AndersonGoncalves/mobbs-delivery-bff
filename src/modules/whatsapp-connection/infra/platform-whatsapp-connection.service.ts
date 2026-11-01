@@ -129,45 +129,53 @@ export class PlatformWhatsAppConnectionService implements IPlatformWhatsAppConne
 
     socket.ev.on('creds.update', saveCreds);
 
+    // Achado crítico da auditoria pós-merge (31/10/2026) — "listener do WhatsApp com await fora
+    // de try/catch", mesmo achado de `WhatsAppConnectionService`: sem try/catch próprio, uma
+    // falha num `await` qualquer dentro deste listener dependia só do handler global de exceção
+    // (main.ts) como último recurso, sem log nenhum do que aconteceu com esta sessão.
     socket.ev.on('connection.update', async (update) => {
-      if (update.qr) {
-        entry.qr = update.qr;
-      }
-
-      if (update.connection === 'open') {
-        entry.connected = true;
-        entry.everConnected = true;
-        entry.qr = null;
-      }
-
-      if (update.connection === 'close') {
-        entry.connected = false;
-        // Mesma lógica de `WhatsAppConnectionService`: `disconnect()` já zerou `this.entry` antes
-        // do `logout()` nesse caso — não há o que reconectar. Só limpa a própria entrada: um
-        // reconector pode ter posto uma nova no meio tempo.
-        const wasCurrent = this.entry === entry;
-        if (wasCurrent) this.entry = null;
-
-        const statusCode = (update.lastDisconnect?.error as { output?: { statusCode?: number } } | undefined)?.output
-          ?.statusCode;
-        if (statusCode === DisconnectReason.loggedOut) {
-          await clearWhatsAppSession(PLATFORM_WHATSAPP_SESSION_ID);
-          return;
+      try {
+        if (update.qr) {
+          entry.qr = update.qr;
         }
-        if (!wasCurrent) return;
 
-        // specs/0067 — depois de ler o QR o WhatsApp encerra o socket com `restartRequired` (515)
-        // e exige abrir um novo com as credenciais recém-salvas. Uma queda de sessão que já
-        // esteve conectada também reconecta; um QR que expirou sem ninguém ler não reconecta.
-        if (statusCode !== DisconnectReason.restartRequired && !entry.everConnected) {
-          return;
+        if (update.connection === 'open') {
+          entry.connected = true;
+          entry.everConnected = true;
+          entry.qr = null;
         }
-        console.log(`[whatsapp-platform] conexão fechou (código ${statusCode}); reconectando`);
-        try {
-          await this.connect();
-        } catch (error) {
-          console.error('[whatsapp-platform] falha ao reconectar:', error);
+
+        if (update.connection === 'close') {
+          entry.connected = false;
+          // Mesma lógica de `WhatsAppConnectionService`: `disconnect()` já zerou `this.entry` antes
+          // do `logout()` nesse caso — não há o que reconectar. Só limpa a própria entrada: um
+          // reconector pode ter posto uma nova no meio tempo.
+          const wasCurrent = this.entry === entry;
+          if (wasCurrent) this.entry = null;
+
+          const statusCode = (update.lastDisconnect?.error as { output?: { statusCode?: number } } | undefined)?.output
+            ?.statusCode;
+          if (statusCode === DisconnectReason.loggedOut) {
+            await clearWhatsAppSession(PLATFORM_WHATSAPP_SESSION_ID);
+            return;
+          }
+          if (!wasCurrent) return;
+
+          // specs/0067 — depois de ler o QR o WhatsApp encerra o socket com `restartRequired` (515)
+          // e exige abrir um novo com as credenciais recém-salvas. Uma queda de sessão que já
+          // esteve conectada também reconecta; um QR que expirou sem ninguém ler não reconecta.
+          if (statusCode !== DisconnectReason.restartRequired && !entry.everConnected) {
+            return;
+          }
+          console.log(`[whatsapp-platform] conexão fechou (código ${statusCode}); reconectando`);
+          try {
+            await this.connect();
+          } catch (error) {
+            console.error('[whatsapp-platform] falha ao reconectar:', error);
+          }
         }
+      } catch (error) {
+        console.error('[whatsapp-platform] falha não tratada no connection.update:', error);
       }
     });
   }

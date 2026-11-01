@@ -173,6 +173,17 @@ export class TableOrderService {
 
   async addItem(restaurantId: string, orderId: string, input: { productId: string; quantity: number; selections: SelectionInput[]; notes?: string; operationId: string }) {
     const order = await this.findOpenOrder(restaurantId, orderId);
+
+    // Achado crítico da auditoria pré-produção (31/10/2026) — "sem idempotência real": antes,
+    // `operationId` só servia de prefixo pra reserva de estoque (e nem isso de forma confiável,
+    // já que o `item.id` abaixo era sorteado de novo em CADA chamada, quebrando até aquele
+    // dedup); a linha do pedido em si nunca checava se já tinha sido adicionada. Usar
+    // `operationId` como o próprio `id` do item resolve os dois problemas de uma vez: um retry
+    // com a MESMA chave encontra o item já lançado e devolve o pedido sem duplicar a linha
+    // (nem tentar reservar estoque de novo).
+    const alreadyAdded = order.items.find((item) => item.id === input.operationId);
+    if (alreadyAdded) return order;
+
     const layout = order.tableId ? await this.layoutRepository.getByRestaurant(restaurantId) : null;
     if (order.tableId) {
       const currentBalance = this.balanceDue(order);
@@ -185,7 +196,7 @@ export class TableOrderService {
     if (!product || product.restaurantId !== restaurantId || !product.isAvailable) throw new NotFoundError('Produto disponível não encontrado');
     const selections = resolveSelections(product.additionalGroups ?? [], input.selections);
     const item: IOrderItem = {
-      id: randomUUID(),
+      id: input.operationId,
       productId: product.id,
       productName: product.name,
       quantity: input.quantity,
@@ -301,8 +312,32 @@ export class TableOrderService {
     return updated;
   }
 
-  async closeOrder(restaurantId: string, orderId: string, payments: { method: IOrder['paymentMethod']; amount: number }[], operatorId: string) {
-    const order = await this.findOpenOrder(restaurantId, orderId);
+  /**
+   * Achado crítico da auditoria pré-produção (31/10/2026) — "fechar comanda ainda não
+   * implementado no app ... vale desenhar a idempotência certa desde o início, não repetir o
+   * mesmo problema do lançamento de item": `clientRequestId` obrigatória (mesmo papel de
+   * `operationId` em `addItem`), gerada uma vez por tentativa de fechar e reenviada em qualquer
+   * retry (resposta perdida na rede, ou um segundo toque antes do primeiro voltar) — um retry
+   * com a MESMA chave reconhece que já fechou e devolve o mesmo pedido, nunca cobra em
+   * duplicidade. A escrita de verdade (`closeTableOrder`) é atômica: só UMA chamada concorrente
+   * (retry ou um fechamento genuinamente concorrente de outro operador) consegue fechar.
+   */
+  async closeOrder(
+    restaurantId: string,
+    orderId: string,
+    payments: { method: IOrder['paymentMethod']; amount: number }[],
+    operatorId: string,
+    clientRequestId: string,
+  ) {
+    const order = await this.orderRepository.findById(orderId);
+    if (!order || order.restaurantId !== restaurantId || order.orderType !== 'table') {
+      throw new NotFoundError('Pedido de mesa não encontrado');
+    }
+    if (order.status === 'entregue' || order.status === 'cancelado') {
+      if (order.status === 'entregue' && order.tableCloseClientRequestId === clientRequestId) return order;
+      throw new NotFoundError('Pedido de mesa aberto não encontrado');
+    }
+
     const remaining = this.balanceDue(order);
     const closingTotal = payments.reduce((sum, payment) => sum + payment.amount, 0);
     // Pedido explícito do usuário — fechar mesa sem itens (aberta por engano/teste) precisa
@@ -313,18 +348,34 @@ export class TableOrderService {
     }
 
     const now = new Date().toISOString();
-    let updated: IOrder | null = order;
-    for (const payment of payments) {
-      const paymentId = randomUUID();
-      updated = await this.orderRepository.addTablePayment(order.id, restaurantId, {
-        id: paymentId, method: payment.method, amount: payment.amount, paidAt: now, paidBy: operatorId,
-      });
-      if (!updated) throw new ConflictError('O pedido não está mais aberto');
-      await this.recordTablePayment(updated, payment.method, payment.amount, paymentId);
+    // Ids derivados da `clientRequestId` (mesmo papel de `operationId` como `item.id` em
+    // `addItem`) — nunca `randomUUID()`, que tornaria um retry indistinguível de um pagamento
+    // novo caso a escrita atômica abaixo precisasse ser tentada de novo.
+    const tablePayments = payments.map((payment, index) => ({
+      id: `${clientRequestId}:${index}`,
+      method: payment.method,
+      amount: payment.amount,
+      paidAt: now,
+      paidBy: operatorId,
+    }));
+    const closed = await this.orderRepository.closeTableOrder(order.id, restaurantId, {
+      payments: tablePayments,
+      closedAt: now,
+      clientRequestId,
+      changedBy: operatorId,
+    });
+    if (!closed) {
+      // Perdeu a corrida — outra chamada concorrente fechou primeiro. Se foi a MESMA
+      // `clientRequestId` que venceu, ainda é uma repetição segura (ex. a resposta da primeira
+      // chamada se perdeu, mas ela teve sucesso); senão, é um conflito de verdade (ex. outro
+      // operador fechando a mesma mesa ao mesmo tempo com valores diferentes).
+      const latest = await this.orderRepository.findById(order.id);
+      if (latest?.status === 'entregue' && latest.tableCloseClientRequestId === clientRequestId) return latest;
+      throw new ConflictError('O pedido não está mais aberto');
     }
-    updated = await this.orderRepository.updateTableOrder(order.id, restaurantId, { tableClosedAt: now });
-    if (!updated) throw new ConflictError('O pedido não está mais aberto');
-    const closed = await this.orderRepository.updateStatus(order.id, 'entregue', restaurantId);
+    for (const payment of tablePayments) {
+      await this.recordTablePayment(closed, payment.method, payment.amount, payment.id);
+    }
     if (order.tableId) await this.tableRepository.releaseFromOrder(order.tableId, restaurantId, order.id);
     return closed;
   }

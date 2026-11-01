@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from '../../../shared/utils/fetch-with-timeout';
+
 /**
  * specs/0170-integracao-mercado-pago — cliente HTTP pro Mercado Pago, `fetch` nativo (mesmo
  * padrão de `AsaasClient`/`GooglePlacesService`, sem SDK/axios). Contrato conferido na
@@ -43,7 +45,7 @@ export class MercadoPagoClient {
   ) {}
 
   private async request<T>(method: string, path: string, accessToken: string, body?: unknown): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${path}`, {
+    const response = await fetchWithTimeout(`${this.baseUrl}${path}`, {
       method,
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -99,7 +101,7 @@ export class MercadoPagoClient {
   }
 
   private async requestWithoutAuth<T>(path: string, body: unknown): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${path}`, {
+    const response = await fetchWithTimeout(`${this.baseUrl}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),

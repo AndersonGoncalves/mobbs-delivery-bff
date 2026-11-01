@@ -12,6 +12,12 @@ export type CustomerProfileUpsert = Pick<ICustomer, 'name' | 'email'> &
 export interface ICustomerRepository {
   findById(id: string): Promise<ICustomer | null>;
 
+  /** Achado de performance da auditoria pré-produção (31/10/2026) — mesmo papel de
+   * `IPaymentRepository.findManyByOrderIds`: uma única consulta `$in`, pra quem chama nunca
+   * cair num loop de `findById` por id único (ex.: `OrdersController.attachCustomers`, quadro de
+   * pedidos ativos). `[]` devolve `[]` sem consultar o banco. */
+  findManyByIds(ids: string[]): Promise<ICustomer[]>;
+
   /** Pedido explícito do usuário (módulo `customer-blocking`) — resolve o nome do cliente (se
    * algum já pediu com esse telefone) pra exibição na lista de bloqueados; `phone` já normalizado
    * pelo chamador. `null` se nenhum `Customer` tem esse telefone ainda. */

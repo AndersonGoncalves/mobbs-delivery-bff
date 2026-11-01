@@ -51,8 +51,29 @@ export interface IProductRepository {
   /** REQ-3: produto completo (com `additionalGroups`) — `null` se o `id` não existir. */
   findById(id: string): Promise<IProduct | null>;
 
-  /** REQ-2 (retaguarda) — todos os produtos do restaurante do operador, com `additionalGroups`. */
+  /**
+   * Achado crítico de auditoria pré-produção (31/10/2026) — "reserva de estoque no checkout:
+   * N+1 sequencial por item/adicional": `StockReservationService` usa pra buscar TODOS os
+   * produtos de um pedido de uma vez, num só round-trip. De propósito NÃO resolve promoção/
+   * template/vínculos de `findById` (só precisa de `restaurantId`/`tracksStock` aqui).
+   */
+  findManyByIds(ids: string[]): Promise<IProduct[]>;
+
+  /** REQ-2 (retaguarda) — todos os produtos do restaurante do operador, com `additionalGroups`.
+   * Usado por vários consumidores internos do BFF que precisam da lista INTEIRA (cozinha,
+   * emissão fiscal, totem, checklist de onboarding) — nunca paginado; ver `listByRestaurantPage`
+   * pra paginação real. */
   listByRestaurant(restaurantId: string, filters?: IProductListFilters): Promise<IProduct[]>;
+
+  /** Achado da auditoria pré-produção (31/10/2026) — "listas carregam tudo de uma vez;
+   * paginação só no front": método NOVO, separado de `listByRestaurant` de propósito (que
+   * continua devolvendo tudo, sem paginar, pros consumidores que precisam da lista inteira) —
+   * só a tela de lista de produtos da retaguarda usa este aqui. */
+  listByRestaurantPage(
+    restaurantId: string,
+    filters: IProductListFilters,
+    pagination: { skip: number; limit: number },
+  ): Promise<{ items: IProduct[]; total: number }>;
 
   create(restaurantId: string, input: NewProductInput): Promise<IProduct>;
 
@@ -157,4 +178,14 @@ export interface IProductRepository {
    * `excludingProductId`) ainda tem `url` em `images`/`imageUrl`, não deve ser apagada do S3 ao
    * ser removida da galeria do produto atual (ou do produto sendo excluído). */
   existsProductWithImageUrl(restaurantId: string, url: string, excludingProductId: string): Promise<boolean>;
+
+  /**
+   * Achado de auditoria (2026-10-31, crítico) — confirma que todo `rawMaterialId`/
+   * `linkedProductId`/`templateId` referenciado em `groups` (recursivo, incluindo grupos-
+   * referência a template) pertence a este restaurante. Sem isso, salvar um adicional apontando
+   * pra um recurso de OUTRO restaurante (descoberto via rota pública de cardápio) fazia o nome/
+   * preço/disponibilidade desse recurso vazar pro cardápio de quem não é dono. Devolve os ids
+   * que NÃO pertencem (vazio = tudo ok) — quem chama decide como rejeitar.
+   */
+  findForeignAdditionalReferences(restaurantId: string, groups: IProductAdditionalGroupInput[]): Promise<string[]>;
 }

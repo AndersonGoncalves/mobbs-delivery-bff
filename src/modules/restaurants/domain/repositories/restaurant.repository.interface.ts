@@ -104,6 +104,12 @@ export interface IRestaurantRepository {
   findBySlug(slug: string): Promise<IRestaurant | null>;
   /** specs/0106 REQ-2 — todos os restaurantes (painel da plataforma). */
   listAll(): Promise<IRestaurant[]>;
+  /**
+   * Achado de auditoria pré-produção (31/10/2026) — "'Restaurantes da plataforma' não pagina
+   * nem filtra": método NOVO, separado de `listAll` de propósito (que continua intacto) — só o
+   * painel da plataforma usa este aqui. `search` filtra por nome OU slug, parcial, case-insensitive.
+   */
+  listAllPage(pagination: { skip: number; limit: number }, search?: string): Promise<{ items: IRestaurant[]; total: number }>;
   /** specs/0043-programa-indicacao REQ-3 — resolve o restaurante indicador pelo código do link `?ref=`. */
   findByReferralCode(code: string): Promise<IRestaurant | null>;
   findById(id: string): Promise<IRestaurant | null>;

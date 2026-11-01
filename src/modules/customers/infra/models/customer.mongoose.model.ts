@@ -23,4 +23,10 @@ const customerSchema = new Schema(
   { _id: false, timestamps: true },
 );
 
+// Achado de auditoria (31/10/2026) — coleção cresce com o total de clientes de TODOS os
+// restaurantes (não por tenant); sem índice, `findByPhone`/`createByRestaurant` (busca por
+// `phone`, chamada a cada busca de cliente/cadastro rápido no PDV) era full scan da base inteira
+// da plataforma. `sparse: true` — a maioria dos clientes do app não preenche telefone.
+customerSchema.index({ phone: 1 }, { sparse: true });
+
 export const CustomerModel = model('Customer', customerSchema, 'customer');

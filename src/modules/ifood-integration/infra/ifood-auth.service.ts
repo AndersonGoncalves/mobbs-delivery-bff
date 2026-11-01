@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from '../../../shared/utils/fetch-with-timeout';
+
 /**
  * specs/0090-integracao-ifood REQ-1 — autenticação OAuth2 client credentials contra a API do
  * iFood (Portal do Parceiro / iFood for Developers), `POST /authentication/v1.0/oauth/token`
@@ -32,7 +34,7 @@ export class IFoodAuthService {
       clientSecret,
     });
 
-    const response = await fetch(`${this.baseUrl}/authentication/v1.0/oauth/token`, {
+    const response = await fetchWithTimeout(`${this.baseUrl}/authentication/v1.0/oauth/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: body.toString(),

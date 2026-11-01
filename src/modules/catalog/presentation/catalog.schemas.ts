@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { IProductAdditionalGroup, IProductAdditionalOption } from '../domain/entities/product.entity';
+import { paginationQuerySchema } from '../../../shared/http/pagination';
 
 // specs/0115-categoria-foto-dias-ativos/specs/0116-ajustes-cadastro-produto — mesmo conjunto de
 // valores de `restaurants.schemas.ts` (`dayOfWeek`), reaproveitado aqui.
@@ -202,7 +203,9 @@ export const reorderBestSellersSchema = z.object({ orderedIds: z.array(z.string(
 export const reorderCartSuggestionsSchema = z.object({ orderedIds: z.array(z.string().min(1)).min(1) });
 
 // specs/0026-selecao-clonar-excluir-busca-web REQ-7 — query params chegam sempre como string.
-export const listProductsQuerySchema = z.object({
-  name: z.string().min(1).optional(),
-  isAvailable: z.enum(['true', 'false']).optional(),
-});
+export const listProductsQuerySchema = z
+  .object({
+    name: z.string().min(1).optional(),
+    isAvailable: z.enum(['true', 'false']).optional(),
+  })
+  .merge(paginationQuerySchema);

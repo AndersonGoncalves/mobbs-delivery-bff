@@ -6,6 +6,7 @@ import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
 import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { ICustomerRepository } from '../../customers/domain/repositories/customer.repository.interface';
+import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { updateCustomerAllowedPaymentMethodsSchema } from './customer-payment-methods.schemas';
 
@@ -23,11 +24,19 @@ type AsyncHandler = (req: Request, res: Response) => Promise<void>;
  * sem conceito de `restaurantId`) — ao lado de `CustomersSummaryController`, que já é a leitura
  * administrativa de clientes por restaurante; esta classe fica em um arquivo próprio (não
  * adicionada à `CustomersSummaryController`) porque aquela é documentada como "somente leitura".
+ *
+ * Achado crítico da auditoria pré-produção (31/10/2026) — `Customer.allowedPaymentMethods` é
+ * GLOBAL (válido em qualquer restaurante, não escopado por `restaurantId`); sem a checagem de
+ * posse abaixo, um operador conseguiria alterar a restrição de pagamento de um `customerId`
+ * que nunca pediu neste restaurante, só adivinhando/descobrindo o id — mesma checagem de posse
+ * (`findManyByCustomerAndRestaurant`) já usada nas rotas vizinhas de `CustomersSummaryController`
+ * (`/addresses`, `/balance`), nunca aplicada aqui antes.
  */
 export class CustomerPaymentMethodsController extends BaseRouter {
   constructor(
     private readonly customerRepository: ICustomerRepository,
     private readonly restaurantRepository: IRestaurantRepository,
+    private readonly orderRepository: IOrderRepository,
     private readonly restaurantOperatorMiddleware: AsyncHandler,
   ) {
     super();
@@ -51,6 +60,12 @@ export class CustomerPaymentMethodsController extends BaseRouter {
 
         const restaurant = await this.restaurantRepository.findById(req.restaurantId!);
         if (!restaurant) throw new NotFoundError('Restaurante não encontrado');
+
+        // Achado crítico da auditoria pré-produção (31/10/2026) — nunca confia só no
+        // `customerId` da rota: exige pelo menos um pedido deste cliente neste restaurante,
+        // mesma checagem de posse de `CustomersSummaryController` (`/addresses`, `/balance`).
+        const orders = await this.orderRepository.findManyByCustomerAndRestaurant(req.params.customerId, req.restaurantId!);
+        if (orders.length === 0) throw new NotFoundError('Cliente não encontrado');
 
         if (allowedPaymentMethods && allowedPaymentMethods.length > 0) {
           const notAccepted = allowedPaymentMethods.filter(

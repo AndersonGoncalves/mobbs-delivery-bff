@@ -101,6 +101,16 @@ export class RawMaterialMongooseRepository implements IRawMaterialRepository {
     return doc ? toEntity(doc) : null;
   }
 
+  // Achado crítico de auditoria pré-produção (31/10/2026) — "reserva de estoque no checkout:
+  // N+1 sequencial por item/adicional": `StockReservationService.isTracked` chamava `findById`
+  // uma vez por matéria-prima de cada item/adicional do pedido; este método busca TODAS de uma
+  // vez, num só round-trip.
+  async findManyByIds(ids: string[]): Promise<IRawMaterial[]> {
+    if (ids.length === 0) return [];
+    const docs = await RawMaterialModel.find({ _id: { $in: ids } }).lean<RawMaterialLeanDocument[]>();
+    return docs.map(toEntity);
+  }
+
   async remove(id: string): Promise<void> {
     await RawMaterialModel.findByIdAndDelete(id);
   }

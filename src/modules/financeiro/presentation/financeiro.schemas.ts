@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { paginationQuerySchema } from '../../../shared/http/pagination';
+
 const isoDateString = z.string().refine((value) => !Number.isNaN(Date.parse(value)), 'Data inválida');
 
 /** REQ-1/REQ-3 — mesmo formato pra criar e editar (título a pagar ou a receber). */
@@ -56,6 +58,19 @@ export const addCashMovementSchema = z.object({
 export const closeCashRegisterSchema = z.object({
   countedValue: z.number().nonnegative('Valor contado não pode ser negativo'),
 });
+
+/** Achado de performance da auditoria pré-produção (31/10/2026) — `from`/`to` OPCIONAIS: sem
+ * eles, o repositório já aplica um default que evita carregar o histórico inteiro (ver
+ * `buildAccountListQuery`); existem pra uma tela futura oferecer escolher o período
+ * explicitamente, sem exigir nada novo do client hoje. */
+export const accountListQuerySchema = z.object({
+  from: isoDateString.optional(),
+  to: isoDateString.optional(),
+  // Achado de auditoria pré-produção (31/10/2026) — "listas sem paginação em financeiro,
+  // clientes e estoque": filtro por descrição, pra não perder a busca já existente (hoje
+  // client-side, sobre a lista inteira) ao migrar pra paginação real no servidor.
+  search: z.string().min(1).optional(),
+}).merge(paginationQuerySchema);
 
 /** specs/0127 — período ISO com início anterior ao limite final exclusivo. */
 export const motoboyPayoutPeriodSchema = z

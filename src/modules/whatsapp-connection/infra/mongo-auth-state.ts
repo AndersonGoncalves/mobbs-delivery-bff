@@ -23,7 +23,7 @@ export async function useMongoAuthState(restaurantId: string): Promise<{
     : initAuthCreds();
   const keysBlob: KeysBlob = existing ? (JSON.parse(existing.keysJson, BufferJSON.reviver) as KeysBlob) : {};
 
-  const persist = async (): Promise<void> => {
+  const writeNow = async (): Promise<void> => {
     await WhatsAppSessionModel.findByIdAndUpdate(
       restaurantId,
       {
@@ -35,6 +35,34 @@ export async function useMongoAuthState(restaurantId: string): Promise<{
       { upsert: true },
     );
   };
+
+  // Achado de auditoria (2026-10-31, crítico) — `keys.set` é chamado pelo Baileys com muita
+  // frequência (toda troca de chave do protocolo Signal, por mensagem), e `writeNow()` acima faz
+  // `JSON.stringify` SÍNCRONO do blob INTEIRO de `keysBlob` (que só cresce com o histórico de
+  // contatos/chaves) a cada chamada — isso bloqueia o event loop do processo inteiro, compartilhado
+  // por TODOS os restaurantes, não só o dono desta sessão. `persist()` agora agrupa (debounce)
+  // chamadas próximas numa única escrita real: várias trocas de chave em sequência (comum, o
+  // Baileys costuma processar um lote por vez) viram UMA serialização, não uma por chamada —
+  // reduz a frequência do bloqueio sem mudar o formato armazenado nem o contrato esperado pelo
+  // Baileys (`set`/`saveCreds` continuam devolvendo uma Promise normal).
+  const PERSIST_DEBOUNCE_MS = 1_000;
+  let persistTimer: ReturnType<typeof setTimeout> | null = null;
+  let persistWaiters: { resolve: () => void; reject: (error: unknown) => void }[] = [];
+
+  const persist = (): Promise<void> =>
+    new Promise((resolve, reject) => {
+      persistWaiters.push({ resolve, reject });
+      if (persistTimer) return;
+      persistTimer = setTimeout(() => {
+        persistTimer = null;
+        const waiters = persistWaiters;
+        persistWaiters = [];
+        writeNow().then(
+          () => waiters.forEach((waiter) => waiter.resolve()),
+          (error) => waiters.forEach((waiter) => waiter.reject(error)),
+        );
+      }, PERSIST_DEBOUNCE_MS);
+    });
 
   return {
     state: {

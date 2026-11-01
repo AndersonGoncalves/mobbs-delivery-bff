@@ -80,6 +80,8 @@ function buildItem(overrides: Record<string, unknown> = {}) {
 
 function buildValidBody(overrides: Record<string, unknown> = {}) {
   return {
+    // Achado de auditoria (2026-10-31) — idempotencyKey agora é obrigatória no schema.
+    idempotencyKey: 'totem-idem-1',
     customerName: 'Cliente Totem',
     items: [buildItem()],
     paymentMethod: 'cash',
@@ -98,8 +100,11 @@ function buildController(overrides: {
     listByRestaurant: jest.fn().mockResolvedValue([]),
     ...overrides.menuCategoryRepository,
   };
+  // Preço (25) bate com o `unitPrice` default de `buildItem()` — achado de auditoria 2026-10-31,
+  // `resolveItemsLinkedProducts` agora rejeita o pedido quando `unitPrice` não bate com o preço
+  // real do produto buscado aqui.
   const productRepository: Partial<IProductRepository> = {
-    findById: jest.fn().mockResolvedValue(null),
+    findById: jest.fn().mockResolvedValue({ id: 'p-1', restaurantId: 'r-1', price: 25, additionalGroups: [] }),
     listByRestaurant: jest.fn().mockResolvedValue([]),
     ...overrides.productRepository,
   };
@@ -236,6 +241,64 @@ describe('TotemController (specs/0155-app-totem-autoatendimento)', () => {
         }),
       );
       expect(json).toHaveBeenCalledWith(201, { pixCode: undefined });
+    });
+
+    // Achado crítico da auditoria pré-produção (31/10/2026) — "sem chave de idempotência real
+    // na criação de pedido": o servidor gerava uma chave ALEATÓRIA quando o totem não mandava
+    // uma, o que anulava a própria deduplicação (um retry sem a MESMA chave nunca era
+    // reconhecido como repetição).
+    describe('achado de auditoria (2026-10-31): idempotencyKey obrigatória e real', () => {
+      it('rejeita (400) a requisição sem idempotencyKey, sem criar o pedido', async () => {
+        const { routes, orderRepository } = buildController();
+        const json = jest.fn();
+        const body = buildValidBody();
+        delete (body as Record<string, unknown>).idempotencyKey;
+
+        await expect(runTotemChain(routes['POST /restaurants/me/totem/orders'], { restaurantId: 'r-1', body }, { json })).rejects.toMatchObject({
+          statusCode: 400,
+        });
+        expect(orderRepository.create).not.toHaveBeenCalled();
+      });
+
+      it('reenviar a MESMA idempotencyKey (retry) devolve o pedido já criado, sem criar um segundo', async () => {
+        const createdOrder = { id: 'o-1', restaurantId: 'r-1', idempotencyKey: 'totem-idem-1' };
+        const orderRepository: Partial<IOrderRepository> = {
+          findActiveByRestaurant: jest.fn().mockResolvedValue([createdOrder]),
+          create: jest.fn(),
+        };
+        const { routes } = buildController({ orderRepository });
+        const json = jest.fn();
+
+        await runTotemChain(routes['POST /restaurants/me/totem/orders'], { restaurantId: 'r-1', body: buildValidBody() }, { json });
+
+        expect(orderRepository.create).not.toHaveBeenCalled();
+        expect(json).toHaveBeenCalledWith(200, createdOrder);
+      });
+    });
+
+    // Achado crítico da auditoria pré-produção (31/10/2026) — "preço do pedido nunca é
+    // revalidado contra o catálogo real", mesma checagem de `OrdersController`.
+    it('achado de auditoria (2026-10-31): rejeita (400) quando unitPrice não bate com o preço real do produto, sem criar o pedido', async () => {
+      const { routes, orderRepository } = buildController();
+      const json = jest.fn();
+      const body = buildValidBody({ items: [buildItem({ unitPrice: 1 })] });
+
+      await expect(runTotemChain(routes['POST /restaurants/me/totem/orders'], { restaurantId: 'r-1', body }, { json })).rejects.toMatchObject({
+        statusCode: 400,
+      });
+      expect(orderRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('achado de auditoria (2026-10-31): rejeita (400) quando productId é de outro restaurante, mesmo com unitPrice "correto"', async () => {
+      const { routes, orderRepository } = buildController({
+        productRepository: { findById: jest.fn().mockResolvedValue({ id: 'p-1', restaurantId: 'outro-restaurante', price: 25, additionalGroups: [] }) },
+      });
+      const json = jest.fn();
+
+      await expect(
+        runTotemChain(routes['POST /restaurants/me/totem/orders'], { restaurantId: 'r-1', body: buildValidBody() }, { json }),
+      ).rejects.toMatchObject({ statusCode: 400 });
+      expect(orderRepository.create).not.toHaveBeenCalled();
     });
 
     it('AC-6: não exige nenhum token de autenticação Firebase — só passa pelo totemApiKeyMiddleware (pulado no teste, resolve req.restaurantId direto)', async () => {

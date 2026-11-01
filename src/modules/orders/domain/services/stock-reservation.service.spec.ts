@@ -18,6 +18,10 @@ describe('StockReservationService (specs/0108)', () => {
       findById: jest.fn().mockImplementation(async (id: string) => ({
         id, restaurantId: 'r-1', tracksStock: true, stockQuantity: 10,
       })),
+      // Achado crítico de auditoria (2026-10-31) — "N+1 sequencial por item/adicional":
+      // `reserveOrderItems` agora busca produtos/matérias-primas em lote (`findManyByIds`), não
+      // mais um `findById` por item/adicional; mesmo dado de `findById` acima, só em lote.
+      findManyByIds: jest.fn().mockImplementation(async (ids: string[]) => ids.map((id) => ({ id, restaurantId: 'r-1', tracksStock: true, stockQuantity: 10 }))),
       decrementStockIfAvailable: jest.fn().mockResolvedValue(true),
       restoreStock: jest.fn().mockResolvedValue(true),
     } as unknown as IProductRepository;
@@ -25,12 +29,15 @@ describe('StockReservationService (specs/0108)', () => {
       findById: jest.fn().mockImplementation(async (id: string) => ({
         id, restaurantId: 'r-1', tracksStock: true, currentStock: 10,
       })),
+      findManyByIds: jest.fn().mockImplementation(async (ids: string[]) => ids.map((id) => ({ id, restaurantId: 'r-1', tracksStock: true, currentStock: 10 }))),
       decrementStockIfAvailable: jest.fn().mockResolvedValue(true),
       incrementStock: jest.fn().mockResolvedValue({}),
     } as unknown as IRawMaterialRepository;
-    const operations = new Map<string, { id: string; quantity: number; type: string }>();
+    const operations = new Map<string, { id: string; operationId: string; quantity: number; type: string }>();
     const movementRepository = {
       findByOperationId: jest.fn().mockImplementation(async (_restaurantId: string, operationId: string) => operations.get(operationId) ?? null),
+      findManyByOperationIds: jest.fn().mockImplementation(async (_restaurantId: string, operationIds: string[]) =>
+        operationIds.map((operationId) => operations.get(operationId)).filter((movement): movement is NonNullable<typeof movement> => !!movement)),
       create: jest.fn().mockImplementation(async (input: { operationId: string; quantity: number; type: string }) => {
         const movement = { id: `movement-${operations.size + 1}`, ...input };
         operations.set(input.operationId, movement);
@@ -87,6 +94,41 @@ describe('StockReservationService (specs/0108)', () => {
 
     expect(productRepository.restoreStock).toHaveBeenCalledTimes(1);
     expect(productRepository.restoreStock).toHaveBeenCalledWith('product-main', 2);
+  });
+
+  // Achado crítico de auditoria pré-produção (31/10/2026) — "reserva de estoque no checkout:
+  // N+1 sequencial por item/adicional": independente de quantos itens/adicionais o pedido tenha,
+  // as checagens de leitura (rastreia estoque? já existe reserva?) rodam em lote, UMA vez pra
+  // TODO o pedido — nunca mais uma vez por item/adicional.
+  it('achado de auditoria (2026-10-31): busca produtos/matérias-primas e reservas existentes em lote, uma vez por pedido (não uma vez por item/adicional)', async () => {
+    const { productRepository, rawMaterialRepository, movementRepository, service } = setup();
+    const items = [
+      buildItem({ id: 'item-1', productId: 'product-a', selections: [{ groupName: 'Extra', optionName: 'Queijo', priceDelta: 0, rawMaterialId: 'raw-cheese' }] }),
+      buildItem({ id: 'item-2', productId: 'product-b', selections: [{ groupName: 'Extra', optionName: 'Bacon', priceDelta: 0, rawMaterialId: 'raw-bacon' }] }),
+      buildItem({ id: 'item-3', productId: 'product-c', selections: [{ groupName: 'Extra', optionName: 'Molho', priceDelta: 0, rawMaterialId: 'raw-sauce' }] }),
+    ];
+
+    const reserved = await service.reserveOrderItems('r-1', items, true, 'order-1', 'request-1');
+
+    expect(productRepository.findManyByIds).toHaveBeenCalledTimes(1);
+    expect(rawMaterialRepository.findManyByIds).toHaveBeenCalledTimes(1);
+    expect(movementRepository.findManyByOperationIds).toHaveBeenCalledTimes(1);
+    expect((productRepository.findManyByIds as jest.Mock).mock.calls[0][0].sort()).toEqual(['product-a', 'product-b', 'product-c']);
+    expect((rawMaterialRepository.findManyByIds as jest.Mock).mock.calls[0][0].sort()).toEqual(['raw-bacon', 'raw-cheese', 'raw-sauce']);
+    expect(reserved).toHaveLength(3);
+    expect(reserved.every((item) => item.stockReservations?.length === 2)).toBe(true);
+  });
+
+  it('achado de auditoria (2026-10-31): retry da MESMA tentativa (reserva existente, sem rollback) reaproveita a reserva sem gerar operationId novo', async () => {
+    const { productRepository, service } = setup();
+    const item = buildItem();
+
+    const [first] = await service.reserveOrderItems('r-1', [item], true, 'order-1', 'request-1');
+    (productRepository.decrementStockIfAvailable as jest.Mock).mockClear();
+    const [second] = await service.reserveOrderItems('r-1', [item], true, 'order-1', 'request-1');
+
+    expect(productRepository.decrementStockIfAvailable).not.toHaveBeenCalled();
+    expect(second.stockReservations?.[0].operationId).toBe(first.stockReservations?.[0].operationId);
   });
 
   it('releases only reservations not attached to a concurrent idempotent order', async () => {

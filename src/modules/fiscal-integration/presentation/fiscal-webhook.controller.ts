@@ -2,6 +2,7 @@ import type { Request, Response, Server } from 'restify';
 import { NotFoundError, UnauthorizedError } from 'restify-errors';
 
 import { BaseRouter } from '../../../shared/router/base.router';
+import { isValidWebhookToken } from '../../../shared/crypto/webhook-token';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { FocusNfeWebhookPayload } from '../infra/focus-nfe-client';
 import { FiscalEmissionService } from '../domain/services/fiscal-emission.service';
@@ -35,7 +36,7 @@ export class FiscalWebhookController extends BaseRouter {
     application.post('/webhooks/focusnfe/:restaurantId', async (req: Request, res: Response) => {
       const config = await this.fiscalConfigRepository.findByRestaurantId(req.params.restaurantId);
       const token = req.header('focusnfe-webhook-token');
-      if (!config || token !== config.webhookToken) {
+      if (!config || !isValidWebhookToken(token, config.webhookToken)) {
         throw new UnauthorizedError('Token de webhook inválido');
       }
 

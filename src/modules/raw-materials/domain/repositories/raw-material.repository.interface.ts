@@ -31,6 +31,13 @@ export interface IRawMaterialRepository {
   ): Promise<IRawMaterial>;
   setActive(id: string, isActive: boolean): Promise<IRawMaterial>;
   findById(id: string): Promise<IRawMaterial | null>;
+  /**
+   * Achado crítico de auditoria pré-produção (31/10/2026) — "reserva de estoque no checkout:
+   * N+1 sequencial por item/adicional": `StockReservationService` usa pra buscar TODAS as
+   * matérias-primas de um pedido de uma vez, num só round-trip, em vez de uma chamada de
+   * `findById` por item/adicional.
+   */
+  findManyByIds(ids: string[]): Promise<IRawMaterial[]>;
   /** specs/0026-selecao-clonar-excluir-busca-web REQ-4 — exclusão real (diferente de setActive). */
   remove(id: string): Promise<void>;
   /**

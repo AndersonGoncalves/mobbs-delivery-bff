@@ -5,6 +5,13 @@
  */
 export interface ICampaignOptOutRepository {
   isOptedOut(restaurantId: string, customerId: string): Promise<boolean>;
+  /**
+   * Achado de auditoria pré-produção (31/10/2026) — "disparo de campanha WhatsApp: opt-out
+   * checado 1 cliente por vez": `CampaignDispatchService.dispatch` chamava `isOptedOut` uma vez
+   * por cliente elegível só pra montar a lista de destinatários. Uma só query cobrindo TODOS os
+   * clientes já descadastrados DESSE restaurante de uma vez.
+   */
+  listOptedOutCustomerIds(restaurantId: string): Promise<Set<string>>;
   /** Cria o registro (sem `optedOutAt`) na primeira vez que esse cliente recebe uma campanha
    * desse restaurante; nas vezes seguintes devolve o token já existente. */
   getOrCreateToken(restaurantId: string, customerId: string): Promise<string>;

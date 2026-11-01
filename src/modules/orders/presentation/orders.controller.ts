@@ -38,6 +38,7 @@ import { buildOrderPixCode } from '../domain/build-order-pix-code';
 import { computeOrderPricing } from '../domain/compute-order-pricing';
 import { resolveInitialOrderStatus } from '../domain/resolve-initial-order-status';
 import { resolveOrderItemLinkedProducts } from '../domain/resolve-order-item-linked-products';
+import { findOrderItemPriceMismatches } from '../domain/validate-order-item-price';
 import { IOrderRepository } from '../domain/repositories/order.repository.interface';
 import { IRestaurantTableRepository } from '../../table-service/domain/repositories/table.repository.interface';
 import { IPaymentRepository } from '../domain/repositories/payment.repository.interface';
@@ -204,7 +205,7 @@ export class OrdersController extends BaseRouter {
 
       // Resolve os vínculos atuais e reserva saldo antes de aceitar o pedido. O corpo enviado pelo
       // cliente nunca fornece ids de estoque; só nomes de grupo/opção são casados com o catálogo.
-      const resolvedItems = await this.resolveItemsLinkedProducts(payload.items);
+      const resolvedItems = await this.resolveItemsLinkedProducts(payload.items, payload.restaurantId);
       const orderId = randomUUID();
 
       // specs/0131-cashback-app REQ-4/REQ-5/REQ-7 — nunca confia no valor pedido pelo app: capa
@@ -766,10 +767,26 @@ export class OrdersController extends BaseRouter {
   // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16 — busca o `Product` de cada
   // item só uma vez (mesmo produto pode se repetir entre itens do carrinho), pra resolver
   // `linkedProductId` de cada seleção contra a árvore atual de `additionalGroups`.
-  private async resolveItemsLinkedProducts(items: IOrderItem[]): Promise<IOrderItem[]> {
+  //
+  // Achado crítico da auditoria pré-produção (31/10/2026) — "preço do pedido nunca é revalidado
+  // contra o catálogo real": além de resolver os vínculos de estoque, agora também rejeita (400)
+  // quando `unitPrice` de algum item não bate com o preço recalculado do catálogo atual
+  // (`findOrderItemPriceMismatches`). O filtro por `restaurantId` abaixo fecha de quebra um
+  // segundo buraco — `productRepository.findById` busca por id GLOBAL, sem filtro de
+  // restaurante — que deixaria um `productId` de outro restaurante ser tratado como "real" tanto
+  // pra resolução de estoque quanto pra esta validação de preço.
+  private async resolveItemsLinkedProducts(items: IOrderItem[], restaurantId: string): Promise<IOrderItem[]> {
     const productIds = [...new Set(items.map((item) => item.productId))];
     const products = await Promise.all(productIds.map((id) => this.productRepository.findById(id)));
-    const productsById = new Map(products.filter((product) => product !== null).map((product) => [product.id, product]));
+    const productsById = new Map(
+      products.filter((product) => product !== null && product.restaurantId === restaurantId).map((product) => [product.id, product]),
+    );
+
+    const mismatches = findOrderItemPriceMismatches(items, productsById);
+    if (mismatches.length > 0) {
+      const description = mismatches.map((mismatch) => `${mismatch.productName} (enviado R$ ${mismatch.sentUnitPrice})`).join(', ');
+      throw new BadRequestError(`Preço divergente do catálogo atual: ${description}`);
+    }
 
     return items.map((item) => {
       if (!item.selections || item.selections.length === 0) return item;
@@ -1217,14 +1234,21 @@ export class OrdersController extends BaseRouter {
   }
 
   /** specs/0066 REQ-4 — nome/telefone do cliente pra retaguarda mostrar nos pedidos em andamento
-   * (`IOrder` só guarda `customerId`). Poucos pedidos ativos, então `findById` por cliente único. */
+   * (`IOrder` só guarda `customerId`).
+   *
+   * Achado de performance da auditoria pré-produção (31/10/2026) — antes, uma query por
+   * cliente único e uma por motoboy (`findById` em loop, N+1), em vez de uma única consulta
+   * `$in` por lote (mesmo padrão já usado ao lado em `attachPaymentSummaries`, nunca
+   * reaproveitado aqui). Em pico (dezenas/centenas de pedidos ativos), multiplicado pelo poll
+   * de 15s do quadro de pedidos e por todos os restaurantes simultâneos, era tráfego de banco
+   * evitável. */
   private async attachCustomers<T extends IOrder>(orders: T[]): Promise<(T & { customer?: { name: string; phone?: string } })[]> {
     const customerIds = [...new Set(orders.map((order) => order.customerId))];
-    const customers = await Promise.all(customerIds.map((id) => this.customerRepository.findById(id)));
-    const customerById = new Map(customerIds.map((id, index) => [id, customers[index]]));
+    const customers = await this.customerRepository.findManyByIds(customerIds);
+    const customerById = new Map(customers.map((customer) => [customer.id, customer]));
     const motoboyIds = [...new Set(orders.flatMap((order) => order.deliveryMotoboy ? [order.deliveryMotoboy.id] : []))];
-    const motoboys = await Promise.all(motoboyIds.map((id) => this.restaurantOperatorRepository.findById(id)));
-    const motoboyById = new Map(motoboyIds.map((id, index) => [id, motoboys[index]]));
+    const motoboys = await this.restaurantOperatorRepository.findManyByIds(motoboyIds);
+    const motoboyById = new Map(motoboys.map((motoboy) => [motoboy.id, motoboy]));
 
     return orders.map((order) => {
       const customer = customerById.get(order.customerId);

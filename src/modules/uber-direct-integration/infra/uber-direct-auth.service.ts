@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from '../../../shared/utils/fetch-with-timeout';
+
 /**
  * specs/0121-integracao-uber-entregas — autenticação OAuth2 client-credentials contra a Uber
  * Direct (`developer.uber.com`, confirmado em 2026-10-29): `POST https://auth.uber.com/oauth/v2/
@@ -29,7 +31,7 @@ export class UberDirectAuthService {
       scope: 'eats.deliveries',
     });
 
-    const response = await fetch(UBER_OAUTH_URL, {
+    const response = await fetchWithTimeout(UBER_OAUTH_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: body.toString(),

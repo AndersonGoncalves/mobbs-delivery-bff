@@ -4,8 +4,8 @@ import { IAccountPayableRepository } from '../domain/repositories/account-payabl
 import { ICashRegisterRepository } from '../domain/repositories/cash-register.repository.interface';
 import { AccountsPayableController } from './accounts-payable.controller';
 
-type FakeRequest = Partial<Pick<Request, 'params' | 'body'>> & { restaurantId?: string };
-type FakeResponse = Pick<Response, 'json'>;
+type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & { restaurantId?: string };
+type FakeResponse = Pick<Response, 'json'> & Partial<Pick<Response, 'header'>>;
 type RouteHandler = (req: FakeRequest, res: FakeResponse) => Promise<void>;
 
 function buildFakeApplication() {
@@ -55,6 +55,8 @@ describe('AccountsPayableController', () => {
   ) {
     const accountPayableRepository: Partial<IAccountPayableRepository> = {
       listByRestaurant: jest.fn().mockResolvedValue([buildAccount()]),
+      // Achado de auditoria (2026-10-31) — só usado quando a requisição manda page/pageSize.
+      listByRestaurantPage: jest.fn().mockResolvedValue({ items: [buildAccount()], total: 1 }),
       findById: jest.fn().mockResolvedValue(buildAccount()),
       create: jest.fn().mockResolvedValue(buildAccount()),
       update: jest.fn().mockResolvedValue(buildAccount({ description: 'Aluguel outubro' })),
@@ -82,7 +84,66 @@ describe('AccountsPayableController', () => {
 
     await runOperatorChain(routes['GET /restaurants/me/accounts-payable'], { restaurantId: 'r-1' }, { json });
 
-    expect(accountPayableRepository.listByRestaurant).toHaveBeenCalledWith('r-1');
+    expect(accountPayableRepository.listByRestaurant).toHaveBeenCalledWith('r-1', { from: undefined, to: undefined });
+    expect(json).toHaveBeenCalledWith(200, [expect.objectContaining({ id: 'ap-1' })]);
+  });
+
+  // Achado de performance da auditoria pré-produção (31/10/2026) — "listas de contas a pagar
+  // sem paginação nem filtro de período obrigatório".
+  it('achado de auditoria (2026-10-31): GET aceita from/to opcionais e repassa como Date pro repositório', async () => {
+    const { accountPayableRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['GET /restaurants/me/accounts-payable'],
+      { restaurantId: 'r-1', query: { from: '2026-01-01T00:00:00.000Z', to: '2026-01-31T23:59:59.000Z' } },
+      { json },
+    );
+
+    expect(accountPayableRepository.listByRestaurant).toHaveBeenCalledWith('r-1', {
+      from: new Date('2026-01-01T00:00:00.000Z'),
+      to: new Date('2026-01-31T23:59:59.000Z'),
+    });
+  });
+
+  it('achado de auditoria (2026-10-31): GET rejeita (400) from/to com data inválida', async () => {
+    const { routes } = setup();
+
+    await expect(
+      runOperatorChain(routes['GET /restaurants/me/accounts-payable'], { restaurantId: 'r-1', query: { from: 'não-é-uma-data' } }, { json: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  // Achado de auditoria pré-produção (31/10/2026) — "listas sem paginação em financeiro,
+  // clientes e estoque", mesmo padrão de `/restaurants/me/products`.
+  it('achado de auditoria (2026-10-31): sem page/pageSize, GET continua devolvendo a lista inteira (sem header de total)', async () => {
+    const { accountPayableRepository, routes } = setup();
+    const json = jest.fn();
+    const header = jest.fn();
+
+    await runOperatorChain(routes['GET /restaurants/me/accounts-payable'], { restaurantId: 'r-1', query: {} }, { json, header });
+
+    expect(accountPayableRepository.listByRestaurant).toHaveBeenCalledTimes(1);
+    expect(accountPayableRepository.listByRestaurantPage).not.toHaveBeenCalled();
+    expect(header).not.toHaveBeenCalled();
+  });
+
+  it('achado de auditoria (2026-10-31): com page/pageSize, pagina no servidor e manda o total real no header X-Total-Count', async () => {
+    const { accountPayableRepository, routes } = setup({
+      accountPayableRepository: { listByRestaurantPage: jest.fn().mockResolvedValue({ items: [buildAccount()], total: 48 }) },
+    });
+    const json = jest.fn();
+    const header = jest.fn();
+
+    await runOperatorChain(
+      routes['GET /restaurants/me/accounts-payable'],
+      { restaurantId: 'r-1', query: { page: '2', pageSize: '10' } },
+      { json, header },
+    );
+
+    expect(accountPayableRepository.listByRestaurant).not.toHaveBeenCalled();
+    expect(accountPayableRepository.listByRestaurantPage).toHaveBeenCalledWith('r-1', { skip: 10, limit: 10 }, { from: undefined, to: undefined });
+    expect(header).toHaveBeenCalledWith('X-Total-Count', '48');
     expect(json).toHaveBeenCalledWith(200, [expect.objectContaining({ id: 'ap-1' })]);
   });
 

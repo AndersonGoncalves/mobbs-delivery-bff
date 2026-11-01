@@ -4,6 +4,7 @@ import { IAddressRepository } from '../../customers/domain/repositories/address.
 import { ICustomerRepository } from '../../customers/domain/repositories/customer.repository.interface';
 import { IBlockedCustomerRepository } from '../../customer-blocking/domain/repositories/blocked-customer.repository.interface';
 import { ICouponRepository } from '../../coupons/domain/repositories/coupon.repository.interface';
+import { IProductRepository } from '../../catalog/domain/repositories/product.repository.interface';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IOperatorDraft, OperatorDraftPatch, emptyDraftPatch } from '../domain/entities/operator-draft.entity';
@@ -166,7 +167,9 @@ function buildController(overrides: {
   operatorDraftRepository?: IOperatorDraftRepository;
   orderRepository?: Partial<IOrderRepository>;
   restaurantRepository?: Partial<IRestaurantRepository>;
+  blockedCustomerRepository?: Partial<IBlockedCustomerRepository>;
   customerRepository?: Partial<ICustomerRepository>;
+  productRepository?: Partial<IProductRepository>;
 } = {}) {
   const operatorDraftRepository = overrides.operatorDraftRepository ?? new FakeOperatorDraftRepository();
   const createdOrders = new Map<string, Record<string, unknown>>();
@@ -189,11 +192,20 @@ function buildController(overrides: {
     findByPhone: jest.fn().mockResolvedValue(null),
     findById: jest.fn().mockResolvedValue(null),
     createStandalone: jest.fn().mockResolvedValue({ id: 'c-1', name: 'Cliente', phone: '5511999999999' }),
+    createByRestaurant: jest.fn().mockResolvedValue({ id: 'c-1', name: 'Cliente', phone: '5511999999999', createdByRestaurantId: 'r-1' }),
     ...overrides.customerRepository,
   };
   const addressRepository: Partial<IAddressRepository> = { listByCustomer: jest.fn().mockResolvedValue([]) };
-  const blockedCustomerRepository: Partial<IBlockedCustomerRepository> = { isBlocked: jest.fn().mockResolvedValue(false) };
+  const blockedCustomerRepository: Partial<IBlockedCustomerRepository> = {
+    isBlocked: jest.fn().mockResolvedValue(false),
+    ...overrides.blockedCustomerRepository,
+  };
   const couponRepository: Partial<ICouponRepository> = { findByCode: jest.fn().mockResolvedValue(null) };
+
+  // Achado de auditoria (2026-10-31) — opcional (`undefined` por default) pra não quebrar os
+  // testes acima que não têm nada a ver com preço: sem `productRepository`,
+  // `rejeitaPriceMismatches` nem roda (mesmo padrão do `stockReservationService` logo abaixo).
+  const productRepository: Partial<IProductRepository> | undefined = overrides.productRepository;
 
   const { application, routes } = buildFakeApplication();
   const noopMiddleware = async () => {};
@@ -206,9 +218,12 @@ function buildController(overrides: {
     blockedCustomerRepository as IBlockedCustomerRepository,
     couponRepository as ICouponRepository,
     noopMiddleware,
+    undefined,
+    undefined,
+    productRepository as IProductRepository | undefined,
   ).initializeRoutes(application);
 
-  return { routes, operatorDraftRepository, orderRepository, restaurantRepository, customerRepository };
+  return { routes, operatorDraftRepository, orderRepository, restaurantRepository, customerRepository, blockedCustomerRepository };
 }
 
 describe('OperatorDraftsController (specs/0174-pdv-extensao-chrome-lateral)', () => {
@@ -333,6 +348,66 @@ describe('OperatorDraftsController (specs/0174-pdv-extensao-chrome-lateral)', ()
       expect(orderRepository.create).not.toHaveBeenCalled();
     });
 
+    // Achado crítico da auditoria pré-produção (31/10/2026) — "preço do pedido nunca é
+    // revalidado contra o catálogo real": diferente de `OrdersController`/`TotemController`, o
+    // PDV não tinha `productRepository` nenhum antes (ver construtor). `productRepository` é
+    // opcional (os testes acima não passam, e continuam passando sem essa checagem — mesmo
+    // padrão de `stockReservationService`); só quando é passado (como aqui) a validação roda.
+    describe('achado de auditoria (2026-10-31): revalidação de preço contra o catálogo real', () => {
+      it('rejeita (400) quando unitPrice do rascunho não bate com o preço real do produto, sem criar pedido', async () => {
+        const { routes, orderRepository } = buildController({
+          productRepository: { findById: jest.fn().mockResolvedValue({ id: 'p-1', restaurantId: 'r-1', price: 20, additionalGroups: [] }) },
+        });
+        const putRes = { json: jest.fn() };
+        await runOperatorChain(
+          routes['PUT /restaurants/me/operator-drafts/:slot'],
+          financeiroReq('1', { revision: 0, modality: 'counter', items: [buildItem({ unitPrice: 1 })], paymentMethod: 'cash' }),
+          putRes,
+        );
+
+        const res = { json: jest.fn() };
+        await expect(
+          runOperatorChain(routes['POST /restaurants/me/operator-drafts/:slot/finalize'], financeiroReq('1', { revision: 1, clientRequestId: 'r-preco-1' }), res),
+        ).rejects.toMatchObject({ statusCode: 400 });
+        expect(orderRepository.create).not.toHaveBeenCalled();
+      });
+
+      it('rejeita (400) quando productId do rascunho é de outro restaurante, mesmo com unitPrice "correto"', async () => {
+        const { routes, orderRepository } = buildController({
+          productRepository: { findById: jest.fn().mockResolvedValue({ id: 'p-1', restaurantId: 'outro-restaurante', price: 20, additionalGroups: [] }) },
+        });
+        const putRes = { json: jest.fn() };
+        await runOperatorChain(
+          routes['PUT /restaurants/me/operator-drafts/:slot'],
+          financeiroReq('1', { revision: 0, modality: 'counter', items: [buildItem()], paymentMethod: 'cash' }),
+          putRes,
+        );
+
+        const res = { json: jest.fn() };
+        await expect(
+          runOperatorChain(routes['POST /restaurants/me/operator-drafts/:slot/finalize'], financeiroReq('1', { revision: 1, clientRequestId: 'r-preco-2' }), res),
+        ).rejects.toMatchObject({ statusCode: 400 });
+        expect(orderRepository.create).not.toHaveBeenCalled();
+      });
+
+      it('finaliza normalmente quando unitPrice bate com o preço real do produto', async () => {
+        const { routes, orderRepository } = buildController({
+          productRepository: { findById: jest.fn().mockResolvedValue({ id: 'p-1', restaurantId: 'r-1', price: 20, additionalGroups: [] }) },
+        });
+        const putRes = { json: jest.fn() };
+        await runOperatorChain(
+          routes['PUT /restaurants/me/operator-drafts/:slot'],
+          financeiroReq('1', { revision: 0, modality: 'counter', items: [buildItem()], paymentMethod: 'cash' }),
+          putRes,
+        );
+
+        const res = { json: jest.fn() };
+        await runOperatorChain(routes['POST /restaurants/me/operator-drafts/:slot/finalize'], financeiroReq('1', { revision: 1, clientRequestId: 'r-preco-3' }), res);
+
+        expect(orderRepository.create).toHaveBeenCalledWith(expect.objectContaining({ subtotal: 20 }));
+      });
+    });
+
     it('AC-9: retirada sem telefone é rejeitada (400) antes de criar pedido', async () => {
       const { routes, orderRepository } = buildController();
       const putRes = { json: jest.fn() };
@@ -346,6 +421,168 @@ describe('OperatorDraftsController (specs/0174-pdv-extensao-chrome-lateral)', ()
         runOperatorChain(routes['POST /restaurants/me/operator-drafts/:slot/finalize'], financeiroReq('1', { revision: 1, clientRequestId: 'r-2' }), res),
       ).rejects.toMatchObject({ statusCode: 400 });
       expect(orderRepository.create).not.toHaveBeenCalled();
+    });
+
+    // Pedido explícito do usuário (achado real) — "O bloqueio de clientes está desabilitado" na
+    // retaguarda (`customerBlockingEnabled: false`) não impedia a finalização no PDV mesmo pra um
+    // telefone individualmente bloqueado; mesmo raciocínio do checkout do app (`OrdersController`).
+    it('cliente bloqueado finaliza normalmente quando customerBlockingEnabled está desligado', async () => {
+      const { routes, orderRepository } = buildController({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ customerBlockingEnabled: false })) },
+        blockedCustomerRepository: { isBlocked: jest.fn().mockResolvedValue(true) },
+      });
+      const putRes = { json: jest.fn() };
+      await runOperatorChain(
+        routes['PUT /restaurants/me/operator-drafts/:slot'],
+        financeiroReq('1', { revision: 0, modality: 'pickup', items: [buildItem()], paymentMethod: 'cash', customerName: 'Ana', customerPhone: '5511999999999' }),
+        putRes,
+      );
+      const res = { json: jest.fn() };
+      await runOperatorChain(routes['POST /restaurants/me/operator-drafts/:slot/finalize'], financeiroReq('1', { revision: 1, clientRequestId: 'r-4' }), res);
+      expect(orderRepository.create).toHaveBeenCalled();
+    });
+
+    it('cliente bloqueado é rejeitado (403) quando customerBlockingEnabled está ligado', async () => {
+      const { routes, orderRepository } = buildController({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ customerBlockingEnabled: true })) },
+        blockedCustomerRepository: { isBlocked: jest.fn().mockResolvedValue(true) },
+      });
+      const putRes = { json: jest.fn() };
+      await runOperatorChain(
+        routes['PUT /restaurants/me/operator-drafts/:slot'],
+        financeiroReq('1', { revision: 0, modality: 'pickup', items: [buildItem()], paymentMethod: 'cash', customerName: 'Ana', customerPhone: '5511999999999' }),
+        putRes,
+      );
+      const res = { json: jest.fn() };
+      await expect(
+        runOperatorChain(routes['POST /restaurants/me/operator-drafts/:slot/finalize'], financeiroReq('1', { revision: 1, clientRequestId: 'r-5' }), res),
+      ).rejects.toMatchObject({ statusCode: 403 });
+      expect(orderRepository.create).not.toHaveBeenCalled();
+    });
+  });
+
+  // Pedido explícito do usuário (achado real) — mesmo bug do finalize acima, mas na busca por
+  // telefone: a flag `blocked` devolvida pro PDV não podia ignorar `customerBlockingEnabled`.
+  describe('GET .../operator-drafts/customers — REQ-14/REQ-15', () => {
+    it('não marca "blocked" quando customerBlockingEnabled está desligado, mesmo com o telefone na lista', async () => {
+      const { routes } = buildController({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ customerBlockingEnabled: false })) },
+        blockedCustomerRepository: { isBlocked: jest.fn().mockResolvedValue(true) },
+      });
+      const res = { json: jest.fn() };
+      await runOperatorChain(routes['GET /restaurants/me/operator-drafts/customers'], { ...baseReq, query: { phone: '5511999999999' } }, res);
+      expect(res.json).toHaveBeenCalledWith(200, expect.objectContaining({ blocked: false }));
+    });
+
+    it('marca "blocked" quando customerBlockingEnabled está ligado e o telefone está na lista', async () => {
+      const { routes } = buildController({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ customerBlockingEnabled: true })) },
+        blockedCustomerRepository: { isBlocked: jest.fn().mockResolvedValue(true) },
+      });
+      const res = { json: jest.fn() };
+      await runOperatorChain(routes['GET /restaurants/me/operator-drafts/customers'], { ...baseReq, query: { phone: '5511999999999' } }, res);
+      expect(res.json).toHaveBeenCalledWith(200, expect.objectContaining({ blocked: true }));
+    });
+
+    // Achado crítico de auditoria (31/10/2026) — "findByPhone global permite correlação de PII
+    // entre restaurantes": cliente existe (achado por `findByPhone`, busca GLOBAL), mas nunca
+    // pediu neste restaurante nem foi cadastrado manualmente aqui — nunca revela nome/telefone.
+    it('cliente existe globalmente mas nunca pediu/foi cadastrado neste restaurante: nunca revela o nome (trata como não encontrado)', async () => {
+      const { routes, orderRepository } = buildController({
+        customerRepository: {
+          findByPhone: jest.fn().mockResolvedValue({ id: 'c-outro', name: 'Fulano de Outro Restaurante', phone: '5511999999999' }),
+        },
+      });
+      orderRepository.findManyByCustomerAndRestaurant = jest.fn().mockResolvedValue([]);
+      const res = { json: jest.fn() };
+
+      await runOperatorChain(routes['GET /restaurants/me/operator-drafts/customers'], { ...baseReq, query: { phone: '5511999999999' } }, res);
+
+      expect(res.json).toHaveBeenCalledWith(200, { customer: null, addresses: [], blocked: false });
+    });
+
+    it('cliente já pediu neste restaurante: revela nome e endereços normalmente', async () => {
+      const { routes, orderRepository } = buildController({
+        customerRepository: {
+          findByPhone: jest.fn().mockResolvedValue({ id: 'c-1', name: 'Maria', phone: '5511999999999' }),
+        },
+      });
+      orderRepository.findManyByCustomerAndRestaurant = jest.fn().mockResolvedValue([{ id: 'o-1' }]);
+      const res = { json: jest.fn() };
+
+      await runOperatorChain(routes['GET /restaurants/me/operator-drafts/customers'], { ...baseReq, query: { phone: '5511999999999' } }, res);
+
+      expect(res.json).toHaveBeenCalledWith(200, expect.objectContaining({ customer: { id: 'c-1', name: 'Maria', phone: '5511999999999' } }));
+    });
+
+    it('cliente foi cadastrado manualmente por este restaurante (sem pedido ainda): revela o nome', async () => {
+      const { routes } = buildController({
+        customerRepository: {
+          findByPhone: jest.fn().mockResolvedValue({ id: 'c-1', name: 'Maria', phone: '5511999999999', createdByRestaurantId: 'r-1' }),
+        },
+      });
+      const res = { json: jest.fn() };
+
+      await runOperatorChain(routes['GET /restaurants/me/operator-drafts/customers'], { ...baseReq, query: { phone: '5511999999999' } }, res);
+
+      expect(res.json).toHaveBeenCalledWith(200, expect.objectContaining({ customer: { id: 'c-1', name: 'Maria', phone: '5511999999999' } }));
+    });
+  });
+
+  describe('POST .../operator-drafts/customers (cadastro rápido)', () => {
+    it('telefone desconhecido: cria um cliente avulso novo', async () => {
+      const { routes, customerRepository } = buildController();
+      const res = { json: jest.fn() };
+
+      await runOperatorChain(
+        routes['POST /restaurants/me/operator-drafts/customers'],
+        { ...baseReq, body: { name: 'Ana', phone: '5511999999999' } },
+        res,
+      );
+
+      expect(customerRepository.createStandalone).toHaveBeenCalledWith('Ana', '5511999999999');
+      expect(res.json).toHaveBeenCalledWith(201, { id: 'c-1', name: 'Cliente', phone: '5511999999999' });
+    });
+
+    it('telefone já tem relação com este restaurante: reaproveita o cliente existente', async () => {
+      const { routes, orderRepository } = buildController({
+        customerRepository: {
+          findByPhone: jest.fn().mockResolvedValue({ id: 'c-1', name: 'Ana', phone: '5511999999999', createdByRestaurantId: 'r-1' }),
+        },
+      });
+      orderRepository.findManyByCustomerAndRestaurant = jest.fn().mockResolvedValue([]);
+      const res = { json: jest.fn() };
+
+      await runOperatorChain(
+        routes['POST /restaurants/me/operator-drafts/customers'],
+        { ...baseReq, body: { name: 'Nome digitado agora', phone: '5511999999999' } },
+        res,
+      );
+
+      expect(res.json).toHaveBeenCalledWith(200, { id: 'c-1', name: 'Ana', phone: '5511999999999' });
+    });
+
+    // Achado crítico de auditoria (31/10/2026) — mesmo raciocínio do GET acima: telefone já
+    // existe globalmente (outro restaurante/app), mas nunca teve relação com ESTE restaurante —
+    // nunca devolve o nome real de outro contexto, só o que o operador digitou agora.
+    it('telefone existe globalmente mas sem relação com este restaurante: estabelece a relação agora e devolve o nome digitado pelo operador, nunca o de outro contexto', async () => {
+      const { routes, customerRepository, orderRepository } = buildController({
+        customerRepository: {
+          findByPhone: jest.fn().mockResolvedValue({ id: 'c-outro', name: 'Fulano de Outro Restaurante', phone: '5511999999999' }),
+          createByRestaurant: jest.fn().mockResolvedValue({ id: 'c-outro', name: 'Fulano de Outro Restaurante', phone: '5511999999999', createdByRestaurantId: 'r-1' }),
+        },
+      });
+      orderRepository.findManyByCustomerAndRestaurant = jest.fn().mockResolvedValue([]);
+      const res = { json: jest.fn() };
+
+      await runOperatorChain(
+        routes['POST /restaurants/me/operator-drafts/customers'],
+        { ...baseReq, body: { name: 'Nome digitado agora', phone: '5511999999999' } },
+        res,
+      );
+
+      expect(customerRepository.createByRestaurant).toHaveBeenCalledWith('r-1', 'Nome digitado agora', '5511999999999');
+      expect(res.json).toHaveBeenCalledWith(200, { id: 'c-outro', name: 'Nome digitado agora', phone: '5511999999999' });
     });
   });
 });

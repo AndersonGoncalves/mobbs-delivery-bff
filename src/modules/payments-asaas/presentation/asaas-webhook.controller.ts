@@ -3,6 +3,7 @@ import { ConflictError, NotFoundError, UnauthorizedError } from 'restify-errors'
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { environment } from '../../../shared/config/environment';
+import { isValidWebhookToken } from '../../../shared/crypto/webhook-token';
 import { IWhatsAppNotificationService } from '../../notifications/domain/services/i-whatsapp-notification.service';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IPayment, PaymentMethod } from '../../orders/domain/entities/order.entity';
@@ -85,7 +86,7 @@ export class AsaasWebhookController extends BaseRouter {
     application.post('/webhooks/asaas/:restaurantId', async (req: Request, res: Response) => {
       const restaurant = await this.restaurantRepository.findById(req.params.restaurantId);
       const token = req.header('asaas-access-token');
-      if (!restaurant || !restaurant.asaasWebhookToken || token !== restaurant.asaasWebhookToken) {
+      if (!restaurant || !isValidWebhookToken(token, restaurant.asaasWebhookToken)) {
         throw new UnauthorizedError('Token de webhook inválido');
       }
 

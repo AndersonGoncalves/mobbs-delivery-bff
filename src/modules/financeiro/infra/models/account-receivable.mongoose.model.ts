@@ -19,4 +19,8 @@ const accountReceivableSchema = new Schema(
 
 accountReceivableSchema.index({ restaurantId: 1, dueDate: 1 });
 
+// Achado de performance da auditoria pré-produção (31/10/2026) — mesmo motivo do índice gêmeo
+// em `account-payable.mongoose.model.ts`.
+accountReceivableSchema.index({ restaurantId: 1, status: 1 });
+
 export const AccountReceivableModel = model('AccountReceivable', accountReceivableSchema, 'accountReceivable');

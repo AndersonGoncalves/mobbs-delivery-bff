@@ -87,6 +87,7 @@ describe('TableServiceController', () => {
       updateStatus: jest.fn().mockResolvedValue({}),
       updateTableOrder: jest.fn().mockResolvedValue({}),
       addTablePayment: jest.fn().mockResolvedValue({}),
+      closeTableOrder: jest.fn().mockResolvedValue({}),
       ...overrides.orderRepository,
     };
     const customerRepository: Partial<ICustomerRepository> = {
@@ -99,9 +100,13 @@ describe('TableServiceController', () => {
       findById: jest.fn().mockResolvedValue({ id: 'r-1', stockControlEnabled: false }),
       ...overrides.restaurantRepository,
     };
-    const rawMaterialRepository = { findById: jest.fn() } as unknown as IRawMaterialRepository;
+    // Achado crítico de auditoria (2026-10-31) — "N+1 sequencial por item/adicional":
+    // `reserveOrderItems` agora busca matérias-primas/reservas existentes em lote
+    // (`findManyByIds`/`findManyByOperationIds`), não mais uma chamada por item/adicional.
+    const rawMaterialRepository = { findById: jest.fn(), findManyByIds: jest.fn().mockResolvedValue([]) } as unknown as IRawMaterialRepository;
     const stockMovementRepository: Partial<IStockMovementRepository> = {
       findByOperationId: jest.fn().mockResolvedValue(null),
+      findManyByOperationIds: jest.fn().mockResolvedValue([]),
       create: jest.fn().mockResolvedValue({}),
     };
     // specs/0137-papeis-garcom-motoboy REQ-7 — `RestaurantOperator` com papel `garcom`, usado
@@ -235,7 +240,7 @@ describe('TableServiceController', () => {
 
     await runOperatorChain(
       routes['POST /restaurants/me/table-orders/:id/items'],
-      { restaurantId: 'r-1', params: { id: 'o-table' }, body: { productId: 'p-1', quantity: 2, selections: [] } },
+      { restaurantId: 'r-1', params: { id: 'o-table' }, body: { productId: 'p-1', quantity: 2, selections: [], operationId: 'pos-add-1' } },
       { json, send: jest.fn() },
     );
 
@@ -244,6 +249,47 @@ describe('TableServiceController', () => {
       items: [expect.objectContaining({ productId: 'p-1', unitPrice: 20, quantity: 2 })],
     }));
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ total: 44 }));
+  });
+
+  // Achado crítico da auditoria pré-produção (31/10/2026) — "sem idempotência real — nem no
+  // app, nem no servidor": um retry com a MESMA operationId (rede caiu depois do pedido já ter
+  // sido incluído, o app do garçom reenvia) nunca pode duplicar a linha.
+  it('achado de auditoria (2026-10-31): reenviar a MESMA operationId não duplica o item, devolve o pedido já atualizado', async () => {
+    const order = {
+      id: 'o-table', restaurantId: 'r-1', orderType: 'table', tableId: 't-1', tableName: '1', status: 'confirmado',
+      items: [{ id: 'pos-add-1', productId: 'p-1', productName: 'Pizza', quantity: 2, unitPrice: 20 }],
+      subtotal: 40, deliveryFee: 0, discount: 0, total: 44, serviceChargePercent: 10, serviceChargeAmount: 4,
+      coverCharge: 0, tablePayments: [],
+    };
+    const { orderRepository, routes } = setup({
+      orderRepository: { findById: jest.fn().mockResolvedValue(order), updateTableOrder: jest.fn() },
+      productRepository: {
+        findById: jest.fn().mockResolvedValue({ id: 'p-1', restaurantId: 'r-1', name: 'Pizza', price: 20, isAvailable: true, additionalGroups: [] }),
+      },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/table-orders/:id/items'],
+      { restaurantId: 'r-1', params: { id: 'o-table' }, body: { productId: 'p-1', quantity: 2, selections: [], operationId: 'pos-add-1' } },
+      { json, send: jest.fn() },
+    );
+
+    expect(orderRepository.updateTableOrder).not.toHaveBeenCalled();
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ items: order.items, total: 44 }));
+  });
+
+  it('rejeita (400) a requisição sem operationId, sem incluir o item', async () => {
+    const { orderRepository, routes } = setup();
+
+    await expect(
+      runOperatorChain(
+        routes['POST /restaurants/me/table-orders/:id/items'],
+        { restaurantId: 'r-1', params: { id: 'o-table' }, body: { productId: 'p-1', quantity: 2, selections: [] } },
+        { json: jest.fn(), send: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(orderRepository.updateTableOrder).not.toHaveBeenCalled();
   });
 
   // Pedido explícito do usuário — motivo do ajuste (ex. "quebrou um copo"), opcional.
@@ -290,6 +336,7 @@ describe('TableServiceController', () => {
       restaurantRepository: { findById: jest.fn().mockResolvedValue({ id: 'r-1', stockControlEnabled: true }) },
       productRepository: {
         findById: jest.fn().mockResolvedValue(product),
+        findManyByIds: jest.fn().mockResolvedValue([product]),
         decrementStockIfAvailable: jest.fn().mockResolvedValue(true),
       },
       orderRepository: {
@@ -320,25 +367,39 @@ describe('TableServiceController', () => {
       items: [{ id: 'i-1', productId: 'p-1', productName: 'Pizza', quantity: 1, unitPrice: 30 }],
       subtotal: 30, deliveryFee: 0, discount: 0, total: 30, tablePayments: [],
     };
-    const closedOrder = { ...order, status: 'entregue' };
+    const closedOrder = { ...order, status: 'entregue', tableCloseClientRequestId: 'req-1' };
     const { tableRepository, orderRepository, routes } = setup({
       orderRepository: {
         findById: jest.fn().mockResolvedValue(order),
-        addTablePayment: jest.fn().mockResolvedValue(order),
-        updateTableOrder: jest.fn().mockResolvedValue(order),
-        updateStatus: jest.fn().mockResolvedValue(closedOrder),
+        closeTableOrder: jest.fn().mockResolvedValue(closedOrder),
       },
     });
     const json = jest.fn();
 
     await runOperatorChain(
       routes['POST /restaurants/me/table-orders/:id/close'],
-      { restaurantId: 'r-1', user: { uid: 'operator-1' }, params: { id: 'o-table' }, body: { payments: [{ method: 'cash', amount: 12 }, { method: 'pix', amount: 18 }] } },
+      {
+        restaurantId: 'r-1',
+        user: { uid: 'operator-1' },
+        params: { id: 'o-table' },
+        body: { payments: [{ method: 'cash', amount: 12 }, { method: 'pix', amount: 18 }], clientRequestId: 'req-1' },
+      },
       { json, send: jest.fn() },
     );
 
-    expect(orderRepository.addTablePayment).toHaveBeenCalledTimes(2);
-    expect(orderRepository.updateStatus).toHaveBeenCalledWith('o-table', 'entregue', 'r-1');
+    // Achado crítico da auditoria pré-produção (31/10/2026) — idempotência: pagamentos +
+    // fechamento numa ÚNICA escrita atômica (`closeTableOrder`), nunca mais a sequência de
+    // addTablePayment/updateTableOrder/updateStatus separados; ids derivados da
+    // `clientRequestId` (nunca `randomUUID()`).
+    expect(orderRepository.closeTableOrder).toHaveBeenCalledWith('o-table', 'r-1', {
+      payments: [
+        { id: 'req-1:0', method: 'cash', amount: 12, paidAt: expect.any(String), paidBy: 'operator-1' },
+        { id: 'req-1:1', method: 'pix', amount: 18, paidAt: expect.any(String), paidBy: 'operator-1' },
+      ],
+      closedAt: expect.any(String),
+      clientRequestId: 'req-1',
+      changedBy: 'operator-1',
+    });
     expect(tableRepository.releaseFromOrder).toHaveBeenCalledWith('t-1', 'r-1', 'o-table');
     expect(json).toHaveBeenCalledWith(200, closedOrder);
   });
@@ -350,26 +411,114 @@ describe('TableServiceController', () => {
       id: 'o-table', restaurantId: 'r-1', orderType: 'table', tableId: 't-1', status: 'confirmado',
       items: [], subtotal: 0, deliveryFee: 0, discount: 0, total: 0, tablePayments: [],
     };
-    const closedOrder = { ...order, status: 'entregue' };
+    const closedOrder = { ...order, status: 'entregue', tableCloseClientRequestId: 'req-2' };
     const { tableRepository, orderRepository, routes } = setup({
       orderRepository: {
         findById: jest.fn().mockResolvedValue(order),
-        updateTableOrder: jest.fn().mockResolvedValue(order),
-        updateStatus: jest.fn().mockResolvedValue(closedOrder),
+        closeTableOrder: jest.fn().mockResolvedValue(closedOrder),
       },
     });
     const json = jest.fn();
 
     await runOperatorChain(
       routes['POST /restaurants/me/table-orders/:id/close'],
-      { restaurantId: 'r-1', user: { uid: 'operator-1' }, params: { id: 'o-table' }, body: { payments: [] } },
+      { restaurantId: 'r-1', user: { uid: 'operator-1' }, params: { id: 'o-table' }, body: { payments: [], clientRequestId: 'req-2' } },
       { json, send: jest.fn() },
     );
 
-    expect(orderRepository.addTablePayment).not.toHaveBeenCalled();
-    expect(orderRepository.updateStatus).toHaveBeenCalledWith('o-table', 'entregue', 'r-1');
+    expect(orderRepository.closeTableOrder).toHaveBeenCalledWith('o-table', 'r-1', {
+      payments: [],
+      closedAt: expect.any(String),
+      clientRequestId: 'req-2',
+      changedBy: 'operator-1',
+    });
     expect(tableRepository.releaseFromOrder).toHaveBeenCalledWith('t-1', 'r-1', 'o-table');
     expect(json).toHaveBeenCalledWith(200, closedOrder);
+  });
+
+  // Achado crítico da auditoria pré-produção (31/10/2026) — "fechar comanda ... vale desenhar a
+  // idempotência certa desde o início, não repetir o mesmo problema do lançamento de item".
+  it('achado de auditoria (2026-10-31): retry com a MESMA clientRequestId num pedido já fechado devolve o mesmo pedido, sem tentar fechar de novo', async () => {
+    const closedOrder = {
+      id: 'o-table', restaurantId: 'r-1', orderType: 'table', tableId: 't-1', status: 'entregue',
+      items: [], subtotal: 0, deliveryFee: 0, discount: 0, total: 0, tablePayments: [], tableCloseClientRequestId: 'req-1',
+    };
+    const { tableRepository, orderRepository, routes } = setup({
+      orderRepository: { findById: jest.fn().mockResolvedValue(closedOrder) },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/table-orders/:id/close'],
+      { restaurantId: 'r-1', user: { uid: 'operator-1' }, params: { id: 'o-table' }, body: { payments: [], clientRequestId: 'req-1' } },
+      { json, send: jest.fn() },
+    );
+
+    expect(orderRepository.closeTableOrder).not.toHaveBeenCalled();
+    expect(tableRepository.releaseFromOrder).not.toHaveBeenCalled();
+    expect(json).toHaveBeenCalledWith(200, closedOrder);
+  });
+
+  it('achado de auditoria (2026-10-31): clientRequestId DIFERENTE numa mesa já fechada é conflito real (404), não idempotência', async () => {
+    const closedOrder = {
+      id: 'o-table', restaurantId: 'r-1', orderType: 'table', tableId: 't-1', status: 'entregue',
+      items: [], subtotal: 0, deliveryFee: 0, discount: 0, total: 0, tablePayments: [], tableCloseClientRequestId: 'req-de-outra-tentativa',
+    };
+    const { orderRepository, routes } = setup({
+      orderRepository: { findById: jest.fn().mockResolvedValue(closedOrder) },
+    });
+
+    await expect(
+      runOperatorChain(
+        routes['POST /restaurants/me/table-orders/:id/close'],
+        { restaurantId: 'r-1', user: { uid: 'operator-1' }, params: { id: 'o-table' }, body: { payments: [], clientRequestId: 'req-nova' } },
+        { json: jest.fn(), send: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 404 });
+    expect(orderRepository.closeTableOrder).not.toHaveBeenCalled();
+  });
+
+  it('achado de auditoria (2026-10-31): closeTableOrder perde a corrida pra um retry com a MESMA clientRequestId — ainda devolve o pedido fechado (idempotente)', async () => {
+    const openOrder = {
+      id: 'o-table', restaurantId: 'r-1', orderType: 'table', tableId: 't-1', status: 'confirmado',
+      items: [], subtotal: 0, deliveryFee: 0, discount: 0, total: 0, tablePayments: [],
+    };
+    const closedByWinner = { ...openOrder, status: 'entregue', tableCloseClientRequestId: 'req-1' };
+    const findById = jest.fn()
+      .mockResolvedValueOnce(openOrder) // 1ª leitura: ainda aberto
+      .mockResolvedValueOnce(closedByWinner); // 2ª leitura (depois de perder a corrida): já fechado pela MESMA clientRequestId
+    const { orderRepository, routes } = setup({
+      orderRepository: { findById, closeTableOrder: jest.fn().mockResolvedValue(null) },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/table-orders/:id/close'],
+      { restaurantId: 'r-1', user: { uid: 'operator-1' }, params: { id: 'o-table' }, body: { payments: [], clientRequestId: 'req-1' } },
+      { json, send: jest.fn() },
+    );
+
+    expect(json).toHaveBeenCalledWith(200, closedByWinner);
+  });
+
+  it('achado de auditoria (2026-10-31): closeTableOrder perde a corrida pra um fechamento concorrente de OUTRO operador — conflito real (409)', async () => {
+    const openOrder = {
+      id: 'o-table', restaurantId: 'r-1', orderType: 'table', tableId: 't-1', status: 'confirmado',
+      items: [], subtotal: 0, deliveryFee: 0, discount: 0, total: 0, tablePayments: [],
+    };
+    const closedByOtherOperator = { ...openOrder, status: 'entregue', tableCloseClientRequestId: 'req-de-outro-operador' };
+    const findById = jest.fn().mockResolvedValueOnce(openOrder).mockResolvedValueOnce(closedByOtherOperator);
+    const { orderRepository, routes } = setup({
+      orderRepository: { findById, closeTableOrder: jest.fn().mockResolvedValue(null) },
+    });
+
+    await expect(
+      runOperatorChain(
+        routes['POST /restaurants/me/table-orders/:id/close'],
+        { restaurantId: 'r-1', user: { uid: 'operator-1' }, params: { id: 'o-table' }, body: { payments: [], clientRequestId: 'req-1' } },
+        { json: jest.fn(), send: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 409 });
   });
 
   it('AC-20: bloqueia item que ultrapassaria o limite de consumo', async () => {
@@ -385,7 +534,7 @@ describe('TableServiceController', () => {
 
     await expect(runOperatorChain(
       routes['POST /restaurants/me/table-orders/:id/items'],
-      { restaurantId: 'r-1', params: { id: 'o-table' }, body: { productId: 'p-1', quantity: 2, selections: [] } },
+      { restaurantId: 'r-1', params: { id: 'o-table' }, body: { productId: 'p-1', quantity: 2, selections: [], operationId: 'pos-add-2' } },
       { json: jest.fn(), send: jest.fn() },
     )).rejects.toMatchObject({ statusCode: 409 });
     expect(orderRepository.updateTableOrder).not.toHaveBeenCalled();
@@ -420,6 +569,7 @@ describe('TableServiceController', () => {
         restaurantId: 'r-1', params: { id: 'o-table' }, body: {
           productId: 'p-1', quantity: 1,
           selections: [{ groupName: 'Tamanho', optionName: 'Grande', nestedSelections: [{ groupName: 'Borda', optionName: 'Cheddar' }] }],
+          operationId: 'pos-add-3',
         },
       },
       { json: jest.fn(), send: jest.fn() },

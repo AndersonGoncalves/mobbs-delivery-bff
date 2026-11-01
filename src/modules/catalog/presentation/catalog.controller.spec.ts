@@ -13,7 +13,7 @@ type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & {
   operatorRole?: Request['operatorRole'];
   user?: { uid: string };
 };
-type FakeResponse = Pick<Response, 'json'> & Partial<Pick<Response, 'send'>>;
+type FakeResponse = Pick<Response, 'json'> & Partial<Pick<Response, 'send' | 'header'>>;
 type RouteHandler = (req: FakeRequest, res: FakeResponse) => Promise<void>;
 
 function buildFakeApplication() {
@@ -111,6 +111,13 @@ describe('CatalogController', () => {
       remove: jest.fn().mockResolvedValue(undefined),
       findAnyByLinkedProductId: jest.fn().mockResolvedValue([]),
       existsProductWithImageUrl: jest.fn().mockResolvedValue(false),
+      // Achado de auditoria (2026-10-31) — por padrão, nenhuma referência estrangeira (mesmo
+      // comportamento de antes do fix); testes específicos sobrescrevem pra simular o bloqueio.
+      findForeignAdditionalReferences: jest.fn().mockResolvedValue([]),
+      // Achado de auditoria (2026-10-31) — só usado quando a requisição manda page/pageSize
+      // (ver `resolvePagination`); default devolve 1 produto / total 1, testes específicos
+      // sobrescrevem.
+      listByRestaurantPage: jest.fn().mockResolvedValue({ items: [buildProduct()], total: 1 }),
       ...overrides.productRepository,
     };
     const orderRepository: Partial<IOrderRepository> = {
@@ -126,6 +133,8 @@ describe('CatalogController', () => {
     const stockMovementRepository: Partial<IStockMovementRepository> = {
       create: jest.fn().mockResolvedValue({}),
       listByProduct: jest.fn().mockResolvedValue([]),
+      // Achado de auditoria (2026-10-31) — só usado quando a requisição manda page/pageSize.
+      listByProductPage: jest.fn().mockResolvedValue({ items: [], total: 0 }),
       ...overrides.stockMovementRepository,
     };
     const restaurantRepository: Partial<IRestaurantRepository> = {
@@ -209,6 +218,27 @@ describe('CatalogController', () => {
 
     expect(stockMovementRepository.listByProduct).toHaveBeenCalledWith('p-1');
     expect(json).toHaveBeenCalledWith(200, [expect.objectContaining({ id: 'mv-1' })]);
+  });
+
+  // Achado de auditoria pré-produção (31/10/2026) — "listas sem paginação em financeiro,
+  // clientes e estoque", mesmo padrão de `/restaurants/me/products`.
+  it('achado de auditoria (2026-10-31): .../movements com page/pageSize pagina no servidor e manda o total real no header X-Total-Count', async () => {
+    const { stockMovementRepository, routes } = setup({
+      productRepository: { findById: jest.fn().mockResolvedValue(buildProduct({ tracksStock: true })) },
+      stockMovementRepository: { listByProductPage: jest.fn().mockResolvedValue({ items: [{ id: 'mv-1', productId: 'p-1' }], total: 61 }) },
+    });
+    const json = jest.fn();
+    const header = jest.fn();
+
+    await runOperatorChain(
+      routes['GET /restaurants/me/products/:id/movements'],
+      { restaurantId: 'r-1', params: { id: 'p-1' }, query: { page: '1', pageSize: '25' } },
+      { json, header },
+    );
+
+    expect(stockMovementRepository.listByProduct).not.toHaveBeenCalled();
+    expect(stockMovementRepository.listByProductPage).toHaveBeenCalledWith('p-1', { skip: 0, limit: 25 });
+    expect(header).toHaveBeenCalledWith('X-Total-Count', '61');
   });
 
   it('AC-3: GET /products/:id retorna o produto completo', async () => {
@@ -579,6 +609,36 @@ describe('CatalogController', () => {
 
     expect(productRepository.create).toHaveBeenCalledWith('r-1', expect.objectContaining({ name: 'Pizza' }));
     expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ id: 'p-2' }));
+  });
+
+  // Achado de auditoria (2026-10-31, crítico) — opção de adicional apontando pra recurso de
+  // outro restaurante é rejeitada (400) antes de criar o produto.
+  it('POST /restaurants/me/products rejeita (400) quando additionalGroups referencia recurso de outro restaurante', async () => {
+    const { productRepository, routes } = setup({
+      productRepository: { findForeignAdditionalReferences: jest.fn().mockResolvedValue(['prod-outro-restaurante']) },
+    });
+    const body = {
+      menuCategoryId: 'c-1',
+      name: 'Pizza',
+      price: 50,
+      isAvailable: true,
+      additionalGroups: [
+        {
+          id: 'g-1',
+          productId: 'p-2',
+          name: 'Bebida',
+          required: true,
+          minSelections: 1,
+          maxSelections: 1,
+          options: [{ id: 'o-1', groupId: 'g-1', name: 'Refri', linkedProductId: 'prod-outro-restaurante' }],
+        },
+      ],
+    };
+
+    await expect(
+      runOperatorChain(routes['POST /restaurants/me/products'], { restaurantId: 'r-1', body }, { json: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(productRepository.create).not.toHaveBeenCalled();
   });
 
   it('AC-4: POST /restaurants/me/products rejeita produto sem preço', async () => {
@@ -1076,6 +1136,43 @@ describe('CatalogController', () => {
     );
 
     expect(productRepository.listByRestaurant).toHaveBeenCalledWith('r-1', { name: 'piz', isAvailable: true });
+  });
+
+  // Achado da auditoria pré-produção (31/10/2026) — "listas carregam tudo de uma vez;
+  // paginação só no front".
+  it('achado de auditoria (2026-10-31): sem page/pageSize, GET /restaurants/me/products continua devolvendo a lista inteira (sem header de total)', async () => {
+    const { productRepository, routes } = setup();
+    const json = jest.fn();
+    const header = jest.fn();
+
+    await runOperatorChain(routes['GET /restaurants/me/products'], { restaurantId: 'r-1', query: {} }, { json, header });
+
+    expect(productRepository.listByRestaurant).toHaveBeenCalledTimes(1);
+    expect(productRepository.listByRestaurantPage).not.toHaveBeenCalled();
+    expect(header).not.toHaveBeenCalled();
+  });
+
+  it('achado de auditoria (2026-10-31): com page/pageSize, pagina no servidor e manda o total real no header X-Total-Count', async () => {
+    const { productRepository, routes } = setup({
+      productRepository: { listByRestaurantPage: jest.fn().mockResolvedValue({ items: [buildProduct()], total: 142 }) },
+    });
+    const json = jest.fn();
+    const header = jest.fn();
+
+    await runOperatorChain(
+      routes['GET /restaurants/me/products'],
+      { restaurantId: 'r-1', query: { page: '3', pageSize: '20', name: 'piz' } },
+      { json, header },
+    );
+
+    expect(productRepository.listByRestaurant).not.toHaveBeenCalled();
+    expect(productRepository.listByRestaurantPage).toHaveBeenCalledWith(
+      'r-1',
+      { name: 'piz', isAvailable: undefined },
+      { skip: 40, limit: 20 },
+    );
+    expect(header).toHaveBeenCalledWith('X-Total-Count', '142');
+    expect(json).toHaveBeenCalledWith(200, [expect.objectContaining({ id: 'p-1' })]);
   });
 
   it('AC-3: DELETE /restaurants/me/products/:id sem uso em pedidos exclui de verdade (204)', async () => {

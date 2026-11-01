@@ -39,12 +39,16 @@ export class CampaignDispatchService implements ICampaignDispatchService {
       // fora DESTE disparo (filtro por campanha, não um descadastro — ver REQ-5 abaixo, que
       // continua valendo por cima disso).
       const excluded = new Set(campaign.excludedCustomerIds);
+      // Achado de auditoria pré-produção (31/10/2026) — "disparo de campanha WhatsApp: opt-out
+      // checado 1 cliente por vez": `isOptedOut` por cliente virou uma só busca cobrindo TODOS
+      // os descadastrados deste restaurante, antes de montar a lista de elegíveis.
+      const optedOutCustomerIds = await this.campaignOptOutRepository.listOptedOutCustomerIds(campaign.restaurantId);
       const eligible: { customerId: string; phone: string }[] = [];
       for (const summary of summaries) {
         // REQ-6 — sem telefone, nunca entra na lista.
         if (!summary.phone) continue;
         // REQ-5 — descadastrado desse restaurante não recebe mais campanhas.
-        if (await this.campaignOptOutRepository.isOptedOut(campaign.restaurantId, summary.customerId)) continue;
+        if (optedOutCustomerIds.has(summary.customerId)) continue;
         if (excluded.has(summary.customerId)) continue;
         eligible.push({ customerId: summary.customerId, phone: summary.phone });
       }

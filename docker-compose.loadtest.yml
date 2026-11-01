@@ -1,0 +1,12 @@
+# Override pra rodar o teste de carga (scripts/load-test) contra o container local de dev.
+# O docker-compose.yml raiz mantém os limites de memória calibrados pra EC2 de produção
+# (t3.micro, ver comentários lá) — nunca editar aquele arquivo pra isso. Uso:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.loadtest.yml up -d mongo
+#
+# Depois do teste, voltar ao normal basta subir sem este override (os limites do
+# docker-compose.yml raiz valem de novo no próximo `up`/restart do serviço).
+services:
+  mongo:
+    command: ["mongod", "--auth", "--bind_ip_all", "--wiredTigerCacheSizeGB", "2"]
+    mem_limit: 4g

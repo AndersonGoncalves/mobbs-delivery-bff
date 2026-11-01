@@ -176,6 +176,9 @@ const orderSchema = new Schema(
     tablePeopleCount: { type: Number, min: 1 },
     tablePayments: { type: [tableOrderPaymentSchema], default: [] },
     tableClosedAt: { type: String },
+    // Achado crítico da auditoria pré-produção (31/10/2026) — idempotência de "fechar comanda"
+    // (ver `order.entity.ts`, `TableOrderService.closeOrder`).
+    tableCloseClientRequestId: { type: String },
     tableMergedIntoOrderId: { type: String },
     notes: { type: String },
     status: {
@@ -217,5 +220,29 @@ orderSchema.index(
 orderSchema.index({ customerId: 1 });
 // specs/0022-cupons-desconto REQ-6 — suporta `countByCustomerAndCoupon` (limite de uso por cliente).
 orderSchema.index({ restaurantId: 1, customerId: 1, couponCode: 1 });
+
+// Achado crítico da auditoria pré-produção (31/10/2026) — `findActiveByRestaurant` (quadro de
+// pedidos ativos no web, poll a cada 15s por aba) não tinha índice cobrindo seu próprio filtro;
+// o Mongo resolvia usando o índice de `orderNumber` acima só como prefixo de `restaurantId` e
+// filtrava `status` em memória — custo escalando com o HISTÓRICO total de pedidos do
+// restaurante, não com os poucos pedidos de fato ativos (pago a cada poll, multiplicado por
+// todos os restaurantes simultâneos).
+orderSchema.index({ restaurantId: 1, status: 1 });
+
+// Índice dedicado pro padrão de `findPendingAutoPrint` (bridge de impressão automática, poll a
+// cada 10s por padrão) — `autoPrintStatus` só tem 2 "formas" (ausente até ser impresso, ou
+// `'printed'` depois — nunca volta a ficar ausente, ver `IOrder.autoPrintStatus`), então a
+// query (`$ne: 'printed'`) com `restaurantId` como prefixo de igualdade já estreita bastante
+// mesmo sem índice parcial de verdade (`$exists`/`$ne` não são suportados em
+// `partialFilterExpression` do Mongo — índice parcial foi tentado e rejeitado por isso,
+// confirmado contra um Mongo real antes de decidir por este índice composto cheio).
+orderSchema.index({ restaurantId: 1, autoPrintStatus: 1, createdAt: 1 });
+
+// Achado de auditoria (31/10/2026) — a correção acima cobriu `{restaurantId, status}`, não
+// intervalo de data: relatório financeiro/vendas por período (`findByRestaurantBetween`,
+// `findDeliveredByRestaurantBetween`, `getSalesSummary` etc., todos filtrando
+// `{restaurantId, createdAt: {$gte, $lt/$lte}}`) não tinha nenhum índice cobrindo o próprio
+// filtro — varria o histórico inteiro do restaurante antes de aplicar o intervalo.
+orderSchema.index({ restaurantId: 1, createdAt: 1 });
 
 export const OrderModel = model('Order', orderSchema, 'order');

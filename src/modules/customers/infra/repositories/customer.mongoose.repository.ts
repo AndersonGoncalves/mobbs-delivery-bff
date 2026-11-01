@@ -42,6 +42,12 @@ export class CustomerMongooseRepository implements ICustomerRepository {
     return doc ? toEntity(doc) : null;
   }
 
+  async findManyByIds(ids: string[]): Promise<ICustomer[]> {
+    if (ids.length === 0) return [];
+    const docs = await CustomerModel.find({ _id: { $in: ids } }).lean<CustomerLeanDocument[]>();
+    return docs.map(toEntity);
+  }
+
   async findByPhone(phone: string): Promise<ICustomer | null> {
     const doc = await CustomerModel.findOne({ phone }).lean<CustomerLeanDocument>();
     return doc ? toEntity(doc) : null;

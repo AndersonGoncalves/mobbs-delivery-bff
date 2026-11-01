@@ -9,13 +9,14 @@ import { requireOperatorRole } from '../../../shared/http/require-operator-role.
 import { IAdditionalGroupTemplateRepository } from '../../additional-group-templates/domain/repositories/additional-group-template.repository.interface';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { IMenuCategory } from '../domain/entities/menu-category.entity';
-import { IProduct } from '../domain/entities/product.entity';
+import { IProduct, IProductAdditionalGroupInput } from '../domain/entities/product.entity';
 import { IMenuCategoryRepository } from '../domain/repositories/menu-category.repository.interface';
 import { IProductImageStorage } from '../domain/product-image-storage';
 import { IProductRepository } from '../domain/repositories/product.repository.interface';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IStockMovementRepository } from '../../raw-materials/domain/repositories/stock-movement.repository.interface';
 import { stockAdjustmentSchema } from '../../raw-materials/presentation/raw-material.schemas';
+import { paginationQuerySchema, resolvePagination } from '../../../shared/http/pagination';
 import {
   listProductsQuerySchema,
   menuCategoryNameSchema,
@@ -313,17 +314,28 @@ export class CatalogController extends BaseRouter {
 
     // REQ-2 (retaguarda): produtos completos (com `additionalGroups`) do restaurante do operador.
     // specs/0026-selecao-clonar-excluir-busca-web REQ-7 — `name`/`isAvailable` filtram no servidor.
+    // Achado da auditoria pré-produção (31/10/2026) — "listas carregam tudo de uma vez;
+    // paginação só no front": `page`/`pageSize` OPCIONAIS (ver `resolvePagination`) — omitidos,
+    // devolve a lista inteira exatamente como antes (as outras ~20 telas da retaguarda que
+    // consomem este mesmo endpoint sem paginar nunca quebram); só a tela de lista de produtos
+    // manda os dois, e aí o total real vai no header `X-Total-Count` (nunca no corpo, que
+    // continua sendo só o array — contrato igual nos dois casos).
     application.get('/restaurants/me/products', ...catalogReadWithWaiterAuthenticated, async (req: Request, res: Response) => {
       const query = parseBody(listProductsQuerySchema, req.query ?? {});
-      const products = await this.productRepository.listByRestaurant(req.restaurantId!, {
-        name: query.name,
-        isAvailable: query.isAvailable === undefined ? undefined : query.isAvailable === 'true',
-      });
-      res.json(200, products);
+      const filters = { name: query.name, isAvailable: query.isAvailable === undefined ? undefined : query.isAvailable === 'true' };
+      const pagination = resolvePagination(query);
+      if (!pagination) {
+        res.json(200, await this.productRepository.listByRestaurant(req.restaurantId!, filters));
+        return;
+      }
+      const { items, total } = await this.productRepository.listByRestaurantPage(req.restaurantId!, filters, pagination);
+      res.header('X-Total-Count', String(total));
+      res.json(200, items);
     });
 
     application.post('/restaurants/me/products', ...authenticated, async (req: Request, res: Response) => {
       const payload = parseBody(saveProductSchema, req.body);
+      await this.rejectForeignAdditionalReferences(req.restaurantId!, payload.additionalGroups);
       const product = await this.productRepository.create(req.restaurantId!, payload);
       res.json(201, product);
     });
@@ -331,6 +343,7 @@ export class CatalogController extends BaseRouter {
     application.put('/restaurants/me/products/:id', ...authenticated, async (req: Request, res: Response) => {
       const payload = parseBody(updateProductSchema, req.body);
       const existing = await this.findOwnedProduct(req.params.id, req.restaurantId!);
+      await this.rejectForeignAdditionalReferences(req.restaurantId!, payload.additionalGroups);
       const product = await this.productRepository.update(req.params.id, payload);
       // specs/0109-galeria-fotos-produto REQ-13 — foto removida da galeria só é apagada do S3 se
       // nenhum outro produto do restaurante ainda a referencia (checado antes de cada exclusão).
@@ -411,10 +424,20 @@ export class CatalogController extends BaseRouter {
       res.json(201, { product: updatedProduct, movement });
     });
 
+    // Achado de auditoria pré-produção (31/10/2026) — "listas sem paginação em financeiro,
+    // clientes e estoque": `page`/`pageSize` OPCIONAIS, mesmo padrão de `/restaurants/me/products`.
     application.get('/restaurants/me/products/:id/movements', ...authenticated, async (req: Request, res: Response) => {
       const product = await this.findOwnedProduct(req.params.id, req.restaurantId!);
       if (!product.tracksStock) throw new ConflictError('Produto não controla estoque');
-      res.json(200, await this.stockMovementRepository.listByProduct(product.id));
+      const query = parseBody(paginationQuerySchema, req.query ?? {});
+      const pagination = resolvePagination(query);
+      if (!pagination) {
+        res.json(200, await this.stockMovementRepository.listByProduct(product.id));
+        return;
+      }
+      const { items, total } = await this.stockMovementRepository.listByProductPage(product.id, pagination);
+      res.header('X-Total-Count', String(total));
+      res.json(200, items);
     });
 
     // specs/0026-selecao-clonar-excluir-busca-web REQ-4/REQ-5/REQ-6 — exclusão REAL (diferente
@@ -477,6 +500,21 @@ export class CatalogController extends BaseRouter {
       throw new NotFoundError('Produto não encontrado');
     }
     return product;
+  }
+
+  /**
+   * Achado de auditoria (2026-10-31, crítico) — chamado antes de `create`/`update` de produto:
+   * rejeita (400) se algum `rawMaterialId`/`linkedProductId`/`templateId` referenciado em
+   * `additionalGroups` (recursivo) pertencer a OUTRO restaurante. Sem isso, um operador podia
+   * vincular adicional ao produto/matéria-prima/template de outro restaurante (ids descobertos
+   * via rota pública de cardápio), vazando nome/preço/disponibilidade de quem não é dono.
+   */
+  private async rejectForeignAdditionalReferences(restaurantId: string, groups: IProductAdditionalGroupInput[] | undefined): Promise<void> {
+    if (!groups || groups.length === 0) return;
+    const foreign = await this.productRepository.findForeignAdditionalReferences(restaurantId, groups);
+    if (foreign.length > 0) {
+      throw new BadRequestError(`additionalGroups referencia recurso que não pertence a este restaurante: ${foreign.join(', ')}`);
+    }
   }
 
   private async isStockControlEnabled(restaurantId: string): Promise<boolean> {

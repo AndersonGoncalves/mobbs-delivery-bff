@@ -1,7 +1,7 @@
 import { PlatformController } from './platform.controller';
 import { IRestaurant } from '../../restaurants/domain/entities/restaurant.entity';
 import { IOrder } from '../../orders/domain/entities/order.entity';
-import { DEFAULT_BILLING_SETTINGS } from '../../billing/domain/billing';
+import { DEFAULT_BILLING_SETTINGS, sumRevenueCents } from '../../billing/domain/billing';
 
 type Handler = (req: unknown, res: unknown) => Promise<void>;
 
@@ -32,12 +32,29 @@ function delivered(total: number, createdAt = '2026-10-02T12:00:00Z'): IOrder {
 function setup(options: { restaurants: IRestaurant[]; ordersByRestaurant?: Record<string, IOrder[]>; lastDelivered?: Record<string, Date | null> }) {
   const restaurantRepository = {
     listAll: jest.fn().mockResolvedValue(options.restaurants),
+    // Achado de auditoria (2026-10-31) — só usado quando a requisição manda page/pageSize.
+    listAllPage: jest.fn().mockResolvedValue({ items: options.restaurants, total: options.restaurants.length }),
     findById: jest.fn().mockImplementation(async (id: string) => options.restaurants.find((r) => r.id === id) ?? null),
     updateBilling: jest.fn().mockImplementation(async (id: string, billing: unknown) => buildRestaurant({ id, billing: billing as IRestaurant['billing'] })),
   };
   const orderRepository = {
     findDeliveredByRestaurantBetween: jest.fn().mockImplementation(async (id: string) => options.ordersByRestaurant?.[id] ?? []),
     findLastDeliveredAt: jest.fn().mockImplementation(async (id: string) => options.lastDelivered?.[id] ?? null),
+    // Achado crítico de auditoria pré-produção (31/10/2026) — "painel da plataforma: 1 query
+    // completa por restaurante + soma em JS": `GET /platform/restaurants` usa as duas
+    // agregações em lote abaixo (`buildRows`), não mais `findDeliveredByRestaurantBetween`/
+    // `findLastDeliveredAt` por restaurante (que continuam acima, só pra `PATCH .../billing`,
+    // que precisa de UM restaurante por chamada).
+    getMonthlyRevenueCentsByRestaurant: jest.fn().mockImplementation(async () => {
+      const map = new Map<string, number>();
+      for (const [id, orders] of Object.entries(options.ordersByRestaurant ?? {})) map.set(id, sumRevenueCents(orders));
+      return map;
+    }),
+    getLastDeliveredAtByRestaurant: jest.fn().mockImplementation(async () => {
+      const map = new Map<string, Date>();
+      for (const [id, date] of Object.entries(options.lastDelivered ?? {})) if (date) map.set(id, date);
+      return map;
+    }),
   };
   // specs/0113-parametrizacao-faixas-cobranca — sem configuração salva nestes testes: usa o default.
   const billingSettingsRepository = { get: jest.fn().mockResolvedValue(DEFAULT_BILLING_SETTINGS), update: jest.fn() };
@@ -46,8 +63,15 @@ function setup(options: { restaurants: IRestaurant[]; ordersByRestaurant?: Recor
     findById: jest.fn().mockResolvedValue(null),
     findByRestaurantId: jest.fn().mockResolvedValue([]),
     findOpenByRestaurantId: jest.fn().mockResolvedValue([]),
+    // Achado de auditoria (2026-10-31) — "painel administrativo da plataforma (1 query por
+    // restaurante cadastrado)": `GET /platform/billing/restaurants` usa a agregação em lote
+    // abaixo (`buildBillingRows`), não mais `findOpenByRestaurantId` por restaurante.
+    getOpenSummaryByRestaurant: jest.fn().mockResolvedValue(new Map()),
   };
-  const annualSubscriptionRepository = { findActiveByRestaurantId: jest.fn().mockResolvedValue(null) };
+  const annualSubscriptionRepository = {
+    findActiveByRestaurantId: jest.fn().mockResolvedValue(null),
+    getActiveRestaurantIds: jest.fn().mockResolvedValue(new Set()),
+  };
   const billingPayerRepository = { findByRestaurantId: jest.fn().mockResolvedValue(null) };
   const subscriptionEventRepository = { append: jest.fn().mockResolvedValue({ event: {}, wasAlreadyRecorded: false }), listByObligation: jest.fn().mockResolvedValue([]) };
   const pixAvailabilityExceptionRepository = { setAdminOverride: jest.fn().mockResolvedValue({ id: 'exc-1' }) };
@@ -81,6 +105,62 @@ describe('PlatformController (specs/0106)', () => {
     const rows = json.mock.calls[0][1];
     expect(rows[0]).toMatchObject({ id: 'r-1', tier: 'pro', status: 'blocked', blocked: true, revenueCents: 220000, lastDeliveredAt: '2026-10-02T12:00:00.000Z' });
     expect(rows[1]).toMatchObject({ id: 'r-2', tier: 'free', status: 'ok', blocked: false, revenueCents: 0, lastDeliveredAt: null });
+  });
+
+  // Achado crítico de auditoria pré-produção (31/10/2026) — "painel da plataforma: 1 query
+  // completa por restaurante + soma em JS": independente de quantos restaurantes existam,
+  // GET /platform/restaurants chama as agregações em lote EXATAMENTE uma vez cada (nunca por
+  // restaurante) e nunca toca `findDeliveredByRestaurantBetween`/`findLastDeliveredAt`.
+  it('achado de auditoria (2026-10-31): GET /platform/restaurants agrega faturamento/último pedido de TODOS os restaurantes num só round-trip cada (nunca 1 por restaurante)', async () => {
+    const { orderRepository, routes } = setup({
+      restaurants: [buildRestaurant({ id: 'r-1' }), buildRestaurant({ id: 'r-2', name: 'Burger', slug: 'burger' }), buildRestaurant({ id: 'r-3', name: 'Sushi', slug: 'sushi' })],
+      ordersByRestaurant: { 'r-1': [delivered(1500)] },
+      lastDelivered: { 'r-1': new Date('2026-10-02T12:00:00Z') },
+    });
+    const json = jest.fn();
+
+    await run(routes['GET /platform/restaurants'], {}, { json });
+
+    expect(orderRepository.getMonthlyRevenueCentsByRestaurant).toHaveBeenCalledTimes(1);
+    expect(orderRepository.getLastDeliveredAtByRestaurant).toHaveBeenCalledTimes(1);
+    expect(orderRepository.findDeliveredByRestaurantBetween).not.toHaveBeenCalled();
+    expect(orderRepository.findLastDeliveredAt).not.toHaveBeenCalled();
+    const rows = json.mock.calls[0][1];
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toMatchObject({ id: 'r-1', revenueCents: 150000, lastDeliveredAt: '2026-10-02T12:00:00.000Z' });
+    expect(rows[2]).toMatchObject({ id: 'r-3', revenueCents: 0, lastDeliveredAt: null });
+  });
+
+  // Achado de auditoria pré-produção (31/10/2026) — "'Restaurantes da plataforma' não pagina
+  // nem filtra", mesmo padrão de `/restaurants/me/products`.
+  it('achado de auditoria (2026-10-31): com page/pageSize/search, pagina e filtra no servidor e manda o total real no header X-Total-Count', async () => {
+    const { restaurantRepository, routes } = setup({
+      restaurants: [buildRestaurant({ id: 'r-2', name: 'Burger', slug: 'burger' })],
+    });
+    restaurantRepository.listAllPage = jest.fn().mockResolvedValue({ items: [buildRestaurant({ id: 'r-2', name: 'Burger', slug: 'burger' })], total: 523 });
+    const json = jest.fn();
+    const header = jest.fn();
+
+    await run(routes['GET /platform/restaurants'], { query: { page: '2', pageSize: '25', search: 'burg' } }, { json, header });
+
+    expect(restaurantRepository.listAll).not.toHaveBeenCalled();
+    expect(restaurantRepository.listAllPage).toHaveBeenCalledWith({ skip: 25, limit: 25 }, 'burg');
+    expect(header).toHaveBeenCalledWith('X-Total-Count', '523');
+    const rows = json.mock.calls[0][1];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: 'r-2' });
+  });
+
+  it('achado de auditoria (2026-10-31): sem page/pageSize, GET continua devolvendo a lista inteira (sem header de total)', async () => {
+    const { restaurantRepository, routes } = setup({ restaurants: [buildRestaurant()] });
+    const json = jest.fn();
+    const header = jest.fn();
+
+    await run(routes['GET /platform/restaurants'], { query: {} }, { json, header });
+
+    expect(restaurantRepository.listAll).toHaveBeenCalledTimes(1);
+    expect(restaurantRepository.listAllPage).not.toHaveBeenCalled();
+    expect(header).not.toHaveBeenCalled();
   });
 
   it('AC-3: bloquear grava status blocked e mantém faixa e ciclo', async () => {
@@ -135,10 +215,9 @@ describe('PlatformController (specs/0106)', () => {
   describe('visão administrativa da assinatura (REQ-31/REQ-32)', () => {
     it('REQ-31: GET /platform/billing/restaurants mostra dívida em aberto e pendência técnica', async () => {
       const { routes, obligationRepository } = setup({ restaurants: [buildRestaurant({ id: 'r-1' })] });
-      obligationRepository.findOpenByRestaurantId.mockResolvedValue([
-        { id: 'ob-1', amountCents: 7990, status: 'overdue' },
-        { id: 'ob-2', amountCents: 7990, status: 'issue_failed' },
-      ]);
+      obligationRepository.getOpenSummaryByRestaurant.mockResolvedValue(
+        new Map([['r-1', { openObligationsCount: 2, totalDueCents: 15980, hasPendingTechnicalIssue: true }]]),
+      );
       const json = jest.fn();
 
       await run(routes['GET /platform/billing/restaurants'], {}, { json });
@@ -146,6 +225,31 @@ describe('PlatformController (specs/0106)', () => {
       expect(json).toHaveBeenCalledWith(200, [
         expect.objectContaining({ id: 'r-1', openObligationsCount: 2, totalDueCents: 15980, hasPendingTechnicalIssue: true }),
       ]);
+    });
+
+    // Achado de auditoria pré-produção (31/10/2026) — "painel administrativo da plataforma (1
+    // query por restaurante cadastrado)": independente de quantos restaurantes existam,
+    // GET /platform/billing/restaurants chama as agregações em lote EXATAMENTE uma vez cada
+    // (nunca por restaurante) e nunca toca `findOpenByRestaurantId`/`findActiveByRestaurantId`.
+    it('achado de auditoria (2026-10-31): GET /platform/billing/restaurants agrega dívida/pendência de TODOS os restaurantes num só round-trip cada', async () => {
+      const { routes, obligationRepository, annualSubscriptionRepository } = setup({
+        restaurants: [buildRestaurant({ id: 'r-1' }), buildRestaurant({ id: 'r-2', name: 'Burger', slug: 'burger' })],
+      });
+      obligationRepository.getOpenSummaryByRestaurant.mockResolvedValue(
+        new Map([['r-1', { openObligationsCount: 1, totalDueCents: 5000, hasPendingTechnicalIssue: false }]]),
+      );
+      const json = jest.fn();
+
+      await run(routes['GET /platform/billing/restaurants'], {}, { json });
+
+      expect(obligationRepository.getOpenSummaryByRestaurant).toHaveBeenCalledTimes(1);
+      expect(annualSubscriptionRepository.getActiveRestaurantIds).toHaveBeenCalledTimes(1);
+      expect(obligationRepository.findOpenByRestaurantId).not.toHaveBeenCalled();
+      expect(annualSubscriptionRepository.findActiveByRestaurantId).not.toHaveBeenCalled();
+      const rows = json.mock.calls[0][1];
+      expect(rows).toHaveLength(2);
+      expect(rows[0]).toMatchObject({ id: 'r-1', totalDueCents: 5000 });
+      expect(rows[1]).toMatchObject({ id: 'r-2', totalDueCents: 0, openObligationsCount: 0, hasPendingTechnicalIssue: false });
     });
 
     it('REQ-34/AC-25: cycle "annual" legado sem IAnnualSubscription aparece como pendência (hasLegacyAnnualConflict)', async () => {

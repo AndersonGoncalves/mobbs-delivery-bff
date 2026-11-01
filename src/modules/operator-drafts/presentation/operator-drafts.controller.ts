@@ -17,7 +17,9 @@ import { validateCoupon } from '../../coupons/domain/services/coupon-validator';
 import { IProductRepository } from '../../catalog/domain/repositories/product.repository.interface';
 import { computeOrderPricing } from '../../orders/domain/compute-order-pricing';
 import { resolveInitialOrderStatus } from '../../orders/domain/resolve-initial-order-status';
-import { OrderType, PaymentMethod } from '../../orders/domain/entities/order.entity';
+import { findOrderItemPriceMismatches } from '../../orders/domain/validate-order-item-price';
+import { IProduct } from '../../catalog/domain/entities/product.entity';
+import { IOrderItem, OrderType, PaymentMethod } from '../../orders/domain/entities/order.entity';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { StockReservationService } from '../../orders/domain/services/stock-reservation.service';
 import { resolveDeliveryFee } from '../../orders/presentation/orders.controller';
@@ -71,7 +73,7 @@ export class OperatorDraftsController extends BaseRouter {
     private readonly restaurantOperatorMiddleware: AsyncHandler,
     stockMovementRepository?: IStockMovementRepository,
     rawMaterialRepository?: IRawMaterialRepository,
-    productRepository?: IProductRepository,
+    private readonly productRepository?: IProductRepository,
   ) {
     super();
     if (productRepository && rawMaterialRepository && stockMovementRepository) {
@@ -128,7 +130,12 @@ export class OperatorDraftsController extends BaseRouter {
       const { phone } = parseBody(customerByPhoneQuerySchema, req.query);
       const normalized = normalizePhoneNumber(phone);
       const customer = await this.customerRepository.findByPhone(normalized);
-      const blocked = await this.blockedCustomerRepository.isBlocked(req.restaurantId!, normalized);
+      // Pedido explícito do usuário (achado real) — mesmo raciocínio de `OrdersController`: o
+      // liga/desliga do restaurante (`customerBlockingEnabled`) precisa governar se a lista de
+      // bloqueados é sequer consultada também aqui no PDV, não só no checkout do app do cliente.
+      const restaurant = await this.restaurantRepository.findById(req.restaurantId!);
+      const blocked = !!restaurant?.customerBlockingEnabled
+        && (await this.blockedCustomerRepository.isBlocked(req.restaurantId!, normalized));
       if (!customer) {
         res.json(200, { customer: null, addresses: [], blocked });
         return;
@@ -136,7 +143,18 @@ export class OperatorDraftsController extends BaseRouter {
       // REQ-15 — só mostra endereços de um cliente que já pediu neste restaurante (mesmo
       // raciocínio de isolamento de `CustomersSummaryController`), nunca de qualquer `customerId`.
       const ownOrders = await this.orderRepository.findManyByCustomerAndRestaurant(customer.id, req.restaurantId!);
-      const addresses = ownOrders.length > 0 ? await this.addressRepository.listByCustomer(customer.id) : [];
+      // Achado crítico de auditoria (31/10/2026) — "findByPhone global permite correlação de PII
+      // entre restaurantes": `customer` vem de uma busca GLOBAL por telefone — sem a guarda de
+      // relação abaixo, o nome/telefone de QUALQUER pessoa cadastrada (inclusive só pelo app, em
+      // outro restaurante) aparecia pra um operador que nunca atendeu esse cliente, só por digitar
+      // o número. Sem relação própria (nenhum pedido aqui nem cadastro manual aqui), trata como
+      // "não encontrado" — mesmo efeito que já existia só pros endereços, agora também pro nome.
+      const hasRelationship = ownOrders.length > 0 || customer.createdByRestaurantId === req.restaurantId;
+      if (!hasRelationship) {
+        res.json(200, { customer: null, addresses: [], blocked });
+        return;
+      }
+      const addresses = await this.addressRepository.listByCustomer(customer.id);
       res.json(200, { customer: { id: customer.id, name: customer.name, phone: customer.phone }, addresses, blocked });
     });
 
@@ -148,7 +166,20 @@ export class OperatorDraftsController extends BaseRouter {
       const normalized = normalizePhoneNumber(payload.phone);
       const existing = await this.customerRepository.findByPhone(normalized);
       if (existing) {
-        res.json(200, { id: existing.id, name: existing.name, phone: existing.phone });
+        const ownOrders = await this.orderRepository.findManyByCustomerAndRestaurant(existing.id, req.restaurantId!);
+        const hasRelationship = ownOrders.length > 0 || existing.createdByRestaurantId === req.restaurantId;
+        if (hasRelationship) {
+          res.json(200, { id: existing.id, name: existing.name, phone: existing.phone });
+          return;
+        }
+        // Achado crítico de auditoria (31/10/2026) — "findByPhone global permite correlação de
+        // PII entre restaurantes": mesmo telefone já existe globalmente (outro restaurante ou só
+        // o app), mas nunca teve relação com ESTE restaurante — nunca devolve o nome real
+        // cadastrado em outro lugar. Reaproveita o mesmo `id` (telefone é o identificador real da
+        // pessoa, evita duplicar o cliente), estabelece a relação com este restaurante agora, mas
+        // devolve o nome que o próprio operador digitou, nunca o de outro contexto.
+        const linked = await this.customerRepository.createByRestaurant(req.restaurantId!, payload.name, normalized);
+        res.json(200, { id: linked.id, name: payload.name, phone: linked.phone });
         return;
       }
       const created = await this.customerRepository.createStandalone(payload.name, normalized);
@@ -199,7 +230,20 @@ export class OperatorDraftsController extends BaseRouter {
       paymentMethod: current.paymentMethod,
     });
 
-    if (current.customerPhone) {
+    // Achado crítico da auditoria pré-produção (31/10/2026) — "preço do pedido nunca é
+    // revalidado contra o catálogo real": diferente de `OrdersController`/`TotemController`, o
+    // PDV salva o rascunho livremente via PUT (tela de montagem, sem essa checagem — não há
+    // dinheiro em jogo ainda) e só valida de verdade aqui no finalize, pouco antes do claim
+    // atômico. `productRepository` é opcional só pra não quebrar testes que não o passam
+    // (mesmo padrão já usado acima pro `StockReservationService`); em produção (`main.ts`) é
+    // sempre injetado, então esta checagem sempre roda de verdade.
+    if (this.productRepository) {
+      await this.rejectPriceMismatches(restaurantId, current.items);
+    }
+
+    // Pedido explícito do usuário (achado real) — mesmo raciocínio do GET .../customers acima:
+    // sem `customerBlockingEnabled`, nem consulta a lista de bloqueados.
+    if (restaurant.customerBlockingEnabled && current.customerPhone) {
       const normalizedPhone = normalizePhoneNumber(current.customerPhone);
       if (await this.blockedCustomerRepository.isBlocked(restaurantId, normalizedPhone)) {
         throw new ForbiddenError('Cliente bloqueado neste restaurante');
@@ -299,6 +343,27 @@ export class OperatorDraftsController extends BaseRouter {
       // desfaz o claim pra o operador poder tentar de novo com os mesmos dados.
       await this.operatorDraftRepository.rollbackClaim(restaurantId, operatorId, slot);
       throw error;
+    }
+  }
+
+  /** Mesmo papel de `OrdersController.resolveItemsLinkedProducts`/`TotemController` (ver
+   * comentário gêmeo lá) — busca cada `Product` só uma vez e rejeita (400) se `unitPrice` de
+   * algum item não bater com o preço recalculado do catálogo atual. Filtra por `restaurantId`
+   * pelo mesmo motivo: `productRepository.findById` busca por id GLOBAL, sem isso um
+   * `productId` de outro restaurante passaria como "real". Diferente das outras duas rotas, o
+   * PDV não precisa do retorno (não resolve `linkedProductId`/`rawMaterialId` aqui — reserva de
+   * estoque do PDV é tratada separadamente por `stockReservationService.reserveOrderItems`). */
+  private async rejectPriceMismatches(restaurantId: string, items: IOrderItem[]): Promise<void> {
+    const productIds = [...new Set(items.map((item) => item.productId))];
+    const products = await Promise.all(productIds.map((id) => this.productRepository!.findById(id)));
+    const productsById = new Map<string, IProduct>(
+      products.filter((product): product is IProduct => product !== null && product.restaurantId === restaurantId).map((product) => [product.id, product]),
+    );
+
+    const mismatches = findOrderItemPriceMismatches(items, productsById);
+    if (mismatches.length > 0) {
+      const description = mismatches.map((mismatch) => `${mismatch.productName} (enviado R$ ${mismatch.sentUnitPrice})`).join(', ');
+      throw new BadRequestError(`Preço divergente do catálogo atual: ${description}`);
     }
   }
 

@@ -78,3 +78,24 @@ describe('SubscriptionObligationMongooseRepository.upsertAnnual (specs/0175 — 
     );
   });
 });
+
+// Achado de auditoria pré-produção (31/10/2026) — "painel administrativo da plataforma (1
+// query por restaurante cadastrado)".
+describe('SubscriptionObligationMongooseRepository.getOpenSummaryByRestaurant (achado de auditoria 2026-10-31)', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('agrega dívida/pendência técnica de TODOS os restaurantes num só round-trip', async () => {
+    const aggregateSpy = jest.spyOn(SubscriptionObligationModel, 'aggregate').mockResolvedValue([
+      { _id: 'r-1', openObligationsCount: 2, totalDueCents: 15980, hasPendingTechnicalIssue: true },
+      { _id: 'r-2', openObligationsCount: 1, totalDueCents: 5000, hasPendingTechnicalIssue: false },
+    ] as never);
+    const repository = new SubscriptionObligationMongooseRepository();
+
+    const result = await repository.getOpenSummaryByRestaurant();
+
+    expect(aggregateSpy).toHaveBeenCalledTimes(1);
+    expect(result.get('r-1')).toEqual({ openObligationsCount: 2, totalDueCents: 15980, hasPendingTechnicalIssue: true });
+    expect(result.get('r-2')).toEqual({ openObligationsCount: 1, totalDueCents: 5000, hasPendingTechnicalIssue: false });
+    expect(result.has('r-3')).toBe(false);
+  });
+});

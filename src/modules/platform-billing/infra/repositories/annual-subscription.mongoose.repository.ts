@@ -23,6 +23,15 @@ export class AnnualSubscriptionMongooseRepository implements IAnnualSubscription
     return doc ? toEntity(doc) : null;
   }
 
+  // Achado de auditoria pré-produção (31/10/2026) — "painel administrativo da plataforma (1
+  // query por restaurante cadastrado)": uma só query cobrindo TODOS os restaurantes com
+  // assinatura anual ATIVA, em vez de `findActiveByRestaurantId` por restaurante
+  // (`PlatformController.buildBillingRow`).
+  async getActiveRestaurantIds(): Promise<Set<string>> {
+    const docs = await AnnualSubscriptionModel.find({ renewalActive: true }, { restaurantId: 1 }).lean<{ restaurantId: string }[]>();
+    return new Set(docs.map((doc) => doc.restaurantId));
+  }
+
   async findByRestaurantId(restaurantId: string): Promise<IAnnualSubscription[]> {
     const docs = await AnnualSubscriptionModel.find({ restaurantId }).sort({ joinedAt: -1 }).lean<AnnualSubscriptionLeanDocument[]>();
     return docs.map(toEntity);

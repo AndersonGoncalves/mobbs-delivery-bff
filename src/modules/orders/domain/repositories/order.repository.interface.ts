@@ -80,6 +80,22 @@ export interface IOrderRepository {
   addTablePayment(id: string, restaurantId: string, payment: NonNullable<IOrder['tablePayments']>[number]): Promise<IOrder | null>;
 
   /**
+   * Achado crítico da auditoria pré-produção (31/10/2026) — "fechar comanda ... vale desenhar a
+   * idempotência certa desde o início": UMA chamada atômica (filtro + `$push`/`$set` num único
+   * `findOneAndUpdate`, mesmo documento) em vez da sequência de 3 escritas separadas que o
+   * código antigo fazia (pagamento por pagamento, depois `tableClosedAt`, depois `status`) — só
+   * UMA chamada concorrente (seja ela um retry com a mesma `clientRequestId` ou um fechamento
+   * genuinamente concorrente de outro operador) consegue casar o filtro `status não aberto` e
+   * fechar de verdade; todas as outras recebem `null` (`TableOrderService.closeOrder` decide
+   * depois se é uma repetição segura ou um conflito real).
+   */
+  closeTableOrder(
+    id: string,
+    restaurantId: string,
+    input: { payments: NonNullable<IOrder['tablePayments']>; closedAt: string; clientRequestId: string; changedBy: string },
+  ): Promise<IOrder | null>;
+
+  /**
    * specs/0008-acompanhamento-vendas REQ-1 — pedidos em andamento (exclui `entregue`/
    * `cancelado`) do restaurante do operador logado, mais antigo primeiro (fila de atendimento —
    * diferente de `findManyByCustomer`, que é histórico e por isso mais recente primeiro).
@@ -104,6 +120,19 @@ export interface IOrderRepository {
 
   /** specs/0106 REQ-2 — data do pedido entregue mais recente do restaurante (ou `null`). */
   findLastDeliveredAt(restaurantId: string): Promise<Date | null>;
+
+  /**
+   * Achado crítico de auditoria pré-produção (31/10/2026) — "painel da plataforma: 1 query
+   * completa por restaurante + soma em JS": `PlatformController.buildRow` chamava
+   * `findDeliveredByRestaurantBetween` (pedidos completos, só pra somar `total` em JS) + `findLastDeliveredAt`
+   * — DUAS queries por restaurante, escalando com o número de restaurantes cadastrados na
+   * plataforma. As duas agregações abaixo cobrem TODOS os restaurantes de uma vez, num só
+   * round-trip ao Mongo cada. `revenueCents` arredonda cada pedido antes de somar (`$round` no
+   * pipeline, mesmo papel de `Math.round` por pedido em `sumRevenueCents` — nunca soma os
+   * `total` crus e arredonda só no final, que divergiria em cascata com muitos pedidos).
+   */
+  getMonthlyRevenueCentsByRestaurant(start: Date, end: Date): Promise<Map<string, number>>;
+  getLastDeliveredAtByRestaurant(): Promise<Map<string, Date>>;
 
   /** REQ-4 — agregado por período, calculado on demand, nunca persistido. */
   getSalesSummary(restaurantId: string, periodStart: Date, periodEnd: Date): Promise<ISalesSummary>;
