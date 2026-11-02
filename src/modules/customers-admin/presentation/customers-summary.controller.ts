@@ -1,4 +1,5 @@
 import type { Request, Response, Server } from 'restify';
+import { NotFoundError } from 'restify-errors';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
@@ -7,11 +8,17 @@ import { requireOperatorRole } from '../../../shared/http/require-operator-role.
 import { normalizePhoneNumber } from '../../../shared/utils/normalize-phone-number';
 import { resolvePagination } from '../../../shared/http/pagination';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
+import { IAddress, ICustomer } from '../../customers/domain/entities/customer.entity';
 import { IAddressRepository } from '../../customers/domain/repositories/address.repository.interface';
 import { ICustomerRepository } from '../../customers/domain/repositories/customer.repository.interface';
+import { saveAddressSchema } from '../../customers/presentation/customers.schemas';
 import { ICustomerSummaryRepository } from '../domain/repositories/customer-summary.repository.interface';
 import { CustomerBalanceService } from '../../customer-balance/domain/services/customer-balance.service';
-import { createCustomerByRestaurantSchema, customersSummaryQuerySchema } from './customers-summary.schemas';
+import {
+  createCustomerByRestaurantSchema,
+  customersSummaryQuerySchema,
+  updateCustomerByRestaurantSchema,
+} from './customers-summary.schemas';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
@@ -49,6 +56,15 @@ export class CustomersSummaryController extends BaseRouter {
       requireOperatorRole('dono', 'gerente', 'financeiro'),
     ];
 
+    // Pedido explícito do usuário — editar dados do cliente e incluir/alterar endereços pela
+    // retaguarda; mesmo papel (mais restrito que a leitura acima, que inclui financeiro) de
+    // `POST /restaurants/me/customers` (cadastro manual), nunca financeiro.
+    const writeAccess: AsyncHandler[] = [
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('dono', 'gerente'),
+    ];
+
     // (achado real, pedido explícito do usuário) — "NOVO" em Clientes: cadastro manual ANTES de
     // qualquer pedido, mesmo papel de escrita de `CustomerPaymentMethodsController`
     // (dono/gerente — mais restrito que a leitura acima, que inclui financeiro).
@@ -63,6 +79,22 @@ export class CustomersSummaryController extends BaseRouter {
         res.json(201, { customerId: customer.id, name: customer.name, phone: customer.phone });
       },
     );
+
+    // Pedido explícito do usuário — editar nome/telefone de um cliente já existente deste
+    // restaurante (o mesmo cadastrado manualmente acima ou um cliente que já pediu aqui).
+    // `upsertProfile` nunca cria de novo aqui — `ensureCustomerBelongsToRestaurant` já garantiu
+    // que o documento existe e pertence a este restaurante antes de chegar aqui.
+    application.put('/restaurants/me/customers-summary/:customerId', ...writeAccess, async (req: Request, res: Response) => {
+      const existing = await this.ensureCustomerBelongsToRestaurant(req.params.customerId, req.restaurantId!);
+      const { name, phone } = parseBody(updateCustomerByRestaurantSchema, req.body);
+      const customer = await this.customerRepository.upsertProfile(req.params.customerId, {
+        name: name ?? existing.name,
+        email: existing.email,
+        phone: phone ? normalizePhoneNumber(phone) : existing.phone,
+        document: existing.document,
+      });
+      res.json(200, { customerId: customer.id, name: customer.name, phone: customer.phone });
+    });
 
     // AC-1/AC-2/AC-4
     // Achado de auditoria pré-produção (31/10/2026) — "customers-summary sem paginação, agrega o
@@ -125,6 +157,31 @@ export class CustomersSummaryController extends BaseRouter {
       },
     );
 
+    // Pedido explícito do usuário — incluir endereço novo pro cliente, pela retaguarda.
+    application.post(
+      '/restaurants/me/customers-summary/:customerId/addresses',
+      ...writeAccess,
+      async (req: Request, res: Response) => {
+        await this.ensureCustomerBelongsToRestaurant(req.params.customerId, req.restaurantId!);
+        const input = parseBody(saveAddressSchema, req.body);
+        const address = await this.addressRepository.create(req.params.customerId, input);
+        res.json(201, address);
+      },
+    );
+
+    // Pedido explícito do usuário — alterar um endereço já cadastrado do cliente, pela retaguarda.
+    application.put(
+      '/restaurants/me/customers-summary/:customerId/addresses/:addressId',
+      ...writeAccess,
+      async (req: Request, res: Response) => {
+        await this.ensureCustomerBelongsToRestaurant(req.params.customerId, req.restaurantId!);
+        await this.findCustomerAddress(req.params.addressId, req.params.customerId);
+        const input = parseBody(saveAddressSchema, req.body);
+        const address = await this.addressRepository.update(req.params.addressId, input);
+        res.json(200, address);
+      },
+    );
+
     // specs/0131-cashback-app REQ-8 / specs/0132-programa-fidelidade-app REQ-6 — saldo +
     // histórico + progresso de fidelidade do cliente neste restaurante. Mesma checagem de posse
     // da rota de endereços acima (nunca por `customerId` adivinhado).
@@ -144,5 +201,29 @@ export class CustomersSummaryController extends BaseRouter {
         res.json(200, { balance: balance.balance, loyaltyStampCount: balance.loyaltyStampCount, transactions });
       },
     );
+  }
+
+  /**
+   * Pedido explícito do usuário — mesma checagem de posse já usada (inline) em "ver
+   * endereços"/"ver saldo" acima, extraída aqui pra reusar nas rotas de escrita, mas mais
+   * completa: cliente cadastrado manualmente (`createdByRestaurantId`) e ainda sem nenhum pedido
+   * também pode ser editado — as rotas de leitura acima não cobrem esse caso (só checam
+   * `findManyByCustomerAndRestaurant`), comportamento pré-existente não alterado aqui.
+   */
+  private async ensureCustomerBelongsToRestaurant(customerId: string, restaurantId: string): Promise<ICustomer> {
+    const customer = await this.customerRepository.findById(customerId);
+    if (!customer) throw new NotFoundError('Cliente não encontrado');
+    if (customer.createdByRestaurantId === restaurantId) return customer;
+    const orders = await this.orderRepository.findManyByCustomerAndRestaurant(customerId, restaurantId);
+    if (orders.length === 0) throw new NotFoundError('Cliente não encontrado');
+    return customer;
+  }
+
+  private async findCustomerAddress(addressId: string, customerId: string): Promise<IAddress> {
+    const address = await this.addressRepository.findById(addressId);
+    if (!address || address.customerId !== customerId) {
+      throw new NotFoundError('Endereço não encontrado');
+    }
+    return address;
   }
 }
