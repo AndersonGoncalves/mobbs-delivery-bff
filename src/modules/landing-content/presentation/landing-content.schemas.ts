@@ -10,6 +10,8 @@ const itemId = z.string().trim().min(1).max(64).optional();
 const featureSchema = z.object({
   id: itemId,
   text: z.string().trim().min(1, 'Informe o texto da funcionalidade').max(200),
+  // Pedido explícito do usuário — agrupa funcionalidades relacionadas na home; vazio = sem grupo.
+  group: z.string().trim().max(80).default(''),
 }).strict();
 
 const howItWorksSchema = z.object({

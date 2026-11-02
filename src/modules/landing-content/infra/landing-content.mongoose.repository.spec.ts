@@ -23,10 +23,26 @@ describe('LandingContentMongooseRepository - 0183', () => {
     jest.spyOn(query, 'lean').mockResolvedValue(doc.toObject());
     jest.spyOn(LandingContentModel, 'findById').mockReturnValue(query);
     const result = await new LandingContentMongooseRepository().get();
-    expect(result.features).toEqual([{ id: 'b', text: 'B' }, { id: 'a', text: 'A' }]);
+    expect(result.features).toEqual([{ id: 'b', text: 'B', group: '' }, { id: 'a', text: 'A', group: '' }]);
     expect(result.clients[0].linkUrl).toBe('https://bsdelivery.com.br/domino');
     expect(result.company).toEqual({ ...emptyLandingContent().company, legalName: 'BS' });
     expect(result).not.toHaveProperty('_id');
+  });
+
+  // Pedido explícito do usuário — agrupa funcionalidades relacionadas na home.
+  it('lê o grupo de cada funcionalidade quando presente', async () => {
+    const query = LandingContentModel.findById(LANDING_CONTENT_SINGLETON_ID);
+    const doc = new LandingContentModel({
+      _id: 'singleton',
+      features: [{ id: 'a', text: 'Pix automatizado', group: 'Pagamento' }, { id: 'b', text: 'Sem grupo' }],
+    });
+    jest.spyOn(query, 'lean').mockResolvedValue(doc.toObject());
+    jest.spyOn(LandingContentModel, 'findById').mockReturnValue(query);
+    const result = await new LandingContentMongooseRepository().get();
+    expect(result.features).toEqual([
+      { id: 'a', text: 'Pix automatizado', group: 'Pagamento' },
+      { id: 'b', text: 'Sem grupo', group: '' },
+    ]);
   });
 
   // specs/0186 — documento salvo antes das configurações visuais continua legível, com padrões vazios.

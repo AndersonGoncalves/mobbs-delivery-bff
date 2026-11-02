@@ -2,6 +2,14 @@
 export interface LandingFeature {
   id: string;
   text: string;
+  /**
+   * Pedido explícito do usuário — agrupa funcionalidades relacionadas na home (ex. "Pagamento",
+   * "Fidelização e marketing"). Opcional/vazio = sem grupo, mesmo comportamento de antes (lista
+   * plana). Itens do mesmo grupo precisam estar ADJACENTES na lista pra aparecerem juntos — a
+   * ordem de exibição continua sendo a ordem do array (REQ já existente), não reordenado por
+   * grupo no servidor nem no cliente.
+   */
+  group?: string;
 }
 
 export type LandingMediaType = 'youtube' | 'image';
