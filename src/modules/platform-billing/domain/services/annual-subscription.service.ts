@@ -51,7 +51,9 @@ export class AnnualSubscriptionService {
       tier,
       settingsVersionId: settingsVersion.id,
       amountCents,
-      dueDate: addDaysCorridos(joinedAt, 10),
+      // Ajuste explícito do usuário (02/11/2026) — vencimento do Pix da adesão anual era 10 dias
+      // corridos após a adesão; passou a ser 5.
+      dueDate: addDaysCorridos(joinedAt, 5),
     });
 
     // REQ-17/AC-13 — trecho mensal de 01 até a véspera da adesão (0 dias se aderir no dia 1).
@@ -99,7 +101,9 @@ export class AnnualSubscriptionService {
       tier,
       settingsVersionId: settingsVersion.id,
       amountCents,
-      dueDate: addDaysCorridos(nextAnniversary, 10),
+      // Ajuste explícito do usuário (02/11/2026) — mesmo prazo de 5 dias da adesão, também na
+      // renovação.
+      dueDate: addDaysCorridos(nextAnniversary, 5),
     });
   }
 

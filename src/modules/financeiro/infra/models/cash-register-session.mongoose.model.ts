@@ -19,6 +19,9 @@ const cashRegisterSessionSchema = new Schema(
     // specs/0118-controle-caixa-automatico-redes-sociais REQ-3/REQ-4/REQ-5.
     openedAutomatically: { type: Boolean },
     closedAutomatically: { type: Boolean },
+    // Ajuste explícito do usuário (02/11/2026) — auditoria de reabertura (só dono).
+    reopenedBy: { type: String },
+    reopenedAt: { type: Date },
   },
   { _id: false, timestamps: false },
 );

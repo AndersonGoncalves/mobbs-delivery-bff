@@ -144,13 +144,30 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
     const MONDAY_9AM_BRT = new Date('2026-10-12T12:00:00.000Z'); // segunda, 09:00 em Brasília (UTC-3)
     const MONDAY_11PM_BRT = new Date('2026-10-13T02:00:00.000Z'); // segunda, 23:00 em Brasília
 
-    it('0176: abre o caixa da data de hoje mesmo com caixa de ontem pendente', async () => {
+    it('0176: abre o caixa da data de hoje quando não há nenhum caixa pendente de outra data', async () => {
       const { service, cashRegisterRepository } = setup({
         cashRegisterRepository: { findSessionByDate: jest.fn().mockResolvedValue(null) },
       });
       await service.ensureAutomaticSchedule('r-1', MONDAY_9AM_BRT);
       expect(cashRegisterRepository.open).toHaveBeenCalledWith('r-1', 0, 'automatico', true, MONDAY_9AM_BRT);
       expect(cashRegisterRepository.close).not.toHaveBeenCalled();
+    });
+
+    // Ajuste explícito do usuário (02/11/2026) — revogou o comportamento antigo (specs/0176):
+    // agora NUNCA abre a data de hoje, nem automaticamente, enquanto um caixa de uma data
+    // anterior segue aberto sem fechamento. `pendingSessions` (já devolvido por
+    // `GET .../cash-register/open`) é quem avisa o operador a fechar o caixa antigo primeiro.
+    it('ajuste 02/11/2026: NÃO abre o caixa de hoje automaticamente enquanto houver um caixa de outra data ainda aberto', async () => {
+      const { service, cashRegisterRepository } = setup({
+        cashRegisterRepository: {
+          findSessionByDate: jest.fn().mockResolvedValue(null),
+          findPendingSessions: jest.fn().mockResolvedValue([buildSession({ id: 'old', businessDate: '2026-10-11', status: 'aberto' })]),
+        },
+      });
+
+      await expect(service.ensureAutomaticSchedule('r-1', MONDAY_9AM_BRT)).resolves.toBeUndefined();
+
+      expect(cashRegisterRepository.open).not.toHaveBeenCalled();
     });
 
     it('0176: data já fechada não é reaberta automaticamente', async () => {

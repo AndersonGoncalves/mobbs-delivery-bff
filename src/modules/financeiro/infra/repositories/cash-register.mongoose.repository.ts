@@ -30,6 +30,8 @@ interface SessionLeanDocument {
   closedBy?: string;
   openedAutomatically?: boolean;
   closedAutomatically?: boolean;
+  reopenedBy?: string;
+  reopenedAt?: Date;
 }
 
 interface MovementLeanDocument {
@@ -59,6 +61,8 @@ function toSessionEntity(doc: SessionLeanDocument): ICashRegisterSession {
     closedBy: doc.closedBy,
     openedAutomatically: doc.openedAutomatically,
     closedAutomatically: doc.closedAutomatically,
+    reopenedBy: doc.reopenedBy,
+    reopenedAt: doc.reopenedAt?.toISOString(),
   };
 }
 
@@ -112,6 +116,16 @@ export class CashRegisterMongooseRepository implements ICashRegisterRepository {
     const businessDate = cashRegisterDate(now);
     if (await this.findSessionByDate(restaurantId, businessDate)) {
       throw new ConflictError('Já existe um caixa para esta data');
+    }
+    // Ajuste explícito do usuário (02/11/2026) — nunca abrir uma data nova (manual ou automático)
+    // enquanto uma data anterior segue aberta (sem fechamento); `findPendingSessions` só pode
+    // conter sessões de outra data aqui (`findSessionByDate` acima já confirmou que hoje não tem
+    // nenhuma).
+    const stuckOpenSession = (await this.findPendingSessions(restaurantId))[0];
+    if (stuckOpenSession) {
+      throw new ConflictError(
+        `Existe um caixa aberto desde ${stuckOpenSession.businessDate ?? cashRegisterDate(new Date(stuckOpenSession.openedAt))} — feche-o antes de abrir um novo.`,
+      );
     }
     try {
       const doc = await CashRegisterSessionModel.create({
@@ -205,6 +219,23 @@ export class CashRegisterMongooseRepository implements ICashRegisterRepository {
       calculatedBalance,
       difference: countedValue - calculatedBalance,
     };
+  }
+
+  /** Ajuste explícito do usuário (02/11/2026) — reabre um caixa `fechado`: volta `status:
+   * 'aberto'`, limpa `closedAt`/`closingBalance`/`closedAutomatically` (a próxima conferência os
+   * redefine) e registra `reopenedBy`/`reopenedAt`. Filtro atômico `status: 'fechado'` evita
+   * reabrir duas vezes em paralelo. */
+  async reopen(sessionId: string, reopenedBy?: string, now: Date = new Date()): Promise<ICashRegisterSession> {
+    const doc = await CashRegisterSessionModel.findOneAndUpdate(
+      { _id: sessionId, status: 'fechado' },
+      {
+        $set: { status: 'aberto', reopenedBy, reopenedAt: now },
+        $unset: { closedAt: '', closingBalance: '', closedAutomatically: '' },
+      },
+      { new: true },
+    ).lean<SessionLeanDocument>();
+    if (!doc) throw new ConflictError('O caixa não está fechado — atualize e confira novamente');
+    return toSessionEntity(doc);
   }
 
   /** specs/0118-controle-caixa-automatico-redes-sociais REQ-10. */

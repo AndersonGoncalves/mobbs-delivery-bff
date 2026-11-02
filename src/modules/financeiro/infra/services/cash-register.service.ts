@@ -134,6 +134,13 @@ export class CashRegisterService implements ICashRegisterService {
     if (!withinToday && !withinPreviousNight) return;
     const session = await this.cashRegisterRepository.findSessionByDate(restaurantId, cashRegisterDate(now));
     if (!session) {
+      // Ajuste explícito do usuário (02/11/2026) — nunca abre a data atual (nem automático, nem
+      // manual) enquanto uma data anterior segue aberta sem fechamento; checa ANTES de chamar
+      // `open()` pra nunca propagar o `ConflictError` do repositório daqui (essa função roda em
+      // toda leitura de `GET .../open`, nunca pode quebrar a página só por haver pendência —
+      // `pendingSessions`, já devolvido nessa mesma resposta, é quem avisa o operador).
+      const hasStuckOpenSession = (await this.cashRegisterRepository.findPendingSessions(restaurantId)).length > 0;
+      if (hasStuckOpenSession) return;
       try {
         await this.cashRegisterRepository.open(restaurantId, 0, AUTOMATIC_ACTOR, true, now);
       } catch (error) {

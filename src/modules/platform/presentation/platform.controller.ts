@@ -82,7 +82,11 @@ export class PlatformController extends BaseRouter {
     const orders = await this.orderRepository.findDeliveredByRestaurantBetween(restaurant.id, start, end);
     const revenueCents = sumRevenueCents(orders);
     const lastDelivered = await this.orderRepository.findLastDeliveredAt(restaurant.id);
-    return this.toRow(restaurant, month, settings, revenueCents, lastDelivered);
+    // Ajuste explícito do usuário (02/11/2026) — mesmo achado do `cycle` em `buildRows`/`toRow`
+    // abaixo: aqui é só 1 restaurante, então `findActiveByRestaurantId` direto em vez do Set em
+    // lote.
+    const isAnnual = Boolean(await this.annualSubscriptionRepository.findActiveByRestaurantId(restaurant.id));
+    return this.toRow(restaurant, month, settings, revenueCents, lastDelivered, isAnnual);
   }
 
   // Achado crítico de auditoria pré-produção (31/10/2026) — "painel da plataforma: 1 query
@@ -94,12 +98,20 @@ export class PlatformController extends BaseRouter {
   // N+1 não existe.
   private async buildRows(restaurants: IRestaurant[], month: string, settings: BillingSettings): Promise<PlatformRestaurantRow[]> {
     const { start, end } = monthRange(month);
-    const [revenueByRestaurant, lastDeliveredByRestaurant] = await Promise.all([
+    const [revenueByRestaurant, lastDeliveredByRestaurant, activeAnnualRestaurantIds] = await Promise.all([
       this.orderRepository.getMonthlyRevenueCentsByRestaurant(start, end),
       this.orderRepository.getLastDeliveredAtByRestaurant(),
+      this.annualSubscriptionRepository.getActiveRestaurantIds(),
     ]);
     return restaurants.map((restaurant) =>
-      this.toRow(restaurant, month, settings, revenueByRestaurant.get(restaurant.id) ?? 0, lastDeliveredByRestaurant.get(restaurant.id) ?? null),
+      this.toRow(
+        restaurant,
+        month,
+        settings,
+        revenueByRestaurant.get(restaurant.id) ?? 0,
+        lastDeliveredByRestaurant.get(restaurant.id) ?? null,
+        activeAnnualRestaurantIds.has(restaurant.id),
+      ),
     );
   }
 
@@ -109,6 +121,7 @@ export class PlatformController extends BaseRouter {
     settings: BillingSettings,
     revenueCents: number,
     lastDelivered: Date | null,
+    isAnnual: boolean,
   ): PlatformRestaurantRow {
     const billing = restaurant.billing ?? defaultBilling(month);
     return {
@@ -117,7 +130,13 @@ export class PlatformController extends BaseRouter {
       slug: restaurant.slug,
       tier: computeBillingTier(revenueCents, settings),
       status: billing.status,
-      cycle: billing.cycle,
+      // Achado real (ajuste explícito do usuário, 02/11/2026) — `billing.cycle` é o campo legado
+      // (comentário de `billingChangeSchema` acima: REQ-17 tirou a troca administrativa livre de
+      // ciclo). `AnnualSubscriptionService.subscribe()`/`issueRenewalIfDue()` nunca escrevem
+      // nele, então um restaurante com assinatura anual REAL continuava aparecendo "Mensal"
+      // aqui. `IAnnualSubscriptionRepository` (mesma fonte de `hasLegacyAnnualConflict` em
+      // `buildBillingRows`) é quem manda de verdade.
+      cycle: isAnnual ? 'annual' : 'monthly',
       revenueCents,
       lastDeliveredAt: lastDelivered ? lastDelivered.toISOString() : null,
       blocked: isBillingBlocked(restaurant.billing),
@@ -264,7 +283,9 @@ export class PlatformController extends BaseRouter {
         name: restaurant.name,
         slug: restaurant.slug,
         status: restaurant.billing?.status ?? 'ok',
-        cycle: restaurant.billing?.cycle ?? 'monthly',
+        // Ajuste explícito do usuário (02/11/2026) — mesmo achado de `toRow` acima: `cycle` de
+        // verdade vem da assinatura anual real, não do campo legado `restaurant.billing.cycle`.
+        cycle: activeAnnualRestaurantIds.has(restaurant.id) ? 'annual' : 'monthly',
         openObligationsCount: openSummary?.openObligationsCount ?? 0,
         totalDueCents: openSummary?.totalDueCents ?? 0,
         hasPendingTechnicalIssue: openSummary?.hasPendingTechnicalIssue ?? false,

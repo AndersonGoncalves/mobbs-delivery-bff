@@ -52,6 +52,9 @@ describe('ResellerController (specs/0189-painel-revenda)', () => {
     const resellerRepository = {
       findById: jest.fn().mockResolvedValue(buildReseller()),
       updatePixKey: jest.fn().mockResolvedValue(buildReseller({ pixKey: 'ana@pix.com' })),
+      findByEmail: jest.fn().mockResolvedValue(null),
+      findByCode: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue(buildReseller()),
       ...overrides.reseller,
     } as unknown as IResellerRepository;
     const prospectRepository = {
@@ -78,6 +81,47 @@ describe('ResellerController (specs/0189-painel-revenda)', () => {
     new ResellerController(resellerRepository, prospectRepository, clientRepository, restaurantRepository, jest.fn()).initializeRoutes(application);
     return { resellerRepository, prospectRepository, clientRepository, restaurantRepository, routes };
   }
+
+  // Ajuste explícito do usuário (02/11/2026) — autocadastro público (`/revenda/cadastro`): só
+  // `firebaseAuthMiddleware` nesta rota (handlers[0]), nunca `resellerMiddleware` (exigiria um
+  // Reseller já existente); por isso roda direto o handler (handlers[1]), sem `runChain`.
+  describe('POST /reseller/signup', () => {
+    it('cria o revendedor ativo na hora, com o e-mail do token Firebase (nunca do corpo)', async () => {
+      const { resellerRepository, routes } = setup({
+        reseller: { create: jest.fn().mockResolvedValue(buildReseller({ email: 'nova@revenda.com', code: 'XYZ789' })) },
+      });
+      const json = jest.fn();
+      const handler = routes['POST /reseller/signup'][1];
+
+      await handler(
+        { user: { uid: 'u-1', email: 'nova@revenda.com' }, body: { name: 'Nova Revendedora', phone: '11988887777', email: 'tentativa-diferente@evil.com' } } as unknown as Request,
+        { json } as unknown as Response,
+      );
+
+      // `code` é gerado aleatoriamente (`generateUniqueResellerCode`) — confere só os campos que
+      // vêm da requisição, nunca o `email` do corpo (sempre o do token).
+      expect(resellerRepository.create).toHaveBeenCalledWith(expect.objectContaining({ name: 'Nova Revendedora', email: 'nova@revenda.com', phone: '11988887777' }));
+      expect(json).toHaveBeenCalledWith(201, expect.objectContaining({
+        email: 'nova@revenda.com',
+        referralLink: 'https://bsdelivery.com.br/gratis?revenda=XYZ789',
+      }));
+    });
+
+    it('recusa cadastrar de novo um e-mail que já é revendedor', async () => {
+      const { resellerRepository, routes } = setup({
+        reseller: { findByEmail: jest.fn().mockResolvedValue(buildReseller({ email: 'ana@revenda.com' })) },
+      });
+      const handler = routes['POST /reseller/signup'][1];
+
+      await expect(
+        handler(
+          { user: { uid: 'u-1', email: 'ana@revenda.com' }, body: { name: 'Ana', phone: '11999999999' } } as unknown as Request,
+          { json: jest.fn() } as unknown as Response,
+        ),
+      ).rejects.toMatchObject({ statusCode: 409 });
+      expect(resellerRepository.create).not.toHaveBeenCalled();
+    });
+  });
 
   // REQ-9.
   it('GET /reseller/me devolve os dados do revendedor com o link de indicação pronto', async () => {
