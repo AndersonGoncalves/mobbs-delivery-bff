@@ -4,7 +4,10 @@ import { testimonialStatuses, type LandingContent, type LandingTestimonial } fro
 
 export const LANDING_CONTENT_SINGLETON_ID = 'singleton';
 
-const featureSchema = new Schema({ id: { type: String, required: true }, text: { type: String, required: true } }, { _id: false });
+const featureSchema = new Schema(
+  { id: { type: String, required: true }, text: { type: String, required: true }, group: { type: String, default: '' } },
+  { _id: false },
+);
 const howItWorksSchema = new Schema({
   id: { type: String, required: true },
   title: { type: String, required: true },
