@@ -21,6 +21,9 @@ function buildFakeApplication() {
     post: (path: string, ...handlers: RouteHandler[]) => {
       routes[`POST ${path}`] = handlers;
     },
+    put: (path: string, ...handlers: RouteHandler[]) => {
+      routes[`PUT ${path}`] = handlers;
+    },
   };
   return { application: application as unknown as Server, routes };
 }
@@ -102,10 +105,15 @@ describe('CustomersSummaryController (specs/0016-clientes-retaguarda)', () => {
     };
     const addressRepository: Partial<IAddressRepository> = {
       listByCustomer: jest.fn().mockResolvedValue([buildAddress()]),
+      create: jest.fn().mockResolvedValue(buildAddress({ id: 'addr-novo' })),
+      update: jest.fn().mockResolvedValue(buildAddress({ label: 'Trabalho' })),
+      findById: jest.fn().mockResolvedValue(buildAddress()),
       ...overrides.addressRepository,
     };
     const customerRepository: Partial<ICustomerRepository> = {
       createByRestaurant: jest.fn().mockResolvedValue({ id: 'cust-novo', name: 'Novo Cliente', email: 'x@retaguarda.mobbs-delivery.local', phone: '5511999990000' }),
+      findById: jest.fn().mockResolvedValue({ id: 'cust-1', name: 'Maria Silva', email: 'maria@example.com', phone: '5511999990000', document: '12345678901' }),
+      upsertProfile: jest.fn().mockImplementation(async (id, patch) => ({ id, ...patch })),
       ...overrides.customerRepository,
     };
     const restaurantOperatorMiddleware = jest.fn(async () => {});
@@ -285,5 +293,173 @@ describe('CustomersSummaryController (specs/0016-clientes-retaguarda)', () => {
     await expect(
       runOperatorChain(routes['POST /restaurants/me/customers'], { restaurantId: 'r-1', body: { name: 'Novo Cliente' } }, { json: jest.fn() }),
     ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  // Pedido explícito do usuário — editar dados do cliente pela retaguarda.
+  describe('PUT /restaurants/me/customers-summary/:customerId', () => {
+    it('atualiza nome/telefone, normaliza o telefone e preserva email/document existentes', async () => {
+      const { customerRepository, routes } = setup();
+      const json = jest.fn();
+
+      await runOperatorChain(
+        routes['PUT /restaurants/me/customers-summary/:customerId'],
+        { restaurantId: 'r-1', params: { customerId: 'cust-1' }, body: { name: 'Maria Souza', phone: '(55) 11 99999-0000' } },
+        { json },
+      );
+
+      expect(customerRepository.upsertProfile).toHaveBeenCalledWith('cust-1', {
+        name: 'Maria Souza',
+        email: 'maria@example.com',
+        phone: '5511999990000',
+        document: '12345678901',
+      });
+      expect(json).toHaveBeenCalledWith(200, { customerId: 'cust-1', name: 'Maria Souza', phone: '5511999990000' });
+    });
+
+    it('edição parcial (só nome) mantém o telefone atual', async () => {
+      const { customerRepository, routes } = setup();
+      const json = jest.fn();
+
+      await runOperatorChain(
+        routes['PUT /restaurants/me/customers-summary/:customerId'],
+        { restaurantId: 'r-1', params: { customerId: 'cust-1' }, body: { name: 'Maria Souza' } },
+        { json },
+      );
+
+      expect(customerRepository.upsertProfile).toHaveBeenCalledWith(
+        'cust-1',
+        expect.objectContaining({ name: 'Maria Souza', phone: '5511999990000' }),
+      );
+    });
+
+    it('sem nome nem telefone é rejeitado (400), sem tocar no repositório', async () => {
+      const { customerRepository, routes } = setup();
+
+      await expect(
+        runOperatorChain(
+          routes['PUT /restaurants/me/customers-summary/:customerId'],
+          { restaurantId: 'r-1', params: { customerId: 'cust-1' }, body: {} },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 400 });
+      expect(customerRepository.upsertProfile).not.toHaveBeenCalled();
+    });
+
+    it('cliente que nunca pediu neste restaurante e não foi cadastrado por ele é rejeitado (404)', async () => {
+      const { customerRepository, routes } = setup({
+        orderRepository: { findManyByCustomerAndRestaurant: jest.fn().mockResolvedValue([]) },
+      });
+
+      await expect(
+        runOperatorChain(
+          routes['PUT /restaurants/me/customers-summary/:customerId'],
+          { restaurantId: 'r-1', params: { customerId: 'cust-outro-restaurante' }, body: { name: 'X' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 404 });
+      expect(customerRepository.upsertProfile).not.toHaveBeenCalled();
+    });
+
+    // Diferente das rotas de leitura (GET .../addresses, GET .../balance) — um cliente cadastrado
+    // manualmente ANTES de qualquer pedido também pode ser editado.
+    it('cliente cadastrado manualmente por este restaurante (createdByRestaurantId), ainda sem pedido, pode ser editado', async () => {
+      const { customerRepository, routes } = setup({
+        orderRepository: { findManyByCustomerAndRestaurant: jest.fn().mockResolvedValue([]) },
+        customerRepository: {
+          findById: jest.fn().mockResolvedValue({ id: 'cust-1', name: 'Maria Silva', email: 'maria@example.com', createdByRestaurantId: 'r-1' }),
+        },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(
+        routes['PUT /restaurants/me/customers-summary/:customerId'],
+        { restaurantId: 'r-1', params: { customerId: 'cust-1' }, body: { name: 'Maria Souza' } },
+        { json },
+      );
+
+      expect(customerRepository.upsertProfile).toHaveBeenCalled();
+    });
+  });
+
+  // Pedido explícito do usuário — incluir endereço novo pro cliente, pela retaguarda.
+  describe('POST /restaurants/me/customers-summary/:customerId/addresses', () => {
+    it('cria o endereço pro cliente deste restaurante', async () => {
+      const { addressRepository, routes } = setup();
+      const json = jest.fn();
+      const input = { label: 'Trabalho', street: 'Rua B', number: '456', neighborhood: 'Centro', city: 'Fortaleza', state: 'CE', zipCode: '60000000' };
+
+      await runOperatorChain(
+        routes['POST /restaurants/me/customers-summary/:customerId/addresses'],
+        { restaurantId: 'r-1', params: { customerId: 'cust-1' }, body: input },
+        { json },
+      );
+
+      expect(addressRepository.create).toHaveBeenCalledWith('cust-1', input);
+      expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ id: 'addr-novo' }));
+    });
+
+    it('cliente que não pertence a este restaurante é rejeitado (404), sem criar o endereço', async () => {
+      const { addressRepository, routes } = setup({
+        orderRepository: { findManyByCustomerAndRestaurant: jest.fn().mockResolvedValue([]) },
+      });
+
+      await expect(
+        runOperatorChain(
+          routes['POST /restaurants/me/customers-summary/:customerId/addresses'],
+          { restaurantId: 'r-1', params: { customerId: 'cust-outro-restaurante' }, body: { label: 'Casa' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 404 });
+      expect(addressRepository.create).not.toHaveBeenCalled();
+    });
+  });
+
+  // Pedido explícito do usuário — alterar um endereço já cadastrado do cliente, pela retaguarda.
+  describe('PUT /restaurants/me/customers-summary/:customerId/addresses/:addressId', () => {
+    it('atualiza o endereço do cliente deste restaurante', async () => {
+      const { addressRepository, routes } = setup();
+      const json = jest.fn();
+      const input = { label: 'Trabalho', street: 'Rua B', number: '456', neighborhood: 'Centro', city: 'Fortaleza', state: 'CE', zipCode: '60000000' };
+
+      await runOperatorChain(
+        routes['PUT /restaurants/me/customers-summary/:customerId/addresses/:addressId'],
+        { restaurantId: 'r-1', params: { customerId: 'cust-1', addressId: 'addr-1' }, body: input },
+        { json },
+      );
+
+      expect(addressRepository.update).toHaveBeenCalledWith('addr-1', input);
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ label: 'Trabalho' }));
+    });
+
+    it('endereço que pertence a outro cliente é rejeitado (404), sem atualizar', async () => {
+      const { addressRepository, routes } = setup({
+        addressRepository: { findById: jest.fn().mockResolvedValue(buildAddress({ customerId: 'cust-outro' })) },
+      });
+
+      await expect(
+        runOperatorChain(
+          routes['PUT /restaurants/me/customers-summary/:customerId/addresses/:addressId'],
+          { restaurantId: 'r-1', params: { customerId: 'cust-1', addressId: 'addr-1' }, body: { label: 'Casa' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 404 });
+      expect(addressRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('cliente que não pertence a este restaurante é rejeitado (404), sem checar o endereço', async () => {
+      const { addressRepository, routes } = setup({
+        orderRepository: { findManyByCustomerAndRestaurant: jest.fn().mockResolvedValue([]) },
+      });
+
+      await expect(
+        runOperatorChain(
+          routes['PUT /restaurants/me/customers-summary/:customerId/addresses/:addressId'],
+          { restaurantId: 'r-1', params: { customerId: 'cust-outro-restaurante', addressId: 'addr-1' }, body: { label: 'Casa' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 404 });
+      expect(addressRepository.findById).not.toHaveBeenCalled();
+      expect(addressRepository.update).not.toHaveBeenCalled();
+    });
   });
 });

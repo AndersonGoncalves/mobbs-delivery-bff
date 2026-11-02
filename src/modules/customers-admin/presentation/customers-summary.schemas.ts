@@ -23,3 +23,17 @@ export const createCustomerByRestaurantSchema = z.object({
   name: z.string().min(1),
   phone: z.string().min(8),
 });
+
+/**
+ * Pedido explícito do usuário — editar nome/telefone do cliente pela retaguarda
+ * (`PUT /restaurants/me/customers-summary/:customerId`), mesmo par de campos do cadastro manual
+ * acima; ambos opcionais (edição parcial), mas pelo menos um precisa vir.
+ */
+export const updateCustomerByRestaurantSchema = z
+  .object({
+    name: z.string().min(1).optional(),
+    phone: z.string().min(8).optional(),
+  })
+  .refine((data) => data.name !== undefined || data.phone !== undefined, {
+    message: 'Informe ao menos um campo para atualizar',
+  });
