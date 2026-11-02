@@ -35,6 +35,11 @@ export interface ICashRegisterRepository {
   getCalculatedBalance(sessionId: string): Promise<number>;
   /** Fechamento sempre manual; campo legado permanece somente por compatibilidade histórica. */
   close(sessionId: string, countedValue: number, closedBy?: string, closedAutomatically?: boolean): Promise<CloseCashRegisterResult>;
+  /** Ajuste explícito do usuário (02/11/2026) — reabre um caixa `fechado` (volta a `aberto`, sem
+   * `closedAt`/`closingBalance`/`closedAutomatically`); só chamado depois de `requireOwnerRole()`
+   * no controller. Lança se a sessão não estiver `fechado` (corrida com outro fechamento/reabertura
+   * concorrente). */
+  reopen(sessionId: string, reopenedBy?: string, now?: Date): Promise<ICashRegisterSession>;
   /** specs/0118-controle-caixa-automatico-redes-sociais REQ-10 — fechamentos (`status: 'fechado'`)
    * cujo `closedAt` cai dentro de `[from, to]`, mais antigo primeiro. */
   findClosedSessionsBetween(restaurantId: string, from: Date, to: Date): Promise<ICashRegisterSession[]>;

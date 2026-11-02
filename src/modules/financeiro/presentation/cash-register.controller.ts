@@ -4,7 +4,7 @@ import { BadRequestError, ConflictError, NotFoundError } from 'restify-errors';
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
-import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
+import { requireOperatorRole, requireOwnerRole } from '../../../shared/http/require-operator-role.middleware';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { ICashRegisterRepository } from '../domain/repositories/cash-register.repository.interface';
 import { ICashRegisterService } from '../domain/services/i-cash-register.service';
@@ -213,6 +213,31 @@ export class CashRegisterController extends BaseRouter {
         const result = await this.cashRegisterRepository.close(session.id, countedValue, req.user?.uid);
         const tableSales = await this.orderRepository.getTableSalesBetween(req.restaurantId!, new Date(session.openedAt), cashRegisterPeriodEnd(session));
         res.json(200, { ...result, tableSales });
+      },
+    );
+
+    // Ajuste explícito do usuário (02/11/2026) — só o dono pode reabrir um caixa já fechado
+    // (`requireOwnerRole()`, encadeado depois de `authenticated`: gerente/financeiro passam no
+    // primeiro filtro e são barrados neste). Bloqueia se já existir outra sessão aberta — reabrir
+    // uma data antiga nunca pode coexistir com uma sessão em aberto de outra data (mesma
+    // invariante de `open()`, "nunca mais de um caixa aberto por vez").
+    application.post(
+      '/restaurants/me/cash-register/:id/reopen',
+      ...authenticated,
+      requireOwnerRole(),
+      async (req: Request, res: Response) => {
+        const session = await this.findOwnedSession(req.params.id, req.restaurantId!);
+        if (session.status !== 'fechado') {
+          throw new BadRequestError('Só é possível reabrir um caixa já fechado');
+        }
+        const openSessions = await this.cashRegisterRepository.findPendingSessions(req.restaurantId!);
+        if (openSessions.length > 0) {
+          throw new ConflictError(
+            `Existe um caixa aberto desde ${openSessions[0].businessDate ?? cashRegisterDate(new Date(openSessions[0].openedAt))} — feche-o antes de reabrir outro.`,
+          );
+        }
+        const reopened = await this.cashRegisterRepository.reopen(session.id, req.user?.uid);
+        res.json(200, reopened);
       },
     );
 

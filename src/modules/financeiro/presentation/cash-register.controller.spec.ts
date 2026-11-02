@@ -5,7 +5,7 @@ import { CashClosingSummary, ICashRegisterService } from '../domain/services/i-c
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { CashRegisterController } from './cash-register.controller';
 
-type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & { restaurantId?: string; user?: { uid: string } };
+type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & { restaurantId?: string; user?: { uid: string }; operatorRole?: string };
 type FakeResponse = Pick<Response, 'json'>;
 type RouteHandler = (req: FakeRequest, res: FakeResponse) => Promise<void>;
 
@@ -98,6 +98,7 @@ describe('CashRegisterController', () => {
       listMovements: jest.fn().mockResolvedValue([buildMovement()]),
       getCalculatedBalance: jest.fn().mockResolvedValue(150),
       close: jest.fn().mockResolvedValue({ session: buildSession({ status: 'fechado', closingBalance: 150 }), calculatedBalance: 150, difference: 0 }),
+      reopen: jest.fn().mockResolvedValue(buildSession({ status: 'aberto' })),
       findClosedSessionsBetween: jest.fn().mockResolvedValue([]),
       findMovementsByRestaurantBetween: jest.fn().mockResolvedValue([]),
       ...overrides.cashRegisterRepository,
@@ -410,6 +411,79 @@ describe('CashRegisterController', () => {
       ),
     ).rejects.toMatchObject({ statusCode: 400 });
     expect(cashRegisterRepository.close).not.toHaveBeenCalled();
+  });
+
+  // Ajuste explícito do usuário (02/11/2026) — só o dono pode reabrir um caixa já fechado.
+  // `runOperatorChain` (slice(3)) passa por `requireOwnerRole()` de verdade aqui (diferente das
+  // outras rotas acima, só `requireOperatorRole` é pulado) — por isso os testes setam
+  // `req.operatorRole` explicitamente, no mesmo padrão de `restaurant-operators.controller.spec.ts`.
+  describe('POST /restaurants/me/cash-register/:id/reopen', () => {
+    it('dono consegue reabrir um caixa fechado', async () => {
+      const { cashRegisterRepository, routes } = setup({
+        cashRegisterRepository: {
+          findById: jest.fn().mockResolvedValue(buildSession({ status: 'fechado', closingBalance: 150 })),
+          reopen: jest.fn().mockResolvedValue(buildSession({ status: 'aberto', reopenedBy: 'dono-1' })),
+        },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(
+        routes['POST /restaurants/me/cash-register/:id/reopen'],
+        { restaurantId: 'r-1', operatorRole: 'dono', user: { uid: 'dono-1' }, params: { id: 'cr-1' } },
+        { json },
+      );
+
+      expect(cashRegisterRepository.reopen).toHaveBeenCalledWith('cr-1', 'dono-1');
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ status: 'aberto', reopenedBy: 'dono-1' }));
+    });
+
+    it('gerente/financeiro não conseguem reabrir (403, só dono)', async () => {
+      const { cashRegisterRepository, routes } = setup({
+        cashRegisterRepository: { findById: jest.fn().mockResolvedValue(buildSession({ status: 'fechado' })) },
+      });
+
+      await expect(
+        runOperatorChain(
+          routes['POST /restaurants/me/cash-register/:id/reopen'],
+          { restaurantId: 'r-1', operatorRole: 'gerente', params: { id: 'cr-1' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 403 });
+      expect(cashRegisterRepository.reopen).not.toHaveBeenCalled();
+    });
+
+    it('recusa reabrir uma sessão que não está fechada', async () => {
+      const { cashRegisterRepository, routes } = setup({
+        cashRegisterRepository: { findById: jest.fn().mockResolvedValue(buildSession({ status: 'aberto' })) },
+      });
+
+      await expect(
+        runOperatorChain(
+          routes['POST /restaurants/me/cash-register/:id/reopen'],
+          { restaurantId: 'r-1', operatorRole: 'dono', params: { id: 'cr-1' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 400 });
+      expect(cashRegisterRepository.reopen).not.toHaveBeenCalled();
+    });
+
+    it('recusa reabrir enquanto já existe outro caixa aberto (nunca dois caixas abertos ao mesmo tempo)', async () => {
+      const { cashRegisterRepository, routes } = setup({
+        cashRegisterRepository: {
+          findById: jest.fn().mockResolvedValue(buildSession({ status: 'fechado' })),
+          findPendingSessions: jest.fn().mockResolvedValue([buildSession({ id: 'cr-2', businessDate: '2026-09-10', status: 'aberto' })]),
+        },
+      });
+
+      await expect(
+        runOperatorChain(
+          routes['POST /restaurants/me/cash-register/:id/reopen'],
+          { restaurantId: 'r-1', operatorRole: 'dono', params: { id: 'cr-1' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 409 });
+      expect(cashRegisterRepository.reopen).not.toHaveBeenCalled();
+    });
   });
 
   describe('GET /restaurants/me/cash-register/history (REQ-10)', () => {
