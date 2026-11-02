@@ -31,6 +31,27 @@ describe('CustomerSummaryMongooseRepository.listByRestaurantPage (achado de audi
     ]);
   });
 
+  // Achado real (02/11/2026, produção) — o `$group` final da combinação pedidos+cadastro manual
+  // só deixa `customerId` disponível como `_id` (semântica real do Mongo, que este teste não
+  // reproduz por rodar sobre um mock de `aggregate` — só o pipeline em si é verificado aqui); sem
+  // reprojetar de volta, toda linha chegava à retaguarda sem id e o DataGrid quebrava (MUI X erro
+  // #85). Este teste garante que o `$project` de reprojeção continua logo depois do `$group`.
+  it('reprojeta customerId (de volta de _id) logo após o $group final de combinação', async () => {
+    const aggregateSpy = jest.spyOn(OrderModel, 'aggregate').mockResolvedValue([{ items: [], totalCount: [] }] as never);
+    const repository = new CustomerSummaryMongooseRepository();
+
+    await repository.listByRestaurantPage('r-1', { skip: 0, limit: 25 });
+
+    const pipeline = aggregateSpy.mock.calls[0][0] as unknown as Array<Record<string, unknown>>;
+    // Dois `$group` existem no pipeline (um bem no início, agregando pedidos por cliente) — este
+    // aqui é especificamente o ÚLTIMO, que combina pedidos+cadastro manual após o `$unionWith`
+    // (só ele tem `name`/`allowedPaymentMethods` como acumuladores).
+    const groupIndex = pipeline.findIndex((stage) => (stage as { $group?: { name?: unknown } }).$group?.name !== undefined);
+    expect(groupIndex).toBeGreaterThanOrEqual(0);
+    const nextStage = pipeline[groupIndex + 1] as { $project?: Record<string, unknown> };
+    expect(nextStage.$project).toMatchObject({ customerId: '$_id' });
+  });
+
   it('sem nenhum resultado (restaurante sem clientes), devolve lista vazia e total 0', async () => {
     jest.spyOn(OrderModel, 'aggregate').mockResolvedValue([] as never);
     const repository = new CustomerSummaryMongooseRepository();
