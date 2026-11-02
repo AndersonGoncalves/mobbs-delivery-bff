@@ -207,6 +207,12 @@ export class CustomerSummaryMongooseRepository implements ICustomerSummaryReposi
           allowedPaymentMethods: { $first: '$allowedPaymentMethods' },
         },
       },
+      // Achado real (02/11/2026) — o `$group` acima só deixa o valor de `customerId` disponível
+      // como `_id` (convenção do Mongo); sem reprojetar de volta, `item.customerId` no map abaixo
+      // vinha `undefined` pra TODA linha, e o DataGrid da retaguarda quebrava com o erro #85 ("A
+      // row was provided without id") — `listByRestaurant` (sem paginação) não tem esse `$group`
+      // final, por isso só o caminho paginado quebrava.
+      { $project: { _id: 0, customerId: '$_id', name: 1, phone: 1, totalOrders: 1, totalSpent: 1, lastOrderAt: 1, allowedPaymentMethods: 1 } },
     ];
 
     // REQ-2 — nome ou telefone, parcial, case-insensitive; mesmo `$match` de `listByRestaurant`.
