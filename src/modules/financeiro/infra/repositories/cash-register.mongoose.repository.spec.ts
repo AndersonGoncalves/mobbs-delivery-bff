@@ -14,6 +14,7 @@ describe('persistência concorrente do caixa (sem banco real)', () => {
   it('duas aberturas simultâneas da mesma data têm somente um vencedor, mesmo sem índice novo instalado', async () => {
     const repository = new CashRegisterMongooseRepository();
     jest.spyOn(repository, 'findSessionByDate').mockResolvedValue(null);
+    jest.spyOn(repository, 'findPendingSessions').mockResolvedValue([]);
     const ids = new Set<string>();
     jest.spyOn(CashRegisterSessionModel, 'create').mockImplementation((async (input: { _id: string }) => {
       if (ids.has(input._id)) throw { code: 11000 };
@@ -36,6 +37,47 @@ describe('persistência concorrente do caixa (sem banco real)', () => {
     });
     await expect(repository.open('r', 0, 'one', false, new Date('2026-10-24T12:00:00Z')))
       .rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  // Ajuste explícito do usuário (02/11/2026) — nunca abrir uma data nova (manual ou automático)
+  // enquanto uma data anterior segue aberta sem fechamento.
+  it('ajuste 02/11/2026: recusa abrir uma data nova enquanto uma data anterior segue aberta', async () => {
+    const repository = new CashRegisterMongooseRepository();
+    jest.spyOn(repository, 'findSessionByDate').mockResolvedValue(null);
+    jest.spyOn(repository, 'findPendingSessions').mockResolvedValue([
+      { id: 'old', restaurantId: 'r', openedAt: '2026-10-23T11:00:00Z', businessDate: '2026-10-23', openingBalance: 0, status: 'aberto' },
+    ]);
+    const create = jest.spyOn(CashRegisterSessionModel, 'create');
+
+    await expect(repository.open('r', 0, 'one', false, new Date('2026-10-24T12:00:00Z')))
+      .rejects.toMatchObject({ statusCode: 409 });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('ajuste 02/11/2026: reopen() volta um caixa fechado pra aberto e limpa os dados do fechamento', async () => {
+    const repository = new CashRegisterMongooseRepository();
+    const closed = { ...session(), status: 'fechado', closedAt: new Date('2026-10-24T22:00:00Z'), closingBalance: 50, closedBy: 'one', closedAutomatically: false };
+    const findOneAndUpdate = jest.spyOn(CashRegisterSessionModel, 'findOneAndUpdate').mockReturnValue(
+      lean({ ...closed, status: 'aberto', closedAt: undefined, closingBalance: undefined, closedAutomatically: undefined, reopenedBy: 'dono-1', reopenedAt: new Date('2026-10-25T09:00:00Z') }) as never,
+    );
+
+    const reopened = await repository.reopen('s', 'dono-1', new Date('2026-10-25T09:00:00Z'));
+
+    expect(findOneAndUpdate).toHaveBeenCalledWith(
+      { _id: 's', status: 'fechado' },
+      expect.objectContaining({ $set: expect.objectContaining({ status: 'aberto', reopenedBy: 'dono-1' }) }),
+      { new: true },
+    );
+    expect(reopened).toMatchObject({ status: 'aberto', reopenedBy: 'dono-1' });
+    expect(reopened.closedAt).toBeUndefined();
+    expect(reopened.closingBalance).toBeUndefined();
+  });
+
+  it('ajuste 02/11/2026: reopen() recusa um caixa que não está fechado', async () => {
+    const repository = new CashRegisterMongooseRepository();
+    jest.spyOn(CashRegisterSessionModel, 'findOneAndUpdate').mockReturnValue(lean(null) as never);
+
+    await expect(repository.reopen('s', 'dono-1')).rejects.toMatchObject({ statusCode: 409 });
   });
 
   it('duas notificações concorrentes do mesmo pagamento persistem somente uma entrada', async () => {

@@ -28,6 +28,12 @@ export interface ICashRegisterSession {
    * `closingBalance` é o saldo calculado (sem contagem física), não um valor contado pelo
    * operador — mostrado distinto no histórico (REQ-5). Ausente/`false` = fechamento manual. */
   closedAutomatically?: boolean;
+  /** Ajuste explícito do usuário (02/11/2026) — só o dono pode reabrir um caixa já fechado
+   * (`CashRegisterController.reopen`); registro de auditoria de quem/quando, igual
+   * `openedBy`/`closedBy`. Volta a `status: 'aberto'`, sem `closedAt`/`closingBalance`/
+   * `closedAutomatically` (a próxima conferência de fechamento define esses de novo). */
+  reopenedBy?: string;
+  reopenedAt?: string;
 }
 
 /**

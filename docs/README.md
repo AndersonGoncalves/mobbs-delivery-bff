@@ -47,6 +47,16 @@ credenciais e habilitação no app: [MERCADO-PAGO.md](./MERCADO-PAGO.md).
 variáveis ausentes, nunca os segredos. Application ID/callback agora vêm do BFF,
 sem depender de `VITE_MERCADOPAGO_CLIENT_ID`.
 
+## Integrações externas — conta, custo e sandbox
+
+Guia por integração (iFood, Uber Entregas, FocusNFe, Mercado Pago, 99Food, Asaas) de como criar a
+conta/app de desenvolvedor, quem paga o quê e como testar sem precisar de homologação aprovada:
+[`contas-de-integracao/`](./contas-de-integracao/README.md). Os guias técnicos (`IFOOD.md`,
+`UBER-DIRECT.md`, `FOCUSNFE.md`, `MERCADO-PAGO.md`, `99FOOD.md`, listados acima/abaixo) continuam
+sendo a referência de como o código conversa com cada API — exceto Asaas, que ainda não tem um
+`ASAAS.md` técnico próprio (contrato documentado direto no código e em
+`specs/0101-integracao-asaas`).
+
 ## Contratos — ajustes 0176
 
 - `GET /support/public` é público e retorna exclusivamente

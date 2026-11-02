@@ -39,7 +39,7 @@ function setup(options: { orders?: { total: number }[] } = {}) {
 }
 
 describe('AnnualSubscriptionService.subscribe (AC-7)', () => {
-  it('AC-7: Pro com configuração padrão aderindo em 24/10/2026 oferece R$ 799,00 até 23/10/2027, Pix vencendo 03/11/2026', async () => {
+  it('AC-7: Pro com configuração padrão aderindo em 24/10/2026 oferece R$ 799,00 até 23/10/2027, Pix vencendo 29/10/2026', async () => {
     const { service, obligationRepository } = setup({ orders: [{ total: 3000 }] }); // Pro pela receita do mês até a adesão
     const now = new Date('2026-10-24T15:00:00Z');
 
@@ -92,7 +92,7 @@ describe('AnnualSubscriptionService.subscribe (AC-7)', () => {
 });
 
 describe('AnnualSubscriptionService.issueRenewalIfDue (AC-9/AC-10)', () => {
-  it('AC-9: adesão 24/10/2026 com renovação ativa gera a renovação em 24/10/2027, vencendo 03/11/2027', async () => {
+  it('AC-9: adesão 24/10/2026 com renovação ativa gera a renovação em 24/10/2027, vencendo 29/10/2027', async () => {
     const { service, obligationRepository } = setup({ orders: [{ total: 3000 }] });
     const initial = buildObligation({ kind: 'annual-initial', coveragePeriod: { start: localMidnight(new Date('2026-10-24T12:00:00Z')), end: localMidnight(new Date('2027-10-24T12:00:00Z')) } });
     obligationRepository.findByRestaurantId.mockResolvedValue([initial]);
@@ -105,7 +105,7 @@ describe('AnnualSubscriptionService.issueRenewalIfDue (AC-9/AC-10)', () => {
       expect.objectContaining({
         kind: 'annual-renewal',
         coveragePeriod: { start: localMidnight(new Date('2027-10-24T12:00:00Z')), end: addCalendarYear(localMidnight(new Date('2027-10-24T12:00:00Z'))) },
-        dueDate: new Date('2027-11-03T03:00:00.000Z'),
+        dueDate: new Date('2027-10-29T03:00:00.000Z'),
       }),
     );
   });

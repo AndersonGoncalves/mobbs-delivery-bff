@@ -8,7 +8,8 @@ import { IRestaurantRepository } from '../../restaurants/domain/repositories/res
 import { IResellerRepository } from '../domain/repositories/reseller.repository.interface';
 import { IResellerProspectRepository } from '../domain/repositories/reseller-prospect.repository.interface';
 import { IResellerClientRepository } from '../domain/repositories/reseller-client.repository.interface';
-import { convertProspectSchema, resellerProspectInputSchema, updateResellerPixKeySchema } from './resellers.schemas';
+import { generateUniqueResellerCode } from '../domain/generate-reseller-code';
+import { convertProspectSchema, resellerProspectInputSchema, resellerSignupSchema, updateResellerPixKeySchema } from './resellers.schemas';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
@@ -33,6 +34,28 @@ export class ResellerController extends BaseRouter {
 
   initializeRoutes(application: Server): void {
     const authenticated: AsyncHandler[] = [firebaseAuthMiddleware, this.resellerMiddleware];
+
+    // Ajuste explícito do usuário (02/11/2026) — achado real: o único jeito de virar revendedor
+    // era o administrador cadastrar nome/e-mail em /platform/resellers (REQ-2, inalterado) e o
+    // revendedor "reclamar" a senha depois em `/criar-acesso` (REQ-19) — mas quem se cadastra
+    // pelo botão público da home (`/revenda/cadastro`) quer informar a própria senha na hora, sem
+    // essa volta. Só `firebaseAuthMiddleware` aqui (não `resellerMiddleware`, que exige um
+    // `Reseller` já existente — contraditório pra quem está se cadastrando agora): o front chama
+    // `signUpWithEmail` primeiro (cria a conta Firebase), só então esta rota, autenticado — e-mail
+    // sempre de `req.user.email`, nunca do corpo (ninguém cria um Reseller pra e-mail alheio). Fica
+    // ativo na hora (ganha link de indicação, pode indicar restaurantes já no primeiro acesso) —
+    // mesmo padrão sem aprovação manual do cadastro grátis de restaurante (`/gratis`).
+    application.post('/reseller/signup', firebaseAuthMiddleware, async (req: Request, res: Response) => {
+      const input = parseBody(resellerSignupSchema, req.body);
+      const email = req.user!.email!;
+      const existing = await this.resellerRepository.findByEmail(email);
+      if (existing) {
+        throw new ConflictError('Este e-mail já está cadastrado como revendedor — entre normalmente em vez de se cadastrar de novo.');
+      }
+      const code = await generateUniqueResellerCode(this.resellerRepository);
+      const reseller = await this.resellerRepository.create({ name: input.name, email, phone: input.phone, code });
+      res.json(201, { ...reseller, referralLink: `${REFERRAL_LINK_BASE}${reseller.code}` });
+    });
 
     // REQ-9 — dados do revendedor + link de indicação pronto.
     application.get('/reseller/me', ...authenticated, async (req: Request, res: Response) => {
