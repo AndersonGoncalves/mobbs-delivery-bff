@@ -83,6 +83,17 @@ describe('LandingContentController - 0183', () => {
     expect(json).toHaveBeenCalledWith(200, saved);
   });
 
+  // Pedido explícito do usuário — agrupa funcionalidades relacionadas na home; sem grupo informado, salva vazio.
+  it('PUT salva o grupo de cada funcionalidade, com padrão vazio quando omitido', async () => {
+    const { run, contentRepository } = setup();
+    await run('PUT /platform/landing-content', {
+      body: { ...validContent, features: [{ text: 'Pix automatizado', group: 'Pagamento' }, { text: 'Sem grupo' }] },
+    });
+    const saved = contentRepository.update.mock.calls[0][0];
+    expect(saved.features[0].group).toBe('Pagamento');
+    expect(saved.features[1].group).toBe('');
+  });
+
   // Pedido explícito do usuário — link da loja de cada cliente, salvo e devolvido como veio.
   it('PUT salva o link da loja de cada cliente', async () => {
     const { run, contentRepository } = setup();
