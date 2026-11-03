@@ -45,6 +45,79 @@ describe('LandingContentMongooseRepository - 0183', () => {
     ]);
   });
 
+  // Pedido explícito do usuário — cadastro próprio de cada grupo (cor do card + imagem de topo).
+  it('lê o cadastro de grupos de funcionalidades, com cor e imagem padrão quando ausentes', async () => {
+    const query = LandingContentModel.findById(LANDING_CONTENT_SINGLETON_ID);
+    const doc = new LandingContentModel({
+      _id: 'singleton',
+      featureGroups: [{ id: 'g1', name: 'Pagamento', backgroundColor: '#2b303b', imageUrl: 'https://cdn.example.com/pagamento.jpg' }, { id: 'g2', name: 'Cozinha' }],
+    });
+    jest.spyOn(query, 'lean').mockResolvedValue(doc.toObject());
+    jest.spyOn(LandingContentModel, 'findById').mockReturnValue(query);
+    const result = await new LandingContentMongooseRepository().get();
+    expect(result.featureGroups).toEqual([
+      { id: 'g1', name: 'Pagamento', backgroundColor: '#2b303b', imageUrl: 'https://cdn.example.com/pagamento.jpg' },
+      { id: 'g2', name: 'Cozinha', backgroundColor: '', imageUrl: '' },
+    ]);
+  });
+
+  // Pedido explícito do usuário — seção "Perguntas Frequentes" (pergunta/resposta em acordeão).
+  it('lê as perguntas frequentes cadastradas', async () => {
+    const query = LandingContentModel.findById(LANDING_CONTENT_SINGLETON_ID);
+    const doc = new LandingContentModel({
+      _id: 'singleton',
+      faq: [{ id: 'q1', question: 'Como funciona?', answer: 'É simples.' }],
+    });
+    jest.spyOn(query, 'lean').mockResolvedValue(doc.toObject());
+    jest.spyOn(LandingContentModel, 'findById').mockReturnValue(query);
+    const result = await new LandingContentMongooseRepository().get();
+    expect(result.faq).toEqual([{ id: 'q1', question: 'Como funciona?', answer: 'É simples.' }]);
+  });
+
+  // Pedido explícito do usuário — card de planos (preço mensal/anual + funcionalidades).
+  it('lê os planos cadastrados, com padrões quando ausentes', async () => {
+    const query = LandingContentModel.findById(LANDING_CONTENT_SINGLETON_ID);
+    const doc = new LandingContentModel({
+      _id: 'singleton',
+      pricingPlans: [{ id: 'p1', name: 'Essencial', monthlyPriceCents: 16_900, annualMonthlyPriceCents: 9_900 }],
+    });
+    jest.spyOn(query, 'lean').mockResolvedValue(doc.toObject());
+    jest.spyOn(LandingContentModel, 'findById').mockReturnValue(query);
+    const result = await new LandingContentMongooseRepository().get();
+    expect(result.pricingPlans).toEqual([
+      { id: 'p1', name: 'Essencial', description: '', billingTier: 'custom', monthlyPriceCents: 16_900, annualMonthlyPriceCents: 9_900, highlighted: false, features: [] },
+    ]);
+  });
+
+  // Pedido explícito do usuário — plano ligado a uma faixa real de cobrança (preço calculado, não digitado).
+  it('lê o billingTier de um plano ligado a uma faixa real de cobrança', async () => {
+    const query = LandingContentModel.findById(LANDING_CONTENT_SINGLETON_ID);
+    const doc = new LandingContentModel({
+      _id: 'singleton',
+      pricingPlans: [{ id: 'p1', name: 'Pro', billingTier: 'pro', monthlyPriceCents: 0, annualMonthlyPriceCents: 0 }],
+    });
+    jest.spyOn(query, 'lean').mockResolvedValue(doc.toObject());
+    jest.spyOn(LandingContentModel, 'findById').mockReturnValue(query);
+    const result = await new LandingContentMongooseRepository().get();
+    expect(result.pricingPlans[0].billingTier).toBe('pro');
+  });
+
+  // Pedido explícito do usuário — bloco título + descrição + imagem, com botões de contato opcionais.
+  it('lê os blocos de destaque (promoBlocks) cadastrados, com padrões quando ausentes', async () => {
+    const query = LandingContentModel.findById(LANDING_CONTENT_SINGLETON_ID);
+    const doc = new LandingContentModel({
+      _id: 'singleton',
+      promoBlocks: [{ id: 'b1', title: 'Suporte', imagePosition: 'left', buttons: [{ label: 'Chat', url: 'https://wa.me/5511999999999', icon: 'whatsapp' }] }],
+    });
+    jest.spyOn(query, 'lean').mockResolvedValue(doc.toObject());
+    jest.spyOn(LandingContentModel, 'findById').mockReturnValue(query);
+    const result = await new LandingContentMongooseRepository().get();
+    expect(result.promoBlocks).toEqual([{
+      id: 'b1', title: 'Suporte', description: '', imageUrl: '', imagePosition: 'left', backgroundColor: '',
+      buttons: [{ label: 'Chat', url: 'https://wa.me/5511999999999', icon: 'whatsapp' }],
+    }]);
+  });
+
   // specs/0186 — documento salvo antes das configurações visuais continua legível, com padrões vazios.
   it('documento antigo sem settings devolve configurações vazias; com settings, mescla campo a campo', async () => {
     const query = LandingContentModel.findById(LANDING_CONTENT_SINGLETON_ID);
@@ -56,12 +129,12 @@ describe('LandingContentMongooseRepository - 0183', () => {
 
     const withSettings = new LandingContentModel({
       _id: 'singleton',
-      settings: { headerColor: '#112233', clients: { cardColor: '#000000' }, features: { title: 'Vantagens' } },
+      settings: { headerColor: '#112233', clients: { cardColor: '#000000' }, features: { title: 'Vantagens', cardColor: '#2b303b' } },
     }).toObject();
     jest.spyOn(query, 'lean').mockResolvedValue(withSettings);
     const { settings } = await new LandingContentMongooseRepository().get();
     expect(settings.headerColor).toBe('#112233');
-    expect(settings.features).toEqual({ title: 'Vantagens', backgroundColor: '', backgroundImageUrl: '', visible: true });
+    expect(settings.features).toEqual({ title: 'Vantagens', backgroundColor: '', backgroundImageUrl: '', cardColor: '#2b303b', visible: true });
     expect(settings.clients).toEqual({ title: '', backgroundColor: '', backgroundImageUrl: '', cardColor: '#000000', textColor: '', visible: true });
     expect(settings.howItWorks).toEqual({ title: '', backgroundColor: '', visible: true });
   });

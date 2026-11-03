@@ -4,12 +4,74 @@ export interface LandingFeature {
   text: string;
   /**
    * Pedido explícito do usuário — agrupa funcionalidades relacionadas na home (ex. "Pagamento",
-   * "Fidelização e marketing"). Opcional/vazio = sem grupo, mesmo comportamento de antes (lista
-   * plana). Itens do mesmo grupo precisam estar ADJACENTES na lista pra aparecerem juntos — a
-   * ordem de exibição continua sendo a ordem do array (REQ já existente), não reordenado por
-   * grupo no servidor nem no cliente.
+   * "Fidelização e marketing"), casando por nome com `LandingFeatureGroup.name`. Obrigatório —
+   * toda funcionalidade precisa pertencer a um card do carrossel. Não depende de adjacência no
+   * array — o agrupamento é por nome, os itens de um grupo podem estar em qualquer posição.
    */
-  group?: string;
+  group: string;
+}
+
+/**
+ * Pedido explícito do usuário — cadastro próprio de cada grupo de funcionalidades (card do
+ * carrossel na home): nome (casa com `LandingFeature.group`), cor de dentro do card e imagem de
+ * topo opcional (vazia = mostra só nome do grupo + itens, sem imagem). A ordem do array é a ordem
+ * dos cards no carrossel.
+ */
+export interface LandingFeatureGroup {
+  id: string;
+  name: string;
+  backgroundColor: string;
+  imageUrl: string;
+}
+
+/** Pedido explícito do usuário — seção "Perguntas Frequentes" (pergunta/resposta em acordeão na home). */
+export interface LandingFaqItem {
+  id: string;
+  question: string;
+  answer: string;
+}
+
+/**
+ * Pedido explícito do usuário — ligado a uma faixa real de cobrança ("Faixas de cobrança" no
+ * painel), o preço não é mais digitado aqui: é calculado na hora a partir de
+ * `/billing-settings/public`, pra não precisar atualizar em dois lugares quando o preço real
+ * mudar. "custom" é a única opção que usa `monthlyPriceCents`/`annualMonthlyPriceCents` abaixo.
+ */
+export type LandingPricingPlanTier = 'free' | 'pro' | 'premium' | 'custom';
+
+/** Pedido explícito do usuário — card de planos/preços, com alternância mensal/anual. */
+export interface LandingPricingPlan {
+  id: string;
+  name: string;
+  description: string;
+  billingTier: LandingPricingPlanTier;
+  /** Só usado quando `billingTier` é "custom" — nas faixas reais, o preço vem da cobrança. */
+  monthlyPriceCents: number;
+  /** Preço mensal equivalente cobrando anual (normalmente com desconto); mesma regra acima. */
+  annualMonthlyPriceCents: number;
+  /** Pedido explícito do usuário — destaca o plano (selo "Mais vendido", borda própria). */
+  highlighted: boolean;
+  /** Uma funcionalidade por item, na ordem de exibição. */
+  features: string[];
+}
+
+export type LandingPromoButtonIcon = 'whatsapp' | 'phone' | 'none';
+
+export interface LandingPromoBlockButton {
+  label: string;
+  url: string;
+  icon: LandingPromoButtonIcon;
+}
+
+/** Pedido explícito do usuário — bloco título + descrição + imagem, com botões de contato opcionais. */
+export interface LandingPromoBlock {
+  id: string;
+  title: string;
+  description: string;
+  imageUrl: string;
+  imagePosition: 'left' | 'right';
+  backgroundColor: string;
+  buttons: LandingPromoBlockButton[];
 }
 
 export type LandingMediaType = 'youtube' | 'image';
@@ -63,20 +125,36 @@ export interface LandingClientsSettings extends LandingSectionSettings {
   textColor: string;
 }
 
+/** Pedido explícito do usuário — cor do card grande que envolve título + carrossel de grupos. */
+export interface LandingFeaturesSettings extends LandingSectionSettings {
+  cardColor: string;
+}
+
+/** Pedido explícito do usuário — cor do card grande que envolve o seletor e os planos. */
+export interface LandingPricingSettings extends LandingSectionSettings {
+  cardColor: string;
+}
+
 export interface LandingSettings {
   /** Cor da barra do topo da página inicial. */
   headerColor: string;
-  features: LandingSectionSettings;
+  features: LandingFeaturesSettings;
   howItWorks: LandingHowItWorksSettings;
   clients: LandingClientsSettings;
   testimonials: LandingSectionSettings;
+  faq: LandingSectionSettings;
+  pricing: LandingPricingSettings;
 }
 
 /** A ordem dos arrays é a ordem de exibição. */
 export interface LandingContent {
   features: LandingFeature[];
+  featureGroups: LandingFeatureGroup[];
+  promoBlocks: LandingPromoBlock[];
   howItWorks: LandingHowItWorksItem[];
   clients: LandingClient[];
+  faq: LandingFaqItem[];
+  pricingPlans: LandingPricingPlan[];
   company: LandingCompany;
   settings: LandingSettings;
 }
@@ -98,15 +176,20 @@ export function emptyLandingSettings(): LandingSettings {
   const section = { title: '', backgroundColor: '', backgroundImageUrl: '', visible: true };
   return {
     headerColor: '',
-    features: { ...section },
+    features: { ...section, cardColor: '' },
     howItWorks: { title: '', backgroundColor: '', visible: true },
     clients: { ...section, cardColor: '', textColor: '' },
     testimonials: { ...section },
+    faq: { ...section },
+    pricing: { ...section, cardColor: '' },
   };
 }
 
 export function emptyLandingContent(): LandingContent {
-  return { features: [], howItWorks: [], clients: [], company: { ...EMPTY_LANDING_COMPANY }, settings: emptyLandingSettings() };
+  return {
+    features: [], featureGroups: [], promoBlocks: [], howItWorks: [], clients: [], faq: [], pricingPlans: [],
+    company: { ...EMPTY_LANDING_COMPANY }, settings: emptyLandingSettings(),
+  };
 }
 
 export const testimonialStatuses = ['pending', 'approved', 'rejected'] as const;

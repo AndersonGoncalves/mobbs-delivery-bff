@@ -49,6 +49,9 @@ export class BillingSettingsController extends BaseRouter {
         proLimitCents: settings.proLimitCents,
         proMonthlyPriceCents: settings.proMonthlyPriceCents,
         premiumMonthlyPriceCents: settings.premiumMonthlyPriceCents,
+        // Pedido explícito do usuário — specs/0183 "Planos" calcula o preço anual na hora a
+        // partir deste valor, em vez de duplicar a mensalidade num cadastro separado.
+        annualMultiplier: settings.annualMultiplier,
       });
     });
 
