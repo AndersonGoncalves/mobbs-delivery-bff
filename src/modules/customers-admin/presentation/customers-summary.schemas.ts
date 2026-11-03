@@ -18,10 +18,13 @@ export const customersSummaryQuerySchema = z.object({
   toDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'toDate deve estar em formato YYYY-MM-DD').optional(),
 }).merge(paginationQuerySchema);
 
+// Pedido explícito do usuário (follow-up) — mensagens em português: antes usavam o texto padrão
+// do zod, que a tela só repassava escondido atrás de um Alert genérico ("confira o telefone"),
+// sem dar nenhuma pista real do que falhou.
 /** (achado real, pedido explícito do usuário) — "NOVO" em Clientes, `POST /restaurants/me/customers`. */
 export const createCustomerByRestaurantSchema = z.object({
-  name: z.string().min(1),
-  phone: z.string().min(8),
+  name: z.string().min(1, 'Informe o nome'),
+  phone: z.string().min(8, 'Informe um telefone válido (com DDD)'),
 });
 
 /**
@@ -31,8 +34,8 @@ export const createCustomerByRestaurantSchema = z.object({
  */
 export const updateCustomerByRestaurantSchema = z
   .object({
-    name: z.string().min(1).optional(),
-    phone: z.string().min(8).optional(),
+    name: z.string().min(1, 'Informe o nome').optional(),
+    phone: z.string().min(8, 'Informe um telefone válido (com DDD)').optional(),
   })
   .refine((data) => data.name !== undefined || data.phone !== undefined, {
     message: 'Informe ao menos um campo para atualizar',
