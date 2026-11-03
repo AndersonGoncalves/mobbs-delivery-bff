@@ -1,3 +1,13 @@
+import * as Sentry from '@sentry/node';
+
+// Achado de auditoria pré-produção (01/11/2026) — "sem crash-reporting remoto no BFF/web".
+// Mesmo padrão já usado no app Flutter (`bootstrap.dart`): opt-in só por variável de ambiente —
+// `SENTRY_DSN` vazio/ausente (padrão) mantém o comportamento de sempre, sem nenhuma chamada de
+// rede nova. Precisa rodar ANTES de qualquer outro import que possa lançar em tempo de módulo.
+if (process.env.SENTRY_DSN) {
+  Sentry.init({ dsn: process.env.SENTRY_DSN, environment: process.env.NODE_ENV ?? 'production' });
+}
+
 import { Server } from './shared/http/server';
 import { SupportController } from './modules/support/presentation/support.controller';
 import { SupportSettingsMongooseRepository } from './modules/support/infra/support-settings.mongoose.repository';
@@ -171,15 +181,21 @@ import { PlatformBillingWebhookController } from './modules/platform-billing/pre
 // `api` — a rede de segurança real é deixar o processo morrer de forma CONTROLADA (nunca tentar
 // continuar rodando depois de `uncaughtException`: o estado pode estar corrompido, é a própria
 // recomendação do Node) e deixar o Docker reiniciar, só que agora com um log claro do motivo.
+// `Sentry.close` espera o evento ser enviado antes do `process.exit` derrubar o processo —
+// sem isso, o crash mais importante de todos (o que derruba o servidor) nunca chegaria no Sentry.
+function reportFatalAndExit(error: unknown): void {
+  Sentry.captureException(error);
+  void Sentry.close(2000).finally(() => process.exit(1));
+}
 process.on('unhandledRejection', (reason) => {
   // eslint-disable-next-line no-console
   console.error('[fatal] Promise rejeitada sem tratamento — reiniciando (docker-compose restart: always):', reason);
-  process.exit(1);
+  reportFatalAndExit(reason);
 });
 process.on('uncaughtException', (error) => {
   // eslint-disable-next-line no-console
   console.error('[fatal] Exceção não tratada — reiniciando (docker-compose restart: always):', error);
-  process.exit(1);
+  reportFatalAndExit(error);
 });
 
 const server = new Server();

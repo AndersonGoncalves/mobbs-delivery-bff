@@ -1,4 +1,5 @@
 import type { Request, Response } from 'restify';
+import * as Sentry from '@sentry/node';
 
 interface RestifyHandledError extends Error {
   name: string;
@@ -44,6 +45,11 @@ export const handleError = (
       break;
     default:
       defineToJSON(err, { message: err.message });
+  }
+  // Só reporta erro inesperado (500 ou sem status definido) — erro de negócio/validação (4xx,
+  // já tratado acima ou vindo pronto do restify-errors) é esperado, não é bug, viraria ruído.
+  if (!err.statusCode || err.statusCode >= 500) {
+    Sentry.captureException(err);
   }
   return done();
 };
