@@ -117,10 +117,27 @@ describe('PlatformBillingCycleService.runCycle', () => {
 
   it('REQ-21: recalcula e persiste status/cycle de cada restaurante ao final do ciclo', async () => {
     const { service, restaurantRepository, obligationRepository } = setup({});
-    obligationRepository.findOpenByRestaurantId.mockResolvedValue([buildObligation({ status: 'overdue', dueDate: localMidnight(new Date('2026-09-10T12:00:00Z')) })]);
+    obligationRepository.findByRestaurantId.mockResolvedValue([buildObligation({ status: 'overdue', dueDate: localMidnight(new Date('2026-09-10T12:00:00Z')) })]);
 
     await service.runCycle(new Date('2026-11-05T12:00:00Z'));
 
     expect(restaurantRepository.updateBilling).toHaveBeenCalledWith('r-1', expect.objectContaining({ status: 'blocked' }));
+  });
+
+  // Achado real (03/11/2026) — `cycle: 'annual'` nunca era detectado de verdade:
+  // `findOpenByRestaurantId` exclui obligation paga por definição, mas é exatamente uma paga que
+  // `recomputeAccessStatus` procura pra reconhecer cobertura anual ativa.
+  it('achado real: restaurante com anual paga e ativa é reconhecido como cycle "annual" (não "monthly")', async () => {
+    const { service, restaurantRepository, obligationRepository } = setup({});
+    obligationRepository.findByRestaurantId.mockResolvedValue([
+      buildObligation({
+        kind: 'annual-initial', status: 'paid',
+        coveragePeriod: { start: localMidnight(new Date('2026-10-29T12:00:00Z')), end: localMidnight(new Date('2027-10-29T12:00:00Z')) },
+      }),
+    ]);
+
+    await service.runCycle(new Date('2026-11-05T12:00:00Z'));
+
+    expect(restaurantRepository.updateBilling).toHaveBeenCalledWith('r-1', expect.objectContaining({ cycle: 'annual', status: 'ok' }));
   });
 });
