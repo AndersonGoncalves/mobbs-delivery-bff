@@ -15,6 +15,7 @@
     "seed:additional-group-templates": "ts-node --transpile-only scripts/seed-additional-group-templates.ts",
     "seed:additional-group-option-images": "ts-node --transpile-only scripts/seed-additional-group-option-images.ts",
     "seed:highlights": "ts-node --transpile-only scripts/seed-highlights.ts",
+    "seed:help-articles-restaurante": "ts-node --transpile-only scripts/seed-help-articles-restaurante.ts",
     "reset:test-restaurant": "ts-node --transpile-only scripts/reset-test-restaurant.ts",
     "set:billing-status": "ts-node --transpile-only scripts/set-billing-status.ts",
     "loadtest:seed": "ts-node --transpile-only scripts/load-test/seed.ts",

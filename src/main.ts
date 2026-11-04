@@ -18,6 +18,8 @@ import {
 } from './modules/landing-content/infra/landing-content.mongoose.repository';
 import { SuggestionRepository } from './modules/suggestions/infra/suggestion.repository';
 import { SuggestionsController } from './modules/suggestions/presentation/suggestions.controller';
+import { HelpArticleMongooseRepository } from './modules/help/infra/help-article.mongoose.repository';
+import { HelpArticleController } from './modules/help/presentation/help-article.controller';
 import { buildRestaurantOperatorMiddleware } from './shared/http/restaurant-operator.middleware';
 import { RestaurantMongooseRepository } from './modules/restaurants/infra/repositories/restaurant.mongoose.repository';
 import { RestaurantsController } from './modules/restaurants/presentation/restaurants.controller';
@@ -471,6 +473,8 @@ server
       restaurantOperatorMiddleware,
       buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
     ),
+    // specs/0105-modulo-ajuda-retaguarda — manual de ajuda da retaguarda.
+    new HelpArticleController(new HelpArticleMongooseRepository(), restaurantOperatorMiddleware),
     new RestaurantsController(restaurantRepository, restaurantOperatorMiddleware),
     new RestaurantSignupController(
       restaurantRepository,
