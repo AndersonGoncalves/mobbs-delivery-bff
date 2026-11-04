@@ -283,3 +283,11 @@ export const updateOperatorProfileSchema = z.object({
   whatsapp: z.string().trim().min(1).transform(normalizePhoneNumber).optional(),
   photoUrl: z.string().url().nullable().optional(),
 });
+
+/** specs/0198-rastreamento-motoboy-tempo-real REQ-1/REQ-2 — posição enviada pelo motoboy a cada
+ * captura; `.strict()` rejeita qualquer campo extra (ex. `updatedAt` vindo do cliente — sempre o
+ * BFF quem decide o horário). */
+export const updateOperatorLocationSchema = z.object({
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+}).strict();

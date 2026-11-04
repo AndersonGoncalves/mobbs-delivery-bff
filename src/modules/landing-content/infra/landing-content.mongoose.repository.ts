@@ -22,8 +22,20 @@ export class LandingContentMongooseRepository implements ILandingContentReposito
     const stored = doc.settings;
     return {
       features: (doc.features ?? []).map(({ id, text, group }) => ({ id, text, group: group ?? '' })),
+      featureGroups: (doc.featureGroups ?? []).map(({ id, name, backgroundColor, imageUrl }) => ({
+        id, name, backgroundColor: backgroundColor ?? '', imageUrl: imageUrl ?? '',
+      })),
+      promoBlocks: (doc.promoBlocks ?? []).map(({ id, title, description, imageUrl, imagePosition, backgroundColor, buttons }) => ({
+        id, title, description: description ?? '', imageUrl: imageUrl ?? '', imagePosition: imagePosition ?? 'right', backgroundColor: backgroundColor ?? '',
+        buttons: (buttons ?? []).map(({ label, url, icon }) => ({ label, url, icon: icon ?? 'none' })),
+      })),
       howItWorks: (doc.howItWorks ?? []).map(({ id, title, description, mediaType, mediaUrl }) => ({ id, title, description, mediaType, mediaUrl })),
       clients: (doc.clients ?? []).map(({ id, companyName, description, imageUrl, linkUrl }) => ({ id, companyName, description, imageUrl, linkUrl: linkUrl ?? '' })),
+      faq: (doc.faq ?? []).map(({ id, question, answer }) => ({ id, question, answer })),
+      pricingPlans: (doc.pricingPlans ?? []).map(({ id, name, description, billingTier, monthlyPriceCents, annualMonthlyPriceCents, highlighted, features }) => ({
+        id, name, description: description ?? '', billingTier: billingTier ?? 'custom', monthlyPriceCents, annualMonthlyPriceCents,
+        highlighted: highlighted ?? false, features: features ?? [],
+      })),
       company: { ...empty.company, ...(doc.company ?? {}) },
       settings: {
         headerColor: stored?.headerColor ?? '',
@@ -31,6 +43,8 @@ export class LandingContentMongooseRepository implements ILandingContentReposito
         howItWorks: { ...empty.settings.howItWorks, ...(stored?.howItWorks ?? {}) },
         clients: { ...empty.settings.clients, ...(stored?.clients ?? {}) },
         testimonials: { ...empty.settings.testimonials, ...(stored?.testimonials ?? {}) },
+        faq: { ...empty.settings.faq, ...(stored?.faq ?? {}) },
+        pricing: { ...empty.settings.pricing, ...(stored?.pricing ?? {}) },
       },
     };
   }

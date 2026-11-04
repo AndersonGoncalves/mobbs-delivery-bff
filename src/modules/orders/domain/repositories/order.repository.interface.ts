@@ -112,6 +112,10 @@ export interface IOrderRepository {
   /** specs/0126 — pedidos de qualquer status criados no intervalo [from, to), mais antigos primeiro. */
   findByRestaurantBetween(restaurantId: string, from: Date, to: Date): Promise<IOrder[]>;
 
+  /** specs/0198-rastreamento-motoboy-tempo-real REQ-3 — ids distintos de motoboy com pelo menos
+   * um pedido no `status` pedido (usado com `'saiuParaEntrega'`, pra saber quem rastrear no mapa). */
+  findDistinctMotoboyIdsByStatus(restaurantId: string, status: OrderStatus): Promise<string[]>;
+
   /** specs/0127 — entregas atualmente concluídas, cuja mudança para entregue ocorreu em [from,to). */
   findDeliveredByRestaurantCompletedBetween(restaurantId: string, from: Date, to: Date): Promise<IOrder[]>;
 

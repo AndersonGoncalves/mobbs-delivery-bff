@@ -45,7 +45,7 @@ function setup() {
 }
 
 const validContent = {
-  features: [{ text: 'Impressão automática' }],
+  features: [{ text: 'Impressão automática', group: 'Cozinha' }],
   howItWorks: [{ title: 'Cardápio', description: 'Online', mediaType: 'youtube', mediaUrl: 'https://youtu.be/dQw4w9WgXcQ' }],
   clients: [{ companyName: 'Domino', description: 'Rede', imageUrl: 'https://cdn.example.com/a.png' }],
   company: { legalName: 'BS Ltda', cnpj: '00.000.000/0001-00' },
@@ -75,7 +75,7 @@ describe('LandingContentController - 0183', () => {
 
   it('PUT salva o conteúdo preservando a ordem e gerando ids', async () => {
     const { run, contentRepository } = setup();
-    const { json } = await run('PUT /platform/landing-content', { body: { ...validContent, features: [{ text: 'B' }, { id: 'keep', text: 'A' }] } });
+    const { json } = await run('PUT /platform/landing-content', { body: { ...validContent, features: [{ text: 'B', group: 'Cozinha' }, { id: 'keep', text: 'A', group: 'Cozinha' }] } });
     const saved = contentRepository.update.mock.calls[0][0];
     expect(saved.features.map((item: { text: string }) => item.text)).toEqual(['B', 'A']);
     expect(saved.features[0].id).toEqual(expect.any(String));
@@ -83,15 +83,124 @@ describe('LandingContentController - 0183', () => {
     expect(json).toHaveBeenCalledWith(200, saved);
   });
 
-  // Pedido explícito do usuário — agrupa funcionalidades relacionadas na home; sem grupo informado, salva vazio.
-  it('PUT salva o grupo de cada funcionalidade, com padrão vazio quando omitido', async () => {
+  // Pedido explícito do usuário — agrupa funcionalidades relacionadas na home; grupo é obrigatório.
+  it('PUT salva o grupo de cada funcionalidade', async () => {
     const { run, contentRepository } = setup();
     await run('PUT /platform/landing-content', {
-      body: { ...validContent, features: [{ text: 'Pix automatizado', group: 'Pagamento' }, { text: 'Sem grupo' }] },
+      body: { ...validContent, features: [{ text: 'Pix automatizado', group: 'Pagamento' }, { text: 'KDS', group: 'Cozinha' }] },
     });
     const saved = contentRepository.update.mock.calls[0][0];
     expect(saved.features[0].group).toBe('Pagamento');
-    expect(saved.features[1].group).toBe('');
+    expect(saved.features[1].group).toBe('Cozinha');
+  });
+
+  // Pedido explícito do usuário — cadastro de grupos de funcionalidades (card do carrossel na
+  // home): nome, cor de dentro do card e imagem de topo opcional, com ids gerados como as outras listas.
+  it('PUT salva os grupos de funcionalidades com ids gerados e cor/imagem opcionais', async () => {
+    const { run, contentRepository } = setup();
+    await run('PUT /platform/landing-content', {
+      body: {
+        ...validContent,
+        featureGroups: [
+          { name: 'Pagamento', backgroundColor: '#2b303b', imageUrl: 'https://cdn.example.com/pagamento.jpg' },
+          { id: 'keep', name: 'Cozinha', backgroundColor: '', imageUrl: '' },
+        ],
+      },
+    });
+    const saved = contentRepository.update.mock.calls[0][0];
+    expect(saved.featureGroups[0]).toMatchObject({ name: 'Pagamento', backgroundColor: '#2b303b', imageUrl: 'https://cdn.example.com/pagamento.jpg' });
+    expect(saved.featureGroups[0].id).toEqual(expect.any(String));
+    expect(saved.featureGroups[1]).toEqual({ id: 'keep', name: 'Cozinha', backgroundColor: '', imageUrl: '' });
+  });
+
+  it('PUT sem featureGroups (cliente antigo) salva lista vazia', async () => {
+    const { run, contentRepository } = setup();
+    await run('PUT /platform/landing-content', { body: validContent });
+    expect(contentRepository.update.mock.calls[0][0].featureGroups).toEqual([]);
+  });
+
+  // Pedido explícito do usuário — seção "Perguntas Frequentes" (pergunta/resposta em acordeão).
+  it('PUT salva as perguntas frequentes com ids gerados', async () => {
+    const { run, contentRepository } = setup();
+    await run('PUT /platform/landing-content', {
+      body: { ...validContent, faq: [{ question: 'Como funciona?', answer: 'É simples.' }, { id: 'keep', question: 'Tem suporte?', answer: 'Sim.' }] },
+    });
+    const saved = contentRepository.update.mock.calls[0][0];
+    expect(saved.faq[0]).toMatchObject({ question: 'Como funciona?', answer: 'É simples.' });
+    expect(saved.faq[0].id).toEqual(expect.any(String));
+    expect(saved.faq[1]).toEqual({ id: 'keep', question: 'Tem suporte?', answer: 'Sim.' });
+  });
+
+  it('PUT sem faq (cliente antigo) salva lista vazia', async () => {
+    const { run, contentRepository } = setup();
+    await run('PUT /platform/landing-content', { body: validContent });
+    expect(contentRepository.update.mock.calls[0][0].faq).toEqual([]);
+  });
+
+  // Pedido explícito do usuário — card de planos com preço mensal/anual e lista de funcionalidades.
+  it('PUT salva os planos com ids gerados', async () => {
+    const { run, contentRepository } = setup();
+    await run('PUT /platform/landing-content', {
+      body: {
+        ...validContent,
+        pricingPlans: [{
+          name: 'Essencial', description: 'Pequenos negócios', monthlyPriceCents: 16_900, annualMonthlyPriceCents: 9_900,
+          highlighted: false, features: ['Gestão financeira básica', 'Emissão de notas fiscais'],
+        }, {
+          id: 'keep', name: 'Gestão Integrada', description: '', monthlyPriceCents: 49_900, annualMonthlyPriceCents: 29_900,
+          highlighted: true, features: [],
+        }],
+      },
+    });
+    const saved = contentRepository.update.mock.calls[0][0];
+    expect(saved.pricingPlans[0]).toMatchObject({ name: 'Essencial', monthlyPriceCents: 16_900, features: ['Gestão financeira básica', 'Emissão de notas fiscais'] });
+    expect(saved.pricingPlans[0].id).toEqual(expect.any(String));
+    expect(saved.pricingPlans[1]).toMatchObject({ id: 'keep', name: 'Gestão Integrada', highlighted: true });
+  });
+
+  it('PUT sem pricingPlans (cliente antigo) salva lista vazia', async () => {
+    const { run, contentRepository } = setup();
+    await run('PUT /platform/landing-content', { body: validContent });
+    expect(contentRepository.update.mock.calls[0][0].pricingPlans).toEqual([]);
+  });
+
+  // Pedido explícito do usuário — bloco título + descrição + imagem, com botões de contato opcionais.
+  it('PUT salva os blocos de destaque (promoBlocks) com ids gerados e botões opcionais', async () => {
+    const { run, contentRepository } = setup();
+    await run('PUT /platform/landing-content', {
+      body: {
+        ...validContent,
+        promoBlocks: [
+          { title: 'Conte com a nossa equipe', description: 'Migração assistida.', imageUrl: 'https://cdn.example.com/migracao.jpg', imagePosition: 'right' },
+          {
+            id: 'keep', title: 'Suporte de alto nível', description: 'Feito por pessoas.', imageUrl: 'https://cdn.example.com/suporte.jpg',
+            imagePosition: 'left', backgroundColor: '#1a2a44',
+            buttons: [{ label: 'Chat', url: 'https://wa.me/5511999999999', icon: 'whatsapp' }, { label: 'Telefone', url: 'tel:+5511999999999', icon: 'phone' }],
+          },
+        ],
+      },
+    });
+    const saved = contentRepository.update.mock.calls[0][0];
+    expect(saved.promoBlocks[0]).toMatchObject({ title: 'Conte com a nossa equipe', imagePosition: 'right', buttons: [] });
+    expect(saved.promoBlocks[0].id).toEqual(expect.any(String));
+    expect(saved.promoBlocks[1]).toMatchObject({
+      id: 'keep', title: 'Suporte de alto nível', imagePosition: 'left',
+      buttons: [{ label: 'Chat', url: 'https://wa.me/5511999999999', icon: 'whatsapp' }, { label: 'Telefone', url: 'tel:+5511999999999', icon: 'phone' }],
+    });
+  });
+
+  it('PUT rejeita botão de promoBlock com link que não começa com https:// nem tel:', async () => {
+    const { run, contentRepository } = setup();
+    await expect(run('PUT /platform/landing-content', {
+      body: { ...validContent, promoBlocks: [{ title: 'x', buttons: [{ label: 'Chat', url: 'javascript:alert(1)', icon: 'none' }] }] },
+    })).rejects.toMatchObject({ statusCode: 400 });
+    expect(contentRepository.update).not.toHaveBeenCalled();
+  });
+
+  it('PUT sem promoBlocks (cliente antigo) salva lista vazia', async () => {
+    const { run, contentRepository } = setup();
+    await run('PUT /platform/landing-content', { body: validContent });
+    expect(contentRepository.update.mock.calls[0][0].promoBlocks).toEqual([]);
   });
 
   // Pedido explícito do usuário — link da loja de cada cliente, salvo e devolvido como veio.
@@ -107,10 +216,12 @@ describe('LandingContentController - 0183', () => {
   it.each([
     ['YouTube inválido', { howItWorks: [{ title: 'x', mediaType: 'youtube', mediaUrl: 'https://example.com/v' }] }],
     ['imagem sem https', { howItWorks: [{ title: 'x', mediaType: 'image', mediaUrl: 'http://a.com/a.png' }] }],
-    ['funcionalidade vazia', { features: [{ text: ' ' }] }],
+    ['funcionalidade vazia', { features: [{ text: ' ', group: 'Cozinha' }] }],
+    ['funcionalidade sem grupo', { features: [{ text: 'Sem grupo' }] }],
     ['logo com javascript:', { clients: [{ companyName: 'x', imageUrl: 'javascript:alert(1)' }] }],
     ['link da loja com javascript:', { clients: [{ companyName: 'x', linkUrl: 'javascript:alert(1)' }] }],
     ['link de termos inválido', { company: { termsUrl: 'ftp://x' } }],
+    ['pergunta frequente sem resposta', { faq: [{ question: 'Como funciona?', answer: ' ' }] }],
     ['campo desconhecido', { extra: true }],
   ])('PUT rejeita %s sem salvar', async (_label, patch) => {
     const { run, contentRepository } = setup();
@@ -177,10 +288,12 @@ describe('LandingContentController - 0183', () => {
   // specs/0186 — títulos, fundos e cores por seção, cor do topo e do rodapé.
   const settings = {
     headerColor: '#112233',
-    features: { title: 'Vantagens', backgroundColor: '#ffffff', backgroundImageUrl: 'https://cdn.example.com/f.jpg', visible: true },
+    features: { title: 'Vantagens', backgroundColor: '#ffffff', backgroundImageUrl: 'https://cdn.example.com/f.jpg', cardColor: '#2b303b', visible: true },
     howItWorks: { title: 'Passo a passo', backgroundColor: '#F5F2EE', visible: false },
     clients: { title: 'Quem usa', backgroundColor: '', backgroundImageUrl: '', cardColor: '#2b2b2b', textColor: '#FFFFFF', visible: true },
     testimonials: { title: '', backgroundColor: '#f5f2ee', backgroundImageUrl: '', visible: true },
+    faq: { title: 'Perguntas Frequentes', backgroundColor: '', backgroundImageUrl: '', visible: true },
+    pricing: { title: 'Planos', backgroundColor: '#1a2a44', backgroundImageUrl: '', cardColor: '#ffffff', visible: true },
   };
 
   it('PUT salva as configurações visuais e a cor do rodapé', async () => {

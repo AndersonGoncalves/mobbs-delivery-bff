@@ -108,14 +108,22 @@ export class PlatformBillingCycleService {
     const restaurant = await this.deps.restaurantRepository.findById(restaurantId);
     if (!restaurant) return;
 
-    const openObligations = await this.deps.obligationRepository.findOpenByRestaurantId(restaurantId);
+    // Achado real (03/11/2026) — `recomputeAccessStatus` precisa do HISTÓRICO inteiro, não só
+    // das obligations em aberto: ele detecta "tem anual ativo" procurando uma obligation com
+    // `status === 'paid'`, mas `findOpenByRestaurantId` EXCLUI justamente as pagas por definição
+    // (`OPEN_STATUSES` nunca inclui `paid`) — `cycle` nunca virava `'annual'` de verdade, mesmo
+    // com a assinatura anual paga e ativa. Seguro trocar pro histórico completo: a checagem de
+    // dívida bloqueante (`hasBlockingDebt`) já filtra `paid`/`exempt`/`cancelled` de qualquer
+    // forma (primeira linha do `.some()`), então incluir mais obligations não muda esse
+    // resultado — só corrige a detecção do ciclo.
+    const obligations = await this.deps.obligationRepository.findByRestaurantId(restaurantId);
     const exceptions: IPixAvailabilityException[] = [];
-    for (const obligation of openObligations) {
+    for (const obligation of obligations) {
       const exception = await this.deps.pixAvailabilityExceptionRepository.findByObligationId(obligation.id);
       if (exception) exceptions.push(exception);
     }
 
-    const { status, cycle } = recomputeAccessStatus(openObligations, exceptions, now);
+    const { status, cycle } = recomputeAccessStatus(obligations, exceptions, now);
     const currentBilling = restaurant.billing ?? defaultBilling(monthKeyOf(now));
     await this.deps.restaurantRepository.updateBilling(restaurantId, { ...currentBilling, status, cycle });
   }

@@ -21,6 +21,7 @@ import { NinetyNineFoodAuthService } from '../../ninety-nine-food-integration/in
 import { NinetyNineFoodClient } from '../../ninety-nine-food-integration/infra/ninety-nine-food-client';
 import { CustomerBalanceService } from '../../customer-balance/domain/services/customer-balance.service';
 import { ICustomerBalanceRepository } from '../../customer-balance/domain/repositories/customer-balance.repository.interface';
+import type { IPlatformConfigRepository } from '../../platform-config/domain/platform-config.repository.interface';
 import { OrdersController } from './orders.controller';
 
 // specs/0101-integracao-asaas (fase 1) — `tryChargeOrderPixViaAsaas`/`tryRefundOrderPixViaAsaas`
@@ -272,6 +273,7 @@ describe('OrdersController', () => {
       blockedCustomerRepository?: Partial<IBlockedCustomerRepository>;
       customerBalanceRepository?: ICustomerBalanceRepository;
       fiscalEmissionService?: { emitForOrder: jest.Mock };
+      platformConfigRepository?: IPlatformConfigRepository;
     } = {},
   ) {
     const orderRepository: Partial<IOrderRepository> = {
@@ -313,6 +315,7 @@ describe('OrdersController', () => {
         cancelledOrders: 1,
       }),
       countByCustomerAndCoupon: jest.fn().mockResolvedValue(0),
+      findDistinctMotoboyIdsByStatus: jest.fn().mockResolvedValue([]),
       ...overrides.orderRepository,
     };
     const restaurantRepository: Partial<IRestaurantRepository> = {
@@ -413,6 +416,9 @@ describe('OrdersController', () => {
     const customerBalanceService = new CustomerBalanceService(customerBalanceRepository);
     // specs/0091-integracao-fiscal-focusnfe REQ-2 — só o método usado pelo gatilho de "entregue".
     const fiscalEmissionService = overrides.fiscalEmissionService ?? { emitForOrder: jest.fn().mockResolvedValue(undefined) };
+    // specs/0201-controle-integracoes-cnpj-plataforma — `undefined` por padrão (testes que não
+    // tocam no assunto não precisam injetar; produção sempre injeta, ver main.ts).
+    const platformConfigRepository = overrides.platformConfigRepository;
     const { application, routes } = buildFakeApplication();
     const controller = new OrdersController(
       orderRepository as IOrderRepository,
@@ -433,6 +439,7 @@ describe('OrdersController', () => {
       customerBalanceService,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       fiscalEmissionService as any,
+      platformConfigRepository,
     );
     controller.initializeRoutes(application);
     return {
@@ -1335,6 +1342,55 @@ describe('OrdersController', () => {
         { json: jest.fn() },
       ),
     ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  // specs/0198-rastreamento-motoboy-tempo-real REQ-3/REQ-5.
+  describe('GET /restaurants/me/orders/motoboy-locations', () => {
+    it('devolve só motoboys com pedido saiuParaEntrega E lastLocation conhecida', async () => {
+      const motoboyWithLocation = {
+        id: 'm-1', restaurantId: 'r-1', email: 'carlos@exemplo.com', role: 'motoboy' as const, isActive: true, createdAt: new Date(),
+        lastLocation: { lat: -23.55, lng: -46.63, updatedAt: new Date('2026-11-04T12:00:00.000Z') },
+      };
+      const motoboyWithoutLocation = {
+        id: 'm-2', restaurantId: 'r-1', email: 'joao@exemplo.com', role: 'motoboy' as const, isActive: true, createdAt: new Date(),
+      };
+      const { orderRepository, routes } = setup({
+        orderRepository: { findDistinctMotoboyIdsByStatus: jest.fn().mockResolvedValue(['m-1', 'm-2']) },
+        restaurantOperatorRepository: { findManyByIds: jest.fn().mockResolvedValue([motoboyWithLocation, motoboyWithoutLocation]) },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(routes['GET /restaurants/me/orders/motoboy-locations'], { restaurantId: 'r-1' }, { json });
+
+      expect(orderRepository.findDistinctMotoboyIdsByStatus).toHaveBeenCalledWith('r-1', 'saiuParaEntrega');
+      expect(json).toHaveBeenCalledWith(200, [
+        { motoboyId: 'm-1', name: 'carlos@exemplo.com', lat: -23.55, lng: -46.63, updatedAt: motoboyWithLocation.lastLocation.updatedAt },
+      ]);
+    });
+
+    it('usa o nome cadastrado quando houver, em vez do e-mail', async () => {
+      const motoboy = {
+        id: 'm-1', restaurantId: 'r-1', email: 'carlos@exemplo.com', name: 'Carlos', role: 'motoboy' as const, isActive: true, createdAt: new Date(),
+        lastLocation: { lat: -23.55, lng: -46.63, updatedAt: new Date() },
+      };
+      const { routes } = setup({
+        orderRepository: { findDistinctMotoboyIdsByStatus: jest.fn().mockResolvedValue(['m-1']) },
+        restaurantOperatorRepository: { findManyByIds: jest.fn().mockResolvedValue([motoboy]) },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(routes['GET /restaurants/me/orders/motoboy-locations'], { restaurantId: 'r-1' }, { json });
+
+      expect(json).toHaveBeenCalledWith(200, [expect.objectContaining({ name: 'Carlos' })]);
+    });
+
+    it('bloqueia papéis fora de dono/gerente/financeiro (403) — mesma guarda de /orders/map', async () => {
+      const { routes } = setup();
+
+      await expect(
+        routes['GET /restaurants/me/orders/motoboy-locations'][2]({ operatorRole: 'garcom', restaurantId: 'r-1' }, { json: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 403 });
+    });
   });
 
   it('specs/0137 AC-6: atribui snapshot de operador motoboy ativo ao pedido de entrega em preparo (email como nome, sem campo name em RestaurantOperator)', async () => {
@@ -2585,6 +2641,41 @@ describe('OrdersController', () => {
       MockedMercadoPagoClient.mockClear();
       MockedMercadoPagoClient.prototype.createPreference = jest.fn().mockResolvedValue({ id: 'pref-1', initPoint: 'https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=pref-1' });
       MockedMercadoPagoClient.prototype.refundPayment = jest.fn().mockResolvedValue(undefined);
+    });
+
+    // specs/0201-controle-integracoes-cnpj-plataforma REQ-2 — mesmo com o restaurante já
+    // vinculado, o switch global rejeita primeiro (defesa em profundidade, independente da UI).
+    it('specs/0201: switch desabilitado rejeita creditCardOnline mesmo com Mercado Pago vinculado', async () => {
+      const platformConfigRepository: IPlatformConfigRepository = { isCnpjIntegrationsEnabled: jest.fn().mockResolvedValue(false) };
+      const { routes } = setup({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ mercadoPagoAccessToken: 'token-restaurante' })) },
+        platformConfigRepository,
+      });
+
+      await expect(
+        runAuthenticatedChain(
+          routes['POST /orders'],
+          { body: buildValidBody({ paymentMethod: 'creditCardOnline' }), user: { uid: 'customer-1' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 403 });
+      expect(MockedMercadoPagoClient.prototype.createPreference).not.toHaveBeenCalled();
+    });
+
+    it('specs/0201: switch habilitado permite creditCardOnline normalmente', async () => {
+      const platformConfigRepository: IPlatformConfigRepository = { isCnpjIntegrationsEnabled: jest.fn().mockResolvedValue(true) };
+      const { routes } = setup({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ mercadoPagoAccessToken: 'token-restaurante' })) },
+        platformConfigRepository,
+      });
+
+      await runAuthenticatedChain(
+        routes['POST /orders'],
+        { body: buildValidBody({ paymentMethod: 'creditCardOnline' }), user: { uid: 'customer-1' } },
+        { json: jest.fn() },
+      );
+
+      expect(MockedMercadoPagoClient.prototype.createPreference).toHaveBeenCalled();
     });
 
     it('AC-3/REQ-3: POST /orders rejeita (400) creditCardOnline quando o restaurante não tem Mercado Pago vinculado', async () => {

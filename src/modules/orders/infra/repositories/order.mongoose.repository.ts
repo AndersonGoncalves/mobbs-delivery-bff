@@ -370,6 +370,10 @@ export class OrderMongooseRepository implements IOrderRepository {
     return docs.map(toEntity);
   }
 
+  async findDistinctMotoboyIdsByStatus(restaurantId: string, status: OrderStatus): Promise<string[]> {
+    return OrderModel.distinct('deliveryMotoboy.id', { restaurantId, status, 'deliveryMotoboy.id': { $ne: null } });
+  }
+
   /**
    * specs/0164-impressao-automatica-so-confirmado REQ-1/REQ-2 (revisa specs/0143) — gatilho volta a
    * ser o pedido **confirmado**: só entra na fila quem tem `confirmado` no `statusHistory` e não

@@ -73,8 +73,12 @@ export class LandingContentController extends BaseRouter {
       const parsed = parseBody(landingContentSchema, req.body);
       const content: LandingContent = {
         features: parsed.features.map((item) => ({ ...item, id: item.id ?? randomUUID() })),
+        featureGroups: parsed.featureGroups.map((item) => ({ ...item, id: item.id ?? randomUUID() })),
+        promoBlocks: parsed.promoBlocks.map((item) => ({ ...item, id: item.id ?? randomUUID() })),
         howItWorks: parsed.howItWorks.map((item) => ({ ...item, id: item.id ?? randomUUID() })),
         clients: parsed.clients.map((item) => ({ ...item, id: item.id ?? randomUUID() })),
+        faq: parsed.faq.map((item) => ({ ...item, id: item.id ?? randomUUID() })),
+        pricingPlans: parsed.pricingPlans.map((item) => ({ ...item, id: item.id ?? randomUUID() })),
         company: parsed.company,
         settings: parsed.settings ?? (await this.contentRepository.get()).settings,
       };
