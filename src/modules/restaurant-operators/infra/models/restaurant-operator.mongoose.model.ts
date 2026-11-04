@@ -24,6 +24,13 @@ const restaurantOperatorSchema = new Schema(
     role: { type: String, enum: ['dono', 'gerente', 'financeiro', 'garcom', 'motoboy', 'cozinha'], required: true, default: 'dono' },
     hasFullAccess: { type: Boolean, required: true, default: false },
     isActive: { type: Boolean, required: true, default: true },
+    // specs/0198-rastreamento-motoboy-tempo-real REQ-2 — última posição conhecida, sem índice
+    // geoespacial (sem busca por proximidade nesta spec, só leitura direta por operador) e sem
+    // histórico (cada atualização sobrescreve a anterior).
+    lastLocation: {
+      type: new Schema({ lat: { type: Number, required: true }, lng: { type: Number, required: true }, updatedAt: { type: Date, required: true } }, { _id: false }),
+      required: false,
+    },
   },
   { _id: false, timestamps: { createdAt: true, updatedAt: false } },
 );

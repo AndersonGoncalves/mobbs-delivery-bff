@@ -63,6 +63,7 @@ describe('RestaurantOperatorsController', () => {
       updateRole: jest.fn().mockResolvedValue(undefined),
       updateFullAccess: jest.fn().mockResolvedValue(undefined),
       updateProfile: jest.fn().mockResolvedValue(undefined),
+      updateLastLocation: jest.fn().mockResolvedValue(undefined),
       ...repositoryOverrides,
     };
     const emailService: Partial<IEmailService> = { send: jest.fn().mockResolvedValue(undefined) };
@@ -308,6 +309,48 @@ describe('RestaurantOperatorsController', () => {
     await expect(
       runChain(routes['GET /restaurants/me/operators'], {}, { json: jest.fn(), send: jest.fn() }),
     ).rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  // specs/0198-rastreamento-motoboy-tempo-real REQ-1/REQ-2.
+  describe('PATCH /restaurants/me/operators/me/location', () => {
+    it('motoboy autenticado atualiza a PRÓPRIA posição (req.operatorId, nunca :id de rota) e responde 204', async () => {
+      const { repository, routes } = setup({}, buildPassthroughOperatorMiddleware('motoboy', 'motoboy-9'));
+      const send = jest.fn();
+
+      await runChain(
+        routes['PATCH /restaurants/me/operators/me/location'],
+        { body: { lat: -23.55, lng: -46.63 } },
+        { json: jest.fn(), send },
+      );
+
+      expect(repository.updateLastLocation).toHaveBeenCalledWith('motoboy-9', -23.55, -46.63);
+      expect(send).toHaveBeenCalledWith(204);
+    });
+
+    it('bloqueia papéis diferentes de motoboy (403)', async () => {
+      const { repository, routes } = setup({}, buildPassthroughOperatorMiddleware('dono'));
+
+      await expect(
+        runChain(
+          routes['PATCH /restaurants/me/operators/me/location'],
+          { body: { lat: -23.55, lng: -46.63 } },
+          { json: jest.fn(), send: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 403 });
+      expect(repository.updateLastLocation).not.toHaveBeenCalled();
+    });
+
+    it('rejeita lat/lng fora do intervalo válido', async () => {
+      const { routes } = setup({}, buildPassthroughOperatorMiddleware('motoboy'));
+
+      await expect(
+        runChain(
+          routes['PATCH /restaurants/me/operators/me/location'],
+          { body: { lat: 200, lng: -46.63 } },
+          { json: jest.fn(), send: jest.fn() },
+        ),
+      ).rejects.toBeDefined();
+    });
   });
 
   // specs/0137-papeis-garcom-motoboy REQ-6.

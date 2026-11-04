@@ -13,6 +13,7 @@ interface RestaurantOperatorLeanDocument {
   hasFullAccess?: boolean;
   isActive: boolean;
   createdAt: Date;
+  lastLocation?: { lat: number; lng: number; updatedAt: Date };
 }
 
 function toEntity(doc: RestaurantOperatorLeanDocument): IRestaurantOperator {
@@ -31,6 +32,7 @@ function toEntity(doc: RestaurantOperatorLeanDocument): IRestaurantOperator {
     hasFullAccess: doc.hasFullAccess ?? false,
     isActive: doc.isActive,
     createdAt: doc.createdAt,
+    lastLocation: doc.lastLocation,
   };
 }
 
@@ -112,5 +114,9 @@ export class RestaurantOperatorMongooseRepository implements IRestaurantOperator
       $set: { ...fields, ...(typeof photoUrl === 'string' ? { photoUrl } : {}) },
       ...(photoUrl === null ? { $unset: { photoUrl: 1 } } : {}),
     });
+  }
+
+  async updateLastLocation(id: string, lat: number, lng: number): Promise<void> {
+    await RestaurantOperatorModel.findByIdAndUpdate(id, { $set: { lastLocation: { lat, lng, updatedAt: new Date() } } });
   }
 }

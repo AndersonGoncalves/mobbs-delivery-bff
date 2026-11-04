@@ -7,7 +7,7 @@ import { OrderMongooseRepository } from './order.mongoose.repository';
 // aqui é a própria query do gatilho de impressão que precisa ser validada — não dá pra confiar
 // só no mock de `IOrderRepository` usado pelos specs de controller.
 jest.mock('../models/order.mongoose.model', () => ({
-  OrderModel: { find: jest.fn() },
+  OrderModel: { find: jest.fn(), distinct: jest.fn() },
 }));
 
 function mockFindResult(docs: unknown[]) {
@@ -87,5 +87,23 @@ describe('OrderMongooseRepository.findPendingAutoPrint', () => {
     const [[filter]] = (OrderModel.find as jest.Mock).mock.calls;
     expect(filter.statusHistory.$elemMatch.changedAt).toEqual({ $gte: new Date(NOW.getTime() - 30 * 60_000) });
     expect(filter.createdAt).toBeUndefined();
+  });
+});
+
+// specs/0198-rastreamento-motoboy-tempo-real REQ-3.
+describe('OrderMongooseRepository.findDistinctMotoboyIdsByStatus', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('consulta distinct por restaurantId/status, excluindo deliveryMotoboy.id nulo', async () => {
+    (OrderModel.distinct as jest.Mock).mockResolvedValue(['m-1', 'm-2']);
+
+    const result = await new OrderMongooseRepository().findDistinctMotoboyIdsByStatus('r-1', 'saiuParaEntrega');
+
+    expect(OrderModel.distinct).toHaveBeenCalledWith('deliveryMotoboy.id', {
+      restaurantId: 'r-1',
+      status: 'saiuParaEntrega',
+      'deliveryMotoboy.id': { $ne: null },
+    });
+    expect(result).toEqual(['m-1', 'm-2']);
   });
 });

@@ -440,6 +440,26 @@ export class OrdersController extends BaseRouter {
       },
     );
 
+    // specs/0198-rastreamento-motoboy-tempo-real REQ-3/REQ-5 — última posição conhecida de cada
+    // motoboy com pelo menos um pedido `saiuParaEntrega` agora (sem histórico); mesmo
+    // `operatorAuthenticated` de `/orders/map` (dono/gerente/financeiro, quem vê o mapa). A
+    // decisão de "desatualizado" (REQ-5) fica pro cliente comparar `updatedAt` com o próprio
+    // relógio, não depende do servidor.
+    application.get('/restaurants/me/orders/motoboy-locations', ...operatorAuthenticated, async (req: Request, res: Response) => {
+      const motoboyIds = await this.orderRepository.findDistinctMotoboyIdsByStatus(req.restaurantId!, 'saiuParaEntrega');
+      const motoboys = await this.restaurantOperatorRepository.findManyByIds(motoboyIds);
+      const locations = motoboys
+        .filter((motoboy) => motoboy.lastLocation)
+        .map((motoboy) => ({
+          motoboyId: motoboy.id,
+          name: motoboy.name || motoboy.email,
+          lat: motoboy.lastLocation!.lat,
+          lng: motoboy.lastLocation!.lng,
+          updatedAt: motoboy.lastLocation!.updatedAt,
+        }));
+      res.json(200, locations);
+    });
+
     // specs/0126 REQ-1 — pedidos criados no dia/período pedido pela retaguarda, sem filtrar status.
     // O restaurante vem sempre do operador autenticado; `to` é limite exclusivo.
     application.get('/restaurants/me/orders/map', ...operatorAuthenticated, async (req: Request, res: Response) => {

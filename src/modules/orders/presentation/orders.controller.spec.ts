@@ -313,6 +313,7 @@ describe('OrdersController', () => {
         cancelledOrders: 1,
       }),
       countByCustomerAndCoupon: jest.fn().mockResolvedValue(0),
+      findDistinctMotoboyIdsByStatus: jest.fn().mockResolvedValue([]),
       ...overrides.orderRepository,
     };
     const restaurantRepository: Partial<IRestaurantRepository> = {
@@ -1335,6 +1336,55 @@ describe('OrdersController', () => {
         { json: jest.fn() },
       ),
     ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  // specs/0198-rastreamento-motoboy-tempo-real REQ-3/REQ-5.
+  describe('GET /restaurants/me/orders/motoboy-locations', () => {
+    it('devolve só motoboys com pedido saiuParaEntrega E lastLocation conhecida', async () => {
+      const motoboyWithLocation = {
+        id: 'm-1', restaurantId: 'r-1', email: 'carlos@exemplo.com', role: 'motoboy' as const, isActive: true, createdAt: new Date(),
+        lastLocation: { lat: -23.55, lng: -46.63, updatedAt: new Date('2026-11-04T12:00:00.000Z') },
+      };
+      const motoboyWithoutLocation = {
+        id: 'm-2', restaurantId: 'r-1', email: 'joao@exemplo.com', role: 'motoboy' as const, isActive: true, createdAt: new Date(),
+      };
+      const { orderRepository, routes } = setup({
+        orderRepository: { findDistinctMotoboyIdsByStatus: jest.fn().mockResolvedValue(['m-1', 'm-2']) },
+        restaurantOperatorRepository: { findManyByIds: jest.fn().mockResolvedValue([motoboyWithLocation, motoboyWithoutLocation]) },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(routes['GET /restaurants/me/orders/motoboy-locations'], { restaurantId: 'r-1' }, { json });
+
+      expect(orderRepository.findDistinctMotoboyIdsByStatus).toHaveBeenCalledWith('r-1', 'saiuParaEntrega');
+      expect(json).toHaveBeenCalledWith(200, [
+        { motoboyId: 'm-1', name: 'carlos@exemplo.com', lat: -23.55, lng: -46.63, updatedAt: motoboyWithLocation.lastLocation.updatedAt },
+      ]);
+    });
+
+    it('usa o nome cadastrado quando houver, em vez do e-mail', async () => {
+      const motoboy = {
+        id: 'm-1', restaurantId: 'r-1', email: 'carlos@exemplo.com', name: 'Carlos', role: 'motoboy' as const, isActive: true, createdAt: new Date(),
+        lastLocation: { lat: -23.55, lng: -46.63, updatedAt: new Date() },
+      };
+      const { routes } = setup({
+        orderRepository: { findDistinctMotoboyIdsByStatus: jest.fn().mockResolvedValue(['m-1']) },
+        restaurantOperatorRepository: { findManyByIds: jest.fn().mockResolvedValue([motoboy]) },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(routes['GET /restaurants/me/orders/motoboy-locations'], { restaurantId: 'r-1' }, { json });
+
+      expect(json).toHaveBeenCalledWith(200, [expect.objectContaining({ name: 'Carlos' })]);
+    });
+
+    it('bloqueia papéis fora de dono/gerente/financeiro (403) — mesma guarda de /orders/map', async () => {
+      const { routes } = setup();
+
+      await expect(
+        routes['GET /restaurants/me/orders/motoboy-locations'][2]({ operatorRole: 'garcom', restaurantId: 'r-1' }, { json: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 403 });
+    });
   });
 
   it('specs/0137 AC-6: atribui snapshot de operador motoboy ativo ao pedido de entrega em preparo (email como nome, sem campo name em RestaurantOperator)', async () => {

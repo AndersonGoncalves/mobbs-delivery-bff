@@ -26,6 +26,17 @@ export type OperatorRole = 'dono' | 'gerente' | 'financeiro' | 'garcom' | 'motob
 
 export const OPERATOR_ROLES: OperatorRole[] = ['dono', 'gerente', 'financeiro', 'garcom', 'motoboy', 'cozinha'];
 
+/**
+ * specs/0198-rastreamento-motoboy-tempo-real REQ-2 — última posição conhecida de um operador
+ * `motoboy` enquanto ele compartilha localização em "Minhas entregas". Sem histórico (fora de
+ * escopo da spec): cada atualização sobrescreve a anterior.
+ */
+export interface IRestaurantOperatorLastLocation {
+  lat: number;
+  lng: number;
+  updatedAt: Date;
+}
+
 export interface IRestaurantOperator {
   id: string;
   restaurantId: string;
@@ -38,4 +49,5 @@ export interface IRestaurantOperator {
   hasFullAccess?: boolean;
   isActive: boolean;
   createdAt: Date;
+  lastLocation?: IRestaurantOperatorLastLocation;
 }
