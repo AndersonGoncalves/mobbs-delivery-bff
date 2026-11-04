@@ -44,6 +44,7 @@ import { IRestaurantTableRepository } from '../../table-service/domain/repositor
 import { IPaymentRepository } from '../domain/repositories/payment.repository.interface';
 import { IBlockedCustomerRepository } from '../../customer-blocking/domain/repositories/blocked-customer.repository.interface';
 import { CustomerBalanceService } from '../../customer-balance/domain/services/customer-balance.service';
+import type { IPlatformConfigRepository } from '../../platform-config/domain/platform-config.repository.interface';
 import { isValidCellphone } from '../../../shared/utils/is-valid-cellphone';
 import { normalizePhoneNumber } from '../../../shared/utils/normalize-phone-number';
 import { assignOrderMotoboySchema, cancelOrderWithReasonSchema, createOrderSchema, salesSummaryQuerySchema, updateOrderStatusSchema } from './orders.schemas';
@@ -113,6 +114,9 @@ export class OrdersController extends BaseRouter {
     // ("entregue") do recálculo de faturamento/caixa acima; `undefined` = integração fiscal
     // desligada neste BFF (nunca deveria acontecer em produção, só defesa de teste/composição).
     private readonly fiscalEmissionService?: FiscalEmissionService,
+    // specs/0201-controle-integracoes-cnpj-plataforma REQ-2/ADR-1 — opcional só pra não quebrar
+    // composição/testes existentes que não injetam; em produção é sempre passado (main.ts).
+    private readonly platformConfigRepository?: IPlatformConfigRepository,
   ) {
     super();
     if (rawMaterialRepository) {
@@ -170,6 +174,17 @@ export class OrdersController extends BaseRouter {
       // obrigatória: a cobrança passa a ser pelo gateway, não por um Pix combinado manualmente.
       if (payload.paymentMethod === 'pix' && !restaurant.pixKey && !(restaurant.onlinePaymentsEnabled && restaurant.asaasApiKey)) {
         throw new BadRequestError('Restaurante não tem chave Pix cadastrada');
+      }
+
+      // specs/0201-controle-integracoes-cnpj-plataforma REQ-2/ADR-1 — switch global: enquanto
+      // desabilitado, `creditCardOnline` nunca é aceito, mesmo que o restaurante já tenha um
+      // gateway vinculado (defesa em profundidade, independente do que a UI esconde).
+      if (
+        payload.paymentMethod === 'creditCardOnline' &&
+        this.platformConfigRepository &&
+        !(await this.platformConfigRepository.isCnpjIntegrationsEnabled())
+      ) {
+        throw new ForbiddenError('Cartão de crédito online indisponível no momento');
       }
 
       // specs/0170-integracao-mercado-pago REQ-3 — mesmo raciocínio do Pix acima: o app já
@@ -439,6 +454,26 @@ export class OrdersController extends BaseRouter {
         res.json(200, await this.attachCustomers(orders));
       },
     );
+
+    // specs/0198-rastreamento-motoboy-tempo-real REQ-3/REQ-5 — última posição conhecida de cada
+    // motoboy com pelo menos um pedido `saiuParaEntrega` agora (sem histórico); mesmo
+    // `operatorAuthenticated` de `/orders/map` (dono/gerente/financeiro, quem vê o mapa). A
+    // decisão de "desatualizado" (REQ-5) fica pro cliente comparar `updatedAt` com o próprio
+    // relógio, não depende do servidor.
+    application.get('/restaurants/me/orders/motoboy-locations', ...operatorAuthenticated, async (req: Request, res: Response) => {
+      const motoboyIds = await this.orderRepository.findDistinctMotoboyIdsByStatus(req.restaurantId!, 'saiuParaEntrega');
+      const motoboys = await this.restaurantOperatorRepository.findManyByIds(motoboyIds);
+      const locations = motoboys
+        .filter((motoboy) => motoboy.lastLocation)
+        .map((motoboy) => ({
+          motoboyId: motoboy.id,
+          name: motoboy.name || motoboy.email,
+          lat: motoboy.lastLocation!.lat,
+          lng: motoboy.lastLocation!.lng,
+          updatedAt: motoboy.lastLocation!.updatedAt,
+        }));
+      res.json(200, locations);
+    });
 
     // specs/0126 REQ-1 — pedidos criados no dia/período pedido pela retaguarda, sem filtrar status.
     // O restaurante vem sempre do operador autenticado; `to` é limite exclusivo.

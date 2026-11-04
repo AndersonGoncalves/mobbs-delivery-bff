@@ -48,6 +48,7 @@ describe('BillingSettingsController (specs/0113-parametrizacao-faixas-cobranca)'
       proLimitCents: 700_000,
       proMonthlyPriceCents: 7_990,
       premiumMonthlyPriceCents: 11_990,
+      annualMultiplier: 10,
     });
   });
 

@@ -1,5 +1,5 @@
 import type { Request, Response, Server } from 'restify';
-import { ServiceUnavailableError } from 'restify-errors';
+import { ForbiddenError, ServiceUnavailableError } from 'restify-errors';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
@@ -7,6 +7,7 @@ import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middl
 import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { environment } from '../../../shared/config/environment';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
+import type { IPlatformConfigRepository } from '../../platform-config/domain/platform-config.repository.interface';
 import { MercadoPagoClient } from '../infra/mercado-pago-client';
 import { mercadoPagoOAuthCallbackSchema } from './mercado-pago-oauth.schemas';
 
@@ -24,6 +25,9 @@ export class MercadoPagoOAuthController extends BaseRouter {
   constructor(
     private readonly restaurantRepository: IRestaurantRepository,
     private readonly restaurantOperatorMiddleware: AsyncHandler,
+    // specs/0201-controle-integracoes-cnpj-plataforma — opcional só pra não quebrar composição/
+    // testes existentes que não injetam; em produção é sempre passado (ver main.ts).
+    private readonly platformConfigRepository?: IPlatformConfigRepository,
   ) {
     super();
   }
@@ -55,6 +59,10 @@ export class MercadoPagoOAuthController extends BaseRouter {
     });
 
     application.post('/restaurants/me/mercadopago/callback', ...operatorAuthenticated, async (req: Request, res: Response) => {
+      // specs/0201-controle-integracoes-cnpj-plataforma REQ-2/ADR-1 — defesa em profundidade.
+      if (this.platformConfigRepository && !(await this.platformConfigRepository.isCnpjIntegrationsEnabled())) {
+        throw new ForbiddenError('Integração com Mercado Pago indisponível no momento');
+      }
       const input = parseBody(mercadoPagoOAuthCallbackSchema, req.body);
 
       if (!environment.mercadoPago.clientId || !/^\d+$/.test(environment.mercadoPago.clientId) ||

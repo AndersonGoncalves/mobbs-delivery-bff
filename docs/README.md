@@ -108,12 +108,20 @@ sendo a referência de como o código conversa com cada API — exceto Asaas, qu
   imagem local e sobe `api` + `mongo:7`.
 - `docker compose -f docker-compose.yml -f docker-compose.local.yml -f docker-compose.debug.yml up --build`
   — mesmo ambiente local com o inspector do Node exposto na porta 9229.
-- `docker compose pull api && docker compose up -d --no-build` — baixa do GHCR e sobe a imagem
-  já compilada usada em produção.
+- `docker compose pull api && docker compose up -d --no-build && docker image prune -af` — baixa
+  do GHCR e sobe a imagem já compilada usada em produção.
 
 Pushes para `main` publicam automaticamente no GHCR as tags `latest` e
 `sha-<commit-completo>`. Defina `IMAGE_TAG=sha-...` no `.env` para fixar ou restaurar uma versão
 específica.
+
+**`docker image prune -af` no fim do deploy não é opcional** — achado real (03/11/2026): como
+cada deploy publica uma tag nova (`sha-<commit-completo>`, além de `latest`), o Docker nunca
+apaga as imagens de deploys anteriores sozinho (cada uma com tag própria, nunca "dangling"); sem
+prune, cada deploy soma ~820MB no disco do servidor pra sempre. Isso já encheu o disco da EC2 de
+produção (28GB, chegou a sobrar 130MB) sem ninguém notar até então. O `-a` remove toda imagem sem
+container rodando nela (não derruba `api`/`mongo`, que continuam em uso); `-f` pula a confirmação
+interativa (sem prompt, seguro de rodar depois de todo deploy).
 
 ## Padrões
 

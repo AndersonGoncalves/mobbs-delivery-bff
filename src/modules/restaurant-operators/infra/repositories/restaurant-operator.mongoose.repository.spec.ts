@@ -49,3 +49,20 @@ describe('RestaurantOperatorMongooseRepository.updateProfile', () => {
     expect(update).toHaveBeenCalledWith('op-1', { $set: profile });
   });
 });
+
+// specs/0198-rastreamento-motoboy-tempo-real REQ-2.
+describe('RestaurantOperatorMongooseRepository.updateLastLocation', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('sobrescreve lastLocation com lat/lng e updatedAt do momento do update', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-11-04T12:00:00.000Z'));
+    const update = jest.spyOn(RestaurantOperatorModel, 'findByIdAndUpdate').mockResolvedValue(null);
+
+    await new RestaurantOperatorMongooseRepository().updateLastLocation('motoboy-1', -23.55, -46.63);
+
+    expect(update).toHaveBeenCalledWith('motoboy-1', {
+      $set: { lastLocation: { lat: -23.55, lng: -46.63, updatedAt: new Date('2026-11-04T12:00:00.000Z') } },
+    });
+    jest.useRealTimers();
+  });
+});

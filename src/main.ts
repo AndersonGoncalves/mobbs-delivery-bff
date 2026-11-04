@@ -1,3 +1,13 @@
+import * as Sentry from '@sentry/node';
+
+// Achado de auditoria pré-produção (01/11/2026) — "sem crash-reporting remoto no BFF/web".
+// Mesmo padrão já usado no app Flutter (`bootstrap.dart`): opt-in só por variável de ambiente —
+// `SENTRY_DSN` vazio/ausente (padrão) mantém o comportamento de sempre, sem nenhuma chamada de
+// rede nova. Precisa rodar ANTES de qualquer outro import que possa lançar em tempo de módulo.
+if (process.env.SENTRY_DSN) {
+  Sentry.init({ dsn: process.env.SENTRY_DSN, environment: process.env.NODE_ENV ?? 'production' });
+}
+
 import { Server } from './shared/http/server';
 import { SupportController } from './modules/support/presentation/support.controller';
 import { SupportSettingsMongooseRepository } from './modules/support/infra/support-settings.mongoose.repository';
@@ -6,8 +16,12 @@ import {
   LandingContentMongooseRepository,
   LandingTestimonialMongooseRepository,
 } from './modules/landing-content/infra/landing-content.mongoose.repository';
+import { PlatformConfigController } from './modules/platform-config/presentation/platform-config.controller';
+import { PlatformConfigMongooseRepository } from './modules/platform-config/infra/platform-config.mongoose.repository';
 import { SuggestionRepository } from './modules/suggestions/infra/suggestion.repository';
 import { SuggestionsController } from './modules/suggestions/presentation/suggestions.controller';
+import { HelpArticleMongooseRepository } from './modules/help/infra/help-article.mongoose.repository';
+import { HelpArticleController } from './modules/help/presentation/help-article.controller';
 import { buildRestaurantOperatorMiddleware } from './shared/http/restaurant-operator.middleware';
 import { RestaurantMongooseRepository } from './modules/restaurants/infra/repositories/restaurant.mongoose.repository';
 import { RestaurantsController } from './modules/restaurants/presentation/restaurants.controller';
@@ -171,15 +185,21 @@ import { PlatformBillingWebhookController } from './modules/platform-billing/pre
 // `api` — a rede de segurança real é deixar o processo morrer de forma CONTROLADA (nunca tentar
 // continuar rodando depois de `uncaughtException`: o estado pode estar corrompido, é a própria
 // recomendação do Node) e deixar o Docker reiniciar, só que agora com um log claro do motivo.
+// `Sentry.close` espera o evento ser enviado antes do `process.exit` derrubar o processo —
+// sem isso, o crash mais importante de todos (o que derruba o servidor) nunca chegaria no Sentry.
+function reportFatalAndExit(error: unknown): void {
+  Sentry.captureException(error);
+  void Sentry.close(2000).finally(() => process.exit(1));
+}
 process.on('unhandledRejection', (reason) => {
   // eslint-disable-next-line no-console
   console.error('[fatal] Promise rejeitada sem tratamento — reiniciando (docker-compose restart: always):', reason);
-  process.exit(1);
+  reportFatalAndExit(reason);
 });
 process.on('uncaughtException', (error) => {
   // eslint-disable-next-line no-console
   console.error('[fatal] Exceção não tratada — reiniciando (docker-compose restart: always):', error);
-  process.exit(1);
+  reportFatalAndExit(error);
 });
 
 const server = new Server();
@@ -382,6 +402,9 @@ const fiscalEmissionService = new FiscalEmissionService(fiscalConfigRepository, 
   homologacao: 'https://homologacao.focusnfe.com.br',
   producao: 'https://api.focusnfe.com.br',
 });
+// specs/0201-controle-integracoes-cnpj-plataforma — switch global (Asaas subconta/Mercado
+// Pago/Cartão de Crédito Online), lido por 3 controllers abaixo além do endpoint público.
+const platformConfigRepository = new PlatformConfigMongooseRepository();
 const platformBillingCycleService = new PlatformBillingCycleService({
   restaurantRepository,
   obligationRepository,
@@ -435,6 +458,7 @@ const ordersController = new OrdersController(
   blockedCustomerRepository,
   customerBalanceService,
   fiscalEmissionService,
+  platformConfigRepository,
 );
 
 server
@@ -449,12 +473,16 @@ server
       new LandingTestimonialMongooseRepository(),
       buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
     ),
+    // specs/0201-controle-integracoes-cnpj-plataforma — endpoint público, app/web leem daqui.
+    new PlatformConfigController(platformConfigRepository),
     new SuggestionsController(
       new SuggestionRepository(),
       restaurantRepository,
       restaurantOperatorMiddleware,
       buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
     ),
+    // specs/0105-modulo-ajuda-retaguarda — manual de ajuda da retaguarda.
+    new HelpArticleController(new HelpArticleMongooseRepository(), restaurantOperatorMiddleware),
     new RestaurantsController(restaurantRepository, restaurantOperatorMiddleware),
     new RestaurantSignupController(
       restaurantRepository,
@@ -536,10 +564,10 @@ server
       restaurantOperatorMiddleware,
     ),
     // specs/0101-integracao-asaas (fase 1) — cobrança de Pix via gateway real.
-    new AsaasOnboardingController(restaurantRepository, restaurantOperatorMiddleware),
+    new AsaasOnboardingController(restaurantRepository, restaurantOperatorMiddleware, platformConfigRepository),
     new AsaasWebhookController(orderRepository, paymentRepository, restaurantRepository, whatsAppNotificationService),
     // specs/0170-integracao-mercado-pago — cobrança de cartão de crédito via Checkout Pro.
-    new MercadoPagoOAuthController(restaurantRepository, restaurantOperatorMiddleware),
+    new MercadoPagoOAuthController(restaurantRepository, restaurantOperatorMiddleware, platformConfigRepository),
     new InstagramAutomationController(restaurantRepository, instagramPostRepository, restaurantOperatorMiddleware),
     new MercadoPagoWebhookController(orderRepository, paymentRepository, restaurantRepository, whatsAppNotificationService),
     // specs/0106 — painel da plataforma, restrito à lista PLATFORM_ADMIN_EMAILS.

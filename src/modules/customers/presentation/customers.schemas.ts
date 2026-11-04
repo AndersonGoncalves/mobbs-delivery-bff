@@ -48,15 +48,18 @@ export const listFavoritesQuerySchema = z.object({
 });
 
 /** REQ-3/REQ-4 (`specs/0011-perfil-cliente`) — criar/editar endereço. */
+// Pedido explícito do usuário (follow-up) — mensagens em português: antes usavam o texto padrão
+// do zod ("String must contain at least 1 character(s)"), que a tela só repassava escondido
+// atrás de um Alert genérico ("confira os campos"), sem dar nenhuma pista de qual campo faltou.
 export const saveAddressSchema = z.object({
-  label: z.string().min(1),
-  street: z.string().min(1),
-  number: z.string().min(1),
+  label: z.string().min(1, 'Informe a identificação do endereço (ex. Casa, Trabalho)'),
+  street: z.string().min(1, 'Informe a rua'),
+  number: z.string().min(1, 'Informe o número'),
   complement: z.string().optional(),
-  neighborhood: z.string().min(1),
-  city: z.string().min(1),
-  state: z.string().min(1),
-  zipCode: z.string().min(1),
+  neighborhood: z.string().min(1, 'Informe o bairro'),
+  city: z.string().min(1, 'Informe a cidade'),
+  state: z.string().min(1, 'Informe a UF'),
+  zipCode: z.string().min(1, 'Informe o CEP'),
 });
 
 export const avatarPresignSchema = z.object({

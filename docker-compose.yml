@@ -36,6 +36,18 @@ services:
       # Default já é sandbox no código (`environment.ts`) se isto ficar vazio — só precisa virar
       # a URL de produção (`https://api.asaas.com/v3`) quando a conta mãe virar uma PJ real.
       - ASAAS_BASE_URL=${ASAAS_BASE_URL}
+      # Achado real (03/11/2026) — estas 4 variáveis já existiam no `.env`/`.env.example` mas
+      # nunca tinham sido adicionadas aqui; o Compose só repassa pro container o que está
+      # explicitamente listado nesta seção, não tudo que está no `.env`. Sem isso, a cobrança da
+      # assinatura (specs/0175) ficava sem efeito mesmo com o `.env` preenchido, sem erro nenhum
+      # visível — mesma classe de bug do achado do `ASAAS_API_KEY` escapado acima.
+      - BILLING_PIX_KEY_TYPE=${BILLING_PIX_KEY_TYPE}
+      - BILLING_PIX_KEY=${BILLING_PIX_KEY}
+      - BILLING_PIX_BENEFICIARY_NAME=${BILLING_PIX_BENEFICIARY_NAME}
+      - ASAAS_BILLING_WEBHOOK_TOKEN=${ASAAS_BILLING_WEBHOOK_TOKEN}
+      # Achado de auditoria pré-produção (01/11/2026) — monitoramento de erro (Sentry); mesmo
+      # motivo acima, precisa estar listado aqui pra chegar no container. Vazio = desligado.
+      - SENTRY_DSN=${SENTRY_DSN}
       # Firebase Admin SDK (verificação dos tokens do app) — chave de service account baixada no
       # Console (Configurações do projeto > Contas de serviço > Gerar nova chave privada), salva
       # como ./firebase-service-account.json (mesma pasta deste arquivo, já no .gitignore).

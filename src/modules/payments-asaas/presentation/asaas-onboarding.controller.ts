@@ -1,5 +1,6 @@
 import { randomBytes } from 'crypto';
 import type { Request, Response, Server } from 'restify';
+import { ForbiddenError } from 'restify-errors';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
@@ -7,6 +8,7 @@ import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middl
 import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { environment } from '../../../shared/config/environment';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
+import type { IPlatformConfigRepository } from '../../platform-config/domain/platform-config.repository.interface';
 import { AsaasClient } from '../infra/asaas-client';
 import { createAsaasSubaccountSchema, reconnectAsaasSubaccountSchema, savePixTransferKeySchema } from './asaas-onboarding.schemas';
 
@@ -23,8 +25,19 @@ export class AsaasOnboardingController extends BaseRouter {
   constructor(
     private readonly restaurantRepository: IRestaurantRepository,
     private readonly restaurantOperatorMiddleware: AsyncHandler,
+    // specs/0201-controle-integracoes-cnpj-plataforma — opcional só pra não quebrar composição/
+    // testes existentes que não injetam; em produção é sempre passado (ver main.ts).
+    private readonly platformConfigRepository?: IPlatformConfigRepository,
   ) {
     super();
+  }
+
+  // specs/0201-controle-integracoes-cnpj-plataforma REQ-2/ADR-1 — defesa em profundidade: o
+  // switch também bloqueia aqui, não só esconde o menu na UI.
+  private async assertCnpjIntegrationsEnabled(): Promise<void> {
+    if (this.platformConfigRepository && !(await this.platformConfigRepository.isCnpjIntegrationsEnabled())) {
+      throw new ForbiddenError('Integração com Asaas (subconta) indisponível no momento');
+    }
   }
 
   initializeRoutes(application: Server): void {
@@ -35,6 +48,7 @@ export class AsaasOnboardingController extends BaseRouter {
     ];
 
     application.post('/restaurants/me/asaas/subaccount', ...operatorAuthenticated, async (req: Request, res: Response) => {
+      await this.assertCnpjIntegrationsEnabled();
       const input = parseBody(createAsaasSubaccountSchema, req.body);
 
       // Achado real (pedido explícito do usuário) — se já existe uma subconta vinculada antes
@@ -95,6 +109,7 @@ export class AsaasOnboardingController extends BaseRouter {
     // `forgetAsaasSubaccount` (`previousAsaasSubaccounts`) de volta aos campos ativos, sem
     // chamar o Asaas de novo (mesmo espírito de "Reativar" sobre `disconnectAsaasSubaccount`).
     application.post('/restaurants/me/asaas/subaccount/reconnect', ...operatorAuthenticated, async (req: Request, res: Response) => {
+      await this.assertCnpjIntegrationsEnabled();
       const { asaasAccountId } = parseBody(reconnectAsaasSubaccountSchema, req.body);
       await this.restaurantRepository.reconnectPreviousAsaasSubaccount(req.restaurantId!, asaasAccountId);
       res.json(200, { onlinePaymentsEnabled: true, asaasAccountId });

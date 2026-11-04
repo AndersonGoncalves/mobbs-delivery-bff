@@ -43,4 +43,7 @@ export interface IRestaurantOperatorRepository {
   updateFullAccess(id: string, hasFullAccess: boolean): Promise<void>;
   /** (ajuste, pedido explícito do usuário) — edita nome/WhatsApp/foto; nunca o e-mail. */
   updateProfile(id: string, profile: { name: string; whatsapp?: string; photoUrl?: string | null }): Promise<void>;
+  /** specs/0198-rastreamento-motoboy-tempo-real REQ-2 — sobrescreve `lastLocation` (sem
+   * histórico); `updatedAt` é sempre o momento do `update`, nunca aceito de fora. */
+  updateLastLocation(id: string, lat: number, lng: number): Promise<void>;
 }

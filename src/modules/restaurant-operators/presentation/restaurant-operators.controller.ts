@@ -10,6 +10,7 @@ import { IRestaurantOperatorRepository } from '../domain/repositories/restaurant
 import {
   addOperatorSchema,
   updateOperatorFullAccessSchema,
+  updateOperatorLocationSchema,
   updateOperatorProfileSchema,
   updateOperatorRoleSchema,
 } from '../../restaurants/presentation/restaurants.schemas';
@@ -84,6 +85,23 @@ export class RestaurantOperatorsController extends BaseRouter {
           .catch((error) => {
             console.error(`[email] falha ao enviar aviso de novo login pra ${email}:`, error);
           });
+        res.send(204);
+      },
+    );
+
+    // specs/0198-rastreamento-motoboy-tempo-real REQ-1/REQ-2 — o motoboy manda a própria posição
+    // periodicamente enquanto "Minhas entregas" está aberta com um pedido `saiuParaEntrega`
+    // (captura e decisão de quando parar ficam no front, REQ-4/REQ-6); sempre `req.operatorId`
+    // (nunca `:id` de rota — mesmo cuidado de isolamento do resto deste controller), sem
+    // histórico (sobrescreve a posição anterior).
+    application.patch(
+      '/restaurants/me/operators/me/location',
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('motoboy'),
+      async (req: Request, res: Response) => {
+        const { lat, lng } = parseBody(updateOperatorLocationSchema, req.body);
+        await this.operatorRepository.updateLastLocation(req.operatorId!, lat, lng);
         res.send(204);
       },
     );
