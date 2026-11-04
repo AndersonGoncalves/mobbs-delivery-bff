@@ -16,6 +16,8 @@ import {
   LandingContentMongooseRepository,
   LandingTestimonialMongooseRepository,
 } from './modules/landing-content/infra/landing-content.mongoose.repository';
+import { PlatformConfigController } from './modules/platform-config/presentation/platform-config.controller';
+import { PlatformConfigMongooseRepository } from './modules/platform-config/infra/platform-config.mongoose.repository';
 import { SuggestionRepository } from './modules/suggestions/infra/suggestion.repository';
 import { SuggestionsController } from './modules/suggestions/presentation/suggestions.controller';
 import { HelpArticleMongooseRepository } from './modules/help/infra/help-article.mongoose.repository';
@@ -400,6 +402,9 @@ const fiscalEmissionService = new FiscalEmissionService(fiscalConfigRepository, 
   homologacao: 'https://homologacao.focusnfe.com.br',
   producao: 'https://api.focusnfe.com.br',
 });
+// specs/0201-controle-integracoes-cnpj-plataforma — switch global (Asaas subconta/Mercado
+// Pago/Cartão de Crédito Online), lido por 3 controllers abaixo além do endpoint público.
+const platformConfigRepository = new PlatformConfigMongooseRepository();
 const platformBillingCycleService = new PlatformBillingCycleService({
   restaurantRepository,
   obligationRepository,
@@ -453,6 +458,7 @@ const ordersController = new OrdersController(
   blockedCustomerRepository,
   customerBalanceService,
   fiscalEmissionService,
+  platformConfigRepository,
 );
 
 server
@@ -467,6 +473,8 @@ server
       new LandingTestimonialMongooseRepository(),
       buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
     ),
+    // specs/0201-controle-integracoes-cnpj-plataforma — endpoint público, app/web leem daqui.
+    new PlatformConfigController(platformConfigRepository),
     new SuggestionsController(
       new SuggestionRepository(),
       restaurantRepository,
@@ -556,10 +564,10 @@ server
       restaurantOperatorMiddleware,
     ),
     // specs/0101-integracao-asaas (fase 1) — cobrança de Pix via gateway real.
-    new AsaasOnboardingController(restaurantRepository, restaurantOperatorMiddleware),
+    new AsaasOnboardingController(restaurantRepository, restaurantOperatorMiddleware, platformConfigRepository),
     new AsaasWebhookController(orderRepository, paymentRepository, restaurantRepository, whatsAppNotificationService),
     // specs/0170-integracao-mercado-pago — cobrança de cartão de crédito via Checkout Pro.
-    new MercadoPagoOAuthController(restaurantRepository, restaurantOperatorMiddleware),
+    new MercadoPagoOAuthController(restaurantRepository, restaurantOperatorMiddleware, platformConfigRepository),
     new InstagramAutomationController(restaurantRepository, instagramPostRepository, restaurantOperatorMiddleware),
     new MercadoPagoWebhookController(orderRepository, paymentRepository, restaurantRepository, whatsAppNotificationService),
     // specs/0106 — painel da plataforma, restrito à lista PLATFORM_ADMIN_EMAILS.

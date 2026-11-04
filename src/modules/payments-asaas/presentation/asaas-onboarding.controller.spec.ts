@@ -1,5 +1,6 @@
 import type { Request, Response, Server } from 'restify';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
+import type { IPlatformConfigRepository } from '../../platform-config/domain/platform-config.repository.interface';
 import { AsaasClient } from '../infra/asaas-client';
 import { AsaasOnboardingController } from './asaas-onboarding.controller';
 
@@ -45,7 +46,7 @@ describe('AsaasOnboardingController (specs/0101-integracao-asaas, fase 1)', () =
     MockedAsaasClient.prototype.createSubaccount = jest.fn().mockResolvedValue({ id: 'acc_1', walletId: 'wallet_1', apiKey: 'key-subconta' });
   });
 
-  function setup(overrides: { restaurantRepository?: Partial<IRestaurantRepository> } = {}) {
+  function setup(overrides: { restaurantRepository?: Partial<IRestaurantRepository>; platformConfigRepository?: IPlatformConfigRepository } = {}) {
     const restaurantRepository: Partial<IRestaurantRepository> = {
       // `null` por padrão = "nunca teve subconta" — exercita o caminho de criação de verdade;
       // testes de reconexão sobrescrevem isso pra devolver um restaurante com `asaasAccountId`.
@@ -59,7 +60,7 @@ describe('AsaasOnboardingController (specs/0101-integracao-asaas, fase 1)', () =
       ...overrides.restaurantRepository,
     };
     const { application, routes } = buildApp();
-    new AsaasOnboardingController(restaurantRepository as IRestaurantRepository, jest.fn()).initializeRoutes(application);
+    new AsaasOnboardingController(restaurantRepository as IRestaurantRepository, jest.fn(), overrides.platformConfigRepository).initializeRoutes(application);
     return { restaurantRepository, routes };
   }
 
@@ -83,6 +84,34 @@ describe('AsaasOnboardingController (specs/0101-integracao-asaas, fase 1)', () =
     const [, payload] = json.mock.calls[0] as [number, Record<string, unknown>];
     expect(payload).not.toHaveProperty('asaasApiKey');
     expect(payload).toMatchObject({ onlinePaymentsEnabled: true });
+  });
+
+  // specs/0201-controle-integracoes-cnpj-plataforma REQ-2.
+  it('specs/0201: switch desabilitado rejeita a criação de subconta sem chamar o Asaas', async () => {
+    const platformConfigRepository: IPlatformConfigRepository = { isCnpjIntegrationsEnabled: jest.fn().mockResolvedValue(false) };
+    const { restaurantRepository, routes } = setup({ platformConfigRepository });
+
+    await expect(
+      runOperatorChain(
+        routes['POST /restaurants/me/asaas/subaccount'],
+        { restaurantId: 'r-1', body: buildSubaccountInput() },
+        { json: jest.fn(), send: jest.fn() },
+      ),
+    ).rejects.toThrow('Integração com Asaas (subconta) indisponível no momento');
+    expect(restaurantRepository.saveAsaasSubaccount).not.toHaveBeenCalled();
+  });
+
+  it('specs/0201: switch habilitado permite a criação normalmente', async () => {
+    const platformConfigRepository: IPlatformConfigRepository = { isCnpjIntegrationsEnabled: jest.fn().mockResolvedValue(true) };
+    const { restaurantRepository, routes } = setup({ platformConfigRepository });
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/asaas/subaccount'],
+      { restaurantId: 'r-1', body: buildSubaccountInput() },
+      { json: jest.fn(), send: jest.fn() },
+    );
+
+    expect(restaurantRepository.saveAsaasSubaccount).toHaveBeenCalled();
   });
 
   it('registra a URL de webhook com o restaurantId do operador autenticado', async () => {
@@ -166,6 +195,21 @@ describe('AsaasOnboardingController (specs/0101-integracao-asaas, fase 1)', () =
     expect(restaurantRepository.reconnectPreviousAsaasSubaccount).toHaveBeenCalledWith('r-1', 'acc-antiga');
     expect(MockedAsaasClient.prototype.createSubaccount).not.toHaveBeenCalled();
     expect(json).toHaveBeenCalledWith(200, { onlinePaymentsEnabled: true, asaasAccountId: 'acc-antiga' });
+  });
+
+  // specs/0201-controle-integracoes-cnpj-plataforma REQ-2.
+  it('specs/0201: switch desabilitado rejeita a reconexão também', async () => {
+    const platformConfigRepository: IPlatformConfigRepository = { isCnpjIntegrationsEnabled: jest.fn().mockResolvedValue(false) };
+    const { restaurantRepository, routes } = setup({ platformConfigRepository });
+
+    await expect(
+      runOperatorChain(
+        routes['POST /restaurants/me/asaas/subaccount/reconnect'],
+        { restaurantId: 'r-1', body: { asaasAccountId: 'acc-antiga' } },
+        { json: jest.fn(), send: jest.fn() },
+      ),
+    ).rejects.toThrow('Integração com Asaas (subconta) indisponível no momento');
+    expect(restaurantRepository.reconnectPreviousAsaasSubaccount).not.toHaveBeenCalled();
   });
 
   it('POST /restaurants/me/asaas/subaccount/reconnect sem asaasAccountId é rejeitado (400)', async () => {

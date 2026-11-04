@@ -1,5 +1,6 @@
 import type { Request, Response, Server } from 'restify';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
+import type { IPlatformConfigRepository } from '../../platform-config/domain/platform-config.repository.interface';
 import { MercadoPagoClient } from '../infra/mercado-pago-client';
 import { MercadoPagoOAuthController } from './mercado-pago-oauth.controller';
 import { environment } from '../../../shared/config/environment';
@@ -38,15 +39,27 @@ describe('MercadoPagoOAuthController (specs/0170-integracao-mercado-pago)', () =
   });
   afterEach(() => jest.restoreAllMocks());
 
-  function setup(overrides: { restaurantRepository?: Partial<IRestaurantRepository> } = {}) {
+  function setup(overrides: { restaurantRepository?: Partial<IRestaurantRepository>; platformConfigRepository?: IPlatformConfigRepository } = {}) {
     const restaurantRepository: Partial<IRestaurantRepository> = {
       saveMercadoPagoTokens: jest.fn().mockResolvedValue({ id: 'r-1', mercadoPagoUserId: '123' }),
       ...overrides.restaurantRepository,
     };
     const { application, routes } = buildApp();
-    new MercadoPagoOAuthController(restaurantRepository as IRestaurantRepository, jest.fn()).initializeRoutes(application);
+    new MercadoPagoOAuthController(restaurantRepository as IRestaurantRepository, jest.fn(), overrides.platformConfigRepository).initializeRoutes(application);
     return { restaurantRepository, routes };
   }
+
+  // specs/0201-controle-integracoes-cnpj-plataforma REQ-2.
+  it('specs/0201: switch desabilitado rejeita a conexão sem chamar o Mercado Pago', async () => {
+    const platformConfigRepository: IPlatformConfigRepository = { isCnpjIntegrationsEnabled: jest.fn().mockResolvedValue(false) };
+    const { restaurantRepository, routes } = setup({ platformConfigRepository });
+
+    await expect(
+      runOperatorChain(routes['POST /restaurants/me/mercadopago/callback'], { restaurantId: 'r-1', body: { code: 'code-1' } }, { json: jest.fn(), send: jest.fn() }),
+    ).rejects.toThrow('Integração com Mercado Pago indisponível no momento');
+    expect(restaurantRepository.saveMercadoPagoTokens).not.toHaveBeenCalled();
+    expect(MockedMercadoPagoClient.prototype.exchangeCodeForToken).not.toHaveBeenCalled();
+  });
 
   it('AC-1: operador dono/gerente troca o code por tokens e persiste sem expor access_token/refresh_token', async () => {
     const { restaurantRepository, routes } = setup();

@@ -21,6 +21,7 @@ import { NinetyNineFoodAuthService } from '../../ninety-nine-food-integration/in
 import { NinetyNineFoodClient } from '../../ninety-nine-food-integration/infra/ninety-nine-food-client';
 import { CustomerBalanceService } from '../../customer-balance/domain/services/customer-balance.service';
 import { ICustomerBalanceRepository } from '../../customer-balance/domain/repositories/customer-balance.repository.interface';
+import type { IPlatformConfigRepository } from '../../platform-config/domain/platform-config.repository.interface';
 import { OrdersController } from './orders.controller';
 
 // specs/0101-integracao-asaas (fase 1) — `tryChargeOrderPixViaAsaas`/`tryRefundOrderPixViaAsaas`
@@ -272,6 +273,7 @@ describe('OrdersController', () => {
       blockedCustomerRepository?: Partial<IBlockedCustomerRepository>;
       customerBalanceRepository?: ICustomerBalanceRepository;
       fiscalEmissionService?: { emitForOrder: jest.Mock };
+      platformConfigRepository?: IPlatformConfigRepository;
     } = {},
   ) {
     const orderRepository: Partial<IOrderRepository> = {
@@ -414,6 +416,9 @@ describe('OrdersController', () => {
     const customerBalanceService = new CustomerBalanceService(customerBalanceRepository);
     // specs/0091-integracao-fiscal-focusnfe REQ-2 — só o método usado pelo gatilho de "entregue".
     const fiscalEmissionService = overrides.fiscalEmissionService ?? { emitForOrder: jest.fn().mockResolvedValue(undefined) };
+    // specs/0201-controle-integracoes-cnpj-plataforma — `undefined` por padrão (testes que não
+    // tocam no assunto não precisam injetar; produção sempre injeta, ver main.ts).
+    const platformConfigRepository = overrides.platformConfigRepository;
     const { application, routes } = buildFakeApplication();
     const controller = new OrdersController(
       orderRepository as IOrderRepository,
@@ -434,6 +439,7 @@ describe('OrdersController', () => {
       customerBalanceService,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       fiscalEmissionService as any,
+      platformConfigRepository,
     );
     controller.initializeRoutes(application);
     return {
@@ -2635,6 +2641,41 @@ describe('OrdersController', () => {
       MockedMercadoPagoClient.mockClear();
       MockedMercadoPagoClient.prototype.createPreference = jest.fn().mockResolvedValue({ id: 'pref-1', initPoint: 'https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=pref-1' });
       MockedMercadoPagoClient.prototype.refundPayment = jest.fn().mockResolvedValue(undefined);
+    });
+
+    // specs/0201-controle-integracoes-cnpj-plataforma REQ-2 — mesmo com o restaurante já
+    // vinculado, o switch global rejeita primeiro (defesa em profundidade, independente da UI).
+    it('specs/0201: switch desabilitado rejeita creditCardOnline mesmo com Mercado Pago vinculado', async () => {
+      const platformConfigRepository: IPlatformConfigRepository = { isCnpjIntegrationsEnabled: jest.fn().mockResolvedValue(false) };
+      const { routes } = setup({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ mercadoPagoAccessToken: 'token-restaurante' })) },
+        platformConfigRepository,
+      });
+
+      await expect(
+        runAuthenticatedChain(
+          routes['POST /orders'],
+          { body: buildValidBody({ paymentMethod: 'creditCardOnline' }), user: { uid: 'customer-1' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 403 });
+      expect(MockedMercadoPagoClient.prototype.createPreference).not.toHaveBeenCalled();
+    });
+
+    it('specs/0201: switch habilitado permite creditCardOnline normalmente', async () => {
+      const platformConfigRepository: IPlatformConfigRepository = { isCnpjIntegrationsEnabled: jest.fn().mockResolvedValue(true) };
+      const { routes } = setup({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ mercadoPagoAccessToken: 'token-restaurante' })) },
+        platformConfigRepository,
+      });
+
+      await runAuthenticatedChain(
+        routes['POST /orders'],
+        { body: buildValidBody({ paymentMethod: 'creditCardOnline' }), user: { uid: 'customer-1' } },
+        { json: jest.fn() },
+      );
+
+      expect(MockedMercadoPagoClient.prototype.createPreference).toHaveBeenCalled();
     });
 
     it('AC-3/REQ-3: POST /orders rejeita (400) creditCardOnline quando o restaurante não tem Mercado Pago vinculado', async () => {
