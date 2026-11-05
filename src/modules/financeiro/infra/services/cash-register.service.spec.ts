@@ -397,5 +397,29 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
 
       expect(balance).toMatchObject({ pix: 50, cash: -20 });
     });
+
+    // (achado real, pedido explícito do usuário) — "Vendas de mesa e balcão"/"Vendas de
+    // delivery/retirada" também precisam aparecer no histórico de fechamentos, não só em
+    // "Movimento do dia" (que já usa `getTableSalesBetween`/`getDeliverySalesBetween` à parte).
+    it('getClosingSummary separa tableSales de deliverySales, mesa/balcão e delivery/retirada no mesmo período', async () => {
+      const { service } = setup({
+        orderRepository: {
+          findReceivedSalesBetween: jest.fn().mockResolvedValue([
+            buildDeliveredOrder({ id: 'o-delivery-1', orderType: 'delivery', paymentMethod: 'pix', total: 50 }),
+            buildDeliveredOrder({ id: 'o-delivery-2', orderType: 'pickup', paymentMethod: 'cash', total: 20 }),
+            buildDeliveredOrder({
+              id: 'o-mesa', orderType: 'table', status: 'confirmado', paymentMethod: 'pix', total: 16,
+              tablePayments: [{ id: 'pay-1', method: 'cash', amount: 16, paidAt: '2026-09-09T10:00:00.000Z' }],
+            }),
+          ]),
+        },
+      });
+
+      const summary = await service.getClosingSummary('cr-1');
+
+      expect(summary.deliverySales).toBe(70);
+      expect(summary.tableSales).toBe(16);
+      expect(summary.totalSales).toBe(86);
+    });
   });
 });

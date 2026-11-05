@@ -107,6 +107,7 @@ describe('CashRegisterController', () => {
       findDeliveredByRestaurantCompletedBetween: jest.fn().mockResolvedValue([]),
       findClosedTableOrders: jest.fn().mockResolvedValue([]),
       getTableSalesBetween: jest.fn().mockResolvedValue(75),
+      getDeliverySalesBetween: jest.fn().mockResolvedValue(40),
       ...overrides.orderRepository,
     };
     // specs/0118-controle-caixa-automatico-redes-sociais — `ensureAutomaticSchedule` mockado como
@@ -239,7 +240,7 @@ describe('CashRegisterController', () => {
 
     await runOperatorChain(routes['GET /restaurants/me/cash-register/open'], { restaurantId: 'r-1' }, { json });
 
-    expect(json).toHaveBeenCalledWith(200, { session: null, pendingSessions: [], todaySession: null, movements: [], calculatedBalance: 0, tableSales: 0, balanceByPaymentMethod: {} });
+    expect(json).toHaveBeenCalledWith(200, { session: null, pendingSessions: [], todaySession: null, movements: [], calculatedBalance: 0, tableSales: 0, deliverySales: 0, balanceByPaymentMethod: {} });
     expect(cashRegisterService.ensureAutomaticSchedule).toHaveBeenCalledWith('r-1');
   });
 
@@ -294,9 +295,11 @@ describe('CashRegisterController', () => {
       movements: [expect.objectContaining({ id: 'mv-1' })],
       calculatedBalance: 150,
       tableSales: 75,
+      deliverySales: 40,
       balanceByPaymentMethod: { pix: 100, cash: 30 },
     });
     expect(orderRepository.getTableSalesBetween).toHaveBeenCalledWith('r-1', new Date('2026-09-09T08:00:00.000Z'), expect.any(Date));
+    expect(orderRepository.getDeliverySalesBetween).toHaveBeenCalledWith('r-1', new Date('2026-09-09T08:00:00.000Z'), expect.any(Date));
     expect(cashRegisterService.getBalanceByPaymentMethod).toHaveBeenCalledWith('cr-1');
   });
 
@@ -393,9 +396,10 @@ describe('CashRegisterController', () => {
     expect(cashRegisterRepository.close).toHaveBeenCalledWith('cr-1', 140, 'operator-1');
     expect(json).toHaveBeenCalledWith(
       200,
-      expect.objectContaining({ calculatedBalance: 150, difference: -10, tableSales: 75, session: expect.objectContaining({ status: 'fechado' }) }),
+      expect.objectContaining({ calculatedBalance: 150, difference: -10, tableSales: 75, deliverySales: 40, session: expect.objectContaining({ status: 'fechado' }) }),
     );
     expect(orderRepository.getTableSalesBetween).toHaveBeenCalledWith('r-1', new Date('2026-09-09T08:00:00.000Z'), expect.any(Date));
+    expect(orderRepository.getDeliverySalesBetween).toHaveBeenCalledWith('r-1', new Date('2026-09-09T08:00:00.000Z'), expect.any(Date));
   });
 
   it('POST .../:id/close rejeita fechar uma sessão já fechada', async () => {
@@ -501,6 +505,8 @@ describe('CashRegisterController', () => {
         totalSales: 100,
         calculatedBalance: 100,
         difference: 0,
+        tableSales: 0,
+        deliverySales: 100,
       });
       const { cashRegisterRepository, cashRegisterService, routes } = setup({
         cashRegisterRepository: { findClosedSessionsBetween: jest.fn().mockResolvedValue(closedSessions) },

@@ -43,6 +43,10 @@ export interface CashClosingSummary {
   calculatedBalance: number;
   /** Sessão aberta: sempre `0` (ainda não fechou). Sessão fechada: `closingBalance` − `calculatedBalance`. */
   difference: number;
+  /** (achado real, pedido explícito do usuário) — mesmo recorte de `tableSales`/`deliverySales`
+   * já usado em "Movimento do dia", agora também no histórico de fechamentos. */
+  tableSales: number;
+  deliverySales: number;
 }
 
 /**
