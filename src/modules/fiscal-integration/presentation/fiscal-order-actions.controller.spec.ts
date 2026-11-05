@@ -35,6 +35,7 @@ function buildConfig(overrides: Partial<IFiscalConfig> = {}): IFiscalConfig {
     environment: 'homologacao',
     documentType: 'nfce',
     productionEnabled: false,
+    autoEmitEnabled: true,
     webhookToken: 'webhook-token-1',
     cnpj: '11222333000181',
     createdAt: new Date().toISOString(),

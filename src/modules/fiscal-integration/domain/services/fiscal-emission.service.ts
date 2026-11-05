@@ -130,6 +130,11 @@ export class FiscalEmissionService {
     const config = await this.fiscalConfigRepository.findByRestaurantId(order.restaurantId);
     if (!config) return;
     if (config.environment === 'producao' && !config.productionEnabled) return;
+    // specs/0204-controle-emissao-fiscal-automatica REQ-2 — checagem irmã e independente da
+    // acima: desligado, a emissão automática para por aqui nos 2 ambientes; `retryEmission`
+    // (reemissão manual) nunca olha este campo, é o caminho que substitui a automação quando ela
+    // está off (REQ-3).
+    if (!config.autoEmitEnabled) return;
 
     await this.orderRepository.updateFiscal(order.id, { status: 'pendente' });
     await this.doEmit(order, config);

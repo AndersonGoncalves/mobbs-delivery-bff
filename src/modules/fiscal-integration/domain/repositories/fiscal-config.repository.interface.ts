@@ -19,5 +19,9 @@ export interface IFiscalConfigRepository {
   /** "Botão de ativar produção" (`plan.md`) — mudança deliberada, separada da config geral. */
   setProductionEnabled(restaurantId: string, enabled: boolean): Promise<IFiscalConfig>;
 
+  /** specs/0204-controle-emissao-fiscal-automatica — "botão" irmão de `setProductionEnabled`,
+   * mesmo padrão (endpoint/método dedicado, nunca tocado pelo `upsert` geral). */
+  setAutoEmitEnabled(restaurantId: string, enabled: boolean): Promise<IFiscalConfig>;
+
   delete(restaurantId: string): Promise<void>;
 }
