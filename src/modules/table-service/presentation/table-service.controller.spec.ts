@@ -10,6 +10,7 @@ import { IStockMovementRepository } from '../../raw-materials/domain/repositorie
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IRestaurantOperatorRepository } from '../../restaurant-operators/domain/repositories/restaurant-operator.repository.interface';
 import { StockReservationService } from '../../orders/domain/services/stock-reservation.service';
+import { FiscalEmissionService } from '../../fiscal-integration/domain/services/fiscal-emission.service';
 import { TableServiceController } from './table-service.controller';
 
 type FakeRequest = Partial<Pick<Request, 'params' | 'body'>> & {
@@ -52,6 +53,7 @@ describe('TableServiceController', () => {
     productRepository?: Partial<IProductRepository>;
     restaurantRepository?: Partial<IRestaurantRepository>;
     restaurantOperatorRepository?: Partial<IRestaurantOperatorRepository>;
+    fiscalEmissionService?: Partial<FiscalEmissionService>;
   } = {}) {
     const tableRepository: Partial<IRestaurantTableRepository> = {
       listByRestaurant: jest.fn().mockResolvedValue([]),
@@ -116,6 +118,11 @@ describe('TableServiceController', () => {
       findById: jest.fn().mockResolvedValue(null),
       ...overrides.restaurantOperatorRepository,
     };
+    // specs/0202-emissao-fiscal-pedidos-mesa — ausente por padrão (undefined), mesmo raciocínio
+    // já usado em `OrdersController`: sem o serviço, `closeOrder` nunca tenta emitir nada.
+    const fiscalEmissionService: Partial<FiscalEmissionService> | undefined = overrides.fiscalEmissionService
+      ? { emitForOrder: jest.fn().mockResolvedValue(undefined), ...overrides.fiscalEmissionService }
+      : undefined;
     const middleware = jest.fn(async () => {});
     const { application, routes } = buildApp();
     new TableServiceController(
@@ -129,8 +136,10 @@ describe('TableServiceController', () => {
       new StockReservationService(productRepository as IProductRepository, rawMaterialRepository, stockMovementRepository as IStockMovementRepository),
       middleware,
       restaurantOperatorRepository as IRestaurantOperatorRepository,
+      undefined,
+      fiscalEmissionService as FiscalEmissionService | undefined,
     ).initializeRoutes(application);
-    return { tableRepository, waiterRepository, layoutRepository, orderRepository, customerRepository, productRepository, stockMovementRepository, restaurantOperatorRepository, routes };
+    return { tableRepository, waiterRepository, layoutRepository, orderRepository, customerRepository, productRepository, stockMovementRepository, restaurantOperatorRepository, fiscalEmissionService, routes };
   }
 
   it('permite Caixa e Garçom no atendimento, mas restringe o cadastro de mesas a Dono e Gerente', async () => {
@@ -402,6 +411,138 @@ describe('TableServiceController', () => {
     });
     expect(tableRepository.releaseFromOrder).toHaveBeenCalledWith('t-1', 'r-1', 'o-table');
     expect(json).toHaveBeenCalledWith(200, closedOrder);
+  });
+
+  // specs/0202-emissao-fiscal-pedidos-mesa AC-1/AC-2 — mesmo gatilho fiscal que já existe pra
+  // delivery/retirada (specs/0091), agora também no fechamento de mesa/balcão.
+  it('AC-1 (0202): fechar a conta dispara a emissão fiscal com o pedido fechado, quando o serviço está presente', async () => {
+    const order = {
+      id: 'o-table', restaurantId: 'r-1', orderType: 'table', tableId: 't-1', status: 'confirmado',
+      items: [{ id: 'i-1', productId: 'p-1', productName: 'Pizza', quantity: 1, unitPrice: 30 }],
+      subtotal: 30, deliveryFee: 0, discount: 0, total: 30, tablePayments: [],
+    };
+    const closedOrder = { ...order, status: 'entregue', tableCloseClientRequestId: 'req-3' };
+    const { fiscalEmissionService, routes } = setup({
+      orderRepository: {
+        findById: jest.fn().mockResolvedValue(order),
+        closeTableOrder: jest.fn().mockResolvedValue(closedOrder),
+      },
+      fiscalEmissionService: {},
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/table-orders/:id/close'],
+      {
+        restaurantId: 'r-1',
+        user: { uid: 'operator-1' },
+        params: { id: 'o-table' },
+        body: { payments: [{ method: 'cash', amount: 30 }], clientRequestId: 'req-3' },
+      },
+      { json, send: jest.fn() },
+    );
+
+    expect(fiscalEmissionService!.emitForOrder).toHaveBeenCalledWith(closedOrder);
+  });
+
+  // specs/0202-emissao-fiscal-pedidos-mesa AC-2 — sem o serviço (restaurante sem integração
+  // fiscal em lugar nenhum do sistema), fechar a conta continua funcionando normalmente, sem
+  // erro nenhum visível ao operador (todos os outros testes deste describe já cobrem isso
+  // implicitamente, por nunca passarem `fiscalEmissionService`; este deixa explícito).
+  it('AC-2 (0202): fechar a conta funciona normalmente sem o serviço fiscal (restaurante sem integração)', async () => {
+    const order = {
+      id: 'o-table', restaurantId: 'r-1', orderType: 'table', tableId: 't-1', status: 'confirmado',
+      items: [{ id: 'i-1', productId: 'p-1', productName: 'Pizza', quantity: 1, unitPrice: 30 }],
+      subtotal: 30, deliveryFee: 0, discount: 0, total: 30, tablePayments: [],
+    };
+    const closedOrder = { ...order, status: 'entregue', tableCloseClientRequestId: 'req-4' };
+    const { routes } = setup({
+      orderRepository: {
+        findById: jest.fn().mockResolvedValue(order),
+        closeTableOrder: jest.fn().mockResolvedValue(closedOrder),
+      },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/table-orders/:id/close'],
+      {
+        restaurantId: 'r-1',
+        user: { uid: 'operator-1' },
+        params: { id: 'o-table' },
+        body: { payments: [{ method: 'cash', amount: 30 }], clientRequestId: 'req-4' },
+      },
+      { json, send: jest.fn() },
+    );
+
+    expect(json).toHaveBeenCalledWith(200, closedOrder);
+  });
+
+  // specs/0202-emissao-fiscal-pedidos-mesa AC-3 — pedido já cancelado continua sendo rejeitado
+  // antes de chegar a qualquer lógica fiscal (comportamento já existente; só confirma que a
+  // adição do gatilho fiscal não mudou essa regra).
+  it('AC-3 (0202): pedido de mesa já cancelado é rejeitado ao tentar fechar, sem tentar emitir nota', async () => {
+    const cancelledOrder = {
+      id: 'o-table', restaurantId: 'r-1', orderType: 'table', tableId: 't-1', status: 'cancelado',
+      items: [], subtotal: 0, deliveryFee: 0, discount: 0, total: 0, tablePayments: [],
+    };
+    const { fiscalEmissionService, orderRepository, routes } = setup({
+      orderRepository: { findById: jest.fn().mockResolvedValue(cancelledOrder) },
+      fiscalEmissionService: {},
+    });
+    const json = jest.fn();
+
+    await expect(
+      runOperatorChain(
+        routes['POST /restaurants/me/table-orders/:id/close'],
+        {
+          restaurantId: 'r-1',
+          user: { uid: 'operator-1' },
+          params: { id: 'o-table' },
+          body: { payments: [], clientRequestId: 'req-5' },
+        },
+        { json, send: jest.fn() },
+      ),
+    ).rejects.toThrow('Pedido de mesa aberto não encontrado');
+
+    expect(orderRepository.closeTableOrder).not.toHaveBeenCalled();
+    expect(fiscalEmissionService!.emitForOrder).not.toHaveBeenCalled();
+  });
+
+  // specs/0202-emissao-fiscal-pedidos-mesa AC-4 — pedido de Balcão (orderType: 'table', sem
+  // tableId, criado pelo PDV via operator-drafts) fecha pelo mesmíssimo closeOrder de uma mesa, e
+  // dispara a emissão fiscal do mesmo jeito.
+  it('AC-4 (0202): fechar um pedido de Balcão (orderType table, sem tableId) também dispara a emissão fiscal', async () => {
+    const order = {
+      id: 'o-counter', restaurantId: 'r-1', orderType: 'table', status: 'confirmado',
+      items: [{ id: 'i-1', productId: 'p-1', productName: 'Pizza', quantity: 1, unitPrice: 30 }],
+      subtotal: 30, deliveryFee: 0, discount: 0, total: 30, tablePayments: [],
+    };
+    const closedOrder = { ...order, status: 'entregue', tableCloseClientRequestId: 'req-6' };
+    const { tableRepository, fiscalEmissionService, routes } = setup({
+      orderRepository: {
+        findById: jest.fn().mockResolvedValue(order),
+        closeTableOrder: jest.fn().mockResolvedValue(closedOrder),
+      },
+      fiscalEmissionService: {},
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/table-orders/:id/close'],
+      {
+        restaurantId: 'r-1',
+        user: { uid: 'operator-1' },
+        params: { id: 'o-counter' },
+        body: { payments: [{ method: 'cash', amount: 30 }], clientRequestId: 'req-6' },
+      },
+      { json, send: jest.fn() },
+    );
+
+    // Sem tableId, nunca chama releaseFromOrder (não tem mesa pra liberar) — confirma que o
+    // caminho de balcão passa por aqui sem precisar de mesa vinculada.
+    expect(tableRepository.releaseFromOrder).not.toHaveBeenCalled();
+    expect(fiscalEmissionService!.emitForOrder).toHaveBeenCalledWith(closedOrder);
   });
 
   // Pedido explícito do usuário — mesa aberta por engano/teste, sem nenhum item, precisa fechar
