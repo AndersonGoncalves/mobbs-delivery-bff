@@ -191,9 +191,11 @@ export class CashRegisterController extends BaseRouter {
         if (session.status !== 'aberto') {
           throw new BadRequestError('Sessão de caixa já está fechada');
         }
-        if ((session.businessDate ?? cashRegisterDate(new Date(session.openedAt))) !== cashRegisterDate()) {
-          throw new BadRequestError('Lançamentos só podem ser feitos no caixa da data atual');
-        }
+        // Pedido explícito do usuário (follow-up, achado real 06/11/2026) — recusava lançamento
+        // manual num caixa aberto de uma data civil diferente de hoje (spec 0176); bloqueava até
+        // um lançamento manual legítimo (ex. sangria) num caixa aberto a noite anterior, ainda não
+        // fechado, só porque o relógio virou meia-noite. "Sessão está aberta" já é a checagem
+        // certa — mesmo raciocínio de `addAutomaticEntry` (`cash-register.service.ts`).
         const movement = await this.cashRegisterRepository.addMovement(session.id, payload);
         res.json(201, movement);
       },

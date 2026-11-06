@@ -12,7 +12,7 @@ import {
 import { CashMovementEntryModel } from '../models/cash-movement-entry.mongoose.model';
 import { CashRegisterSessionModel } from '../models/cash-register-session.mongoose.model';
 import { ConflictError } from 'restify-errors';
-import { cashRegisterDate, cashRegisterDayBounds, cashRegisterPeriodEnd } from '../../domain/cash-register-date';
+import { cashRegisterDate, cashRegisterDayBounds } from '../../domain/cash-register-date';
 
 interface SessionLeanDocument {
   movementVersion?: number;
@@ -182,12 +182,25 @@ export class CashRegisterMongooseRepository implements ICashRegisterRepository {
     return docs.map(toMovementEntity);
   }
 
-  /** REQ-7 — abertura + entradas − saídas, sempre recalculado (nunca persistido). */
+  /**
+   * REQ-7 — abertura + entradas − saídas, sempre recalculado (nunca persistido).
+   *
+   * Pedido explícito do usuário (follow-up, achado real 06/11/2026) — sessão fechada exclui
+   * lançamento com `createdAt` depois de `closedAt` (venda automática tardia, ver cabeçalho de
+   * `addAutomaticEntry` em `cash-register.service.ts`): sem isso, abrir o histórico de um
+   * fechamento já conferido mudaria o "Saldo calculado"/"Diferença" sozinho, bem depois da
+   * conferência física já ter acontecido. `getClosingSummary` expõe esses lançamentos à parte
+   * (`lateMovements`), nunca escondidos — só fora da conta já fechada. Sessão aberta (sem
+   * `closedAt`) soma tudo normalmente, nada pode ser "tardio" antes do fechamento existir.
+   */
   async getCalculatedBalance(sessionId: string): Promise<number> {
     const session = await CashRegisterSessionModel.findById(sessionId).lean<SessionLeanDocument>();
     if (!session) return 0;
     const movements = await this.listMovements(sessionId);
-    return movements.reduce(
+    const reconciled = session.closedAt
+      ? movements.filter((movement) => new Date(movement.createdAt) <= new Date(session.closedAt!))
+      : movements;
+    return reconciled.reduce(
       (balance, movement) => balance + (movement.type === 'entrada' ? movement.amount : -movement.amount),
       session.openingBalance,
     );
@@ -202,15 +215,19 @@ export class CashRegisterMongooseRepository implements ICashRegisterRepository {
     if (!snapshot || snapshot.status !== 'aberto' || snapshot.movementWrites) {
       throw new ConflictError('Caixa fechado ou recebendo lançamentos. Atualize e confira novamente');
     }
-    const session = toSessionEntity(snapshot);
     const calculatedBalance = await this.getCalculatedBalance(sessionId);
+    // Pedido explícito do usuário (follow-up) — `accountingEndAt` passa a ser sempre o instante
+    // real do fechamento, nunca mais recalculado/travado na meia-noite (ver cabeçalho de
+    // `cashRegisterPeriodEnd`); por isso usa o mesmo `now` de `closedAt`, não chama mais aquela
+    // função aqui — ela já devolveria o mesmo valor (`closedAt` ainda não setado no snapshot).
+    const now = new Date();
     const doc = await CashRegisterSessionModel.findOneAndUpdate(
       {
         _id: sessionId, status: 'aberto',
         movementVersion: snapshot.movementVersion === undefined ? { $exists: false } : snapshot.movementVersion,
         movementWrites: snapshot.movementWrites === undefined ? { $exists: false } : 0,
       },
-      { $set: { status: 'fechado', closedAt: new Date(), accountingEndAt: cashRegisterPeriodEnd(session), closingBalance: countedValue, closedBy, closedAutomatically: false } },
+      { $set: { status: 'fechado', closedAt: now, accountingEndAt: now, closingBalance: countedValue, closedBy, closedAutomatically: false } },
       { new: true },
     ).lean<SessionLeanDocument>();
     if (!doc) throw new ConflictError('O caixa foi fechado ou recebeu novos lançamentos. Atualize e confira novamente');
@@ -224,13 +241,20 @@ export class CashRegisterMongooseRepository implements ICashRegisterRepository {
   /** Ajuste explícito do usuário (02/11/2026) — reabre um caixa `fechado`: volta `status:
    * 'aberto'`, limpa `closedAt`/`closingBalance`/`closedAutomatically` (a próxima conferência os
    * redefine) e registra `reopenedBy`/`reopenedAt`. Filtro atômico `status: 'fechado'` evita
-   * reabrir duas vezes em paralelo. */
+   * reabrir duas vezes em paralelo.
+   *
+   * Pedido explícito do usuário (follow-up, achado real 06/11/2026) — `accountingEndAt` precisa
+   * sair junto: sem isso, `cashRegisterPeriodEnd` (`cash-register-date.ts`) via o valor antigo
+   * primeiro e tratava o caixa reaberto como já tendo um teto fixo, voltando a travar o período
+   * mesmo com a sessão `aberto` de novo — exatamente o caminho que o dono usaria pra recuperar uma
+   * venda que ficou de fora por ter sido fechado cedo demais (reabrir, deixar `syncOpenSession`
+   * resgatar o pedido, fechar de novo). */
   async reopen(sessionId: string, reopenedBy?: string, now: Date = new Date()): Promise<ICashRegisterSession> {
     const doc = await CashRegisterSessionModel.findOneAndUpdate(
       { _id: sessionId, status: 'fechado' },
       {
         $set: { status: 'aberto', reopenedBy, reopenedAt: now },
-        $unset: { closedAt: '', closingBalance: '', closedAutomatically: '' },
+        $unset: { closedAt: '', closingBalance: '', closedAutomatically: '', accountingEndAt: '' },
       },
       { new: true },
     ).lean<SessionLeanDocument>();

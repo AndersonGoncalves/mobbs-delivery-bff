@@ -79,12 +79,17 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
   }
 
   describe('addAutomaticEntry', () => {
-    it('0176: nunca lança uma venda de hoje no caixa pendente de ontem', async () => {
+    // Pedido explícito do usuário (follow-up, achado real 06/11/2026) — inverte o teste "0176"
+    // antigo (`nunca lança uma venda de hoje no caixa pendente de ontem`): aquela regra impedia
+    // dinheiro de verdade de entrar na conferência quando o operador só fecha o caixa depois da
+    // meia-noite (ex. pedido entregue de madrugada, caixa fechado de manhã) — só existe uma sessão
+    // aberta por restaurante, então é sempre nela que a venda deve entrar, não importa a data.
+    it('sessão aberta de uma data anterior continua lançando vendas normalmente (sem teto de meia-noite)', async () => {
       const { service, cashRegisterRepository } = setup({
         cashRegisterRepository: { findOpenSessionByRestaurant: jest.fn().mockResolvedValue(buildSession({ openedAt: '2026-09-08T12:00:00Z' })) },
       });
       await service.addAutomaticEntry({ restaurantId: 'r-1', orderId: 'today', orderNumber: 1, amount: 10, paymentMethod: 'pix' });
-      expect(cashRegisterRepository.addMovement).not.toHaveBeenCalled();
+      expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-1', expect.objectContaining({ orderId: 'today', amount: 10 }));
     });
     it('pedido pago em qualquer forma, com sessão aberta, lança entrada automática', async () => {
       for (const paymentMethod of ['pix', 'cash', 'creditCard', 'creditCardOnline', 'debitCard']) {
@@ -131,12 +136,42 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
       expect(cashRegisterRepository.addMovement).not.toHaveBeenCalled();
     });
 
-    it('pedido sem sessão de caixa aberta não lança nada (não força abertura)', async () => {
-      const { cashRegisterRepository, service } = setup({ cashRegisterRepository: { findOpenSessionByRestaurant: jest.fn().mockResolvedValue(null) } });
+    // Pedido explícito do usuário (follow-up, achado real 06/11/2026) — substitui o teste antigo
+    // "não força abertura": sem NENHUM caixa aberto (ex. modo manual, operador esqueceu de abrir),
+    // a venda em mesa/balcão/PDV/delivery acontecia normal mas o lançamento sumia pra sempre, sem
+    // aviso — nem reabrir resgatava, porque nunca existiu sessão nenhuma. Agora abre uma sessão
+    // nova (primeira venda do dia), saldo inicial R$0, marcada "aberta automaticamente".
+    it('sem nenhuma sessão aberta e sem sessão de hoje, abre uma nova automaticamente (primeira venda do dia)', async () => {
+      const { cashRegisterRepository, service } = setup({
+        cashRegisterRepository: {
+          findOpenSessionByRestaurant: jest.fn().mockResolvedValue(null),
+          findSessionByDate: jest.fn().mockResolvedValue(null),
+          open: jest.fn().mockResolvedValue(buildSession({ id: 'cr-nova' })),
+        },
+      });
 
       await service.addAutomaticEntry({ restaurantId: 'r-1', orderId: 'o-1', orderNumber: 1, amount: 10, paymentMethod: 'pix' });
 
-      expect(cashRegisterRepository.addMovement).not.toHaveBeenCalled();
+      expect(cashRegisterRepository.open).toHaveBeenCalledWith('r-1', 0, 'automatico', true);
+      expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-nova', expect.objectContaining({ orderId: 'o-1', amount: 10 }));
+    });
+
+    // Caso 2 do cabeçalho de `addAutomaticEntry` — caixa de hoje já existe, mas só pode estar
+    // fechado (senão `findOpenSessionByRestaurant` já teria achado ele acima); lança mesmo assim,
+    // sem abrir um segundo caixa na mesma data (o sistema nunca permite dois). `getClosingSummary`
+    // é quem separa esse lançamento da conferência já feita (`lateMovements`).
+    it('sem nenhuma sessão aberta mas a de hoje já existe (fechada), lança nela sem abrir uma segunda', async () => {
+      const { cashRegisterRepository, service } = setup({
+        cashRegisterRepository: {
+          findOpenSessionByRestaurant: jest.fn().mockResolvedValue(null),
+          findSessionByDate: jest.fn().mockResolvedValue(buildSession({ id: 'cr-hoje', status: 'fechado' })),
+        },
+      });
+
+      await service.addAutomaticEntry({ restaurantId: 'r-1', orderId: 'o-1', orderNumber: 1, amount: 10, paymentMethod: 'pix' });
+
+      expect(cashRegisterRepository.open).not.toHaveBeenCalled();
+      expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-hoje', expect.objectContaining({ orderId: 'o-1', amount: 10 }));
     });
   });
 
@@ -364,7 +399,11 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
       }));
     });
 
-    it('0176: conferir caixa pendente sincroniza somente os pagamentos da data daquele caixa', async () => {
+    // Pedido explícito do usuário (follow-up, achado real 06/11/2026) — inverte o teste "0176"
+    // antigo: enquanto o caixa de ontem segue aberto (ninguém fechou ainda), um pagamento recebido
+    // hoje de madrugada pertence a ele também, não só o de ontem — ver cabeçalho de
+    // `cashRegisterPeriodEnd`.
+    it('caixa pendente ainda aberto sincroniza pagamentos de antes E depois da virada do dia', async () => {
       const { service, orderRepository, cashRegisterRepository } = setup({
         cashRegisterRepository: { findById: jest.fn().mockResolvedValue(buildSession({ openedAt: '2026-09-08T11:00:00Z' })) },
         orderRepository: { findReceivedSalesBetween: jest.fn().mockResolvedValue([
@@ -375,9 +414,11 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
         ]) },
       });
       await service.syncOpenSession('r-1', 'cr-1');
-      expect(orderRepository.findReceivedSalesBetween).toHaveBeenCalledWith('r-1', new Date('2026-09-08T11:00:00Z'), new Date('2026-09-09T03:00:00Z'));
-      expect(cashRegisterRepository.addMovement).toHaveBeenCalledTimes(1);
+      // `now` travado em 2026-09-09T12:00:00Z pelo `beforeEach` — sessão ainda aberta soma até lá, sem teto de meia-noite.
+      expect(orderRepository.findReceivedSalesBetween).toHaveBeenCalledWith('r-1', new Date('2026-09-08T11:00:00Z'), new Date('2026-09-09T12:00:00Z'));
+      expect(cashRegisterRepository.addMovement).toHaveBeenCalledTimes(2);
       expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-1', expect.objectContaining({ paymentId: 'old', amount: 10 }));
+      expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-1', expect.objectContaining({ paymentId: 'today', amount: 20 }));
     });
 
     it('movimento manual (sangria) sem orderId reduz a forma "dinheiro", sem duplicar venda automática de Pix', async () => {
@@ -420,6 +461,75 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
       expect(summary.deliverySales).toBe(70);
       expect(summary.tableSales).toBe(16);
       expect(summary.totalSales).toBe(86);
+    });
+
+    // Pedido explícito do usuário (follow-up, achado real 06/11/2026) — reproduz o cenário real:
+    // caixa aberto numa noite, pedido entregue já de madrugada (depois da meia-noite), caixa só
+    // fechado de manhã. Antes da correção, `cashRegisterPeriodEnd` travava o período na meia-noite
+    // e esse pedido ficava fora de `findReceivedSalesBetween` — aqui o repositório mockado já
+    // devolve o pedido (simulando a query real corrigida); o teste garante que `getClosingSummary`
+    // soma ele normalmente, sem nenhum teto aplicado por cima.
+    it('soma venda entregue de madrugada, depois da meia-noite, com o caixa aberto desde a noite anterior', async () => {
+      const { service } = setup({
+        cashRegisterRepository: {
+          findById: jest.fn().mockResolvedValue(buildSession({ openedAt: '2026-09-08T20:00:00.000Z' })), // aberto às 17h de ontem (SP)
+        },
+        orderRepository: {
+          // "agora" travado em 2026-09-09T12:00:00Z (09h da manhã em SP) pelo `beforeEach` —
+          // pedido entregue de madrugada, bem depois da virada de dia.
+          findReceivedSalesBetween: jest.fn().mockResolvedValue([
+            buildDeliveredOrder({ id: 'o-madrugada', orderType: 'delivery', paymentMethod: 'cash', total: 55 }),
+          ]),
+        },
+      });
+
+      const summary = await service.getClosingSummary('cr-1');
+
+      expect(summary.deliverySales).toBe(55);
+      expect(summary.totalSales).toBe(55);
+      expect(summary.balanceByPaymentMethod.cash).toBe(55);
+    });
+
+    // Pedido explícito do usuário (follow-up, achado real 06/11/2026) — venda automática lançada
+    // num caixa JÁ FECHADO (`addAutomaticEntry`, caso 2): fica de fora do saldo/diferença já
+    // conferidos (não pode mudar retroativamente), mas aparece em `lateMovements`, nunca escondida.
+    it('getClosingSummary separa lançamento posterior ao fechamento em lateMovements, fora da conferência', async () => {
+      const closedAt = '2026-09-09T09:13:56.000Z';
+      const { service } = setup({
+        cashRegisterRepository: {
+          findById: jest.fn().mockResolvedValue(buildSession({ status: 'fechado', closedAt, closingBalance: 100 })),
+          getCalculatedBalance: jest.fn().mockResolvedValue(100), // já exclui o tardio (testado à parte no repositório)
+          listMovements: jest.fn().mockResolvedValue([
+            { id: 'mv-antes', cashRegisterSessionId: 'cr-1', type: 'entrada', amount: 100, description: 'Venda #1 (Pix)', orderId: 'o-1', paymentMethod: 'pix', createdAt: '2026-09-09T08:00:00.000Z' },
+            { id: 'mv-depois', cashRegisterSessionId: 'cr-1', type: 'entrada', amount: 7, description: 'Venda #8 (Dinheiro)', orderId: 'o-8', paymentMethod: 'cash', createdAt: '2026-09-09T09:14:10.000Z' },
+          ]),
+        },
+      });
+
+      const summary = await service.getClosingSummary('cr-1');
+
+      expect(summary.lateMovements).toHaveLength(1);
+      expect(summary.lateMovements[0]).toMatchObject({ id: 'mv-depois', amount: 7 });
+      // `balanceByPaymentMethod.cash` só reflete lançamentos manuais (`!movement.orderId`) de
+      // antes do fechamento — nenhum dos dois acima é manual, então fica em 0 mesmo com o tardio.
+      expect(summary.balanceByPaymentMethod.cash).toBe(0);
+      expect(summary.calculatedBalance).toBe(100);
+      expect(summary.difference).toBe(0);
+    });
+
+    it('sessão ainda aberta nunca tem lateMovements, mesmo com lançamentos recentes', async () => {
+      const { service } = setup({
+        cashRegisterRepository: {
+          findById: jest.fn().mockResolvedValue(buildSession({ status: 'aberto' })),
+          listMovements: jest.fn().mockResolvedValue([
+            { id: 'mv-1', cashRegisterSessionId: 'cr-1', type: 'entrada', amount: 7, description: 'Venda #8 (Dinheiro)', orderId: 'o-8', paymentMethod: 'cash', createdAt: '2026-09-09T11:59:59.000Z' },
+          ]),
+        },
+      });
+
+      const summary = await service.getClosingSummary('cr-1');
+
+      expect(summary.lateMovements).toEqual([]);
     });
   });
 });

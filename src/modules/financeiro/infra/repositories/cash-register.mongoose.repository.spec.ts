@@ -65,7 +65,13 @@ describe('persistência concorrente do caixa (sem banco real)', () => {
 
     expect(findOneAndUpdate).toHaveBeenCalledWith(
       { _id: 's', status: 'fechado' },
-      expect.objectContaining({ $set: expect.objectContaining({ status: 'aberto', reopenedBy: 'dono-1' }) }),
+      expect.objectContaining({
+        $set: expect.objectContaining({ status: 'aberto', reopenedBy: 'dono-1' }),
+        // Pedido explícito do usuário (follow-up, achado real 06/11/2026) — `accountingEndAt`
+        // precisa sair junto do `$unset`, senão o caixa reaberto continua com o teto antigo
+        // (ver `cashRegisterPeriodEnd`/cabeçalho de `reopen()`).
+        $unset: expect.objectContaining({ accountingEndAt: '' }),
+      }),
       { new: true },
     );
     expect(reopened).toMatchObject({ status: 'aberto', reopenedBy: 'dono-1' });
@@ -128,5 +134,41 @@ describe('persistência concorrente do caixa (sem banco real)', () => {
     const update = jest.spyOn(CashRegisterSessionModel, 'findOneAndUpdate').mockReturnValue(lean(null) as never);
     await expect(repository.close('s', 10)).rejects.toMatchObject({ statusCode: 409 });
     expect(update).toHaveBeenCalledWith(expect.objectContaining({ movementVersion: 0, movementWrites: 0, status: 'aberto' }), expect.anything(), { new: true });
+  });
+
+  // Pedido explícito do usuário (follow-up, achado real 06/11/2026) — venda automática lançada
+  // num caixa já fechado (`addAutomaticEntry`, caso 2 do cabeçalho em `cash-register.service.ts`)
+  // não pode mudar o "Saldo calculado" de uma conferência que já aconteceu; `getCalculatedBalance`
+  // soma só os lançamentos até `closedAt`.
+  it('getCalculatedBalance de sessão fechada ignora lançamento com createdAt depois do fechamento', async () => {
+    const repository = new CashRegisterMongooseRepository();
+    const closedAt = new Date('2026-10-24T12:00:00Z');
+    jest.spyOn(CashRegisterSessionModel, 'findById').mockReturnValue(lean({ ...session(), status: 'fechado', closedAt, openingBalance: 0 }) as never);
+    const find = jest.spyOn(CashMovementEntryModel, 'find').mockReturnValue({
+      sort: () => lean([
+        { _id: 'mv-antes', cashRegisterSessionId: 's', type: 'entrada', amount: 50, description: 'Venda #1', createdAt: new Date('2026-10-24T11:00:00Z') },
+        { _id: 'mv-depois', cashRegisterSessionId: 's', type: 'entrada', amount: 7, description: 'Venda #8', createdAt: new Date('2026-10-24T12:00:01Z') },
+      ]),
+    } as never);
+
+    const balance = await repository.getCalculatedBalance('s');
+
+    expect(find).toHaveBeenCalledWith({ cashRegisterSessionId: 's' });
+    expect(balance).toBe(50);
+  });
+
+  it('getCalculatedBalance de sessão aberta soma tudo, sem nenhum teto', async () => {
+    const repository = new CashRegisterMongooseRepository();
+    jest.spyOn(CashRegisterSessionModel, 'findById').mockReturnValue(lean({ ...session(), status: 'aberto', openingBalance: 0 }) as never);
+    jest.spyOn(CashMovementEntryModel, 'find').mockReturnValue({
+      sort: () => lean([
+        { _id: 'mv-1', cashRegisterSessionId: 's', type: 'entrada', amount: 50, description: 'Venda #1', createdAt: new Date('2026-10-24T11:00:00Z') },
+        { _id: 'mv-2', cashRegisterSessionId: 's', type: 'entrada', amount: 7, description: 'Venda #8', createdAt: new Date('2026-10-25T03:00:00Z') },
+      ]),
+    } as never);
+
+    const balance = await repository.getCalculatedBalance('s');
+
+    expect(balance).toBe(57);
   });
 });
