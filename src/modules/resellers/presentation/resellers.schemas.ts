@@ -10,9 +10,12 @@ export const createResellerSchema = z.object({
 /** Ajuste explícito do usuário (02/11/2026) — autocadastro público do revendedor
  * (`POST /reseller/signup`): e-mail vem do token Firebase já autenticado (`req.user.email`),
  * nunca do corpo da requisição — só nome/telefone aqui. */
+/** specs/0205-comissao-revendedor REQ-18 — rejeita no servidor, nunca confia só na UI (scroll +
+ * checkbox do `/revenda/cadastro`). `z.literal(true)` — só aceita exatamente `true`. */
 export const resellerSignupSchema = z.object({
   name: z.string().trim().min(1),
   phone: z.string().trim().min(1),
+  contractAccepted: z.literal(true),
 });
 
 export const setResellerActiveSchema = z.object({

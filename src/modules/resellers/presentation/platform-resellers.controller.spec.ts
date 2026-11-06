@@ -6,6 +6,7 @@ import { IResellerClient } from '../domain/entities/reseller-client.entity';
 import { IResellerRepository } from '../domain/repositories/reseller.repository.interface';
 import { IResellerProspectRepository } from '../domain/repositories/reseller-prospect.repository.interface';
 import { IResellerClientRepository } from '../domain/repositories/reseller-client.repository.interface';
+import { IResellerCommissionRepository } from '../domain/repositories/reseller-commission.repository.interface';
 import { PlatformResellersController } from './platform-resellers.controller';
 
 type RouteHandler = (req: Request, res: Response) => Promise<void>;
@@ -42,6 +43,7 @@ describe('PlatformResellersController (specs/0189-painel-revenda)', () => {
     prospect?: Partial<IResellerProspectRepository>;
     client?: Partial<IResellerClientRepository>;
     restaurant?: Partial<IRestaurantRepository>;
+    commission?: Partial<IResellerCommissionRepository>;
   } = {}) {
     const resellerRepository = {
       listAll: jest.fn().mockResolvedValue([buildReseller()]),
@@ -58,9 +60,15 @@ describe('PlatformResellersController (specs/0189-painel-revenda)', () => {
       ...overrides.client,
     } as unknown as IResellerClientRepository;
     const restaurantRepository = { findById: jest.fn().mockResolvedValue({ id: 'r-1', name: 'Pizzaria do João' }), ...overrides.restaurant } as unknown as IRestaurantRepository;
+    const commissionRepository = {
+      listByReseller: jest.fn().mockResolvedValue([]),
+      findById: jest.fn().mockResolvedValue(null),
+      markPaid: jest.fn(),
+      ...overrides.commission,
+    } as unknown as IResellerCommissionRepository;
     const { application, routes } = buildFakeApplication();
-    new PlatformResellersController(resellerRepository, prospectRepository, clientRepository, restaurantRepository, jest.fn()).initializeRoutes(application);
-    return { resellerRepository, prospectRepository, clientRepository, restaurantRepository, routes };
+    new PlatformResellersController(resellerRepository, prospectRepository, clientRepository, restaurantRepository, commissionRepository, jest.fn()).initializeRoutes(application);
+    return { resellerRepository, prospectRepository, clientRepository, restaurantRepository, commissionRepository, routes };
   }
 
   // AC-8/REQ-13.
@@ -117,5 +125,67 @@ describe('PlatformResellersController (specs/0189-painel-revenda)', () => {
 
     expect(resellerRepository.setActive).toHaveBeenCalledWith('reseller-1', false);
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ isActive: false }));
+  });
+
+  // specs/0205-comissao-revendedor REQ-13.
+  it('GET /platform/resellers/:id/commissions devolve a lista com totais, de qualquer revendedor', async () => {
+    const { routes } = setup({
+      commission: {
+        listByReseller: jest.fn().mockResolvedValue([
+          { id: 'c-1', resellerId: 'reseller-1', restaurantId: 'r-1', subscriptionObligationId: 'ob-1', obligationKind: 'annual-initial', obligationAmountCents: 90000, commissionCents: 30000, status: 'pendente', createdAt: new Date('2026-10-05') },
+        ]),
+      },
+    });
+    const json = jest.fn();
+
+    await runChain(routes['GET /platform/resellers/:id/commissions'], { params: { id: 'reseller-1' } }, { json });
+
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({
+      pendingCents: 30000,
+      paidCents: 0,
+      commissions: [expect.objectContaining({ id: 'c-1', restaurantName: 'Pizzaria do João' })],
+    }));
+  });
+
+  describe('PATCH /platform/resellers/commissions/:commissionId/paid', () => {
+    const commission = {
+      id: 'c-1', resellerId: 'reseller-1', restaurantId: 'r-1', subscriptionObligationId: 'ob-1',
+      obligationKind: 'monthly' as const, obligationAmountCents: 7990, commissionCents: 7990,
+      status: 'pendente' as const, createdAt: new Date('2026-10-05'),
+    };
+
+    it('REQ-11: marca a comissão pendente como paga, com a data', async () => {
+      const { commissionRepository, routes } = setup({
+        commission: {
+          findById: jest.fn().mockResolvedValue(commission),
+          markPaid: jest.fn().mockResolvedValue({ ...commission, status: 'pago', paidAt: new Date('2026-11-06') }),
+        },
+      });
+      const json = jest.fn();
+
+      await runChain(routes['PATCH /platform/resellers/commissions/:commissionId/paid'], { params: { commissionId: 'c-1' } }, { json });
+
+      expect(commissionRepository.markPaid).toHaveBeenCalledWith('c-1', expect.any(Date));
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ status: 'pago' }));
+    });
+
+    it('rejeita marcar como paga uma comissão cancelada', async () => {
+      const { commissionRepository, routes } = setup({
+        commission: { findById: jest.fn().mockResolvedValue({ ...commission, status: 'cancelada', cancelledAt: new Date() }) },
+      });
+
+      await expect(
+        runChain(routes['PATCH /platform/resellers/commissions/:commissionId/paid'], { params: { commissionId: 'c-1' } }, { json: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 409 });
+      expect(commissionRepository.markPaid).not.toHaveBeenCalled();
+    });
+
+    it('404 se a comissão não existir', async () => {
+      const { routes } = setup({ commission: { findById: jest.fn().mockResolvedValue(null) } });
+
+      await expect(
+        runChain(routes['PATCH /platform/resellers/commissions/:commissionId/paid'], { params: { commissionId: 'não-existe' } }, { json: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 404 });
+    });
   });
 });

@@ -1,7 +1,7 @@
 import { IReseller } from '../entities/reseller.entity';
 
 export interface IResellerRepository {
-  create(input: { name: string; email: string; phone: string; code: string }): Promise<IReseller>;
+  create(input: { name: string; email: string; phone: string; code: string; contractAcceptedAt?: Date }): Promise<IReseller>;
   findById(id: string): Promise<IReseller | null>;
   /** REQ-3/REQ-4 — resolve o acesso ao painel da revenda (`reseller.middleware.ts`). */
   findByEmail(email: string): Promise<IReseller | null>;

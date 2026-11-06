@@ -40,6 +40,9 @@ import { PlatformReferralsController } from './modules/referrals/presentation/pl
 import { ResellerMongooseRepository } from './modules/resellers/infra/repositories/reseller.mongoose.repository';
 import { ResellerProspectMongooseRepository } from './modules/resellers/infra/repositories/reseller-prospect.mongoose.repository';
 import { ResellerClientMongooseRepository } from './modules/resellers/infra/repositories/reseller-client.mongoose.repository';
+import { ResellerCommissionMongooseRepository } from './modules/resellers/infra/repositories/reseller-commission.mongoose.repository';
+import { ResellerCommissionService } from './modules/resellers/domain/services/reseller-commission.service';
+import { ResellerCommissionObligationObserver } from './modules/resellers/infra/services/reseller-commission-obligation-observer';
 import { ResellerController } from './modules/resellers/presentation/reseller.controller';
 import { IFoodOnboardingController } from './modules/ifood-integration/presentation/ifood-onboarding.controller';
 import { IFoodAuthService } from './modules/ifood-integration/infra/ifood-auth.service';
@@ -213,6 +216,15 @@ const resellerRepository = new ResellerMongooseRepository();
 const resellerProspectRepository = new ResellerProspectMongooseRepository();
 const resellerClientRepository = new ResellerClientMongooseRepository();
 const resellerMiddleware = buildResellerMiddleware(resellerRepository);
+// specs/0205-comissao-revendedor — observer injetado no webhook/reconciliação de
+// `platform-billing` (ver abaixo), sem que aquele módulo importe nada de `resellers`.
+const resellerCommissionRepository = new ResellerCommissionMongooseRepository();
+const resellerCommissionService = new ResellerCommissionService({
+  commissionRepository: resellerCommissionRepository,
+  resellerClientRepository,
+  resellerRepository,
+});
+const resellerCommissionObligationObserver = new ResellerCommissionObligationObserver(resellerCommissionService);
 // specs/0044-promocoes-produtos — instância única, compartilhada por ProductMongooseRepository
 // (preço/percentual promocional + desconto em opção vinculada) e MenuCategoryMongooseRepository
 // (versão leve do cardápio por categoria), além do PromotionsController (CRUD da retaguarda).
@@ -349,6 +361,7 @@ const reconciliationService = new ReconciliationService({
   obligationRepository,
   subscriptionEventRepository,
   asaasClient: platformAsaasClient,
+  observers: [resellerCommissionObligationObserver],
 });
 const billingPayerService = new BillingPayerService({ billingPayerRepository, asaasClient: platformAsaasClient });
 // Pedido explícito do usuário (follow-up) — automação de postagens no Instagram.
@@ -604,6 +617,7 @@ server
       subscriptionEventRepository,
       platformBillingCycleService,
       webhookToken: environment.platformBilling.webhookToken ?? '',
+      observers: [resellerCommissionObligationObserver],
     }),
     // specs/0113-parametrizacao-faixas-cobranca.
     new BillingSettingsController(
@@ -715,12 +729,20 @@ server
     new UberDeliveryWebhookController(uberDeliveryConfigRepository, orderRepository, ordersController),
     new UberDeliveryOrderActionsController(orderRepository, uberDeliveryConfigRepository, uberDeliveryDispatchService, restaurantOperatorMiddleware),
     // specs/0189-painel-revenda.
-    new ResellerController(resellerRepository, resellerProspectRepository, resellerClientRepository, restaurantRepository, resellerMiddleware),
+    new ResellerController(
+      resellerRepository,
+      resellerProspectRepository,
+      resellerClientRepository,
+      restaurantRepository,
+      resellerCommissionRepository,
+      resellerMiddleware,
+    ),
     new PlatformResellersController(
       resellerRepository,
       resellerProspectRepository,
       resellerClientRepository,
       restaurantRepository,
+      resellerCommissionRepository,
       buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
     ),
   ], [

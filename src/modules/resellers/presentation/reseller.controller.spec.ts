@@ -7,6 +7,7 @@ import { IResellerClient } from '../domain/entities/reseller-client.entity';
 import { IResellerRepository } from '../domain/repositories/reseller.repository.interface';
 import { IResellerProspectRepository } from '../domain/repositories/reseller-prospect.repository.interface';
 import { IResellerClientRepository } from '../domain/repositories/reseller-client.repository.interface';
+import { IResellerCommissionRepository } from '../domain/repositories/reseller-commission.repository.interface';
 import { ResellerController } from './reseller.controller';
 
 type RouteHandler = (req: Request, res: Response) => Promise<void>;
@@ -48,6 +49,7 @@ describe('ResellerController (specs/0189-painel-revenda)', () => {
     prospect?: Partial<IResellerProspectRepository>;
     client?: Partial<IResellerClientRepository>;
     restaurant?: Partial<IRestaurantRepository>;
+    commission?: Partial<IResellerCommissionRepository>;
   } = {}) {
     const resellerRepository = {
       findById: jest.fn().mockResolvedValue(buildReseller()),
@@ -77,9 +79,13 @@ describe('ResellerController (specs/0189-painel-revenda)', () => {
       listAll: jest.fn().mockResolvedValue([{ id: 'r-1', name: 'Pizzaria do João' }, { id: 'r-2', name: 'Hamburgueria do Zé' }]),
       ...overrides.restaurant,
     } as unknown as IRestaurantRepository;
+    const commissionRepository = {
+      listByReseller: jest.fn().mockResolvedValue([]),
+      ...overrides.commission,
+    } as unknown as IResellerCommissionRepository;
     const { application, routes } = buildFakeApplication();
-    new ResellerController(resellerRepository, prospectRepository, clientRepository, restaurantRepository, jest.fn()).initializeRoutes(application);
-    return { resellerRepository, prospectRepository, clientRepository, restaurantRepository, routes };
+    new ResellerController(resellerRepository, prospectRepository, clientRepository, restaurantRepository, commissionRepository, jest.fn()).initializeRoutes(application);
+    return { resellerRepository, prospectRepository, clientRepository, restaurantRepository, commissionRepository, routes };
   }
 
   // Ajuste explícito do usuário (02/11/2026) — autocadastro público (`/revenda/cadastro`): só
@@ -94,13 +100,16 @@ describe('ResellerController (specs/0189-painel-revenda)', () => {
       const handler = routes['POST /reseller/signup'][1];
 
       await handler(
-        { user: { uid: 'u-1', email: 'nova@revenda.com' }, body: { name: 'Nova Revendedora', phone: '11988887777', email: 'tentativa-diferente@evil.com' } } as unknown as Request,
+        { user: { uid: 'u-1', email: 'nova@revenda.com' }, body: { name: 'Nova Revendedora', phone: '11988887777', email: 'tentativa-diferente@evil.com', contractAccepted: true } } as unknown as Request,
         { json } as unknown as Response,
       );
 
       // `code` é gerado aleatoriamente (`generateUniqueResellerCode`) — confere só os campos que
-      // vêm da requisição, nunca o `email` do corpo (sempre o do token).
-      expect(resellerRepository.create).toHaveBeenCalledWith(expect.objectContaining({ name: 'Nova Revendedora', email: 'nova@revenda.com', phone: '11988887777' }));
+      // vêm da requisição, nunca o `email` do corpo (sempre o do token). specs/0205 REQ-17 — grava
+      // a data do aceite do contrato (`contractAcceptedAt`), não o booleano recebido.
+      expect(resellerRepository.create).toHaveBeenCalledWith(expect.objectContaining({
+        name: 'Nova Revendedora', email: 'nova@revenda.com', phone: '11988887777', contractAcceptedAt: expect.any(Date),
+      }));
       expect(json).toHaveBeenCalledWith(201, expect.objectContaining({
         email: 'nova@revenda.com',
         referralLink: 'https://bsdelivery.com.br/gratis?revenda=XYZ789',
@@ -115,10 +124,24 @@ describe('ResellerController (specs/0189-painel-revenda)', () => {
 
       await expect(
         handler(
-          { user: { uid: 'u-1', email: 'ana@revenda.com' }, body: { name: 'Ana', phone: '11999999999' } } as unknown as Request,
+          { user: { uid: 'u-1', email: 'ana@revenda.com' }, body: { name: 'Ana', phone: '11999999999', contractAccepted: true } } as unknown as Request,
           { json: jest.fn() } as unknown as Response,
         ),
       ).rejects.toMatchObject({ statusCode: 409 });
+      expect(resellerRepository.create).not.toHaveBeenCalled();
+    });
+
+    // specs/0205-comissao-revendedor REQ-18 — validação de servidor, nunca confia só na UI.
+    it('recusa o cadastro sem o aceite explícito do contrato', async () => {
+      const { resellerRepository, routes } = setup();
+      const handler = routes['POST /reseller/signup'][1];
+
+      await expect(
+        handler(
+          { user: { uid: 'u-1', email: 'nova@revenda.com' }, body: { name: 'Nova Revendedora', phone: '11988887777' } } as unknown as Request,
+          { json: jest.fn() } as unknown as Response,
+        ),
+      ).rejects.toMatchObject({ statusCode: 400 });
       expect(resellerRepository.create).not.toHaveBeenCalled();
     });
   });
@@ -133,6 +156,30 @@ describe('ResellerController (specs/0189-painel-revenda)', () => {
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({
       code: 'ABC123',
       referralLink: 'https://bsdelivery.com.br/gratis?revenda=ABC123',
+    }));
+  });
+
+  // specs/0205-comissao-revendedor REQ-12.
+  it('GET /reseller/me/commissions devolve a lista com nome do restaurante resolvido e os totais pendente/pago', async () => {
+    const { routes } = setup({
+      commission: {
+        listByReseller: jest.fn().mockResolvedValue([
+          { id: 'c-1', resellerId: 'reseller-1', restaurantId: 'r-1', subscriptionObligationId: 'ob-1', obligationKind: 'monthly', obligationAmountCents: 7990, commissionCents: 7990, status: 'pendente', createdAt: new Date('2026-10-05') },
+          { id: 'c-2', resellerId: 'reseller-1', restaurantId: 'r-1', subscriptionObligationId: 'ob-2', obligationKind: 'monthly', obligationAmountCents: 7990, commissionCents: 7990, status: 'pago', createdAt: new Date('2026-09-05'), paidAt: new Date('2026-09-10') },
+        ]),
+      },
+    });
+    const json = jest.fn();
+
+    await runChain(routes['GET /reseller/me/commissions'], { resellerId: 'reseller-1' }, { json });
+
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({
+      pendingCents: 7990,
+      paidCents: 7990,
+      commissions: [
+        expect.objectContaining({ id: 'c-1', restaurantName: 'Pizzaria do João', status: 'pendente' }),
+        expect.objectContaining({ id: 'c-2', restaurantName: 'Pizzaria do João', status: 'pago' }),
+      ],
     }));
   });
 

@@ -8,8 +8,10 @@ import { IRestaurantRepository } from '../../restaurants/domain/repositories/res
 import { IResellerRepository } from '../domain/repositories/reseller.repository.interface';
 import { IResellerProspectRepository } from '../domain/repositories/reseller-prospect.repository.interface';
 import { IResellerClientRepository } from '../domain/repositories/reseller-client.repository.interface';
+import { IResellerCommissionRepository } from '../domain/repositories/reseller-commission.repository.interface';
 import { generateUniqueResellerCode } from '../domain/generate-reseller-code';
 import { convertProspectSchema, resellerProspectInputSchema, resellerSignupSchema, updateResellerPixKeySchema } from './resellers.schemas';
+import { buildCommissionsSummary } from './build-commissions-summary';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
@@ -27,6 +29,7 @@ export class ResellerController extends BaseRouter {
     private readonly prospectRepository: IResellerProspectRepository,
     private readonly clientRepository: IResellerClientRepository,
     private readonly restaurantRepository: IRestaurantRepository,
+    private readonly commissionRepository: IResellerCommissionRepository,
     private readonly resellerMiddleware: AsyncHandler,
   ) {
     super();
@@ -53,7 +56,11 @@ export class ResellerController extends BaseRouter {
         throw new ConflictError('Este e-mail já está cadastrado como revendedor — entre normalmente em vez de se cadastrar de novo.');
       }
       const code = await generateUniqueResellerCode(this.resellerRepository);
-      const reseller = await this.resellerRepository.create({ name: input.name, email, phone: input.phone, code });
+      // REQ-17 — zod já garantiu contractAccepted === true (REQ-18); a data do aceite é gravada
+      // aqui, no momento exato em que o cadastro é efetivado.
+      const reseller = await this.resellerRepository.create({
+        name: input.name, email, phone: input.phone, code, contractAcceptedAt: new Date(),
+      });
       res.json(201, { ...reseller, referralLink: `${REFERRAL_LINK_BASE}${reseller.code}` });
     });
 
@@ -111,6 +118,11 @@ export class ResellerController extends BaseRouter {
         origin: client.origin,
         createdAt: client.createdAt,
       })));
+    });
+
+    // specs/0205-comissao-revendedor REQ-12 — comissões do revendedor logado + totais.
+    application.get('/reseller/me/commissions', ...authenticated, async (req: Request, res: Response) => {
+      res.json(200, await buildCommissionsSummary(req.resellerId!, this.commissionRepository, this.restaurantRepository));
     });
 
     // REQ-8 — restaurantes ainda sem revendedor, pra escolher na conversão manual.

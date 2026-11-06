@@ -6,6 +6,7 @@ import { isValidWebhookToken } from '../../../shared/crypto/webhook-token';
 import type { ISubscriptionEventRepository } from '../domain/repositories/subscription-event.repository.interface';
 import type { ISubscriptionObligationRepository } from '../domain/repositories/subscription-obligation.repository.interface';
 import type { PlatformBillingCycleService } from '../domain/services/platform-billing-cycle.service';
+import type { IObligationPaymentObserver } from '../domain/services/i-obligation-payment-observer.interface';
 
 // Mesmos eventos reais do Asaas verificados em docs.asaas.com (2026-10-27) — ver tasks.md
 // "Achados de leitura de código".
@@ -37,6 +38,9 @@ export class PlatformBillingWebhookController extends BaseRouter {
       subscriptionEventRepository: ISubscriptionEventRepository;
       platformBillingCycleService: PlatformBillingCycleService;
       webhookToken: string;
+      // specs/0205-comissao-revendedor plan.md — notificados depois de markPaid/markRefunded;
+      // `platform-billing` não conhece quem os implementa (hoje, `resellers`).
+      observers: IObligationPaymentObserver[];
     },
   ) {
     super();
@@ -78,8 +82,10 @@ export class PlatformBillingWebhookController extends BaseRouter {
       const now = new Date();
       if (PAID_EVENTS.has(body.event) && obligation.status !== 'paid') {
         await this.deps.obligationRepository.markPaid(obligation.id, now);
+        for (const observer of this.deps.observers) await observer.onObligationPaid(obligation);
       } else if (REFUNDED_EVENTS.has(body.event)) {
         await this.deps.obligationRepository.markRefunded(obligation.id);
+        for (const observer of this.deps.observers) await observer.onObligationRefunded(obligation);
       } else if (OVERDUE_EVENTS.has(body.event) && obligation.status !== 'overdue') {
         await this.deps.obligationRepository.markOverdue(obligation.id);
       }
