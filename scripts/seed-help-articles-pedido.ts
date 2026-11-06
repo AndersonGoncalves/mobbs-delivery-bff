@@ -55,20 +55,20 @@ const ARTICLES = [
     ['Em "Itens", busque e adicione os produtos do cardápio, escolha a forma de pagamento e toque em REVISAR E FINALIZAR.'],
     ['Use as abas "PEDIDO 1"/"PEDIDO 2" pra montar mais de um pedido ao mesmo tempo, sem perder o que já estava digitando no outro.'],
   ]),
-  article(2, 'Atendimento de mesas', '/table-service', 'atendimento-mesas', [
+  article(2, 'Pedidos do app', '/orders', 'pedidos-app', [
+    ['Abra Pedido > Pedidos do app — pedidos de delivery/retirada feitos pelo cliente no app, do momento que chegam até a entrega.'],
+    ['A aba PEDIDOS mostra um quadro Kanban, uma coluna por status (Aguardando confirmação, Confirmado, Em preparo, Saiu para entrega), cada um podendo ter vários pedidos ao mesmo tempo. Cada card mostra cliente, WhatsApp, itens, endereço (ou "Retirada no local"), forma de pagamento e total.', 'pedidos-app'],
+    ['O botão de avançar o pedido muda conforme o status e o tipo: CONFIRMAR (aguardando → confirmado), INICIAR PREPARO (confirmado → em preparo) e, dali, SAIU PARA ENTREGA pra delivery ou PRONTO PARA RETIRADA pra retirada — cada card também tem CANCELAR e IMPRIMIR.'],
+    ['A aba MAPA mostra todos os pedidos do dia espalhados num mapa, cada um com uma cor conforme o status (legenda no topo) — útil pra entender a distribuição geográfica das entregas ou planejar rotas. Clique num marcador pra ver os detalhes daquele pedido.'],
+    ['A aba ENTREGUES guarda o histórico dos pedidos já finalizados, com total do período.'],
+  ]),
+  article(3, 'Atendimento de mesas', '/table-service', 'atendimento-mesas', [
     ['Abra Pedido > Atendimento de mesas — mesas cadastradas (Restaurante > Mesas) aparecem como blocos verdes (livres); toque numa pra abrir uma comanda nova, ou numa mesa ocupada (amarela) pra continuar lançando itens.', 'atendimento-mesas'],
     ['Com a comanda aberta, busque produtos no campo "Buscar no cardápio" e toque no card do produto pra adicionar — se ele tiver um grupo de adicionais obrigatório (ex. "Bordas" de uma pizza), escolha a opção antes de "Adicionar ao pedido". Use os botões "−"/"+" na lista da comanda pra ajustar a quantidade de um item já lançado, ou "Agrupar iguais" pra juntar linhas repetidas do mesmo produto/adicionais/observação.', 'atendimento-mesa-aberta'],
     ['Taxa de serviço, Couvert (só em dias com música ao vivo configurados em Restaurante > Mesas), desconto/acréscimo e divisão informativa por número de pessoas ficam logo abaixo da comanda — cada um se aplica na hora, sem precisar fechar a conta pra ver o efeito no total.'],
     ['Toque em "Fechar conta": confira o saldo, escolha a forma de pagamento (ou mais de uma — ADICIONAR FORMA DE PAGAMENTO pra dividir entre dinheiro/Pix/cartão) e confirme. O fechamento já dispara a impressão da conta automaticamente.', 'atendimento-fechar-conta'],
     ['NOVO BALCÃO (botão no topo da página) abre o mesmo tipo de comanda, só que sem reservar uma mesa — pra atender alguém no balcão ou Drive-Thru, sem vincular a uma mesa física. Funciona exatamente igual: buscar produto, lançar item, fechar conta.', 'atendimento-balcao'],
     ['Depois de fechada, a comanda (de mesa ou de balcão) sai da aba MESAS e aparece na aba FECHADOS, com total do período e a forma de pagamento usada — é esse fechamento que gera o repasse de garçom (Caixa > Repasses de Garçons) e a venda de mesa/balcão no Caixa.', 'atendimento-fechados'],
-  ]),
-  article(3, 'Pedidos do app', '/orders', 'pedidos-app', [
-    ['Abra Pedido > Pedidos do app — pedidos de delivery/retirada feitos pelo cliente no app, do momento que chegam até a entrega.'],
-    ['A aba PEDIDOS mostra um quadro Kanban, uma coluna por status (Aguardando confirmação, Confirmado, Em preparo, Saiu para entrega), cada um podendo ter vários pedidos ao mesmo tempo. Cada card mostra cliente, WhatsApp, itens, endereço (ou "Retirada no local"), forma de pagamento e total.', 'pedidos-app'],
-    ['O botão de avançar o pedido muda conforme o status e o tipo: CONFIRMAR (aguardando → confirmado), INICIAR PREPARO (confirmado → em preparo) e, dali, SAIU PARA ENTREGA pra delivery ou PRONTO PARA RETIRADA pra retirada — cada card também tem CANCELAR e IMPRIMIR.'],
-    ['A aba MAPA mostra todos os pedidos do dia espalhados num mapa, cada um com uma cor conforme o status (legenda no topo) — útil pra entender a distribuição geográfica das entregas ou planejar rotas. Clique num marcador pra ver os detalhes daquele pedido.'],
-    ['A aba ENTREGUES guarda o histórico dos pedidos já finalizados, com total do período.'],
   ]),
   article(4, 'Minhas entregas', '/my-deliveries', 'minhas-entregas', [
     ['Esta tela só aparece pra operadores com o papel "Motoboy" (ver Restaurante > Operadores) — dono/gerente acompanham tudo em Pedido > Pedidos do app.'],
