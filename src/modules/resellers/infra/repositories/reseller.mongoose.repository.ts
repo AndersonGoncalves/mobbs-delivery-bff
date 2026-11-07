@@ -11,6 +11,7 @@ interface ResellerLeanDocument {
   isActive: boolean;
   createdAt: Date;
   pixKey?: string;
+  contractAcceptedAt?: Date;
 }
 
 function toEntity(doc: ResellerLeanDocument): IReseller {
@@ -23,11 +24,12 @@ function toEntity(doc: ResellerLeanDocument): IReseller {
     isActive: doc.isActive,
     createdAt: doc.createdAt,
     pixKey: doc.pixKey,
+    contractAcceptedAt: doc.contractAcceptedAt,
   };
 }
 
 export class ResellerMongooseRepository implements IResellerRepository {
-  async create(input: { name: string; email: string; phone: string; code: string }): Promise<IReseller> {
+  async create(input: { name: string; email: string; phone: string; code: string; contractAcceptedAt?: Date }): Promise<IReseller> {
     const doc = await ResellerModel.create({ ...input, email: input.email.toLowerCase(), isActive: true });
     return toEntity(doc.toObject());
   }

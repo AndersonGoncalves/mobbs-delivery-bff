@@ -25,7 +25,7 @@ function buildObligation(overrides: Partial<ISubscriptionObligation> = {}): ISub
   };
 }
 
-function setup(overrides: { obligation?: ISubscriptionObligation | null; wasAlreadyRecorded?: boolean } = {}) {
+function setup(overrides: { obligation?: ISubscriptionObligation | null; wasAlreadyRecorded?: boolean; observers?: unknown[] } = {}) {
   const stored = { current: overrides.obligation === undefined ? buildObligation() : overrides.obligation };
   const obligationRepository = {
     findById: jest.fn().mockImplementation(async () => stored.current),
@@ -40,6 +40,7 @@ function setup(overrides: { obligation?: ISubscriptionObligation | null; wasAlre
   const { application, routes } = buildApp();
   new PlatformBillingWebhookController({
     obligationRepository, subscriptionEventRepository, platformBillingCycleService, webhookToken: 'webhook-token-1',
+    observers: overrides.observers ?? [],
   } as never).initializeRoutes(application);
   return { routes, obligationRepository, subscriptionEventRepository, platformBillingCycleService };
 }
@@ -120,6 +121,34 @@ describe('PlatformBillingWebhookController (specs/0175-cobranca-assinatura-asaas
     );
 
     expect(obligationRepository.markRefunded).toHaveBeenCalledWith('ob-1');
+  });
+
+  // specs/0205-comissao-revendedor plan.md — observers (hoje, `resellers`) notificados depois de
+  // markPaid/markRefunded, sem que este módulo precise conhecer quem os implementa.
+  it('specs/0205: PAYMENT_CONFIRMED notifica os observers com a obligation paga', async () => {
+    const observer = { onObligationPaid: jest.fn().mockResolvedValue(undefined), onObligationRefunded: jest.fn() };
+    const { routes } = setup({ observers: [observer] });
+
+    await routes['POST /webhooks/platform-billing'][0](
+      buildReq('webhook-token-1', { event: 'PAYMENT_CONFIRMED', payment: { externalReference: 'ob-1' } }),
+      { json: jest.fn(), send: jest.fn() },
+    );
+
+    expect(observer.onObligationPaid).toHaveBeenCalledWith(expect.objectContaining({ id: 'ob-1' }));
+    expect(observer.onObligationRefunded).not.toHaveBeenCalled();
+  });
+
+  it('specs/0205: PAYMENT_REFUNDED notifica os observers com a obligation estornada', async () => {
+    const observer = { onObligationPaid: jest.fn(), onObligationRefunded: jest.fn().mockResolvedValue(undefined) };
+    const { routes } = setup({ observers: [observer] });
+
+    await routes['POST /webhooks/platform-billing'][0](
+      buildReq('webhook-token-1', { event: 'PAYMENT_REFUNDED', payment: { externalReference: 'ob-1' } }),
+      { json: jest.fn(), send: jest.fn() },
+    );
+
+    expect(observer.onObligationRefunded).toHaveBeenCalledWith(expect.objectContaining({ id: 'ob-1' }));
+    expect(observer.onObligationPaid).not.toHaveBeenCalled();
   });
 
   it('sem externalReference no payload é 200 no-op', async () => {

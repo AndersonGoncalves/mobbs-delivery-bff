@@ -47,6 +47,41 @@ describe('FiscalConfigMongooseRepository (specs/0091-integracao-fiscal-focusnfe)
     expect(result.webhookToken).toBe('gerado-automaticamente');
   });
 
+  // specs/0204-controle-emissao-fiscal-automatica AC-3 — comportamento atual (emissão automática
+  // ligada) preservado por padrão pra quem configura a integração agora.
+  it('upsert: documento novo (AC-3 0204) começa com autoEmitEnabled true em $setOnInsert', async () => {
+    const findQuery = FiscalConfigModel.findOne({ restaurantId: 'r-1' });
+    jest.spyOn(findQuery, 'lean').mockResolvedValue(null);
+    jest.spyOn(FiscalConfigModel, 'findOne').mockReturnValue(findQuery);
+
+    const updateQuery = FiscalConfigModel.findOneAndUpdate({ restaurantId: 'r-1' }, {});
+    const now = new Date();
+    jest.spyOn(updateQuery, 'lean').mockResolvedValue({
+      restaurantId: 'r-1',
+      focusNfeToken: 'token-1',
+      environment: 'homologacao',
+      documentType: 'nfce',
+      productionEnabled: false,
+      autoEmitEnabled: true,
+      webhookToken: 'gerado-automaticamente',
+      cnpj: '11222333000181',
+      createdAt: now,
+      updatedAt: now,
+    });
+    const findOneAndUpdate = jest.spyOn(FiscalConfigModel, 'findOneAndUpdate').mockReturnValue(updateQuery);
+
+    const result = await new FiscalConfigMongooseRepository().upsert('r-1', {
+      focusNfeToken: 'token-1',
+      environment: 'homologacao',
+      documentType: 'nfce',
+      cnpj: '11222333000181',
+    });
+
+    const [, update] = findOneAndUpdate.mock.calls[0];
+    expect((update as Record<string, unknown>).$setOnInsert).toMatchObject({ productionEnabled: false, autoEmitEnabled: true });
+    expect(result.autoEmitEnabled).toBe(true);
+  });
+
   it('upsert: documento existente PRESERVA o webhookToken já gerado (nunca troca ao editar token/ambiente)', async () => {
     const findQuery = FiscalConfigModel.findOne({ restaurantId: 'r-1' });
     jest.spyOn(findQuery, 'lean').mockResolvedValue({ webhookToken: 'webhook-ja-existente' });
@@ -104,6 +139,38 @@ describe('FiscalConfigMongooseRepository (specs/0091-integracao-fiscal-focusnfe)
     jest.spyOn(FiscalConfigModel, 'findOneAndUpdate').mockReturnValue(updateQuery);
 
     await expect(new FiscalConfigMongooseRepository().setProductionEnabled('r-1', true)).rejects.toThrow('Configuração fiscal não encontrada');
+  });
+
+  // specs/0204-controle-emissao-fiscal-automatica
+  it('setAutoEmitEnabled (AC-4 0204): liga/desliga sem tocar no resto da config', async () => {
+    const updateQuery = FiscalConfigModel.findOneAndUpdate({ restaurantId: 'r-1' }, {});
+    jest.spyOn(updateQuery, 'lean').mockResolvedValue({
+      restaurantId: 'r-1',
+      focusNfeToken: 'token-1',
+      environment: 'producao',
+      documentType: 'nfce',
+      productionEnabled: true,
+      autoEmitEnabled: false,
+      webhookToken: 'webhook-1',
+      cnpj: '11222333000181',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const findOneAndUpdate = jest.spyOn(FiscalConfigModel, 'findOneAndUpdate').mockReturnValue(updateQuery);
+
+    const result = await new FiscalConfigMongooseRepository().setAutoEmitEnabled('r-1', false);
+
+    expect(findOneAndUpdate).toHaveBeenCalledWith({ restaurantId: 'r-1' }, { $set: { autoEmitEnabled: false } }, { new: true });
+    expect(result.autoEmitEnabled).toBe(false);
+    expect(result.productionEnabled).toBe(true);
+  });
+
+  it('setAutoEmitEnabled: sem config cadastrada lança erro (nada pra ligar/desligar)', async () => {
+    const updateQuery = FiscalConfigModel.findOneAndUpdate({ restaurantId: 'r-1' }, {});
+    jest.spyOn(updateQuery, 'lean').mockResolvedValue(null);
+    jest.spyOn(FiscalConfigModel, 'findOneAndUpdate').mockReturnValue(updateQuery);
+
+    await expect(new FiscalConfigMongooseRepository().setAutoEmitEnabled('r-1', false)).rejects.toThrow('Configuração fiscal não encontrada');
   });
 
   it('delete: remove o documento do restaurante', async () => {

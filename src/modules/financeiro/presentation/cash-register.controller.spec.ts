@@ -256,7 +256,9 @@ describe('CashRegisterController', () => {
     const json = jest.fn();
     await runOperatorChain(routes['GET /restaurants/me/cash-register/:id'], { restaurantId: 'r-1', params: { id: 'yesterday' } }, { json });
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ session: previous, pendingSessions: expect.any(Array) }));
-    expect(orderRepository.getTableSalesBetween).toHaveBeenCalledWith('r-1', new Date(previous.openedAt), new Date('2026-09-09T03:00:00Z'));
+    // Pedido explícito do usuário (follow-up, achado real 06/11/2026) — caixa pendente ainda
+    // aberto soma até "agora" (sem teto de meia-noite), ver `cashRegisterPeriodEnd`.
+    expect(orderRepository.getTableSalesBetween).toHaveBeenCalledWith('r-1', new Date(previous.openedAt), new Date('2026-09-09T12:00:00Z'));
     await runOperatorChain(routes['POST /restaurants/me/cash-register/:id/close'], {
       restaurantId: 'r-1', params: { id: 'yesterday' }, body: { countedValue: 150 }, user: { uid: 'operator' },
     }, { json });
@@ -270,14 +272,19 @@ describe('CashRegisterController', () => {
       .rejects.toMatchObject({ statusCode: 404 });
   });
 
-  it('0176: recusa lançamento manual de hoje em caixa pendente antigo', async () => {
+  // Pedido explícito do usuário (follow-up, achado real 06/11/2026) — inverte o teste "0176"
+  // antigo: um lançamento manual (ex. sangria) num caixa aberto desde antes da meia-noite, ainda
+  // não fechado, precisa continuar funcionando — "sessão está aberta" já é a checagem certa.
+  it('aceita lançamento manual num caixa aberto desde uma data civil anterior (sem teto de meia-noite)', async () => {
     const { routes, cashRegisterRepository } = setup({ cashRegisterRepository: {
       findById: jest.fn().mockResolvedValue(buildSession({ openedAt: '2026-09-08T12:00:00Z' })),
     } });
-    await expect(runOperatorChain(routes['POST /restaurants/me/cash-register/:id/movements'], {
+    const json = jest.fn();
+    await runOperatorChain(routes['POST /restaurants/me/cash-register/:id/movements'], {
       restaurantId: 'r-1', params: { id: 'cr-1' }, body: { type: 'entrada', amount: 10, description: 'Hoje' },
-    }, { json: jest.fn() })).rejects.toMatchObject({ statusCode: 400 });
-    expect(cashRegisterRepository.addMovement).not.toHaveBeenCalled();
+    }, { json });
+    expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-1', expect.objectContaining({ amount: 10, description: 'Hoje' }));
+    expect(json).toHaveBeenCalledWith(201, expect.anything());
   });
 
   it('GET /restaurants/me/cash-register/open devolve a sessão aberta com movimentos, saldo calculado e saldo por forma de pagamento (REQ-9)', async () => {
@@ -507,6 +514,7 @@ describe('CashRegisterController', () => {
         difference: 0,
         tableSales: 0,
         deliverySales: 100,
+        lateMovements: [],
       });
       const { cashRegisterRepository, cashRegisterService, routes } = setup({
         cashRegisterRepository: { findClosedSessionsBetween: jest.fn().mockResolvedValue(closedSessions) },

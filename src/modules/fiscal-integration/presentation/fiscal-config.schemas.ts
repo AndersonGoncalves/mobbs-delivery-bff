@@ -18,6 +18,11 @@ export const setFiscalProductionEnabledSchema = z.object({
   productionEnabled: z.boolean(),
 });
 
+/** specs/0204-controle-emissao-fiscal-automatica — "botão" irmão do de cima. */
+export const setFiscalAutoEmitEnabledSchema = z.object({
+  autoEmitEnabled: z.boolean(),
+});
+
 /** REQ-6 — mesma faixa exigida pela FocusNFe pro cancelamento (15-255 caracteres). */
 export const cancelFiscalDocumentSchema = z.object({
   justificativa: z.string().min(15).max(255),

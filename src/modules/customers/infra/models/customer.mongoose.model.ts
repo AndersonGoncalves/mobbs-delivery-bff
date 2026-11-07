@@ -13,7 +13,15 @@ const customerSchema = new Schema(
     termsAcceptedAt: { type: Date },
     termsVersionAccepted: { type: String },
     // specs/0171-meios-pagamento-por-cliente REQ-1 — ausente/`null` = sem restrição própria.
-    allowedPaymentMethods: { type: [String] },
+    // Achado real (follow-up) — sem `default: undefined`, o Mongoose aplica o default implícito
+    // `[]` de todo path de array em QUALQUER documento criado via `.create()` (não só quando
+    // lido com `.lean()`, que ignora defaults): `CustomerMongooseRepository.createStandalone`/
+    // `.createByRestaurant` usam `.create()` + `.toObject()`, então todo cliente criado por
+    // totem/iFood/99Food/PDV/"Novo" na retaguarda nascia com `allowedPaymentMethods: []`
+    // persistido — nunca ausente de verdade — mesmo sem nenhuma restrição configurada. No
+    // checkout, uma lista vazia (não `null`) do lado do cliente zera a interseção com
+    // `Restaurant.acceptedPaymentMethods` e o combobox de forma de pagamento fica vazio.
+    allowedPaymentMethods: { type: [String], default: undefined },
     deletedAt: { type: Date },
     // (achado real, pedido explícito do usuário) — cliente cadastrado manualmente pela retaguarda
     // (botão "NOVO" em Clientes), sem pedido nenhum ainda — só esse restaurante pode vê-lo na

@@ -10,7 +10,7 @@ function buildObligation(overrides: Partial<ISubscriptionObligation> = {}): ISub
   };
 }
 
-function setup(options: { obligations: ISubscriptionObligation[] }) {
+function setup(options: { obligations: ISubscriptionObligation[]; observers?: unknown[] }) {
   const obligationRepository = {
     findPendingForReconciliation: jest.fn().mockResolvedValue(options.obligations),
     findById: jest.fn().mockImplementation(async (id: string) => options.obligations.find((o) => o.id === id) ?? null),
@@ -20,7 +20,7 @@ function setup(options: { obligations: ISubscriptionObligation[] }) {
   };
   const subscriptionEventRepository = { append: jest.fn().mockResolvedValue({ event: { id: 'ev-1' }, wasAlreadyRecorded: false }) };
   const asaasClient = { getPayment: jest.fn() };
-  const service = new ReconciliationService({ obligationRepository, subscriptionEventRepository, asaasClient } as never);
+  const service = new ReconciliationService({ obligationRepository, subscriptionEventRepository, asaasClient, observers: options.observers ?? [] } as never);
   return { service, obligationRepository, subscriptionEventRepository, asaasClient };
 }
 
@@ -60,6 +60,29 @@ describe('ReconciliationService.reconcile', () => {
     await service.reconcile(new Date('2026-11-12T00:00:00Z'));
 
     expect(obligationRepository.markRefunded).toHaveBeenCalledWith('ob-1');
+  });
+
+  // specs/0205-comissao-revendedor plan.md — observers notificados depois de markPaid/markRefunded.
+  it('specs/0205: pagamento confirmado por reconciliação notifica os observers', async () => {
+    const observer = { onObligationPaid: jest.fn().mockResolvedValue(undefined), onObligationRefunded: jest.fn() };
+    const obligation = buildObligation({ status: 'pending' });
+    const { service, asaasClient } = setup({ obligations: [obligation], observers: [observer] });
+    asaasClient.getPayment.mockResolvedValue({ id: 'pay_1', status: 'RECEIVED' });
+
+    await service.reconcile(new Date('2026-11-12T00:00:00Z'));
+
+    expect(observer.onObligationPaid).toHaveBeenCalledWith(expect.objectContaining({ id: 'ob-1' }));
+  });
+
+  it('specs/0205: estorno total identificado por reconciliação notifica os observers', async () => {
+    const observer = { onObligationPaid: jest.fn(), onObligationRefunded: jest.fn().mockResolvedValue(undefined) };
+    const obligation = buildObligation({ status: 'paid' });
+    const { service, asaasClient } = setup({ obligations: [obligation], observers: [observer] });
+    asaasClient.getPayment.mockResolvedValue({ id: 'pay_1', status: 'REFUNDED' });
+
+    await service.reconcile(new Date('2026-11-12T00:00:00Z'));
+
+    expect(observer.onObligationRefunded).toHaveBeenCalledWith(expect.objectContaining({ id: 'ob-1' }));
   });
 
   it('registra o evento de reconciliação mesmo quando nada muda (PENDING continua PENDING)', async () => {
