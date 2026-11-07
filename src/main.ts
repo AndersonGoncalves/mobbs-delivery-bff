@@ -663,6 +663,8 @@ server
       restaurantOperatorMiddleware,
       restaurantOperatorRepository,
       cashRegisterService,
+      // specs/0202-emissao-fiscal-pedidos-mesa.
+      fiscalEmissionService,
     ),
     new SuppliersController(new SupplierMongooseRepository(), restaurantOperatorMiddleware),
     new MotoboysController(new MotoboyMongooseRepository(), restaurantOperatorMiddleware),
