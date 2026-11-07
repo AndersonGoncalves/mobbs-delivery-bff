@@ -44,7 +44,7 @@ const ARTICLES = [
     'Abra Gráficos > Faturamento.',
     'Escolha o período (De/Até), a granularidade DIA/SEMANA/MÊS e o tipo de gráfico BARRA/LINHA; ligue "Comparar com o período anterior" pra ver a linha tracejada do período equivalente anterior ao lado.',
     'O gráfico principal mostra faturamento bruto e lucro estimado (receita menos o custo cadastrado de cada produto vendido) lado a lado; "Evolução por meio de pagamento" separa esse mesmo faturamento por Pix/cartão/dinheiro ao longo do tempo.',
-    'Mais abaixo, "Distribuição por tipo de pedido" (delivery/retirada/mesa) e o mapa de calor "Dias e horários de pico" (todos os status, não só entregues) ajudam a dimensionar escala de cozinha, garçons e motoboys.',
+    'Mais abaixo, "Distribuição por tipo de pedido" (delivery/retirada/mesa) e "Distribuição por canal" (app do cliente/PDV/iFood/99Food/comanda/autoatendimento) ficam lado a lado; o mapa de calor "Dias e horários de pico" (todos os status, não só entregues) ajuda a dimensionar escala de cozinha, garçons e motoboys.',
   ]),
 ];
 

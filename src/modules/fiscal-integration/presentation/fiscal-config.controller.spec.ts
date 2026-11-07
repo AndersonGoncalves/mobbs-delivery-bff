@@ -29,6 +29,7 @@ function buildConfig(overrides: Partial<IFiscalConfig> = {}): IFiscalConfig {
     environment: 'homologacao',
     documentType: 'nfce',
     productionEnabled: false,
+    autoEmitEnabled: true,
     webhookToken: 'webhook-token-1',
     cnpj: '11222333000181',
     createdAt: new Date().toISOString(),
@@ -43,6 +44,7 @@ describe('FiscalConfigController (specs/0091-integracao-fiscal-focusnfe REQ-1)',
       findByRestaurantId: jest.fn().mockResolvedValue(buildConfig()),
       upsert: jest.fn().mockResolvedValue(buildConfig()),
       setProductionEnabled: jest.fn().mockResolvedValue(buildConfig({ productionEnabled: true })),
+      setAutoEmitEnabled: jest.fn().mockResolvedValue(buildConfig({ autoEmitEnabled: false })),
       delete: jest.fn().mockResolvedValue(undefined),
       ...overrides.fiscalConfigRepository,
     };
@@ -61,6 +63,30 @@ describe('FiscalConfigController (specs/0091-integracao-fiscal-focusnfe REQ-1)',
     expect(payload).not.toHaveProperty('focusNfeToken');
     expect(payload).not.toHaveProperty('webhookToken');
     expect(payload).toMatchObject({ connected: true, environment: 'homologacao', documentType: 'nfce', cnpj: '11222333000181' });
+  });
+
+  // specs/0203-pendencias-fiscais-entregues-fechados AC-1 — necessário pro frontend não marcar
+  // como "pendência fiscal" um pedido entregue antes da integração fiscal existir.
+  it('AC-1 (0203): GET devolve createdAt da configuração', async () => {
+    const createdAt = '2026-09-01T12:00:00.000Z';
+    const { routes } = setup({ fiscalConfigRepository: { findByRestaurantId: jest.fn().mockResolvedValue(buildConfig({ createdAt })) } });
+    const json = jest.fn();
+
+    await runOperatorChain(routes['GET /restaurants/me/fiscal-config'], { restaurantId: 'r-1' }, { json, send: jest.fn() });
+
+    const [, payload] = json.mock.calls[0] as [number, Record<string, unknown>];
+    expect(payload.createdAt).toBe(createdAt);
+  });
+
+  // specs/0204-controle-emissao-fiscal-automatica AC-5.
+  it('AC-5 (0204): GET devolve autoEmitEnabled da configuração', async () => {
+    const { routes } = setup({ fiscalConfigRepository: { findByRestaurantId: jest.fn().mockResolvedValue(buildConfig({ autoEmitEnabled: false })) } });
+    const json = jest.fn();
+
+    await runOperatorChain(routes['GET /restaurants/me/fiscal-config'], { restaurantId: 'r-1' }, { json, send: jest.fn() });
+
+    const [, payload] = json.mock.calls[0] as [number, Record<string, unknown>];
+    expect(payload.autoEmitEnabled).toBe(false);
   });
 
   it('GET sem config cadastrada devolve connected: false', async () => {
@@ -100,6 +126,32 @@ describe('FiscalConfigController (specs/0091-integracao-fiscal-focusnfe REQ-1)',
     );
 
     expect(fiscalConfigRepository.setProductionEnabled).toHaveBeenCalledWith('r-1', true);
+  });
+
+  // specs/0204-controle-emissao-fiscal-automatica AC-4/AC-7.
+  it('AC-4 (0204): PUT .../auto-emit muda só autoEmitEnabled, preservando o resto da config', async () => {
+    const { fiscalConfigRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['PUT /restaurants/me/fiscal-config/auto-emit'],
+      { restaurantId: 'r-1', body: { autoEmitEnabled: false } },
+      { json, send: jest.fn() },
+    );
+
+    expect(fiscalConfigRepository.setAutoEmitEnabled).toHaveBeenCalledWith('r-1', false);
+    const [, payload] = json.mock.calls[0] as [number, Record<string, unknown>];
+    expect(payload).toMatchObject({ autoEmitEnabled: false, environment: 'homologacao', documentType: 'nfce', cnpj: '11222333000181' });
+  });
+
+  // AC-7: mesma proteção requireOperatorRole('dono', 'gerente') de todas as outras rotas desta
+  // controller — a cadeia inteira é montada em initializeRoutes, então basta confirmar que a
+  // rota nova também carrega os 3 middlewares (firebaseAuthMiddleware, restaurantOperatorMiddleware,
+  // requireOperatorRole), mesmo critério já coberto indiretamente pelas demais rotas.
+  it('AC-7 (0204): PUT .../auto-emit é protegida pela mesma cadeia operatorAuthenticated das demais rotas', async () => {
+    const { routes } = setup();
+
+    expect(routes['PUT /restaurants/me/fiscal-config/auto-emit']).toHaveLength(4);
   });
 
   it('DEL remove a configuração fiscal', async () => {

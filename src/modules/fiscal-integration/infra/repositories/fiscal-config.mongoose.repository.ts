@@ -10,6 +10,7 @@ interface FiscalConfigLeanDocument {
   environment: IFiscalConfig['environment'];
   documentType: IFiscalConfig['documentType'];
   productionEnabled: boolean;
+  autoEmitEnabled: boolean;
   webhookToken: string;
   cnpj: string;
   createdAt: Date;
@@ -23,6 +24,7 @@ function toEntity(doc: FiscalConfigLeanDocument): IFiscalConfig {
     environment: doc.environment,
     documentType: doc.documentType,
     productionEnabled: doc.productionEnabled,
+    autoEmitEnabled: doc.autoEmitEnabled,
     webhookToken: doc.webhookToken,
     cnpj: doc.cnpj,
     createdAt: doc.createdAt.toISOString(),
@@ -42,7 +44,7 @@ export class FiscalConfigMongooseRepository implements IFiscalConfigRepository {
 
     const doc = await FiscalConfigModel.findOneAndUpdate(
       { restaurantId },
-      { $set: { ...input, webhookToken }, $setOnInsert: { productionEnabled: false } },
+      { $set: { ...input, webhookToken }, $setOnInsert: { productionEnabled: false, autoEmitEnabled: true } },
       { upsert: true, new: true },
     ).lean<FiscalConfigLeanDocument>();
     return toEntity(doc as FiscalConfigLeanDocument);
@@ -52,6 +54,17 @@ export class FiscalConfigMongooseRepository implements IFiscalConfigRepository {
     const doc = await FiscalConfigModel.findOneAndUpdate(
       { restaurantId },
       { $set: { productionEnabled: enabled } },
+      { new: true },
+    ).lean<FiscalConfigLeanDocument>();
+    if (!doc) throw new Error('Configuração fiscal não encontrada pra este restaurante');
+    return toEntity(doc);
+  }
+
+  /** specs/0204-controle-emissao-fiscal-automatica — "botão" irmão de `setProductionEnabled`. */
+  async setAutoEmitEnabled(restaurantId: string, enabled: boolean): Promise<IFiscalConfig> {
+    const doc = await FiscalConfigModel.findOneAndUpdate(
+      { restaurantId },
+      { $set: { autoEmitEnabled: enabled } },
       { new: true },
     ).lean<FiscalConfigLeanDocument>();
     if (!doc) throw new Error('Configuração fiscal não encontrada pra este restaurante');

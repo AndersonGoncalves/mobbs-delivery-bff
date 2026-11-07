@@ -1,6 +1,7 @@
 import type { ISubscriptionObligation } from '../entities/subscription-obligation.entity';
 import type { ISubscriptionEventRepository } from '../repositories/subscription-event.repository.interface';
 import type { ISubscriptionObligationRepository } from '../repositories/subscription-obligation.repository.interface';
+import type { IObligationPaymentObserver } from './i-obligation-payment-observer.interface';
 
 /** Só o método de `AsaasClient` que a reconciliação precisa — consulta por id direto (a
  * obligation já tem `asaasChargeId` persistido, diferente da emissão, que ainda não sabe o id). */
@@ -24,6 +25,9 @@ export class ReconciliationService {
       obligationRepository: ISubscriptionObligationRepository;
       subscriptionEventRepository: ISubscriptionEventRepository;
       asaasClient: PlatformAsaasPaymentClient;
+      // specs/0205-comissao-revendedor plan.md — mesmo papel do webhook: notificados depois de
+      // markPaid/markRefunded/markPartiallyRefunded.
+      observers: IObligationPaymentObserver[];
     },
   ) {}
 
@@ -55,12 +59,16 @@ export class ReconciliationService {
     });
 
     if (PAID_STATUSES.has(payment.status)) {
-      if (obligation.status !== 'paid') await this.deps.obligationRepository.markPaid(obligation.id, now);
+      if (obligation.status !== 'paid') {
+        await this.deps.obligationRepository.markPaid(obligation.id, now);
+        for (const observer of this.deps.observers) await observer.onObligationPaid(obligation);
+      }
       return;
     }
     if (payment.status === 'REFUNDED') {
       // REQ-23 — estorno total reabre o saldo devido (nunca falsa quitação).
       await this.deps.obligationRepository.markRefunded(obligation.id);
+      for (const observer of this.deps.observers) await observer.onObligationRefunded(obligation);
       return;
     }
     if (payment.status === 'OVERDUE' && obligation.status !== 'overdue') {

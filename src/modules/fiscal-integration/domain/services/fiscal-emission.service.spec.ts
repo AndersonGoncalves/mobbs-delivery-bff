@@ -36,6 +36,7 @@ function buildConfig(overrides: Partial<IFiscalConfig> = {}): IFiscalConfig {
     environment: 'homologacao',
     documentType: 'nfce',
     productionEnabled: false,
+    autoEmitEnabled: true,
     webhookToken: 'webhook-token-1',
     cnpj: '11222333000181',
     createdAt: new Date().toISOString(),
@@ -149,6 +150,49 @@ describe('FiscalEmissionService (specs/0091-integracao-fiscal-focusnfe)', () => 
       expect(MockedClient.prototype.emitNfce).toHaveBeenCalled();
     });
 
+    // specs/0204-controle-emissao-fiscal-automatica
+    it('AC-1 (0204): autoEmitEnabled false bloqueia a emissão automática mesmo com config válida em homologação', async () => {
+      const { service, orderRepository } = setup({
+        fiscalConfigRepository: {
+          findByRestaurantId: jest.fn().mockResolvedValue(buildConfig({ autoEmitEnabled: false })),
+        },
+      });
+
+      await service.emitForOrder(buildOrder());
+
+      expect(MockedClient.prototype.emitNfce).not.toHaveBeenCalled();
+      expect(orderRepository.updateFiscal).not.toHaveBeenCalled();
+    });
+
+    it('AC-6 (0204): autoEmitEnabled false + produção + productionEnabled true continua bloqueando (checagens independentes)', async () => {
+      const { service, orderRepository } = setup({
+        fiscalConfigRepository: {
+          findByRestaurantId: jest.fn().mockResolvedValue(
+            buildConfig({ environment: 'producao', productionEnabled: true, autoEmitEnabled: false }),
+          ),
+        },
+      });
+
+      await service.emitForOrder(buildOrder());
+
+      expect(MockedClient.prototype.emitNfce).not.toHaveBeenCalled();
+      expect(orderRepository.updateFiscal).not.toHaveBeenCalled();
+    });
+
+    it('REQ-1 (0204): autoEmitEnabled true (padrão) continua emitindo automaticamente — não regride o comportamento atual', async () => {
+      MockedClient.prototype.emitNfce = jest.fn().mockResolvedValue({ ref: 'o-1', status: 'autorizado' });
+      const { service, orderRepository } = setup({
+        fiscalConfigRepository: {
+          findByRestaurantId: jest.fn().mockResolvedValue(buildConfig({ autoEmitEnabled: true })),
+        },
+      });
+
+      await service.emitForOrder(buildOrder());
+
+      expect(MockedClient.prototype.emitNfce).toHaveBeenCalled();
+      expect(orderRepository.updateFiscal).toHaveBeenCalledWith('o-1', { status: 'pendente' });
+    });
+
     it('AC-3/REQ-4: rejeição da FocusNFe grava status "rejeitado" com o motivo, sem lançar', async () => {
       MockedClient.prototype.emitNfce = jest.fn().mockResolvedValue({ ref: 'o-1', status: 'erro_autorizacao', mensagem_sefaz: 'Rejeição 704' });
       const { service, orderRepository } = setup();
@@ -176,6 +220,21 @@ describe('FiscalEmissionService (specs/0091-integracao-fiscal-focusnfe)', () => 
       const { service, orderRepository } = setup();
 
       await service.retryEmission(buildOrder({ fiscal: { status: 'rejeitado', rejectedReason: 'Rejeição 704' } }), buildConfig());
+
+      expect(MockedClient.prototype.emitNfce).toHaveBeenCalled();
+      expect(orderRepository.updateFiscal).toHaveBeenLastCalledWith('o-1', { status: 'emitido', ref: 'o-1', documentUrl: '/notas/o-1.html' });
+    });
+
+    // specs/0204-controle-emissao-fiscal-automatica AC-2/REQ-3 — a reemissão manual é exatamente
+    // o caminho que substitui a automação quando ela está desligada; nunca pode checar o campo.
+    it('AC-2 (0204): reemite normalmente mesmo com autoEmitEnabled false (reemissão manual nunca olha esse campo)', async () => {
+      MockedClient.prototype.emitNfce = jest.fn().mockResolvedValue({ ref: 'o-1', status: 'autorizado', caminho_danfe: '/notas/o-1.html' });
+      const { service, orderRepository } = setup();
+
+      await service.retryEmission(
+        buildOrder({ fiscal: { status: 'rejeitado', rejectedReason: 'Rejeição 704' } }),
+        buildConfig({ autoEmitEnabled: false }),
+      );
 
       expect(MockedClient.prototype.emitNfce).toHaveBeenCalled();
       expect(orderRepository.updateFiscal).toHaveBeenLastCalledWith('o-1', { status: 'emitido', ref: 'o-1', documentUrl: '/notas/o-1.html' });

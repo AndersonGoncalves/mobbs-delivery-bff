@@ -1,5 +1,5 @@
 import type { Request, Response, Server } from 'restify';
-import { NotFoundError } from 'restify-errors';
+import { ConflictError, NotFoundError } from 'restify-errors';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
@@ -8,8 +8,10 @@ import { IRestaurantRepository } from '../../restaurants/domain/repositories/res
 import { IResellerRepository } from '../domain/repositories/reseller.repository.interface';
 import { IResellerProspectRepository } from '../domain/repositories/reseller-prospect.repository.interface';
 import { IResellerClientRepository } from '../domain/repositories/reseller-client.repository.interface';
+import { IResellerCommissionRepository } from '../domain/repositories/reseller-commission.repository.interface';
 import { generateUniqueResellerCode } from '../domain/generate-reseller-code';
 import { createResellerSchema, setResellerActiveSchema } from './resellers.schemas';
+import { buildCommissionsSummary } from './build-commissions-summary';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
@@ -24,6 +26,7 @@ export class PlatformResellersController extends BaseRouter {
     private readonly prospectRepository: IResellerProspectRepository,
     private readonly clientRepository: IResellerClientRepository,
     private readonly restaurantRepository: IRestaurantRepository,
+    private readonly commissionRepository: IResellerCommissionRepository,
     private readonly platformAdminMiddleware: AsyncHandler,
   ) {
     super();
@@ -81,6 +84,24 @@ export class PlatformResellersController extends BaseRouter {
       const updated = await this.resellerRepository.setActive(req.params.id, isActive);
       if (!updated) throw new NotFoundError('Revendedor não encontrado');
       res.json(200, updated);
+    });
+
+    // specs/0205-comissao-revendedor REQ-13 — comissões de qualquer revendedor + totais.
+    application.get('/platform/resellers/:id/commissions', ...adminAuthenticated, async (req: Request, res: Response) => {
+      const reseller = await this.resellerRepository.findById(req.params.id);
+      if (!reseller) throw new NotFoundError('Revendedor não encontrado');
+      res.json(200, await buildCommissionsSummary(reseller.id, this.commissionRepository, this.restaurantRepository));
+    });
+
+    // REQ-11 — mesmo padrão idempotente de `PlatformReferralsController` (`markPaid` só troca
+    // status/data se ainda `pendente`; cancelada não pode ser paga).
+    application.patch('/platform/resellers/commissions/:commissionId/paid', ...adminAuthenticated, async (req: Request, res: Response) => {
+      const commission = await this.commissionRepository.findById(req.params.commissionId);
+      if (!commission) throw new NotFoundError('Comissão não encontrada');
+      if (commission.status === 'cancelada') throw new ConflictError('Comissão cancelada não pode ser marcada como paga');
+
+      const updated = await this.commissionRepository.markPaid(commission.id, new Date());
+      res.json(200, updated ?? commission);
     });
   }
 }

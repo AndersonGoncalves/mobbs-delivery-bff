@@ -11,6 +11,9 @@ const resellerSchema = new Schema(
     isActive: { type: Boolean, default: true },
     createdAt: { type: Date, default: () => new Date() },
     pixKey: { type: String, required: false },
+    // specs/0205-comissao-revendedor REQ-17 — ausente em contas criadas pelo admin (sem fluxo de
+    // contrato) ou antes desta spec existir.
+    contractAcceptedAt: { type: Date, required: false },
   },
   { _id: false },
 );

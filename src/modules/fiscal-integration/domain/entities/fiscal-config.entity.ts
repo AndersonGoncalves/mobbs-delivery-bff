@@ -26,6 +26,16 @@ export interface IFiscalConfig {
    * 'homologacao'` a emissão sempre é permitida (é o próprio ambiente de teste).
    */
   productionEnabled: boolean;
+  /**
+   * specs/0204-controle-emissao-fiscal-automatica — "botão" irmão de `productionEnabled`, mas
+   * independente dele: controla se `FiscalEmissionService.emitForOrder` (os 4 gatilhos
+   * automáticos: delivery/retirada, webhooks de entrega externa, fechamento de mesa/balcão)
+   * dispara sozinho. Começa `true` na criação da config (ninguém perde emissão automática por
+   * padrão); desligado, a emissão só acontece pela reemissão manual já existente em "Pedidos do
+   * app → Entregues"/"Atendimento de mesas → Fechados" (`specs/0203`,
+   * `FiscalEmissionService.retryEmission`, que nunca checa este campo).
+   */
+  autoEmitEnabled: boolean;
   /** specs/0091-integracao-fiscal-focusnfe REQ-3 — valor que o webhook `POST
    * /webhooks/focusnfe/:restaurantId` exige no header de autenticação (mesmo padrão de
    * `Restaurant.asaasWebhookToken`); gerado automaticamente na criação da config, nunca digitado

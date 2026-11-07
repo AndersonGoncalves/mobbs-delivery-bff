@@ -15,9 +15,12 @@ describe('caixa por data civil (0176)', () => {
     });
   });
 
-  it('caixa pendente termina seu período na virada de sua data', () => {
+  // Pedido explícito do usuário (follow-up, achado real 06/11/2026) — substitui a regra antiga de
+  // travar o período na virada da data civil (ver `cashRegisterPeriodEnd`, cabeçalho completo do
+  // motivo): o período de uma sessão agora é sempre sua vida real, sem teto de meia-noite.
+  it('caixa ainda aberto soma até agora, mesmo depois de virar o dia', () => {
     expect(cashRegisterPeriodEnd(session, new Date('2026-10-24T12:00:00Z')))
-      .toEqual(new Date('2026-10-24T03:00:00Z'));
+      .toEqual(new Date('2026-10-24T12:00:00Z'));
   });
 
   it('não reinterpreta fechamentos históricos legados', () => {
@@ -25,8 +28,13 @@ describe('caixa por data civil (0176)', () => {
       .toEqual(new Date('2026-10-25T12:00:00Z'));
   });
 
-  it('fechamento manual tardio de novo caixa mantém período da data original', () => {
+  it('fechamento manual tardio de novo caixa usa o horário real do fechamento, não a meia-noite', () => {
     expect(cashRegisterPeriodEnd({ ...session, businessDate: '2026-10-23', closedAt: '2026-10-25T12:00:00Z' }))
-      .toEqual(new Date('2026-10-24T03:00:00Z'));
+      .toEqual(new Date('2026-10-25T12:00:00Z'));
+  });
+
+  it('accountingEndAt já gravado (sessão fechada) sempre vence, mesmo com closedAt diferente', () => {
+    expect(cashRegisterPeriodEnd({ ...session, status: 'fechado', closedAt: '2026-10-25T12:00:00Z', accountingEndAt: '2026-10-25T09:00:00Z' }))
+      .toEqual(new Date('2026-10-25T09:00:00Z'));
   });
 });

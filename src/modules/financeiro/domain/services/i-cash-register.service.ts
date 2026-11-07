@@ -1,4 +1,4 @@
-import { ICashRegisterSession } from '../entities/cash-register.entity';
+import { ICashMovementEntry, ICashRegisterSession } from '../entities/cash-register.entity';
 
 /**
  * specs/0014-financeiro REQ-5 — entrada usada pelo módulo `orders` ao marcar um pedido como
@@ -43,11 +43,24 @@ export interface CashClosingSummary {
   calculatedBalance: number;
   /** Sessão aberta: sempre `0` (ainda não fechou). Sessão fechada: `closingBalance` − `calculatedBalance`. */
   difference: number;
+  /** (achado real, pedido explícito do usuário) — mesmo recorte de `tableSales`/`deliverySales`
+   * já usado em "Movimento do dia", agora também no histórico de fechamentos. */
+  tableSales: number;
+  deliverySales: number;
+  /** Pedido explícito do usuário (follow-up, achado real 06/11/2026) — vendas automáticas
+   * lançadas DEPOIS do fechamento desta sessão (`addAutomaticEntry`, quando não existe nenhuma
+   * sessão aberta mas a de hoje já existe fechada). Ficam de fora de todos os campos acima
+   * (conferência já feita nunca muda retroativamente), mas aparecem aqui pra nunca ficar
+   * escondidas. Sessão ainda aberta: sempre `[]` (nada pode ser "tardio" antes do fechamento). */
+  lateMovements: ICashMovementEntry[];
 }
 
 /**
- * Sem caixa da data atual, não lança em caixa pendente de outra data. Em modo automático,
- * verifica a abertura pelo horário do restaurante antes do lançamento.
+ * Em modo automático, verifica a abertura pelo horário do restaurante antes do lançamento
+ * (`ensureAutomaticSchedule`). Em qualquer modo, uma venda nunca fica sem caixa pra entrar —
+ * se não existe nenhuma sessão aberta, `addAutomaticEntry` abre uma (primeira venda do dia) ou
+ * lança na de hoje já fechada, marcado como tardio (`CashClosingSummary.lateMovements`) — ver
+ * cabeçalho completo do método.
  *
  * `syncOpenSession` recria as entradas que faltam na sessão aberta (pagamentos recebidos antes
  * desta regra, ou com a sessão já aberta).

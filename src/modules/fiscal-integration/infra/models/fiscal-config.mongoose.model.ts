@@ -10,6 +10,9 @@ const fiscalConfigSchema = new Schema(
     environment: { type: String, enum: ['homologacao', 'producao'], required: true },
     documentType: { type: String, enum: ['nfce', 'cfe', 'nfe'], required: true },
     productionEnabled: { type: Boolean, required: true, default: false },
+    // specs/0204-controle-emissao-fiscal-automatica — default true: comportamento atual
+    // (emissão automática ligada) preservado pra quem já tem a integração configurada.
+    autoEmitEnabled: { type: Boolean, required: true, default: true },
     webhookToken: { type: String, required: true },
     cnpj: { type: String, required: true },
   },

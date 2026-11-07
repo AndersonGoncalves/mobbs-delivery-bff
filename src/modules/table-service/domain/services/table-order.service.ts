@@ -12,6 +12,7 @@ import { ITableWaiterRepository } from '../repositories/waiter.repository.interf
 import { ITableMapLayoutRepository } from '../repositories/table-map-layout.repository.interface';
 import { IRestaurantOperatorRepository } from '../../../restaurant-operators/domain/repositories/restaurant-operator.repository.interface';
 import { ICashRegisterService } from '../../../financeiro/domain/services/i-cash-register.service';
+import { FiscalEmissionService } from '../../../fiscal-integration/domain/services/fiscal-emission.service';
 
 type SelectionInput = { groupName: string; optionName: string; nestedSelections?: SelectionInput[] };
 type Adjustment = NonNullable<IOrder['tableAdjustment']>;
@@ -78,6 +79,10 @@ export class TableOrderService {
     // `RestaurantOperator` com papel `garcom`, não mais `TableWaiter`.
     private readonly restaurantOperatorRepository: IRestaurantOperatorRepository,
     private readonly cashRegisterService?: ICashRegisterService,
+    // specs/0202-emissao-fiscal-pedidos-mesa — mesmo gatilho fiscal que `OrdersController` já usa
+    // pra delivery/retirada (status "entregue"), passando a existir também aqui (mesa e balcão,
+    // já que balcão também é `orderType: 'table'`, só sem `tableId`, ver `closeOrder` abaixo).
+    private readonly fiscalEmissionService?: FiscalEmissionService,
   ) {}
 
   async getFloor(restaurantId: string) {
@@ -377,6 +382,13 @@ export class TableOrderService {
       await this.recordTablePayment(closed, payment.method, payment.amount, payment.id);
     }
     if (order.tableId) await this.tableRepository.releaseFromOrder(order.tableId, restaurantId, order.id);
+    // specs/0202-emissao-fiscal-pedidos-mesa REQ-1 — mesmo gatilho fiscal automático que
+    // `OrdersController` já dispara em "entregue" pra delivery/retirada, agora também aqui.
+    // Fire-and-forget: nunca bloqueia nem falha a resposta de fechamento (mesmo padrão de
+    // `orders.controller.ts`), e `emitForOrder` já é no-op silencioso sem `FiscalConfig`.
+    void this.fiscalEmissionService?.emitForOrder(closed).catch((error) => {
+      console.error(`[fiscal-integration] erro inesperado emitindo documento fiscal do pedido de mesa/balcão ${closed.id}:`, error);
+    });
     return closed;
   }
 

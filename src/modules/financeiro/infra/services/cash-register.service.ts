@@ -51,12 +51,54 @@ export class CashRegisterService implements ICashRegisterService {
     private readonly orderRepository: IOrderRepository,
   ) {}
 
+  /**
+   * Pedido explícito do usuário (follow-up, achado real 06/11/2026) — antes recusava lançar
+   * quando não existia NENHUMA sessão aberta (ex. operador em modo manual esqueceu de abrir o
+   * caixa): a venda em si seguia normal (mesa, PDV, delivery/retirada não dependem do caixa pra
+   * funcionar), só o lançamento em si sumia, sem erro, sem aviso, pra sempre — nem reabrir
+   * resgatava, porque nunca existiu sessão nenhuma pra reabrir. Agora:
+   *
+   * 1. Existe sessão aberta (de hoje ou pendente de antes) → lança nela, igual sempre
+   *    (`cashRegisterPeriodEnd` cuida do período, sem teto de meia-noite).
+   * 2. Não existe nenhuma aberta, mas já existe uma sessão de HOJE (ela só pode estar fechada,
+   *    senão cairia no caso 1) → lança nela mesmo assim, só que depois do `closedAt` dela.
+   *    `getCalculatedBalance`/`getClosingSummary` excluem automaticamente todo lançamento
+   *    posterior ao fechamento da conferência já feita (saldo calculado/diferença continuam
+   *    congelados como estavam na hora do fechamento) — e expõem esses lançamentos tardios à
+   *    parte (`CashClosingSummary.lateMovements`), bem visíveis, nunca escondidos. Lançamento
+   *    MANUAL continua proibido nesse caso (`CashRegisterController`, endpoint de movements) —
+   *    só a venda automática passa por aqui.
+   * 3. Não existe nenhuma sessão de hoje — abre uma nova, saldo inicial R$0,00, marcada
+   *    "aberta automaticamente" (mesmo padrão/rótulo já usado por `ensureAutomaticSchedule`),
+   *    pra nunca deixar a primeira venda do dia sem caixa pra entrar.
+   */
   async addAutomaticEntry(input: AutomaticCashEntryInput): Promise<void> {
     if (!(input.amount > 0)) return;
     await this.ensureAutomaticSchedule(input.restaurantId);
-    const session = await this.cashRegisterRepository.findOpenSessionByRestaurant(input.restaurantId);
-    if (!session || cashRegisterDate(new Date(session.openedAt)) !== cashRegisterDate()) return;
+    const openSession = await this.cashRegisterRepository.findOpenSessionByRestaurant(input.restaurantId);
+    if (openSession) {
+      await this.recordAutomaticEntry(openSession.id, input);
+      return;
+    }
+    const todaySession = await this.cashRegisterRepository.findSessionByDate(input.restaurantId, cashRegisterDate());
+    if (todaySession) {
+      await this.recordAutomaticEntry(todaySession.id, input);
+      return;
+    }
+    const session = await this.openSessionForFirstSale(input.restaurantId);
+    if (!session) return;
     await this.recordAutomaticEntry(session.id, input);
+  }
+
+  private async openSessionForFirstSale(restaurantId: string): Promise<{ id: string } | null> {
+    try {
+      return await this.cashRegisterRepository.open(restaurantId, 0, AUTOMATIC_ACTOR, true);
+    } catch (error) {
+      // Corrida: duas vendas chegaram juntas e a outra já abriu a sessão de hoje.
+      const existing = await this.cashRegisterRepository.findSessionByDate(restaurantId, cashRegisterDate());
+      if (existing) return existing;
+      throw error;
+    }
   }
 
   private async recordAutomaticEntry(sessionId: string, input: AutomaticCashEntryInput): Promise<void> {
@@ -174,12 +216,18 @@ export class CashRegisterService implements ICashRegisterService {
 
     const salesByPaymentMethod = zeroBalanceByPaymentMethod();
     let totalSales = 0;
+    // (achado real, pedido explícito do usuário) — mesmo recorte mesa/balcão vs. delivery/
+    // retirada já exposto em "Movimento do dia" (`getTableSalesBetween`/`getDeliverySalesBetween`),
+    // calculado aqui em cima do mesmo `orders` já buscado acima, sem round-trip extra ao banco.
+    let tableSales = 0;
+    let deliverySales = 0;
     for (const order of orders) {
       if (order.orderType === 'table') {
         for (const payment of order.tablePayments ?? []) {
           const paidAt = new Date(payment.paidAt);
           if (paidAt < new Date(session.openedAt) || paidAt >= periodEnd) continue;
           const method = payment.method as PaymentMethod;
+          tableSales += payment.amount;
           if (!(method in salesByPaymentMethod)) continue;
           salesByPaymentMethod[method] += payment.amount;
           totalSales += payment.amount;
@@ -189,18 +237,32 @@ export class CashRegisterService implements ICashRegisterService {
       if (order.status !== 'entregue') continue;
       salesByPaymentMethod[order.paymentMethod] += order.total;
       totalSales += order.total;
+      deliverySales += order.total;
     }
 
     const balanceByPaymentMethod: Record<PaymentMethod, number> = { ...salesByPaymentMethod };
     const movements = await this.cashRegisterRepository.listMovements(sessionId);
     for (const movement of movements) {
       if (movement.orderId) continue;
+      if (session.closedAt && new Date(movement.createdAt) > new Date(session.closedAt)) continue;
       balanceByPaymentMethod.cash += movement.type === 'entrada' ? movement.amount : -movement.amount;
     }
 
     const calculatedBalance = await this.cashRegisterRepository.getCalculatedBalance(sessionId);
     const difference = session.closingBalance !== undefined ? session.closingBalance - calculatedBalance : 0;
 
-    return { session, balanceByPaymentMethod, totalSales, calculatedBalance, difference };
+    // Pedido explícito do usuário (follow-up, achado real 06/11/2026) — venda automática lançada
+    // num caixa já fechado (`addAutomaticEntry`, caso 2 do cabeçalho daquele método) fica de fora
+    // da conferência acima (`calculatedBalance`/`difference`/`totalSales`/`tableSales`/
+    // `deliverySales`/`balanceByPaymentMethod` continuam exatamente como estavam no momento do
+    // fechamento, nunca mudam retroativamente) — mas nunca fica escondida: aparece aqui, separada,
+    // pra quem olha o histórico ver claramente que entrou depois. Some sozinha dessa lista (e volta
+    // a contar na conferência normal) se o caixa for reaberto — `reopen()` limpa `closedAt`, então
+    // a comparação abaixo deixa de achar qualquer lançamento "tardio".
+    const lateMovements = session.closedAt
+      ? movements.filter((movement) => new Date(movement.createdAt) > new Date(session.closedAt!))
+      : [];
+
+    return { session, balanceByPaymentMethod, totalSales, calculatedBalance, difference, tableSales, deliverySales, lateMovements };
   }
 }

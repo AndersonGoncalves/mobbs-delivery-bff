@@ -17,4 +17,8 @@ export interface IReseller {
    * chave Pix nesta v1 — o jeito mais simples/direto de pagar que o próprio sistema já usa em
    * todo o resto (`Order.pixKey` do restaurante, mesmo padrão). */
   pixKey?: string;
+  /** specs/0205-comissao-revendedor REQ-17 — aceite do contrato de parceria/comissão, gravado no
+   * cadastro (`POST /reseller/signup`). Sempre preenchido pra revendedor novo (REQ-18 valida no
+   * servidor); ausente só em registros criados antes desta spec existir. */
+  contractAcceptedAt?: Date;
 }
