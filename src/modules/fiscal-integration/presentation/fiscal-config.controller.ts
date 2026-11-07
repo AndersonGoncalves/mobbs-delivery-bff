@@ -10,8 +10,11 @@ import { saveFiscalConfigSchema, setFiscalProductionEnabledSchema } from './fisc
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
 /** Nunca devolve `focusNfeToken`/`webhookToken` (mesmo cuidado de `asaasApiKey`/
- * `ifoodClientSecret`) — só confirmação de que a config existe e o estado do botão de produção. */
-function toPublicView(config: { restaurantId: string; environment: string; documentType: string; productionEnabled: boolean; cnpj: string } | null) {
+ * `ifoodClientSecret`) — só confirmação de que a config existe e o estado do botão de produção.
+ * `createdAt` adicionado em specs/0203-pendencias-fiscais-entregues-fechados REQ-1 — necessário
+ * pro frontend não marcar como "pendência fiscal" um pedido entregue antes da integração
+ * existir. */
+function toPublicView(config: { restaurantId: string; environment: string; documentType: string; productionEnabled: boolean; cnpj: string; createdAt: string } | null) {
   if (!config) return { connected: false };
   return {
     connected: true,
@@ -19,6 +22,7 @@ function toPublicView(config: { restaurantId: string; environment: string; docum
     documentType: config.documentType,
     productionEnabled: config.productionEnabled,
     cnpj: config.cnpj,
+    createdAt: config.createdAt,
   };
 }
 

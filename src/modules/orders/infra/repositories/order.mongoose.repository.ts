@@ -466,6 +466,23 @@ export class OrderMongooseRepository implements IOrderRepository {
     return result?.total ?? 0;
   }
 
+  // (achado real, pedido explícito do usuário) — mesmo raciocínio de `getTableSalesBetween`
+  // acima, espelhando o corte de `findReceivedSalesBetween` pro lado delivery/retirada: soma
+  // `total` dos pedidos marcados "entregue" dentro do período (via `statusHistory`, não a data de
+  // criação — um pedido criado antes mas entregue dentro da janela ainda conta).
+  async getDeliverySalesBetween(restaurantId: string, from: Date, to: Date): Promise<number> {
+    const [result] = await OrderModel.aggregate<{ total: number }>([
+      { $match: {
+        restaurantId,
+        orderType: { $ne: 'table' },
+        status: 'entregue',
+        statusHistory: { $elemMatch: { status: 'entregue', changedAt: { $gte: from, $lt: to } } },
+      } },
+      { $group: { _id: null, total: { $sum: '$total' } } },
+    ]);
+    return result?.total ?? 0;
+  }
+
   async findReceivedSalesBetween(restaurantId: string, from: Date, to: Date): Promise<IOrder[]> {
     const fromIso = from.toISOString();
     const toIso = to.toISOString();

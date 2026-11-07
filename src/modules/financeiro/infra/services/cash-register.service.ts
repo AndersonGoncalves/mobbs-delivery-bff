@@ -174,12 +174,18 @@ export class CashRegisterService implements ICashRegisterService {
 
     const salesByPaymentMethod = zeroBalanceByPaymentMethod();
     let totalSales = 0;
+    // (achado real, pedido explícito do usuário) — mesmo recorte mesa/balcão vs. delivery/
+    // retirada já exposto em "Movimento do dia" (`getTableSalesBetween`/`getDeliverySalesBetween`),
+    // calculado aqui em cima do mesmo `orders` já buscado acima, sem round-trip extra ao banco.
+    let tableSales = 0;
+    let deliverySales = 0;
     for (const order of orders) {
       if (order.orderType === 'table') {
         for (const payment of order.tablePayments ?? []) {
           const paidAt = new Date(payment.paidAt);
           if (paidAt < new Date(session.openedAt) || paidAt >= periodEnd) continue;
           const method = payment.method as PaymentMethod;
+          tableSales += payment.amount;
           if (!(method in salesByPaymentMethod)) continue;
           salesByPaymentMethod[method] += payment.amount;
           totalSales += payment.amount;
@@ -189,6 +195,7 @@ export class CashRegisterService implements ICashRegisterService {
       if (order.status !== 'entregue') continue;
       salesByPaymentMethod[order.paymentMethod] += order.total;
       totalSales += order.total;
+      deliverySales += order.total;
     }
 
     const balanceByPaymentMethod: Record<PaymentMethod, number> = { ...salesByPaymentMethod };
@@ -201,6 +208,6 @@ export class CashRegisterService implements ICashRegisterService {
     const calculatedBalance = await this.cashRegisterRepository.getCalculatedBalance(sessionId);
     const difference = session.closingBalance !== undefined ? session.closingBalance - calculatedBalance : 0;
 
-    return { session, balanceByPaymentMethod, totalSales, calculatedBalance, difference };
+    return { session, balanceByPaymentMethod, totalSales, calculatedBalance, difference, tableSales, deliverySales };
   }
 }

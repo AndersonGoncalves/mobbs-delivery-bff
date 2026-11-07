@@ -141,6 +141,9 @@ export interface IOrderRepository {
   /** REQ-4 — agregado por período, calculado on demand, nunca persistido. */
   getSalesSummary(restaurantId: string, periodStart: Date, periodEnd: Date): Promise<ISalesSummary>;
   getTableSalesBetween(restaurantId: string, from: Date, to: Date): Promise<number>;
+  /** (achado real, pedido explícito do usuário) — mesmo raciocínio de `getTableSalesBetween`
+   * acima, pro lado delivery/retirada: soma `total` dos pedidos "entregue" dentro do período. */
+  getDeliverySalesBetween(restaurantId: string, from: Date, to: Date): Promise<number>;
 
   /**
    * Vendas cujo dinheiro entrou no intervalo: delivery/retirada marcados como entregues nesse

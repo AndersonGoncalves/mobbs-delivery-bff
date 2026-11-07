@@ -63,6 +63,19 @@ describe('FiscalConfigController (specs/0091-integracao-fiscal-focusnfe REQ-1)',
     expect(payload).toMatchObject({ connected: true, environment: 'homologacao', documentType: 'nfce', cnpj: '11222333000181' });
   });
 
+  // specs/0203-pendencias-fiscais-entregues-fechados AC-1 — necessário pro frontend não marcar
+  // como "pendência fiscal" um pedido entregue antes da integração fiscal existir.
+  it('AC-1 (0203): GET devolve createdAt da configuração', async () => {
+    const createdAt = '2026-09-01T12:00:00.000Z';
+    const { routes } = setup({ fiscalConfigRepository: { findByRestaurantId: jest.fn().mockResolvedValue(buildConfig({ createdAt })) } });
+    const json = jest.fn();
+
+    await runOperatorChain(routes['GET /restaurants/me/fiscal-config'], { restaurantId: 'r-1' }, { json, send: jest.fn() });
+
+    const [, payload] = json.mock.calls[0] as [number, Record<string, unknown>];
+    expect(payload.createdAt).toBe(createdAt);
+  });
+
   it('GET sem config cadastrada devolve connected: false', async () => {
     const { routes } = setup({ fiscalConfigRepository: { findByRestaurantId: jest.fn().mockResolvedValue(null) } });
     const json = jest.fn();
