@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { paginationQuerySchema } from '../../../shared/http/pagination';
+import { paymentMethodSchema } from '../../restaurants/presentation/restaurants.schemas';
 
 const isoDateString = z.string().refine((value) => !Number.isNaN(Date.parse(value)), 'Data inválida');
 
@@ -52,6 +53,10 @@ export const addCashMovementSchema = z.object({
   type: z.enum(['entrada', 'saida']),
   amount: z.number().positive('Valor deve ser maior que zero'),
   description: z.string().min(1, 'Descrição é obrigatória'),
+  // specs/0208-redesign-movimento-caixa (ajuste 08/11/2026, pedido explícito do usuário) —
+  // combobox de forma de pagamento no diálogo "Lançar movimento"; ausente continua contando como
+  // dinheiro (`CashRegisterService.getClosingSummary`).
+  paymentMethod: paymentMethodSchema.optional(),
 });
 
 /** REQ-7 — valor contado fisicamente no fechamento. */

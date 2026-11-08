@@ -245,7 +245,12 @@ export class CashRegisterService implements ICashRegisterService {
     for (const movement of movements) {
       if (movement.orderId) continue;
       if (session.closedAt && new Date(movement.createdAt) > new Date(session.closedAt)) continue;
-      balanceByPaymentMethod.cash += movement.type === 'entrada' ? movement.amount : -movement.amount;
+      // specs/0208-redesign-movimento-caixa (ajuste 08/11/2026, pedido explícito do usuário) —
+      // lançamento manual agora pode informar a forma de pagamento (combobox no diálogo "Lançar
+      // movimento"); sem ela, continua contando como dinheiro (comportamento de sempre).
+      const method = (movement.paymentMethod as PaymentMethod | undefined) ?? 'cash';
+      if (!(method in balanceByPaymentMethod)) continue;
+      balanceByPaymentMethod[method] += movement.type === 'entrada' ? movement.amount : -movement.amount;
     }
 
     const calculatedBalance = await this.cashRegisterRepository.getCalculatedBalance(sessionId);
