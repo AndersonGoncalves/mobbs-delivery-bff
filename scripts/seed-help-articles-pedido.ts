@@ -50,6 +50,10 @@ function article(itemOrder: number, itemLabel: string, linkTo: string, articleIm
 const ARTICLES = [
   article(1, 'PDV', '/operator-pdv', 'pdv', [
     ['Abra Pedido > PDV.', 'pdv'],
+    // (ajuste 09/11/2026, pedido explícito do usuário) — atalhos pra Pedidos do app/Atendimento
+    // de mesas ao lado do título (sem screenshot novo — a imagem de "pdv" acima já capturou a
+    // tela, só não mostra esses botões).
+    ['Ao lado do título, atalhos levam direto pra Pedidos do app e Atendimento de mesas — cada um só aparece pra quem também tem acesso àquela página específica (mesmo critério do item correspondente no menu lateral).'],
     ['Escolha o tipo do pedido: DELIVERY, RETIRADA ou BALCÃO.'],
     ['Pra delivery/retirada, digite o telefone do cliente e toque em BUSCAR (carrega os dados se ele já pediu antes) ou CADASTRO RÁPIDO pra um cliente novo; preencha o endereço de entrega se for delivery.'],
     ['Em "Itens", busque e adicione os produtos do cardápio, escolha a forma de pagamento e toque em REVISAR E FINALIZAR.'],
@@ -61,9 +65,15 @@ const ARTICLES = [
     ['O botão de avançar o pedido muda conforme o status e o tipo: CONFIRMAR (aguardando → confirmado), INICIAR PREPARO (confirmado → em preparo) e, dali, SAIU PARA ENTREGA pra delivery ou PRONTO PARA RETIRADA pra retirada — cada card também tem CANCELAR e IMPRIMIR.'],
     ['A aba MAPA mostra todos os pedidos do dia espalhados num mapa, cada um com uma cor conforme o status (legenda no topo) — útil pra entender a distribuição geográfica das entregas ou planejar rotas. Clique num marcador pra ver os detalhes daquele pedido.'],
     ['A aba ENTREGUES guarda o histórico dos pedidos já finalizados, com total do período.'],
+    // (ajuste 09/11/2026, pedido explícito do usuário) — atalho pro Movimento de caixa ao lado
+    // do título (sem screenshot novo).
+    ['Ao lado do título, um atalho leva direto pro Movimento de caixa — só aparece pra quem também tem acesso a ele (mesmo critério do item correspondente no menu lateral).'],
   ]),
   article(3, 'Atendimento de mesas', '/table-service', 'atendimento-mesas', [
     ['Abra Pedido > Atendimento de mesas — mesas cadastradas (Restaurante > Mesas) aparecem como blocos verdes (livres); toque numa pra abrir uma comanda nova, ou numa mesa ocupada (amarela) pra continuar lançando itens.', 'atendimento-mesas'],
+    // (ajuste 09/11/2026, pedido explícito do usuário) — atalho pro Movimento de caixa, à
+    // esquerda de NOVO BALCÃO (sem screenshot novo).
+    ['Ao lado de NOVO BALCÃO, um atalho leva direto pro Movimento de caixa — só aparece pra quem também tem acesso a ele (mesmo critério do item correspondente no menu lateral).'],
     ['Com a comanda aberta, busque produtos no campo "Buscar no cardápio" e toque no card do produto pra adicionar — se ele tiver um grupo de adicionais obrigatório (ex. "Bordas" de uma pizza), escolha a opção antes de "Adicionar ao pedido". Use os botões "−"/"+" na lista da comanda pra ajustar a quantidade de um item já lançado, ou "Agrupar iguais" pra juntar linhas repetidas do mesmo produto/adicionais/observação.', 'atendimento-mesa-aberta'],
     ['Taxa de serviço, Couvert (só em dias com música ao vivo configurados em Restaurante > Mesas), desconto/acréscimo e divisão informativa por número de pessoas ficam logo abaixo da comanda — cada um se aplica na hora, sem precisar fechar a conta pra ver o efeito no total.'],
     ['Toque em "Fechar conta": confira o saldo, escolha a forma de pagamento (ou mais de uma — ADICIONAR FORMA DE PAGAMENTO pra dividir entre dinheiro/Pix/cartão) e confirme. O fechamento já dispara a impressão da conta automaticamente.', 'atendimento-fechar-conta'],
