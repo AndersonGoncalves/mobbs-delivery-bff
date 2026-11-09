@@ -48,6 +48,10 @@ const ARTICLES = [
     ['Abra Caixa > Movimento de caixa — cada data civil tem seu próprio caixa, e o fechamento é sempre uma conferência manual (ninguém fecha sozinho). Se o restaurante estiver configurado pra "Abertura automática" (Restaurante > Perfil), o caixa do dia já aparece aberto sozinho, com saldo inicial R$ 0,00 e o selo "Aberto automaticamente"; no modo manual, toque em ABRIR CAIXA informando o valor de abertura (dinheiro físico já no caixa).'],
     ['A aba "Movimento do dia" mostra o saldo atual, o recorte "Vendas de mesa e balcão" vs. "Vendas de delivery/retirada" e o total por forma de pagamento (Dinheiro, Pix, Cartão) — cada venda paga gera um lançamento automático aqui, sem precisar fazer nada. A lista "Movimentos" embaixo mostra cada lançamento, automático ou manual, com data/hora.', 'movimento-caixa'],
     ['Use LANÇAR MOVIMENTO pra registrar uma entrada ou saída manual (ex. troco, sangria, compra avulsa) — só funciona com o caixa aberto.'],
+    // (ajuste 09/11/2026, pedido explícito do usuário) — atalhos pro PDV/Pedidos do app/
+    // Atendimento de mesas ao lado de LANÇAR MOVIMENTO/FECHAR CAIXA (sem screenshot novo —
+    // mesma imagem de "movimento-caixa" já usada acima, que não mostra esses botões).
+    ['Ao lado de LANÇAR MOVIMENTO/FECHAR CAIXA, atalhos levam direto pra PDV, Pedidos do app e Atendimento de mesas — cada um só aparece pra quem também tem acesso àquela página específica (mesmo critério do item correspondente no menu lateral).'],
     ['Toque em FECHAR CAIXA no fim do dia: confira o "Saldo calculado" contra o dinheiro físico contado de verdade e informe o valor contado — a diferença entre os dois aparece na conferência final. Uma venda que acontecer DEPOIS do fechamento (ex. você entregou um pedido atrasado já tarde da noite) ainda é lançada normalmente, só que aparece separada no histórico desse fechamento, sem alterar o saldo/diferença que já foi conferido.'],
     ['Uma data nova só abre depois que a anterior for fechada — "Caixa para conferência" no topo mostra qualquer caixa pendente de data anterior, pra você selecionar e fechar antes de seguir.'],
   ]),
