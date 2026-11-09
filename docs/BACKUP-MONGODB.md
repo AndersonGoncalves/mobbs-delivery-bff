@@ -87,7 +87,18 @@ no banco durante a restauração.
 
 ## Teste de restore já realizado
 
-09/11/2026 — restaurado o backup `mobbs-delivery_2026-11-09_03-00-01.archive.gz` (o mais recente
-na época) num container `mongo:7` descartável, isolado, sem tocar na produção. Contagem de
-documentos por coleção bateu com o que o próprio log do `mongodump` daquele dia reportou
-(`backup-mongo.log`). Backup confirmado restaurável.
+09/11/2026 — restaurado o backup `mobbs-delivery_2026-11-09_18-19-47.archive.gz` num container
+`mongo:7` descartável, isolado (`mongo-restore-check`), sem tocar na produção — confirmado depois
+que o `mobbs-delivery-bff-mongo-1` real manteve o mesmo uptime (2 semanas) do início ao fim do
+teste. **2270 documentos restaurados, 0 falhas.** Contagem por coleção bateu exatamente com o que
+o `mongodump` daquele backup reportou (`restaurant`: 1, `customer`: 64, `order`: 140, `payment`:
+102, `cashMovementEntry`: 173, `restauranttable`: 107, `product`: 32, `subscriptionEvent`: 1467,
+`customer_balance`: 15). Container de teste e arquivo local removidos ao final.
+
+Ressalva: a criação do índice único de `customer_balance` deu timeout nesse teste (t3.micro sob
+carga, recurso do container descartável, não da produção) — os 15 documentos da coleção
+restauraram normalmente, só o índice não foi recriado a tempo. Não compromete o backup em si (os
+dados estão lá), mas, numa restauração de disaster recovery de verdade, vale rodar
+`mongorestore` com mais memória disponível (ou `--numParallelCollections=1`) e conferir os índices
+depois (`db.getCollectionInfos()` / `db.<collection>.getIndexes()`) antes de liberar o BFF pra
+escrever no banco restaurado.
