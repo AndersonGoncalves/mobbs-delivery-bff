@@ -83,7 +83,12 @@ export class PlatformBillingWebhookController extends BaseRouter {
       if (PAID_EVENTS.has(body.event) && obligation.status !== 'paid') {
         await this.deps.obligationRepository.markPaid(obligation.id, now);
         for (const observer of this.deps.observers) await observer.onObligationPaid(obligation);
-      } else if (REFUNDED_EVENTS.has(body.event)) {
+      } else if (REFUNDED_EVENTS.has(body.event) && obligation.status !== 'refunded') {
+        // Achado de auditoria (06/11/2026) — diferente dos outros dois branches, este não checava
+        // o status atual antes de agir: um reenvio do evento (com asaasEventId diferente, passando
+        // pela dedup acima) chamava onObligationRefunded de novo numa obrigação já estornada,
+        // dependendo inteiramente de cada observer (ex. comissão de revendedor) ser idempotente
+        // por conta própria.
         await this.deps.obligationRepository.markRefunded(obligation.id);
         for (const observer of this.deps.observers) await observer.onObligationRefunded(obligation);
       } else if (OVERDUE_EVENTS.has(body.event) && obligation.status !== 'overdue' && obligation.status !== 'paid') {

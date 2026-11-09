@@ -152,6 +152,24 @@ describe('PlatformBillingWebhookController (specs/0175-cobranca-assinatura-asaas
     expect(obligationRepository.markRefunded).toHaveBeenCalledWith('ob-1');
   });
 
+  // Achado de auditoria (06/11/2026) — reenvio do evento (asaasEventId diferente, passa pela
+  // dedup) numa obligation já estornada não pode reprocessar o estorno nem renotificar observers.
+  it('PAYMENT_REFUNDED reenviado numa obligation já estornada não reprocessa nem renotifica observers', async () => {
+    const refundedObligation = buildObligation({ status: 'refunded' });
+    const observer = { onObligationPaid: jest.fn(), onObligationRefunded: jest.fn() };
+    const { routes, obligationRepository } = setup({ obligation: refundedObligation, observers: [observer] });
+    const json = jest.fn();
+
+    await routes['POST /webhooks/platform-billing'][0](
+      buildReq('webhook-token-1', { id: 'evt_2', event: 'PAYMENT_REFUNDED', payment: { externalReference: 'ob-1' } }),
+      { json, send: jest.fn() },
+    );
+
+    expect(obligationRepository.markRefunded).not.toHaveBeenCalled();
+    expect(observer.onObligationRefunded).not.toHaveBeenCalled();
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ obligationId: 'ob-1', status: 'refunded' }));
+  });
+
   // specs/0205-comissao-revendedor plan.md — observers (hoje, `resellers`) notificados depois de
   // markPaid/markRefunded, sem que este módulo precise conhecer quem os implementa.
   it('specs/0205: PAYMENT_CONFIRMED notifica os observers com a obligation paga', async () => {
