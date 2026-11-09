@@ -91,7 +91,7 @@ describe('AsaasWebhookController (specs/0101-integracao-asaas, fase 1)', () => {
     const { paymentRepository, routes } = setup();
     const json = jest.fn();
 
-    await routes['POST /webhooks/asaas/:restaurantId'][0](
+    await routes['POST /webhooks/asaas/:restaurantId'].at(-1)!(
       buildReq('webhook-token-1', { event: 'PAYMENT_CONFIRMED', payment: { id: 'pay_1', externalReference: 'o-1' } }),
       { json, send: jest.fn() },
     );
@@ -104,7 +104,7 @@ describe('AsaasWebhookController (specs/0101-integracao-asaas, fase 1)', () => {
     const { routes } = setup();
 
     await expect(
-      routes['POST /webhooks/asaas/:restaurantId'][0](
+      routes['POST /webhooks/asaas/:restaurantId'].at(-1)!(
         buildReq('token-errado', { event: 'PAYMENT_CONFIRMED', payment: { externalReference: 'o-1' } }),
         { json: jest.fn(), send: jest.fn() },
       ),
@@ -115,7 +115,7 @@ describe('AsaasWebhookController (specs/0101-integracao-asaas, fase 1)', () => {
     const { paymentRepository, routes } = setup();
     const send = jest.fn();
 
-    await routes['POST /webhooks/asaas/:restaurantId'][0](
+    await routes['POST /webhooks/asaas/:restaurantId'].at(-1)!(
       buildReq('webhook-token-1', { event: 'PAYMENT_OVERDUE', payment: { externalReference: 'o-1' } }),
       { json: jest.fn(), send },
     );
@@ -128,7 +128,7 @@ describe('AsaasWebhookController (specs/0101-integracao-asaas, fase 1)', () => {
     const { routes } = setup({ orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ restaurantId: 'r-OUTRO' })) } });
 
     await expect(
-      routes['POST /webhooks/asaas/:restaurantId'][0](
+      routes['POST /webhooks/asaas/:restaurantId'].at(-1)!(
         buildReq('webhook-token-1', { event: 'PAYMENT_CONFIRMED', payment: { externalReference: 'o-1' } }),
         { json: jest.fn(), send: jest.fn() },
       ),
@@ -139,7 +139,7 @@ describe('AsaasWebhookController (specs/0101-integracao-asaas, fase 1)', () => {
     const { paymentRepository, routes } = setup({ paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ status: 'aprovado' })) } });
     const json = jest.fn();
 
-    await routes['POST /webhooks/asaas/:restaurantId'][0](
+    await routes['POST /webhooks/asaas/:restaurantId'].at(-1)!(
       buildReq('webhook-token-1', { event: 'PAYMENT_CONFIRMED', payment: { externalReference: 'o-1' } }),
       { json, send: jest.fn() },
     );
@@ -167,7 +167,7 @@ describe('AsaasWebhookController (specs/0101-integracao-asaas, fase 1)', () => {
       const { paymentRepository, routes } = setupCheckout();
       const json = jest.fn();
 
-      await routes['POST /webhooks/asaas/:restaurantId'][0](
+      await routes['POST /webhooks/asaas/:restaurantId'].at(-1)!(
         buildReq('webhook-token-1', { event: 'CHECKOUT_PAID', checkout: { id: 'chk_1', externalReference: 'o-1' } }),
         { json, send: jest.fn() },
       );
@@ -184,7 +184,7 @@ describe('AsaasWebhookController (specs/0101-integracao-asaas, fase 1)', () => {
       });
 
       await expect(
-        routes['POST /webhooks/asaas/:restaurantId'][0](
+        routes['POST /webhooks/asaas/:restaurantId'].at(-1)!(
           buildReq('webhook-token-1', { event: 'CHECKOUT_PAID', checkout: { id: 'chk_1', externalReference: 'o-1' } }),
           { json: jest.fn(), send: jest.fn() },
         ),
@@ -197,7 +197,7 @@ describe('AsaasWebhookController (specs/0101-integracao-asaas, fase 1)', () => {
       });
       const json = jest.fn();
 
-      await routes['POST /webhooks/asaas/:restaurantId'][0](
+      await routes['POST /webhooks/asaas/:restaurantId'].at(-1)!(
         buildReq('webhook-token-1', { event: 'CHECKOUT_PAID', checkout: { id: 'chk_1', externalReference: 'o-1' } }),
         { json, send: jest.fn() },
       );
@@ -211,7 +211,7 @@ describe('AsaasWebhookController (specs/0101-integracao-asaas, fase 1)', () => {
       const { paymentRepository, routes } = setupCheckout();
       const send = jest.fn();
 
-      await routes['POST /webhooks/asaas/:restaurantId'][0](
+      await routes['POST /webhooks/asaas/:restaurantId'].at(-1)!(
         buildReq('webhook-token-1', { event: 'CHECKOUT_PAID', checkout: { id: 'chk_1' } }),
         { json: jest.fn(), send },
       );

@@ -3,6 +3,7 @@ import { UnauthorizedError } from 'restify-errors';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { isValidWebhookToken } from '../../../shared/crypto/webhook-token';
+import { webhookRateLimitMiddleware } from '../../../shared/http/rate-limits';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { UberDeliveryStatus } from '../../orders/domain/entities/order.entity';
 import { IUberDeliveryConfigRepository } from '../domain/repositories/uber-delivery-config.repository.interface';
@@ -45,7 +46,9 @@ export class UberDeliveryWebhookController extends BaseRouter {
   }
 
   initializeRoutes(application: Server): void {
-    application.post('/webhooks/uber-direct/:restaurantId', async (req: Request, res: Response) => {
+    // Achado de auditoria (06/11/2026) — sem Firebase por trás, rate limit por IP antes da
+    // validação do token.
+    application.post('/webhooks/uber-direct/:restaurantId', webhookRateLimitMiddleware, async (req: Request, res: Response) => {
       const config = await this.uberDeliveryConfigRepository.findByRestaurantId(req.params.restaurantId);
       const token = (req.query as Record<string, string> | undefined)?.token;
       if (!config || !isValidWebhookToken(token, config.webhookToken)) {

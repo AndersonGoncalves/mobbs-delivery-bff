@@ -4,6 +4,7 @@ import { ConflictError, NotFoundError, UnauthorizedError } from 'restify-errors'
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { environment } from '../../../shared/config/environment';
+import { webhookRateLimitMiddleware } from '../../../shared/http/rate-limits';
 import { IWhatsAppNotificationService } from '../../notifications/domain/services/i-whatsapp-notification.service';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IPayment } from '../../orders/domain/entities/order.entity';
@@ -61,7 +62,9 @@ export class MercadoPagoWebhookController extends BaseRouter {
   }
 
   initializeRoutes(application: Server): void {
-    application.post('/webhooks/mercadopago', async (req: Request, res: Response) => {
+    // Achado de auditoria (06/11/2026) — sem Firebase por trás, rate limit por IP antes de
+    // calcular a assinatura HMAC (evita gastar CPU com isso a cada tentativa num flood).
+    application.post('/webhooks/mercadopago', webhookRateLimitMiddleware, async (req: Request, res: Response) => {
       const body = req.body as { type?: string; data?: { id?: string } };
       const paymentId = body.data?.id;
 

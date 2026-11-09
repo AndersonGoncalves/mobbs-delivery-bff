@@ -1,6 +1,7 @@
 import type { Request, Response, Server } from 'restify';
 
 import { BaseRouter } from '../../../shared/router/base.router';
+import { webhookRateLimitMiddleware } from '../../../shared/http/rate-limits';
 import { EntregaDeliveryStatus } from '../../orders/domain/entities/order.entity';
 import { ICustomerRepository } from '../../customers/domain/repositories/customer.repository.interface';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
@@ -58,7 +59,9 @@ export class NinetyNineFoodWebhookController extends BaseRouter {
   }
 
   initializeRoutes(application: Server): void {
-    application.post('/webhooks/99food', async (req: Request, res: Response) => {
+    // Achado de auditoria (06/11/2026) — sem Firebase por trás, rate limit por IP antes de
+    // verificar a assinatura HMAC.
+    application.post('/webhooks/99food', webhookRateLimitMiddleware, async (req: Request, res: Response) => {
       const rawBody = typeof req.rawBody === 'string' ? req.rawBody : String(req.rawBody ?? '');
       const signature = req.header('didi-header-sign');
       if (!verifyNinetyNineFoodSignature(rawBody, this.appSecret, signature)) {

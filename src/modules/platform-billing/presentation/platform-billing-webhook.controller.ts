@@ -3,6 +3,7 @@ import { UnauthorizedError } from 'restify-errors';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { isValidWebhookToken } from '../../../shared/crypto/webhook-token';
+import { webhookRateLimitMiddleware } from '../../../shared/http/rate-limits';
 import type { ISubscriptionEventRepository } from '../domain/repositories/subscription-event.repository.interface';
 import type { ISubscriptionObligationRepository } from '../domain/repositories/subscription-obligation.repository.interface';
 import type { PlatformBillingCycleService } from '../domain/services/platform-billing-cycle.service';
@@ -47,7 +48,9 @@ export class PlatformBillingWebhookController extends BaseRouter {
   }
 
   initializeRoutes(application: Server): void {
-    application.post('/webhooks/platform-billing', async (req: Request, res: Response) => {
+    // Achado de auditoria (06/11/2026) — sem Firebase por trás, rate limit por IP antes da
+    // validação do token.
+    application.post('/webhooks/platform-billing', webhookRateLimitMiddleware, async (req: Request, res: Response) => {
       const token = req.header('asaas-access-token');
       if (!isValidWebhookToken(token, this.deps.webhookToken)) {
         throw new UnauthorizedError('Token de webhook inválido');
@@ -83,10 +86,19 @@ export class PlatformBillingWebhookController extends BaseRouter {
       if (PAID_EVENTS.has(body.event) && obligation.status !== 'paid') {
         await this.deps.obligationRepository.markPaid(obligation.id, now);
         for (const observer of this.deps.observers) await observer.onObligationPaid(obligation);
-      } else if (REFUNDED_EVENTS.has(body.event)) {
+      } else if (REFUNDED_EVENTS.has(body.event) && obligation.status !== 'refunded') {
+        // Achado de auditoria (06/11/2026) — diferente dos outros dois branches, este não checava
+        // o status atual antes de agir: um reenvio do evento (com asaasEventId diferente, passando
+        // pela dedup acima) chamava onObligationRefunded de novo numa obrigação já estornada,
+        // dependendo inteiramente de cada observer (ex. comissão de revendedor) ser idempotente
+        // por conta própria.
         await this.deps.obligationRepository.markRefunded(obligation.id);
         for (const observer of this.deps.observers) await observer.onObligationRefunded(obligation);
-      } else if (OVERDUE_EVENTS.has(body.event) && obligation.status !== 'overdue') {
+      } else if (OVERDUE_EVENTS.has(body.event) && obligation.status !== 'overdue' && obligation.status !== 'paid') {
+        // Achado de auditoria (06/11/2026, confirmado 09/11/2026) — o Asaas não garante ordem de
+        // entrega de webhook: um PAYMENT_OVERDUE chegando DEPOIS de um PAYMENT_CONFIRMED/RECEIVED
+        // já processado não pode rebaixar quem já pagou (bloquearia um cliente recém-pago na hora,
+        // via recomputeAndPersist síncrono logo abaixo).
         await this.deps.obligationRepository.markOverdue(obligation.id);
       }
 

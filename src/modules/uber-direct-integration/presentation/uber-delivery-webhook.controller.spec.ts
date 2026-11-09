@@ -71,7 +71,7 @@ describe('UberDeliveryWebhookController (specs/0121-integracao-uber-entregas REQ
     const { orderRepository, ordersController, routes } = setup();
     const send = jest.fn();
 
-    await routes['POST /webhooks/uber-direct/:restaurantId'][0](
+    await routes['POST /webhooks/uber-direct/:restaurantId'].at(-1)!(
       buildReq('webhook-token-1', { delivery_id: 'del-1', status: 'dropoff' }),
       { json: jest.fn(), send },
     );
@@ -85,7 +85,7 @@ describe('UberDeliveryWebhookController (specs/0121-integracao-uber-entregas REQ
     const { orderRepository, ordersController, routes } = setup();
     const send = jest.fn();
 
-    await routes['POST /webhooks/uber-direct/:restaurantId'][0](
+    await routes['POST /webhooks/uber-direct/:restaurantId'].at(-1)!(
       buildReq('webhook-token-1', { delivery_id: 'del-1', status: 'delivered' }),
       { json: jest.fn(), send },
     );
@@ -99,7 +99,7 @@ describe('UberDeliveryWebhookController (specs/0121-integracao-uber-entregas REQ
     const { routes } = setup();
 
     await expect(
-      routes['POST /webhooks/uber-direct/:restaurantId'][0](buildReq('token-errado', { delivery_id: 'del-1', status: 'delivered' }), { json: jest.fn(), send: jest.fn() }),
+      routes['POST /webhooks/uber-direct/:restaurantId'].at(-1)!(buildReq('token-errado', { delivery_id: 'del-1', status: 'delivered' }), { json: jest.fn(), send: jest.fn() }),
     ).rejects.toThrow();
   });
 
@@ -107,7 +107,7 @@ describe('UberDeliveryWebhookController (specs/0121-integracao-uber-entregas REQ
     const { ordersController, routes } = setup({ orderRepository: { findByUberDeliveryId: jest.fn().mockResolvedValue(null) } });
     const send = jest.fn();
 
-    await routes['POST /webhooks/uber-direct/:restaurantId'][0](buildReq('webhook-token-1', { delivery_id: 'del-desconhecido', status: 'delivered' }), { json: jest.fn(), send });
+    await routes['POST /webhooks/uber-direct/:restaurantId'].at(-1)!(buildReq('webhook-token-1', { delivery_id: 'del-desconhecido', status: 'delivered' }), { json: jest.fn(), send });
 
     expect(ordersController.markDeliveredViaExternalCourier).not.toHaveBeenCalled();
     expect(send).toHaveBeenCalledWith(200);
@@ -117,7 +117,7 @@ describe('UberDeliveryWebhookController (specs/0121-integracao-uber-entregas REQ
     const { orderRepository, routes } = setup();
     const send = jest.fn();
 
-    await routes['POST /webhooks/uber-direct/:restaurantId'][0](buildReq('webhook-token-1', {}), { json: jest.fn(), send });
+    await routes['POST /webhooks/uber-direct/:restaurantId'].at(-1)!(buildReq('webhook-token-1', {}), { json: jest.fn(), send });
 
     expect(orderRepository.updateUberDelivery).not.toHaveBeenCalled();
     expect(send).toHaveBeenCalledWith(200);

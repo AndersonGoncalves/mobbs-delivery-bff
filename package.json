@@ -49,6 +49,11 @@
     "restify-errors": "^8.0.2",
     "zod": "^4.5.4"
   },
+  "overrides": {
+    "find-my-way": "^9.10.0",
+    "send": "^1.2.1",
+    "uuid": "^11.1.1"
+  },
   "devDependencies": {
     "@types/jest": "^29.5.12",
     "@types/json-bigint": "^1.0.4",

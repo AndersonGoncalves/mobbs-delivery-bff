@@ -3,6 +3,7 @@ import { NotFoundError, UnauthorizedError } from 'restify-errors';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { isValidWebhookToken } from '../../../shared/crypto/webhook-token';
+import { webhookRateLimitMiddleware } from '../../../shared/http/rate-limits';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { FocusNfeWebhookPayload } from '../infra/focus-nfe-client';
 import { FiscalEmissionService } from '../domain/services/fiscal-emission.service';
@@ -33,7 +34,9 @@ export class FiscalWebhookController extends BaseRouter {
   }
 
   initializeRoutes(application: Server): void {
-    application.post('/webhooks/focusnfe/:restaurantId', async (req: Request, res: Response) => {
+    // Achado de auditoria (06/11/2026) — sem Firebase por trás, rate limit por IP antes da
+    // validação do token.
+    application.post('/webhooks/focusnfe/:restaurantId', webhookRateLimitMiddleware, async (req: Request, res: Response) => {
       const config = await this.fiscalConfigRepository.findByRestaurantId(req.params.restaurantId);
       const token = req.header('focusnfe-webhook-token');
       if (!config || !isValidWebhookToken(token, config.webhookToken)) {
