@@ -86,7 +86,11 @@ export class PlatformBillingWebhookController extends BaseRouter {
       } else if (REFUNDED_EVENTS.has(body.event)) {
         await this.deps.obligationRepository.markRefunded(obligation.id);
         for (const observer of this.deps.observers) await observer.onObligationRefunded(obligation);
-      } else if (OVERDUE_EVENTS.has(body.event) && obligation.status !== 'overdue') {
+      } else if (OVERDUE_EVENTS.has(body.event) && obligation.status !== 'overdue' && obligation.status !== 'paid') {
+        // Achado de auditoria (06/11/2026, confirmado 09/11/2026) — o Asaas não garante ordem de
+        // entrega de webhook: um PAYMENT_OVERDUE chegando DEPOIS de um PAYMENT_CONFIRMED/RECEIVED
+        // já processado não pode rebaixar quem já pagou (bloquearia um cliente recém-pago na hora,
+        // via recomputeAndPersist síncrono logo abaixo).
         await this.deps.obligationRepository.markOverdue(obligation.id);
       }
 

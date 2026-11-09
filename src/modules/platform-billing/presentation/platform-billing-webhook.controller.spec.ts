@@ -112,6 +112,35 @@ describe('PlatformBillingWebhookController (specs/0175-cobranca-assinatura-asaas
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ status: 'pending' }));
   });
 
+  // Achado de auditoria (06/11/2026) — o Asaas não garante ordem de entrega de webhook: um
+  // PAYMENT_OVERDUE chegando depois de um PAYMENT_CONFIRMED/RECEIVED já processado não pode
+  // rebaixar quem já pagou.
+  it('PAYMENT_OVERDUE chegando depois de uma obligation já paga não rebaixa o status', async () => {
+    const paidObligation = buildObligation({ status: 'paid' });
+    const { routes, obligationRepository, platformBillingCycleService } = setup({ obligation: paidObligation });
+    const json = jest.fn();
+
+    await routes['POST /webhooks/platform-billing'][0](
+      buildReq('webhook-token-1', { event: 'PAYMENT_OVERDUE', payment: { externalReference: 'ob-1' } }),
+      { json, send: jest.fn() },
+    );
+
+    expect(obligationRepository.markOverdue).not.toHaveBeenCalled();
+    expect(platformBillingCycleService.recomputeAndPersist).toHaveBeenCalledWith('r-1', expect.any(Date));
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ obligationId: 'ob-1', status: 'paid' }));
+  });
+
+  it('PAYMENT_OVERDUE numa obligation pendente marca como overdue normalmente', async () => {
+    const { routes, obligationRepository } = setup();
+
+    await routes['POST /webhooks/platform-billing'][0](
+      buildReq('webhook-token-1', { event: 'PAYMENT_OVERDUE', payment: { externalReference: 'ob-1' } }),
+      { json: jest.fn(), send: jest.fn() },
+    );
+
+    expect(obligationRepository.markOverdue).toHaveBeenCalledWith('ob-1');
+  });
+
   it('PAYMENT_REFUNDED marca a obligation como refunded', async () => {
     const { routes, obligationRepository } = setup();
 
