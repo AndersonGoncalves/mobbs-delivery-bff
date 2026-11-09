@@ -36,27 +36,29 @@ function article(itemOrder: number, itemLabel: string, linkTo: string, imageKey:
 const ARTICLES = [
   article(1, 'Pedidos', '/reports/orders', 'relatorio-pedidos', [
     'Abra Relatórios > Pedidos.',
-    'Em FILTROS, marque os status e tipos de pedido que quer incluir, escolha o período (De/Até) e, se quiser, busque por número do pedido ou nome do cliente — depois toque em PESQUISAR.',
-    'O topo mostra o total do período (sem cancelados) já separado por forma de pagamento; a lista abaixo traz pedido por pedido, com cliente, data/hora, status e forma de pagamento.',
+    'A página já abre mostrando o PDF do relatório (total do período, separado por forma de pagamento, e a lista de pedidos abaixo); os filtros começam fechados — toque em FILTROS pra abrir, marcar status/tipos, escolher o período e, se quiser, buscar por número do pedido ou nome do cliente, e depois tocar em PESQUISAR.',
     'Pedidos cancelados entram na lista mas ficam fora do total — aparecem à parte em "Cancelados (fora do total)".',
+    // specs/0208-redesign-movimento-caixa (ajuste 08/11/2026 #4) — PDF direto na page nos 4
+    // relatórios, sem cabeçalho de restaurante/QR code (isso é só do cardápio).
+    'O PDF usa o visualizador nativo do navegador — dá pra baixar ou imprimir direto por ele, sem precisar de nenhum botão extra na página.',
   ]),
   article(2, 'Movimento de Caixa', '/reports/cash-movements', 'relatorio-movimento-caixa', [
     'Abra Relatórios > Movimento de Caixa.',
-    'Marque Entrada/Saída em "Tipo", escolha o período (De/Até) e, se quiser, filtre por uma palavra da descrição — depois toque em PESQUISAR.',
-    'O topo mostra o saldo do período (entradas menos saídas); a lista abaixo traz cada lançamento (venda paga, sangria, troco de abertura etc.) com data/hora e valor.',
+    'A página já abre mostrando o PDF do relatório (saldo do período — entradas menos saídas — e a lista de lançamentos abaixo); os filtros começam fechados — toque em FILTROS pra abrir, marcar Entrada/Saída, escolher o período e, se quiser, filtrar por uma palavra da descrição, e depois tocar em PESQUISAR.',
     'Diferente do Caixa > Movimento de caixa (que só mostra o dia aberto agora), este relatório cruza vários dias/sessões de caixa de uma vez.',
+    'O PDF usa o visualizador nativo do navegador — dá pra baixar ou imprimir direto por ele, sem precisar de nenhum botão extra na página.',
   ]),
   article(3, 'Contas a Pagar', '/reports/accounts-payable', 'relatorio-contas-pagar', [
     'Abra Relatórios > Contas a Pagar.',
-    'Marque os status (Em aberto/Pago/Cancelado), escolha o período de vencimento (Vencimento de/até) e, se quiser, busque por descrição — depois toque em PESQUISAR.',
-    'O topo resume o total do período por status, mais "Efetivamente pago" (soma do valor realmente pago, que pode diferir do valor original do título); a lista abaixo traz título por título com emissão, vencimento e status.',
+    'A página já abre mostrando o PDF do relatório (total do período por status, mais "Efetivamente pago" — a soma do valor realmente pago, que pode diferir do valor original do título — e a lista de títulos abaixo); os filtros começam fechados — toque em FILTROS pra abrir, marcar status, escolher o período de vencimento e, se quiser, buscar por descrição, e depois tocar em PESQUISAR.',
     'Serve pra conferir o fluxo de contas a pagar de um intervalo maior do que a tela de Financeiro > Contas a pagar mostra de uma vez.',
+    'O PDF usa o visualizador nativo do navegador — dá pra baixar ou imprimir direto por ele, sem precisar de nenhum botão extra na página.',
   ]),
   article(4, 'Contas a Receber', '/reports/accounts-receivable', 'relatorio-contas-receber', [
     'Abra Relatórios > Contas a Receber.',
-    'Marque os status (Em aberto/Recebido/Cancelado), escolha o período de vencimento (Vencimento de/até) e, se quiser, busque por descrição — depois toque em PESQUISAR.',
-    'O topo resume o total do período por status, mais "Efetivamente recebido" (soma do valor realmente recebido de cada título); a lista abaixo traz título por título com emissão, vencimento, status e valor recebido.',
+    'A página já abre mostrando o PDF do relatório (total do período por status, mais "Efetivamente recebido" — a soma do valor realmente recebido de cada título — e a lista de títulos abaixo); os filtros começam fechados — toque em FILTROS pra abrir, marcar status, escolher o período de vencimento e, se quiser, buscar por descrição, e depois tocar em PESQUISAR.',
     'Mesmo princípio do relatório de Contas a Pagar, só que do lado do que o restaurante tem a receber.',
+    'O PDF usa o visualizador nativo do navegador — dá pra baixar ou imprimir direto por ele, sem precisar de nenhum botão extra na página.',
   ]),
 ];
 
