@@ -39,6 +39,13 @@ Cada resposta/mudança acumula histórico datado e incrementa a revisão atomica
 Coleções `suggestion` e `suggestion_read`, com índices Mongoose; não é necessário seed.
 Falhas de persistência são propagadas pelo tratamento HTTP padrão.
 
+## Backup do MongoDB de produção
+
+Rotina diária (cron na EC2, fora deste repo) que já rodava antes da auditoria pré-produção de
+06/11/2026 a apontar "nenhum backup" — o script só nunca tinha sido commitado. Script, retenção
+(14 dias + 1 por mês até 12 meses) e passo a passo de restore (nunca direto por cima da produção
+sem necessidade real): [BACKUP-MONGODB.md](./BACKUP-MONGODB.md).
+
 ## Mercado Pago — configuração inicial
 
 Passo a passo desde a criação da aplicação, OAuth em nova aba, PKCE, callback, webhook,
