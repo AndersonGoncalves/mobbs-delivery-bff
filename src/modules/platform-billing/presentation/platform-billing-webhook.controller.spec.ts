@@ -50,7 +50,7 @@ describe('PlatformBillingWebhookController (specs/0175-cobranca-assinatura-asaas
     const { routes, obligationRepository, platformBillingCycleService } = setup();
     const json = jest.fn();
 
-    await routes['POST /webhooks/platform-billing'][0](
+    await routes['POST /webhooks/platform-billing'].at(-1)!(
       buildReq('webhook-token-1', { event: 'PAYMENT_CONFIRMED', payment: { id: 'pay_1', externalReference: 'ob-1' } }),
       { json, send: jest.fn() },
     );
@@ -64,7 +64,7 @@ describe('PlatformBillingWebhookController (specs/0175-cobranca-assinatura-asaas
     const { routes } = setup();
 
     await expect(
-      routes['POST /webhooks/platform-billing'][0](
+      routes['POST /webhooks/platform-billing'].at(-1)!(
         buildReq('token-errado', { event: 'PAYMENT_CONFIRMED', payment: { externalReference: 'ob-1' } }),
         { json: jest.fn(), send: jest.fn() },
       ),
@@ -75,7 +75,7 @@ describe('PlatformBillingWebhookController (specs/0175-cobranca-assinatura-asaas
     const { routes, obligationRepository } = setup({ obligation: null });
     const send = jest.fn();
 
-    await routes['POST /webhooks/platform-billing'][0](
+    await routes['POST /webhooks/platform-billing'].at(-1)!(
       buildReq('webhook-token-1', { event: 'PAYMENT_CONFIRMED', payment: { externalReference: 'ob-desconhecida' } }),
       { json: jest.fn(), send },
     );
@@ -89,7 +89,7 @@ describe('PlatformBillingWebhookController (specs/0175-cobranca-assinatura-asaas
     const { routes, obligationRepository } = setup({ obligation: paidObligation, wasAlreadyRecorded: true });
     const json = jest.fn();
 
-    await routes['POST /webhooks/platform-billing'][0](
+    await routes['POST /webhooks/platform-billing'].at(-1)!(
       buildReq('webhook-token-1', { id: 'evt_1', event: 'PAYMENT_CONFIRMED', payment: { externalReference: 'ob-1' } }),
       { json, send: jest.fn() },
     );
@@ -102,7 +102,7 @@ describe('PlatformBillingWebhookController (specs/0175-cobranca-assinatura-asaas
     const { routes, obligationRepository } = setup();
     const json = jest.fn();
 
-    await routes['POST /webhooks/platform-billing'][0](
+    await routes['POST /webhooks/platform-billing'].at(-1)!(
       buildReq('webhook-token-1', { event: 'PAYMENT_CREATED', payment: { externalReference: 'ob-1' } }),
       { json, send: jest.fn() },
     );
@@ -120,7 +120,7 @@ describe('PlatformBillingWebhookController (specs/0175-cobranca-assinatura-asaas
     const { routes, obligationRepository, platformBillingCycleService } = setup({ obligation: paidObligation });
     const json = jest.fn();
 
-    await routes['POST /webhooks/platform-billing'][0](
+    await routes['POST /webhooks/platform-billing'].at(-1)!(
       buildReq('webhook-token-1', { event: 'PAYMENT_OVERDUE', payment: { externalReference: 'ob-1' } }),
       { json, send: jest.fn() },
     );
@@ -133,7 +133,7 @@ describe('PlatformBillingWebhookController (specs/0175-cobranca-assinatura-asaas
   it('PAYMENT_OVERDUE numa obligation pendente marca como overdue normalmente', async () => {
     const { routes, obligationRepository } = setup();
 
-    await routes['POST /webhooks/platform-billing'][0](
+    await routes['POST /webhooks/platform-billing'].at(-1)!(
       buildReq('webhook-token-1', { event: 'PAYMENT_OVERDUE', payment: { externalReference: 'ob-1' } }),
       { json: jest.fn(), send: jest.fn() },
     );
@@ -144,7 +144,7 @@ describe('PlatformBillingWebhookController (specs/0175-cobranca-assinatura-asaas
   it('PAYMENT_REFUNDED marca a obligation como refunded', async () => {
     const { routes, obligationRepository } = setup();
 
-    await routes['POST /webhooks/platform-billing'][0](
+    await routes['POST /webhooks/platform-billing'].at(-1)!(
       buildReq('webhook-token-1', { event: 'PAYMENT_REFUNDED', payment: { externalReference: 'ob-1' } }),
       { json: jest.fn(), send: jest.fn() },
     );
@@ -160,7 +160,7 @@ describe('PlatformBillingWebhookController (specs/0175-cobranca-assinatura-asaas
     const { routes, obligationRepository } = setup({ obligation: refundedObligation, observers: [observer] });
     const json = jest.fn();
 
-    await routes['POST /webhooks/platform-billing'][0](
+    await routes['POST /webhooks/platform-billing'].at(-1)!(
       buildReq('webhook-token-1', { id: 'evt_2', event: 'PAYMENT_REFUNDED', payment: { externalReference: 'ob-1' } }),
       { json, send: jest.fn() },
     );
@@ -176,7 +176,7 @@ describe('PlatformBillingWebhookController (specs/0175-cobranca-assinatura-asaas
     const observer = { onObligationPaid: jest.fn().mockResolvedValue(undefined), onObligationRefunded: jest.fn() };
     const { routes } = setup({ observers: [observer] });
 
-    await routes['POST /webhooks/platform-billing'][0](
+    await routes['POST /webhooks/platform-billing'].at(-1)!(
       buildReq('webhook-token-1', { event: 'PAYMENT_CONFIRMED', payment: { externalReference: 'ob-1' } }),
       { json: jest.fn(), send: jest.fn() },
     );
@@ -189,7 +189,7 @@ describe('PlatformBillingWebhookController (specs/0175-cobranca-assinatura-asaas
     const observer = { onObligationPaid: jest.fn(), onObligationRefunded: jest.fn().mockResolvedValue(undefined) };
     const { routes } = setup({ observers: [observer] });
 
-    await routes['POST /webhooks/platform-billing'][0](
+    await routes['POST /webhooks/platform-billing'].at(-1)!(
       buildReq('webhook-token-1', { event: 'PAYMENT_REFUNDED', payment: { externalReference: 'ob-1' } }),
       { json: jest.fn(), send: jest.fn() },
     );
@@ -202,7 +202,7 @@ describe('PlatformBillingWebhookController (specs/0175-cobranca-assinatura-asaas
     const { routes, obligationRepository } = setup();
     const send = jest.fn();
 
-    await routes['POST /webhooks/platform-billing'][0](
+    await routes['POST /webhooks/platform-billing'].at(-1)!(
       buildReq('webhook-token-1', { event: 'PAYMENT_CONFIRMED', payment: {} }),
       { json: jest.fn(), send },
     );

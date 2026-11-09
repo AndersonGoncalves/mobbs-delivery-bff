@@ -8,6 +8,7 @@ import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
 import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
+import { totemRateLimitMiddleware } from '../../../shared/http/rate-limits';
 import { filterStockGroups, hasStock, toPublicProduct } from '../../catalog/presentation/catalog.controller';
 import { buildReceiptLines } from '../../auto-print/domain/build-receipt-lines';
 import { IMenuCategoryRepository } from '../../catalog/domain/repositories/menu-category.repository.interface';
@@ -66,7 +67,10 @@ export class TotemController extends BaseRouter {
   }
 
   initializeRoutes(application: Server): void {
-    const totemAuthenticated: AsyncHandler[] = [this.totemApiKeyMiddleware];
+    // Achado de auditoria (06/11/2026) — o totem não fica atrás do Firebase (sem rate limiting
+    // nativo), então o rate limit vem antes até do próprio middleware de autenticação (barra o
+    // flood antes de gastar uma consulta ao banco por tentativa).
+    const totemAuthenticated: AsyncHandler[] = [totemRateLimitMiddleware, this.totemApiKeyMiddleware];
     const operatorAuthenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,

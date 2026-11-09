@@ -3,6 +3,7 @@ import { UnauthorizedError } from 'restify-errors';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { isValidWebhookToken } from '../../../shared/crypto/webhook-token';
+import { webhookRateLimitMiddleware } from '../../../shared/http/rate-limits';
 import type { ISubscriptionEventRepository } from '../domain/repositories/subscription-event.repository.interface';
 import type { ISubscriptionObligationRepository } from '../domain/repositories/subscription-obligation.repository.interface';
 import type { PlatformBillingCycleService } from '../domain/services/platform-billing-cycle.service';
@@ -47,7 +48,9 @@ export class PlatformBillingWebhookController extends BaseRouter {
   }
 
   initializeRoutes(application: Server): void {
-    application.post('/webhooks/platform-billing', async (req: Request, res: Response) => {
+    // Achado de auditoria (06/11/2026) — sem Firebase por trás, rate limit por IP antes da
+    // validação do token.
+    application.post('/webhooks/platform-billing', webhookRateLimitMiddleware, async (req: Request, res: Response) => {
       const token = req.header('asaas-access-token');
       if (!isValidWebhookToken(token, this.deps.webhookToken)) {
         throw new UnauthorizedError('Token de webhook inválido');

@@ -4,6 +4,7 @@ import { ConflictError, NotFoundError, UnauthorizedError } from 'restify-errors'
 import { BaseRouter } from '../../../shared/router/base.router';
 import { environment } from '../../../shared/config/environment';
 import { isValidWebhookToken } from '../../../shared/crypto/webhook-token';
+import { webhookRateLimitMiddleware } from '../../../shared/http/rate-limits';
 import { IWhatsAppNotificationService } from '../../notifications/domain/services/i-whatsapp-notification.service';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IPayment, PaymentMethod } from '../../orders/domain/entities/order.entity';
@@ -83,7 +84,9 @@ export class AsaasWebhookController extends BaseRouter {
     // Asaas identifica qual subconta o webhook pertence, definido na URL registrada em
     // `AsaasOnboardingController`) — a validação é só "o header bate com o token DESSE
     // restaurante", então fica inline no handler.
-    application.post('/webhooks/asaas/:restaurantId', async (req: Request, res: Response) => {
+    // Achado de auditoria (06/11/2026) — sem Firebase por trás, rate limit por IP antes da
+    // validação do token (evita gastar o cálculo de hash/comparação a cada tentativa num flood).
+    application.post('/webhooks/asaas/:restaurantId', webhookRateLimitMiddleware, async (req: Request, res: Response) => {
       const restaurant = await this.restaurantRepository.findById(req.params.restaurantId);
       const token = req.header('asaas-access-token');
       if (!restaurant || !isValidWebhookToken(token, restaurant.asaasWebhookToken)) {

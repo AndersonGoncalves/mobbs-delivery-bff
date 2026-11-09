@@ -82,7 +82,7 @@ describe('NinetyNineFoodWebhookController (specs/0122-integracao-99food REQ-1/RE
     const send = jest.fn();
     const req: FakeRequest = { rawBody: '{"type":"orderNew"}', header: () => 'assinatura-errada' };
 
-    await routes['POST /webhooks/99food'][0](req, { send });
+    await routes['POST /webhooks/99food'].at(-1)!(req, { send });
 
     expect(send).toHaveBeenCalledWith(401);
     expect(orderRepository.create).not.toHaveBeenCalled();
@@ -93,7 +93,7 @@ describe('NinetyNineFoodWebhookController (specs/0122-integracao-99food REQ-1/RE
     const send = jest.fn();
     const req: FakeRequest = { rawBody: '{"type":"orderNew"}', header: () => undefined };
 
-    await routes['POST /webhooks/99food'][0](req, { send });
+    await routes['POST /webhooks/99food'].at(-1)!(req, { send });
 
     expect(send).toHaveBeenCalledWith(401);
   });
@@ -109,7 +109,7 @@ describe('NinetyNineFoodWebhookController (specs/0122-integracao-99food REQ-1/RE
       });
       const send = jest.fn();
 
-      await routes['POST /webhooks/99food'][0](signedRequest(rawBody), { send });
+      await routes['POST /webhooks/99food'].at(-1)!(signedRequest(rawBody), { send });
 
       expect(restaurantRepository.findOldestPendingNinetyNineFoodAuthorization).toHaveBeenCalled();
       expect(ninetyNineFoodAuthService.getAuthtokenForNewBinding).toHaveBeenCalledWith('shop-novo-1');
@@ -126,7 +126,7 @@ describe('NinetyNineFoodWebhookController (specs/0122-integracao-99food REQ-1/RE
       const rawBody = JSON.stringify({ app_id: '123', type: 'shopBindStatus', timestamp: 1, data: { appShopIDList: ['shop-1'], bindStatus: 'unbind' } });
       const send = jest.fn();
 
-      await routes['POST /webhooks/99food'][0](signedRequest(rawBody), { send });
+      await routes['POST /webhooks/99food'].at(-1)!(signedRequest(rawBody), { send });
 
       expect(restaurantRepository.saveNinetyNineFoodBinding).not.toHaveBeenCalled();
       expect(send).toHaveBeenCalledWith(200);
@@ -139,7 +139,7 @@ describe('NinetyNineFoodWebhookController (specs/0122-integracao-99food REQ-1/RE
       const rawBody = JSON.stringify({ app_id: '123', type: 'shopBindStatus', timestamp: 1, data: { appShopIDList: ['shop-1'], bindStatus: 'bind' } });
       const send = jest.fn();
 
-      await routes['POST /webhooks/99food'][0](signedRequest(rawBody), { send });
+      await routes['POST /webhooks/99food'].at(-1)!(signedRequest(rawBody), { send });
 
       expect(restaurantRepository.saveNinetyNineFoodBinding).not.toHaveBeenCalled();
       expect(send).toHaveBeenCalledWith(200);
@@ -159,7 +159,7 @@ describe('NinetyNineFoodWebhookController (specs/0122-integracao-99food REQ-1/RE
         '"order_items":[{"app_item_id":"item-1","name":"X-Burguer","amount":1,"sku_price":2000}]}}}';
       const send = jest.fn();
 
-      await routes['POST /webhooks/99food'][0](signedRequest(rawBody), { send });
+      await routes['POST /webhooks/99food'].at(-1)!(signedRequest(rawBody), { send });
 
       expect(customerRepository.createStandalone).toHaveBeenCalledWith('Ana', '11999998888');
       expect(orderRepository.create).toHaveBeenCalledWith(
@@ -186,7 +186,7 @@ describe('NinetyNineFoodWebhookController (specs/0122-integracao-99food REQ-1/RE
       });
       const send = jest.fn();
 
-      await routes['POST /webhooks/99food'][0](signedRequest(rawBody), { send });
+      await routes['POST /webhooks/99food'].at(-1)!(signedRequest(rawBody), { send });
 
       expect(orderRepository.create).not.toHaveBeenCalled();
       expect(send).toHaveBeenCalledWith(200);
@@ -210,7 +210,7 @@ describe('NinetyNineFoodWebhookController (specs/0122-integracao-99food REQ-1/RE
       const rawBody = JSON.stringify({ app_id: '123', type: 'deliveryStatus', timestamp: 1, data: { order_id: 1, delivery_status: 160 } });
       const send = jest.fn();
 
-      await routes['POST /webhooks/99food'][0](signedRequest(rawBody), { send });
+      await routes['POST /webhooks/99food'].at(-1)!(signedRequest(rawBody), { send });
 
       expect(orderRepository.updateEntregaDelivery).toHaveBeenCalledWith('order-1', expect.objectContaining({ status: 'entregue' }));
       expect(ordersController.markDeliveredViaExternalCourier).toHaveBeenCalledWith('order-1', 'restaurant-1');
@@ -224,7 +224,7 @@ describe('NinetyNineFoodWebhookController (specs/0122-integracao-99food REQ-1/RE
       const rawBody = JSON.stringify({ app_id: '123', type: 'deliveryStatus', timestamp: 1, data: { order_id: 1, delivery_status: 140 } });
       const send = jest.fn();
 
-      await routes['POST /webhooks/99food'][0](signedRequest(rawBody), { send });
+      await routes['POST /webhooks/99food'].at(-1)!(signedRequest(rawBody), { send });
 
       expect(orderRepository.updateEntregaDelivery).toHaveBeenCalledWith('order-1', expect.objectContaining({ status: 'a_caminho' }));
       expect(ordersController.markDeliveredViaExternalCourier).not.toHaveBeenCalled();
@@ -237,7 +237,7 @@ describe('NinetyNineFoodWebhookController (specs/0122-integracao-99food REQ-1/RE
       const rawBody = JSON.stringify({ app_id: '123', type: 'deliveryStatus', timestamp: 1, data: { order_id: 1, delivery_status: 170 } });
       const send = jest.fn();
 
-      await routes['POST /webhooks/99food'][0](signedRequest(rawBody), { send });
+      await routes['POST /webhooks/99food'].at(-1)!(signedRequest(rawBody), { send });
 
       expect(orderRepository.updateEntregaDelivery).toHaveBeenCalledWith('order-1', expect.objectContaining({ status: 'cancelado' }));
       expect(ordersController.markDeliveredViaExternalCourier).not.toHaveBeenCalled();
@@ -250,7 +250,7 @@ describe('NinetyNineFoodWebhookController (specs/0122-integracao-99food REQ-1/RE
       const rawBody = JSON.stringify({ app_id: '123', type: 'deliveryStatus', timestamp: 1, data: { order_id: 1, delivery_status: 160 } });
       const send = jest.fn();
 
-      await routes['POST /webhooks/99food'][0](signedRequest(rawBody), { send });
+      await routes['POST /webhooks/99food'].at(-1)!(signedRequest(rawBody), { send });
 
       expect(orderRepository.updateEntregaDelivery).not.toHaveBeenCalled();
       expect(send).toHaveBeenCalledWith(200);
@@ -261,7 +261,7 @@ describe('NinetyNineFoodWebhookController (specs/0122-integracao-99food REQ-1/RE
       const rawBody = JSON.stringify({ app_id: '123', type: 'deliveryStatus', timestamp: 1, data: { order_id: 1, delivery_status: 160 } });
       const send = jest.fn();
 
-      await routes['POST /webhooks/99food'][0](signedRequest(rawBody), { send });
+      await routes['POST /webhooks/99food'].at(-1)!(signedRequest(rawBody), { send });
 
       expect(send).toHaveBeenCalledWith(200);
     });
@@ -272,7 +272,7 @@ describe('NinetyNineFoodWebhookController (specs/0122-integracao-99food REQ-1/RE
     const rawBody = JSON.stringify({ app_id: '123', app_shop_id: 'shop-1', type: 'orderReady', timestamp: 1, data: { order_id: 1 } });
     const send = jest.fn();
 
-    await routes['POST /webhooks/99food'][0](signedRequest(rawBody), { send });
+    await routes['POST /webhooks/99food'].at(-1)!(signedRequest(rawBody), { send });
 
     expect(orderRepository.create).not.toHaveBeenCalled();
     expect(send).toHaveBeenCalledWith(200);
@@ -292,7 +292,7 @@ describe('NinetyNineFoodWebhookController (specs/0122-integracao-99food REQ-1/RE
     const send = jest.fn();
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
 
-    await routes['POST /webhooks/99food'][0](signedRequest(rawBody), { send });
+    await routes['POST /webhooks/99food'].at(-1)!(signedRequest(rawBody), { send });
 
     expect(send).toHaveBeenCalledWith(200);
   });

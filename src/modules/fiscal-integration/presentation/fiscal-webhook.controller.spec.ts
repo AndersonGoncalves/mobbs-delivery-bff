@@ -74,7 +74,7 @@ describe('FiscalWebhookController (specs/0091-integracao-fiscal-focusnfe REQ-3)'
     const { fiscalEmissionService, routes } = setup();
     const send = jest.fn();
 
-    await routes['POST /webhooks/focusnfe/:restaurantId'][0](
+    await routes['POST /webhooks/focusnfe/:restaurantId'].at(-1)!(
       buildReq('webhook-token-1', { ref: 'o-1', status: 'autorizado', caminho_danfe: '/notas/o-1.html' }),
       { json: jest.fn(), send },
     );
@@ -87,7 +87,7 @@ describe('FiscalWebhookController (specs/0091-integracao-fiscal-focusnfe REQ-3)'
     const { routes } = setup();
 
     await expect(
-      routes['POST /webhooks/focusnfe/:restaurantId'][0](buildReq('token-errado', { ref: 'o-1', status: 'autorizado' }), { json: jest.fn(), send: jest.fn() }),
+      routes['POST /webhooks/focusnfe/:restaurantId'].at(-1)!(buildReq('token-errado', { ref: 'o-1', status: 'autorizado' }), { json: jest.fn(), send: jest.fn() }),
     ).rejects.toThrow();
   });
 
@@ -95,7 +95,7 @@ describe('FiscalWebhookController (specs/0091-integracao-fiscal-focusnfe REQ-3)'
     const { routes } = setup({ orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ restaurantId: 'r-2' })) } });
 
     await expect(
-      routes['POST /webhooks/focusnfe/:restaurantId'][0](buildReq('webhook-token-1', { ref: 'o-1', status: 'autorizado' }), { json: jest.fn(), send: jest.fn() }),
+      routes['POST /webhooks/focusnfe/:restaurantId'].at(-1)!(buildReq('webhook-token-1', { ref: 'o-1', status: 'autorizado' }), { json: jest.fn(), send: jest.fn() }),
     ).rejects.toThrow();
   });
 
@@ -103,7 +103,7 @@ describe('FiscalWebhookController (specs/0091-integracao-fiscal-focusnfe REQ-3)'
     const { fiscalEmissionService, routes } = setup();
     const send = jest.fn();
 
-    await routes['POST /webhooks/focusnfe/:restaurantId'][0](buildReq('webhook-token-1', { status: 'alguma_coisa' }), { json: jest.fn(), send });
+    await routes['POST /webhooks/focusnfe/:restaurantId'].at(-1)!(buildReq('webhook-token-1', { status: 'alguma_coisa' }), { json: jest.fn(), send });
 
     expect(fiscalEmissionService.applyWebhookResult).not.toHaveBeenCalled();
     expect(send).toHaveBeenCalledWith(200);

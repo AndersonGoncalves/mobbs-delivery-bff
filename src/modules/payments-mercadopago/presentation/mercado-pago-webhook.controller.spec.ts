@@ -106,7 +106,7 @@ describe('MercadoPagoWebhookController (specs/0170-integracao-mercado-pago)', ()
     const { paymentRepository, routes } = setup();
     const json = jest.fn();
 
-    await routes['POST /webhooks/mercadopago'][0](buildReq('pay-1'), { json, send: jest.fn() });
+    await routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1'), { json, send: jest.fn() });
 
     expect(paymentRepository.markAsApproved).toHaveBeenCalledWith('o-1');
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ payment: { method: 'creditCardOnline', status: 'aprovado' } }));
@@ -116,7 +116,7 @@ describe('MercadoPagoWebhookController (specs/0170-integracao-mercado-pago)', ()
     const { routes } = setup();
 
     await expect(
-      routes['POST /webhooks/mercadopago'][0](buildReq('pay-1', { xSignature: 'ts=1700000000,v1=assinatura-errada' }), { json: jest.fn(), send: jest.fn() }),
+      routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1', { xSignature: 'ts=1700000000,v1=assinatura-errada' }), { json: jest.fn(), send: jest.fn() }),
     ).rejects.toMatchObject({ statusCode: 401 });
     expect(MockedMercadoPagoClient.prototype.getPayment).not.toHaveBeenCalled();
   });
@@ -126,7 +126,7 @@ describe('MercadoPagoWebhookController (specs/0170-integracao-mercado-pago)', ()
     const { paymentRepository, routes } = setup();
     const send = jest.fn();
 
-    await routes['POST /webhooks/mercadopago'][0](buildReq('pay-1'), { json: jest.fn(), send });
+    await routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1'), { json: jest.fn(), send });
 
     expect(send).toHaveBeenCalledWith(200);
     expect(paymentRepository.markAsApproved).not.toHaveBeenCalled();
@@ -136,7 +136,7 @@ describe('MercadoPagoWebhookController (specs/0170-integracao-mercado-pago)', ()
     const { routes } = setup();
     const send = jest.fn();
 
-    await routes['POST /webhooks/mercadopago'][0]({ body: { type: 'subscription', data: { id: 'sub-1' } } }, { json: jest.fn(), send });
+    await routes['POST /webhooks/mercadopago'].at(-1)!({ body: { type: 'subscription', data: { id: 'sub-1' } } }, { json: jest.fn(), send });
 
     expect(send).toHaveBeenCalledWith(200);
     expect(MockedMercadoPagoClient.prototype.getPayment).not.toHaveBeenCalled();
@@ -145,20 +145,20 @@ describe('MercadoPagoWebhookController (specs/0170-integracao-mercado-pago)', ()
   it('pedido não encontrado é 404', async () => {
     const { routes } = setup({ orderRepository: { findById: jest.fn().mockResolvedValue(null) } });
 
-    await expect(routes['POST /webhooks/mercadopago'][0](buildReq('pay-1'), { json: jest.fn(), send: jest.fn() })).rejects.toMatchObject({ statusCode: 404 });
+    await expect(routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1'), { json: jest.fn(), send: jest.fn() })).rejects.toMatchObject({ statusCode: 404 });
   });
 
   it('pagamento que não é creditCardOnline é 409', async () => {
     const { routes } = setup({ paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ method: 'pix' })) } });
 
-    await expect(routes['POST /webhooks/mercadopago'][0](buildReq('pay-1'), { json: jest.fn(), send: jest.fn() })).rejects.toMatchObject({ statusCode: 409 });
+    await expect(routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1'), { json: jest.fn(), send: jest.fn() })).rejects.toMatchObject({ statusCode: 409 });
   });
 
   it('reenvio pro mesmo pagamento já aprovado é 200 idempotente', async () => {
     const { paymentRepository, routes } = setup({ paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ status: 'aprovado' })) } });
     const json = jest.fn();
 
-    await routes['POST /webhooks/mercadopago'][0](buildReq('pay-1'), { json, send: jest.fn() });
+    await routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1'), { json, send: jest.fn() });
 
     expect(paymentRepository.markAsApproved).not.toHaveBeenCalled();
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ payment: { method: 'creditCardOnline', status: 'aprovado' } }));
