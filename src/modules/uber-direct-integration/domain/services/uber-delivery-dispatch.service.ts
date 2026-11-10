@@ -5,10 +5,23 @@ import { ICustomerRepository } from '../../../customers/domain/repositories/cust
 import { UberDeliveryAddress, UberDirectClient } from '../../infra/uber-direct-client';
 import { UberDirectAuthService } from '../../infra/uber-direct-auth.service';
 import { IUberDeliveryConfig } from '../entities/uber-delivery-config.entity';
+import { normalizePhoneNumber } from '../../../../shared/utils/normalize-phone-number';
 
 /** Fallback quando o restaurante não tem telefone cadastrado (`Restaurant.phone` é opcional) —
  * a Uber Direct exige um telefone no payload; nunca bloqueamos o despacho por isso. */
 const UNKNOWN_PHONE_FALLBACK = '0000000000';
+
+/**
+ * Achado real (10/11/2026) — `Customer.phone`/`Restaurant.phone` são gravados já normalizados
+ * (`normalizePhoneNumber`: "55" + DDD + número, só dígitos, sem "+"), mas a Uber Direct exige
+ * E.164 de verdade (com "+", confirmado nos exemplos oficiais da doc, ex. "+15555555555") — sem
+ * o "+", a API responde 400 "dropoff phone number is not valid". Roda `normalizePhoneNumber` de
+ * novo aqui (idempotente) por segurança, já que outros pontos do código fazem o mesmo antes de
+ * reusar `phone` (ex. `orders.controller.ts`), caso o valor salvo não tenha passado pelo schema.
+ */
+function toE164(phone: string): string {
+  return `+${normalizePhoneNumber(phone)}`;
+}
 
 /**
  * specs/0121-integracao-uber-entregas REQ-2/REQ-4/REQ-5 — orquestra o despacho manual de uma
@@ -64,10 +77,10 @@ export class UberDeliveryDispatchService {
       quoteId: quote.id,
       pickup,
       pickupName: restaurant.name,
-      pickupPhoneNumber: restaurant.phone || UNKNOWN_PHONE_FALLBACK,
+      pickupPhoneNumber: toE164(restaurant.phone || UNKNOWN_PHONE_FALLBACK),
       dropoff,
       dropoffName: customer?.name ?? 'Cliente',
-      dropoffPhoneNumber: customer?.phone || UNKNOWN_PHONE_FALLBACK,
+      dropoffPhoneNumber: toE164(customer?.phone || UNKNOWN_PHONE_FALLBACK),
       manifestItems: order.items.map((item) => ({ name: item.productName, quantity: item.quantity })),
     });
 

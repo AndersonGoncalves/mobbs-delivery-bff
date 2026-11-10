@@ -119,7 +119,13 @@ describe('UberDeliveryDispatchService (specs/0121-integracao-uber-entregas)', ()
       expect(MockedClient.prototype.createDelivery).toHaveBeenCalledWith(
         'access-token-1',
         'uber-customer-1',
-        expect.objectContaining({ quoteId: 'quote-1', pickupName: 'Prime Pizza', dropoffName: 'João' }),
+        expect.objectContaining({
+          quoteId: 'quote-1',
+          pickupName: 'Prime Pizza',
+          pickupPhoneNumber: '+5511999990000',
+          dropoffName: 'João',
+          dropoffPhoneNumber: '+5511988880000',
+        }),
       );
       expect(orderRepository.updateUberDelivery).toHaveBeenCalledWith('o-1', {
         status: 'solicitado',
@@ -136,6 +142,25 @@ describe('UberDeliveryDispatchService (specs/0121-integracao-uber-entregas)', ()
       await expect(service.dispatch(buildOrder(), buildConfig())).rejects.toThrow('fora da área de cobertura');
       expect(MockedClient.prototype.createDelivery).not.toHaveBeenCalled();
       expect(orderRepository.updateUberDelivery).not.toHaveBeenCalled();
+    });
+
+    it('Achado real (10/11/2026): telefones vão em E.164 ("+" + código do país) — sem isso a Uber Direct rejeita com 400 "phone number is not valid"', async () => {
+      MockedClient.prototype.createQuote = jest.fn().mockResolvedValue({ id: 'quote-1', kind: 'delivery_quote', fee: 1200, currency: 'BRL' });
+      MockedClient.prototype.createDelivery = jest.fn().mockResolvedValue({ id: 'del-1', status: 'pending' });
+      const { service, restaurantRepository, customerRepository } = setup({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ phone: undefined })) },
+        customerRepository: { findById: jest.fn().mockResolvedValue(undefined) },
+      });
+
+      await service.dispatch(buildOrder(), buildConfig());
+
+      expect(restaurantRepository.findById).toHaveBeenCalled();
+      expect(customerRepository.findById).toHaveBeenCalled();
+      expect(MockedClient.prototype.createDelivery).toHaveBeenCalledWith(
+        'access-token-1',
+        'uber-customer-1',
+        expect.objectContaining({ pickupPhoneNumber: '+550000000000', dropoffPhoneNumber: '+550000000000' }),
+      );
     });
 
     it('usa o CEP de origem configurado (não o CEP do cadastro do restaurante) no pickup', async () => {
