@@ -157,6 +157,45 @@ describe('persistência concorrente do caixa (sem banco real)', () => {
     expect(balance).toBe(50);
   });
 
+  // Achado real (10/11/2026) — venda automática (`orderId` presente) chegando numa sessão já
+  // FECHADA (caso 2 de `addAutomaticEntry`) sempre lançava `ConflictError` aqui, descartado em
+  // silêncio pelo `try/catch` do `OrdersController` — o lançamento nunca era criado de verdade.
+  it('addMovement grava uma venda automática tardia mesmo com a sessão já fechada', async () => {
+    const repository = new CashRegisterMongooseRepository();
+    jest.spyOn(CashRegisterSessionModel, 'findOneAndUpdate').mockReturnValue(lean(null) as never);
+    jest.spyOn(CashRegisterSessionModel, 'findOne').mockReturnValue(lean({ ...session(), status: 'fechado' }) as never);
+    jest.spyOn(CashMovementEntryModel, 'create').mockImplementation((async (input: { _id?: string }) => ({
+      toObject: () => ({ ...input, createdAt: new Date() }),
+    })) as never);
+
+    const movement = await repository.addMovement('s', {
+      type: 'entrada', amount: 42, description: 'Venda #147 (Dinheiro)', orderId: 'o-147', paymentMethod: 'cash',
+    });
+
+    expect(movement).toMatchObject({ orderId: 'o-147', amount: 42 });
+  });
+
+  it('addMovement continua recusando lançamento MANUAL (sem orderId) numa sessão fechada', async () => {
+    const repository = new CashRegisterMongooseRepository();
+    jest.spyOn(CashRegisterSessionModel, 'findOneAndUpdate').mockReturnValue(lean(null) as never);
+    const findOne = jest.spyOn(CashRegisterSessionModel, 'findOne');
+    const create = jest.spyOn(CashMovementEntryModel, 'create');
+
+    await expect(repository.addMovement('s', { type: 'saida', amount: 20, description: 'Sangria' }))
+      .rejects.toMatchObject({ statusCode: 409 });
+    expect(findOne).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('addMovement recusa venda automática tardia quando a sessão nem está fechada (foi removida/outro id)', async () => {
+    const repository = new CashRegisterMongooseRepository();
+    jest.spyOn(CashRegisterSessionModel, 'findOneAndUpdate').mockReturnValue(lean(null) as never);
+    jest.spyOn(CashRegisterSessionModel, 'findOne').mockReturnValue(lean(null) as never);
+
+    await expect(repository.addMovement('s', { type: 'entrada', amount: 42, description: 'Venda #147', orderId: 'o-147' }))
+      .rejects.toMatchObject({ statusCode: 409 });
+  });
+
   it('getCalculatedBalance de sessão aberta soma tudo, sem nenhum teto', async () => {
     const repository = new CashRegisterMongooseRepository();
     jest.spyOn(CashRegisterSessionModel, 'findById').mockReturnValue(lean({ ...session(), status: 'aberto', openingBalance: 0 }) as never);
