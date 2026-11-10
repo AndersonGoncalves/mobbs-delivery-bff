@@ -88,7 +88,12 @@ describe('AsaasOnboardingController (specs/0101-integracao-asaas, fase 1)', () =
 
   // specs/0201-controle-integracoes-cnpj-plataforma REQ-2.
   it('specs/0201: switch desabilitado rejeita a criação de subconta sem chamar o Asaas', async () => {
-    const platformConfigRepository: IPlatformConfigRepository = { isCnpjIntegrationsEnabled: jest.fn().mockResolvedValue(false) };
+    const platformConfigRepository: IPlatformConfigRepository = {
+      isCnpjIntegrationsEnabled: jest.fn().mockResolvedValue(false),
+      isKdsAppEnabled: jest.fn().mockResolvedValue(false),
+      isComandaAppEnabled: jest.fn().mockResolvedValue(false),
+      isTotemAppEnabled: jest.fn().mockResolvedValue(false),
+    };
     const { restaurantRepository, routes } = setup({ platformConfigRepository });
 
     await expect(
@@ -102,7 +107,12 @@ describe('AsaasOnboardingController (specs/0101-integracao-asaas, fase 1)', () =
   });
 
   it('specs/0201: switch habilitado permite a criação normalmente', async () => {
-    const platformConfigRepository: IPlatformConfigRepository = { isCnpjIntegrationsEnabled: jest.fn().mockResolvedValue(true) };
+    const platformConfigRepository: IPlatformConfigRepository = {
+      isCnpjIntegrationsEnabled: jest.fn().mockResolvedValue(true),
+      isKdsAppEnabled: jest.fn().mockResolvedValue(true),
+      isComandaAppEnabled: jest.fn().mockResolvedValue(true),
+      isTotemAppEnabled: jest.fn().mockResolvedValue(true),
+    };
     const { restaurantRepository, routes } = setup({ platformConfigRepository });
 
     await runOperatorChain(
@@ -199,7 +209,12 @@ describe('AsaasOnboardingController (specs/0101-integracao-asaas, fase 1)', () =
 
   // specs/0201-controle-integracoes-cnpj-plataforma REQ-2.
   it('specs/0201: switch desabilitado rejeita a reconexão também', async () => {
-    const platformConfigRepository: IPlatformConfigRepository = { isCnpjIntegrationsEnabled: jest.fn().mockResolvedValue(false) };
+    const platformConfigRepository: IPlatformConfigRepository = {
+      isCnpjIntegrationsEnabled: jest.fn().mockResolvedValue(false),
+      isKdsAppEnabled: jest.fn().mockResolvedValue(false),
+      isComandaAppEnabled: jest.fn().mockResolvedValue(false),
+      isTotemAppEnabled: jest.fn().mockResolvedValue(false),
+    };
     const { restaurantRepository, routes } = setup({ platformConfigRepository });
 
     await expect(

@@ -22,6 +22,9 @@ operador decide pedido a pedido, REQ-4).
    negócio (ponto de coleta).
 3. `clientSecret` nunca é devolvido numa resposta de API depois de salvo (mesmo cuidado de
    `focusNfeToken`/`ifoodClientSecret`) — pra trocar a credencial, desconecte e reconecte.
+4. Depois de conectado, a tela mostra a **URL do webhook** pronta (com o `webhookToken` já
+   embutido como query param) e um botão "Copiar" — cole essa URL no painel de desenvolvedor da
+   Uber, na configuração de webhook do app (achado real, 10/11/2026 — ver seção 5.1 abaixo).
 
 ## 3. Como despachar um pedido (ação manual, nunca automática)
 
@@ -52,7 +55,12 @@ Nenhuma — assim como o iFood (`docs/IFOOD.md`), as credenciais são por restau
    gerado por nós. Como o dashboard da Uber só aceita uma URL (não um header customizado), o
    token vai como **query param da própria URL**: ao configurar o webhook no dashboard da Uber, o
    restaurante cola `https://api.bsdelivery.com.br/webhooks/uber-direct/:restaurantId?token=...`
-   (o token exato aparece na tela de configuração da retaguarda).
+   (a URL completa, já com o token, aparece na tela de configuração da retaguarda —
+   `UberDeliveryConfigController#toPublicView`, achado real de 10/11/2026: diferente de
+   `clientSecret`, que é segredo da Uber e nunca precisa voltar pro operador, `webhookToken` é
+   gerado por NÓS e o operador precisa dele pra colar no painel da Uber — escondê-lo também, como
+   acontecia antes dessa correção, deixava o teste de despacho impossível de completar, já que o
+   status nunca atualizava sem o webhook configurado).
 2. **Endpoint de consulta (GET) e cancelamento de entrega não implementados**: não confirmados na
    documentação pública acessível nesta sessão (sem conta de desenvolvedor Uber pra inspecionar a
    referência completa da API) — e não são exigidos por nenhum REQ desta v1 (REQ-3 é 100%

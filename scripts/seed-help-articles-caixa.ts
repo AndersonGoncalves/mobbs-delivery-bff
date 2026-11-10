@@ -45,15 +45,18 @@ function article(itemOrder: number, itemLabel: string, linkTo: string, articleIm
 
 const ARTICLES = [
   article(1, 'Movimento de caixa', '/cash-register', 'movimento-caixa', [
-    ['Abra Caixa > Movimento de caixa — cada data civil tem seu próprio caixa, e o fechamento é sempre uma conferência manual (ninguém fecha sozinho). Se o restaurante estiver configurado pra "Abertura automática" (Restaurante > Perfil), o caixa do dia já aparece aberto sozinho, com saldo inicial R$ 0,00 e o selo "Aberto automaticamente"; no modo manual, toque em ABRIR CAIXA informando o valor de abertura (dinheiro físico já no caixa).'],
-    ['A aba "Movimento do dia" mostra o saldo atual, o recorte "Vendas de mesa e balcão" vs. "Vendas de delivery/retirada" e o total por forma de pagamento (Dinheiro, Pix, Cartão) — cada venda paga gera um lançamento automático aqui, sem precisar fazer nada. A lista "Movimentos" embaixo mostra cada lançamento, automático ou manual, com data/hora.', 'movimento-caixa'],
-    ['Use LANÇAR MOVIMENTO pra registrar uma entrada ou saída manual (ex. troco, sangria, compra avulsa) — só funciona com o caixa aberto.'],
-    // (ajuste 09/11/2026, pedido explícito do usuário) — atalhos pro PDV/Pedidos do app/
-    // Atendimento de mesas ao lado de LANÇAR MOVIMENTO/FECHAR CAIXA (sem screenshot novo —
-    // mesma imagem de "movimento-caixa" já usada acima, que não mostra esses botões).
-    ['Ao lado de LANÇAR MOVIMENTO/FECHAR CAIXA, atalhos levam direto pra PDV, Pedidos do app e Atendimento de mesas — cada um só aparece pra quem também tem acesso àquela página específica (mesmo critério do item correspondente no menu lateral).'],
+    ['Abra Caixa > Movimento de caixa — cada data civil tem seu próprio caixa, e o fechamento é sempre uma conferência manual (ninguém fecha sozinho). Se o restaurante estiver configurado pra "Abertura automática" (Restaurante > Perfil), o caixa do dia já aparece aberto sozinho, com saldo inicial R$ 0,00; no modo manual, toque em ABRIR CAIXA informando o valor de abertura (dinheiro físico já no caixa).'],
+    // specs/0208-redesign-movimento-caixa (ajuste 08/11/2026) — tirou a aba "Movimento do
+    // dia"/"Histórico": esta tela só mostra o caixa de HOJE agora (sem navegação por período nem
+    // reimpressão de fechamento antigo — isso ficou pro relatório, ver "Relatórios > Movimento de
+    // Caixa"). Virou duas colunas lado a lado, mesma altura: "Resumo Geral de Caixa" e "Movimentos
+    // do Dia", os dois lidos da MESMA lista de lançamentos (achado real 09/11/2026 — antes vinham
+    // de fontes diferentes e podiam divergir entre si).
+    ['"Resumo Geral de Caixa" (coluna da esquerda) mostra o Saldo atual em destaque, os cartões "Entradas (+)"/"Saídas (-)" do dia, a composição (Abertura, Lançamentos manuais, Vendas de mesa e balcão, Vendas de delivery/retirada) e o total "Por forma de pagamento" (Dinheiro, Pix, Cartão de Crédito/Débito Maquininha), com um gráfico logo abaixo. "Movimentos do Dia" (coluna da direita) lista cada lançamento — automático (venda) ou manual — com data/hora, paginado quando passa de 11 itens.', 'movimento-caixa'],
+    ['Use LANÇAR MOVIMENTO pra registrar uma entrada ou saída manual (ex. troco, sangria, compra avulsa) — só funciona com o caixa aberto. O diálogo pede Tipo (Entrada/Saída), "Forma de pagamento" (se não mexer, conta como Dinheiro), Valor e Descrição — a descrição salva sempre entra como "Lançamento manual - ..." em "Movimentos do Dia", pra nunca se confundir com uma venda automática.', 'movimento-caixa-lancar'],
+    ['Ao lado de LANÇAR MOVIMENTO/FECHAR CAIXA, atalhos (PDV, Pedidos do app, Atendimento de mesas) levam direto pra essas páginas — cada um só aparece pra quem também tem acesso àquela página específica (mesmo critério do item correspondente no menu lateral).'],
     ['Toque em FECHAR CAIXA no fim do dia: confira o "Saldo calculado" contra o dinheiro físico contado de verdade e informe o valor contado — a diferença entre os dois aparece na conferência final. Uma venda que acontecer DEPOIS do fechamento (ex. você entregou um pedido atrasado já tarde da noite) ainda é lançada normalmente, só que aparece separada no histórico desse fechamento, sem alterar o saldo/diferença que já foi conferido.'],
-    ['Uma data nova só abre depois que a anterior for fechada — "Caixa para conferência" no topo mostra qualquer caixa pendente de data anterior, pra você selecionar e fechar antes de seguir.'],
+    ['Uma data nova só abre depois que a anterior for fechada — "Caixa para conferência" no topo mostra qualquer caixa pendente de data anterior, pra você selecionar e fechar antes de seguir. Pra conferir um período inteiro de dias/caixas já fechados (não só hoje), use Relatórios > Movimento de Caixa.'],
   ]),
   article(2, 'Repasses de Motoboys', '/motoboy-payouts', 'repasses-motoboys', [
     ['Abra Caixa > Repasses de Motoboys.'],

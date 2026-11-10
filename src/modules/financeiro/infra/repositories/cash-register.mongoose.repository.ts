@@ -151,7 +151,32 @@ export class CashRegisterMongooseRepository implements ICashRegisterRepository {
       { _id: sessionId, status: 'aberto' },
       { $inc: { movementVersion: 1, movementWrites: 1 } },
     ).lean<SessionLeanDocument>();
-    if (!reserved) throw new ConflictError('Sessão de caixa já está fechada');
+
+    if (!reserved) {
+      // Achado real (10/11/2026) — venda automática (`orderId` presente) chegando numa sessão já
+      // FECHADA (caso 2 de `addAutomaticEntry`, lançamento tardio documentado lá) sempre caía
+      // aqui e lançava `ConflictError`, descartado em silêncio pelo `try/catch` do
+      // `OrdersController` — o lançamento nunca era criado, mesmo a camada de serviço
+      // explicitamente pretendendo permitir isso. A trava `status: 'aberto'` acima protege contra
+      // correr com `close()` (que exige `movementWrites: 0`) — mas essa corrida só existe enquanto
+      // a sessão está aberta; uma sessão já fechada não tem mais `close()` pra correr contra, então
+      // pode gravar direto, sem a reserva de `movementVersion`/`movementWrites`. Lançamento MANUAL
+      // (sem `orderId`) continua bloqueado — `CashRegisterController` já recusa antes de chegar
+      // aqui, e esta trava é a defesa de verdade, igual sempre foi.
+      if (!input.orderId) throw new ConflictError('Sessão de caixa já está fechada');
+      const closedSession = await CashRegisterSessionModel.findOne({ _id: sessionId, status: 'fechado' }).lean<SessionLeanDocument>();
+      if (!closedSession) throw new ConflictError('Sessão de caixa já está fechada');
+      return this.createMovementDoc(sessionId, input, id);
+    }
+
+    try {
+      return await this.createMovementDoc(sessionId, input, id);
+    } finally {
+      await CashRegisterSessionModel.updateOne({ _id: sessionId }, { $inc: { movementWrites: -1 } });
+    }
+  }
+
+  private async createMovementDoc(sessionId: string, input: NewCashMovementInput, id?: string): Promise<ICashMovementEntry> {
     try {
       const doc = await CashMovementEntryModel.create({
         ...(id ? { _id: id } : {}),
@@ -170,8 +195,6 @@ export class CashRegisterMongooseRepository implements ICashRegisterRepository {
         if (existing) return toMovementEntity(existing);
       }
       throw error;
-    } finally {
-      await CashRegisterSessionModel.updateOne({ _id: sessionId }, { $inc: { movementWrites: -1 } });
     }
   }
 
