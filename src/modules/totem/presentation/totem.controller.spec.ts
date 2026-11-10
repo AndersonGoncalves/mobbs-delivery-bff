@@ -7,6 +7,7 @@ import { IOrderRepository } from '../../orders/domain/repositories/order.reposit
 import { IRawMaterialRepository } from '../../raw-materials/domain/repositories/raw-material.repository.interface';
 import { IStockMovementRepository } from '../../raw-materials/domain/repositories/stock-movement.repository.interface';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
+import type { IPlatformConfigRepository } from '../../platform-config/domain/platform-config.repository.interface';
 import { TotemController } from './totem.controller';
 
 type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & {
@@ -420,6 +421,44 @@ describe('TotemController (specs/0155-app-totem-autoatendimento)', () => {
 
       expect(restaurantRepository.regenerateTotemApiKey).toHaveBeenCalledWith('r-1');
       expect(json).toHaveBeenCalledWith(200, { totemApiKey: 'nova-chave' });
+    });
+  });
+
+  // (ajuste 10/11/2026, pedido explícito do usuário) — switch global do app Totem
+  // (specs/0201, mesmo padrão de CNPJ/Asaas/Mercado Pago): defesa em profundidade nas rotas do
+  // totem físico, antes até da chave de API ser checada.
+  describe('switch global do app Totem (specs/0201-controle-integracoes-cnpj-plataforma)', () => {
+    function buildAssertHandler(isTotemAppEnabled: boolean) {
+      const platformConfigRepository = { isTotemAppEnabled: jest.fn().mockResolvedValue(isTotemAppEnabled) } as unknown as IPlatformConfigRepository;
+      const controller = new TotemController(
+        {} as IMenuCategoryRepository,
+        {} as IProductRepository,
+        {} as IOrderRepository,
+        {} as IRestaurantRepository,
+        {} as ICustomerRepository,
+        async () => {},
+        async () => {},
+        {} as IStockMovementRepository,
+        undefined,
+        platformConfigRepository,
+      );
+      const { application, routes } = buildFakeApplication();
+      controller.initializeRoutes(application);
+      // totemAuthenticated = [totemRateLimitMiddleware, assertTotemAppEnabled, totemApiKeyMiddleware] — índice 1.
+      return { assertHandler: routes['GET /restaurants/me/totem/config'][1], platformConfigRepository };
+    }
+
+    it('rejeita (403) todas as rotas do totem físico quando o app está desligado na plataforma', async () => {
+      const { assertHandler, platformConfigRepository } = buildAssertHandler(false);
+
+      await expect(assertHandler({} as FakeRequest, { json: jest.fn() })).rejects.toMatchObject({ statusCode: 403 });
+      expect(platformConfigRepository.isTotemAppEnabled).toHaveBeenCalled();
+    });
+
+    it('libera normalmente quando o app está ligado na plataforma', async () => {
+      const { assertHandler } = buildAssertHandler(true);
+
+      await expect(assertHandler({} as FakeRequest, { json: jest.fn() })).resolves.toBeUndefined();
     });
   });
 });

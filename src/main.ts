@@ -550,6 +550,7 @@ server
       restaurantOperatorMiddleware,
       stockMovementRepository,
       rawMaterialRepository,
+      platformConfigRepository,
     ),
     // specs/0174-pdv-extensao-chrome-lateral — dois rascunhos de pedido sincronizados entre a
     // extensão Chrome e o PDV web, restritos a Dono/Gerente/Caixa (REQ-5), e finalização

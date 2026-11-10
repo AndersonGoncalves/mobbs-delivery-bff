@@ -9,6 +9,7 @@ import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
 import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { totemRateLimitMiddleware } from '../../../shared/http/rate-limits';
+import type { IPlatformConfigRepository } from '../../platform-config/domain/platform-config.repository.interface';
 import { filterStockGroups, hasStock, toPublicProduct } from '../../catalog/presentation/catalog.controller';
 import { buildReceiptLines } from '../../auto-print/domain/build-receipt-lines';
 import { IMenuCategoryRepository } from '../../catalog/domain/repositories/menu-category.repository.interface';
@@ -59,6 +60,11 @@ export class TotemController extends BaseRouter {
     private readonly restaurantOperatorMiddleware: AsyncHandler,
     stockMovementRepository: IStockMovementRepository,
     rawMaterialRepository?: IRawMaterialRepository,
+    // (ajuste 10/11/2026, pedido explícito do usuário) — switch global do app Totem, mesmo
+    // padrão de `AsaasOnboardingController`/`MercadoPagoOAuthController` (specs/0201): opcional
+    // só pra não quebrar composição/testes existentes que não injetam; em produção é sempre
+    // passado (ver main.ts).
+    private readonly platformConfigRepository?: IPlatformConfigRepository,
   ) {
     super();
     if (rawMaterialRepository) {
@@ -66,11 +72,25 @@ export class TotemController extends BaseRouter {
     }
   }
 
+  // (ajuste 10/11/2026, pedido explícito do usuário) — defesa em profundidade: o switch global
+  // também bloqueia aqui, não só o app Totem em si deixar de funcionar quando desabilitado.
+  // Diferente de `restaurant.totemEnabled` (verificado em cada rota, por restaurante) — este é
+  // platform-wide, checado uma vez antes de qualquer rota do totem físico.
+  private async assertTotemAppEnabled(): Promise<void> {
+    if (this.platformConfigRepository && !(await this.platformConfigRepository.isTotemAppEnabled())) {
+      throw new ForbiddenError('Totem indisponível no momento');
+    }
+  }
+
   initializeRoutes(application: Server): void {
     // Achado de auditoria (06/11/2026) — o totem não fica atrás do Firebase (sem rate limiting
     // nativo), então o rate limit vem antes até do próprio middleware de autenticação (barra o
     // flood antes de gastar uma consulta ao banco por tentativa).
-    const totemAuthenticated: AsyncHandler[] = [totemRateLimitMiddleware, this.totemApiKeyMiddleware];
+    const totemAuthenticated: AsyncHandler[] = [
+      totemRateLimitMiddleware,
+      async (_req: Request) => this.assertTotemAppEnabled(),
+      this.totemApiKeyMiddleware,
+    ];
     const operatorAuthenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,

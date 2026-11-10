@@ -51,7 +51,12 @@ describe('MercadoPagoOAuthController (specs/0170-integracao-mercado-pago)', () =
 
   // specs/0201-controle-integracoes-cnpj-plataforma REQ-2.
   it('specs/0201: switch desabilitado rejeita a conexão sem chamar o Mercado Pago', async () => {
-    const platformConfigRepository: IPlatformConfigRepository = { isCnpjIntegrationsEnabled: jest.fn().mockResolvedValue(false) };
+    const platformConfigRepository: IPlatformConfigRepository = {
+      isCnpjIntegrationsEnabled: jest.fn().mockResolvedValue(false),
+      isKdsAppEnabled: jest.fn().mockResolvedValue(false),
+      isComandaAppEnabled: jest.fn().mockResolvedValue(false),
+      isTotemAppEnabled: jest.fn().mockResolvedValue(false),
+    };
     const { restaurantRepository, routes } = setup({ platformConfigRepository });
 
     await expect(
