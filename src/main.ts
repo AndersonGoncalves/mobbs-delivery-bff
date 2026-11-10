@@ -429,16 +429,18 @@ const platformBillingCycleService = new PlatformBillingCycleService({
   obligationIssuanceService,
   reconciliationService,
 });
-// specs/0121-integracao-uber-entregas — sem variável de ambiente nova (credenciais são por
-// restaurante, mesmo padrão do iFood/fiscal acima); `UberDirectAuthService`/`UberDirectClient`
-// são instâncias únicas compartilhadas (mesmo raciocínio de `ifoodAuthService`/`ifoodClient`).
+// specs/0121-integracao-uber-entregas — credenciais são por restaurante (mesmo padrão do
+// iFood/fiscal acima); `UberDirectAuthService`/`UberDirectClient` são instâncias únicas
+// compartilhadas (mesmo raciocínio de `ifoodAuthService`/`ifoodClient`). `UberDirectClient`
+// recebe `environment.uberDirect.testMode` (10/11/2026) pra ativar o Robo Courier da Uber só
+// quando o ambiente está mesmo configurado pra sandbox — ver comentário no construtor do client.
 const uberDeliveryConfigRepository = new UberDeliveryConfigMongooseRepository();
 const uberDeliveryDispatchService = new UberDeliveryDispatchService(
   orderRepository,
   restaurantRepository,
   customerRepository,
   new UberDirectAuthService(),
-  new UberDirectClient(),
+  new UberDirectClient(environment.uberDirect.testMode),
 );
 
 // specs/0121-integracao-uber-entregas REQ-6 — `UberDeliveryWebhookController` precisa chamar
