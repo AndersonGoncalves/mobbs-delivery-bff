@@ -52,6 +52,14 @@ services:
       # Console (Configurações do projeto > Contas de serviço > Gerar nova chave privada), salva
       # como ./firebase-service-account.json (mesma pasta deste arquivo, já no .gitignore).
       - GOOGLE_APPLICATION_CREDENTIALS=/app/firebase-service-account.json
+      # specs/0121-integracao-uber-entregas — pedido explícito do usuário (10/11/2026): precisa
+      # estar listado aqui pra chegar no container (mesma classe de bug do achado do
+      # BILLING_PIX_KEY_TYPE acima). Ativa o Robo Courier (entregador simulado da Uber) só nas
+      # entregas despachadas com credenciais da conta "Testando" (sandbox) — ver
+      # `uber-direct-client.ts`/`docs/UBER-DIRECT.md`. Manter "false" no `.env` do servidor fora
+      # de janelas de teste explicitamente combinadas; `${UBER_DIRECT_TEST_MODE}` vazio também
+      # resolve pra "false" (checagem `=== 'true'` em `environment.ts`).
+      - UBER_DIRECT_TEST_MODE=${UBER_DIRECT_TEST_MODE}
     volumes:
       - ./firebase-service-account.json:/app/firebase-service-account.json:ro
     depends_on:
