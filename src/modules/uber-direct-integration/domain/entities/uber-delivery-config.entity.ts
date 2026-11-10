@@ -1,8 +1,10 @@
 /**
  * specs/0121-integracao-uber-entregas — configuração da integração Uber Direct de UM restaurante
  * (coleção própria, `plan.md` — mesmo padrão de `FiscalConfig`/specs/0091, diferente do iFood, que
- * guarda credenciais direto em `Restaurant`). `clientSecret`/`webhookToken` nunca devem voltar
- * numa resposta de API (mesmo cuidado de `focusNfeToken`/`ifoodClientSecret`).
+ * guarda credenciais direto em `Restaurant`). `clientSecret` nunca deve voltar numa resposta de
+ * API (mesmo cuidado de `focusNfeToken`/`ifoodClientSecret`) — `webhookToken` é diferente: é
+ * gerado por nós e o operador PRECISA dele (dentro da URL do webhook) pra colar no painel da Uber,
+ * ver `uber-delivery-config.controller.ts#toPublicView` (achado real, 10/11/2026).
  */
 export interface IUberDeliveryConfig {
   restaurantId: string;

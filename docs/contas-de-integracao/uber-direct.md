@@ -35,17 +35,16 @@ nenhuma cobrança acontece.
 3. A cotação/criação da entrega acontece numa única ação; o status (chip no card do pedido)
    deveria atualizar sozinho via webhook conforme a entrega simulada "avança".
 
-## 4. Achado real — isso bloqueia terminar o teste hoje
+## 4. URL do webhook — cole no painel da Uber
 
 A configuração gera um **token de webhook** automaticamente ao salvar (pra autenticar as
-chamadas que o Uber manda de volta pra nós), mas **a tela da retaguarda nunca mostra esse
-token** — não existe campo nem botão "copiar URL do webhook" em
-`UberDirectIntegrationPage.tsx`, nem outra rota que devolva esse valor depois da primeira vez.
-Sem a URL+token, não dá pra cadastrar o webhook no painel do Uber, e sem isso você consegue
-despachar uma entrega de teste mas nunca vai ver o status mudar — o teste fica incompleto.
+chamadas que o Uber manda de volta pra nós). **Integrações → Uber Entregas**, já conectado,
+mostra a URL completa (com o token embutido) e um botão "Copiar" — cole essa URL na configuração
+de webhook do app, no painel de desenvolvedor da Uber. Sem isso, você consegue despachar uma
+entrega de teste, mas o status nunca muda sozinho (nenhum webhook chega).
 
-**Ainda não corrigido.** Correção pequena: expor o token (ou um botão "copiar URL do webhook")
-na própria tela de configuração, uma vez, logo após conectar.
+*(Achado real de 10/11/2026 — antes dessa correção, a tela nunca mostrava esse token/URL em
+lugar nenhum, o que deixava o teste de despacho impossível de completar.)*
 
 ## 5. Limitações conhecidas (ver `specs/0121-integracao-uber-entregas`)
 
