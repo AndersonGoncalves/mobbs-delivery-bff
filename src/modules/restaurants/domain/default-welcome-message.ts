@@ -7,6 +7,7 @@ const RAMO_BY_BUSINESS_TYPE: Record<BusinessType, string> = {
   comida_japonesa: 'cozinha japonesa',
   acai_sorveteria: 'casa de açaí e sorvetes',
   lanches_gerais: 'lanchonete',
+  marmitaria: 'marmitaria',
 };
 
 /** specs/0094-mensagem-boas-vindas-home REQ-2 — texto inicial da mensagem de boas-vindas, nascido
