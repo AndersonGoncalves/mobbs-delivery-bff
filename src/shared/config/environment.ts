@@ -104,6 +104,15 @@ export const environment = {
   ifood: {
     baseUrl: process.env.IFOOD_BASE_URL || 'https://merchant-api.ifood.com.br',
   },
+  /** specs/0121-integracao-uber-entregas — diferente do iFood acima: a Uber Direct usa o MESMO
+   * host (api.uber.com) pra sandbox e produção (a distinção é só qual customer_id/credencial é
+   * usado), então não dá pra alternar por `baseUrl`. `testMode` ativa o Robo Courier (entregador
+   * simulado da Uber) nas chamadas de `UberDirectClient.createDelivery` — default `false`
+   * (seguro pra produção); só ligar via `UBER_DIRECT_TEST_MODE=true` em ambiente de
+   * desenvolvimento/teste, nunca em produção. */
+  uberDirect: {
+    testMode: process.env.UBER_DIRECT_TEST_MODE === 'true',
+  },
   /** specs/0122-integracao-99food — diferente do iFood acima: `appId`/`appSecret` SÃO
    * credenciais de nível de app (plataforma mobbs, cadastradas uma única vez no portal de
    * parceiro 99Food), nunca por restaurante — o que é por restaurante é só `auth_token`

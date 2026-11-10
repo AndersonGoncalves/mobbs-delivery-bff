@@ -41,8 +41,20 @@ já usa (WhatsApp, caixa automático, cashback/fidelidade, emissão fiscal se co
 
 ## 4. Variáveis de ambiente
 
-Nenhuma — assim como o iFood (`docs/IFOOD.md`), as credenciais são por restaurante (coleção
-`UberDeliveryConfig`), não há nível-plataforma nesta integração.
+Só uma: `UBER_DIRECT_TEST_MODE` (`.env.example`) — como o iFood (`docs/IFOOD.md`), as credenciais
+seguem sendo por restaurante (coleção `UberDeliveryConfig`), não há nível-plataforma nesta
+integração. A diferença pro iFood/99Food é que a Uber Direct usa o MESMO host (`api.uber.com`)
+pra sandbox e produção — a distinção é só qual `customer_id`/credencial é usado, não a URL —
+então não dá pra alternar ambiente por `baseUrl` como os outros.
+
+`UBER_DIRECT_TEST_MODE=true` ativa o **Robo Courier** (entregador simulado da própria Uber,
+`test_specifications.robo_courier_specification.mode: "auto"` no `POST /deliveries`) — achado
+real de 10/11/2026: sem isso, uma entrega criada na conta "Testando" (sandbox) da Uber fica parada
+pra sempre na etapa "preparando" na página de rastreamento, porque não existe nenhum entregador de
+verdade no sandbox pra aceitar e mover o status sozinho. Com o Robo Courier ativo, a Uber avança
+sozinha (em modo automático) por todas as etapas até "entregue", disparando os webhooks normais
+(seção 3). **Default `false`** — deixar assim em produção; a Uber não documenta esse campo como
+seguro de enviar contra uma conta/`customer_id` real.
 
 ## 5. Suposições e limitações conhecidas (sem conta de desenvolvedor real nesta sessão)
 

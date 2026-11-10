@@ -53,6 +53,46 @@ describe('UberDirectClient (specs/0121-integracao-uber-entregas)', () => {
     expect(body.manifest_items).toEqual([{ name: 'Pizza', quantity: 2 }]);
   });
 
+  it('testMode true: inclui test_specifications (Robo Courier, modo "auto") no POST /deliveries', async () => {
+    mockFetchOnce(200, { id: 'del-1', status: 'pending' });
+    const client = new UberDirectClient(true);
+
+    await client.createDelivery('token-1', 'uber-customer-1', {
+      quoteId: 'quote-1',
+      pickup: { streetAddress: 'Av. Central, 1', city: 'São Paulo', state: 'SP', zipCode: '01000000' },
+      pickupName: 'Prime Pizza',
+      pickupPhoneNumber: '+5511999990000',
+      dropoff: { streetAddress: 'Rua das Flores, 123', city: 'São Paulo', state: 'SP', zipCode: '' },
+      dropoffName: 'João',
+      dropoffPhoneNumber: '+5511988880000',
+      manifestItems: [{ name: 'Pizza', quantity: 2 }],
+    });
+
+    const [, options] = (global.fetch as jest.Mock).mock.calls[0];
+    const body = JSON.parse(options.body);
+    expect(body.test_specifications).toEqual({ robo_courier_specification: { mode: 'auto' } });
+  });
+
+  it('testMode false (default): não inclui test_specifications no POST /deliveries', async () => {
+    mockFetchOnce(200, { id: 'del-1', status: 'pending' });
+    const client = new UberDirectClient();
+
+    await client.createDelivery('token-1', 'uber-customer-1', {
+      quoteId: 'quote-1',
+      pickup: { streetAddress: 'Av. Central, 1', city: 'São Paulo', state: 'SP', zipCode: '01000000' },
+      pickupName: 'Prime Pizza',
+      pickupPhoneNumber: '+5511999990000',
+      dropoff: { streetAddress: 'Rua das Flores, 123', city: 'São Paulo', state: 'SP', zipCode: '' },
+      dropoffName: 'João',
+      dropoffPhoneNumber: '+5511988880000',
+      manifestItems: [{ name: 'Pizza', quantity: 2 }],
+    });
+
+    const [, options] = (global.fetch as jest.Mock).mock.calls[0];
+    const body = JSON.parse(options.body);
+    expect(body.test_specifications).toBeUndefined();
+  });
+
   it('erro da API (cotação recusada) lança com o corpo da resposta', async () => {
     mockFetchOnce(422, { message: 'fora da área de cobertura' });
     const client = new UberDirectClient();

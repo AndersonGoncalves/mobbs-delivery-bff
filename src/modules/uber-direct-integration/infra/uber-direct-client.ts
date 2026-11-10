@@ -57,6 +57,18 @@ function toAddressJson(address: UberDeliveryAddress): string {
 }
 
 export class UberDirectClient {
+  /**
+   * Achado real (10/11/2026) — na conta "Testando" (sandbox) da Uber Direct não existe
+   * entregador de verdade pra aceitar a entrega e avançar o status sozinho: a entrega criada
+   * fica parada pra sempre em "preparando" na página de rastreamento. A Uber resolve isso com o
+   * Robo Courier, um entregador simulado que só é ativado se `test_specifications` for enviado
+   * no `POST /deliveries` — por isso `testMode` (de `environment.uberDirect.testMode`,
+   * `UBER_DIRECT_TEST_MODE=true`) tem que ser `false` em produção: a Uber não documenta esse
+   * campo como seguro de mandar contra uma conta real, então só vai nas chamadas quando o
+   * ambiente está mesmo configurado pra sandbox.
+   */
+  constructor(private readonly testMode: boolean = false) {}
+
   private async request<T>(accessToken: string, customerId: string, method: string, path: string, body?: unknown): Promise<T> {
     const response = await fetchWithTimeout(`https://api.uber.com/v1/customers/${encodeURIComponent(customerId)}${path}`, {
       method,
@@ -106,6 +118,7 @@ export class UberDirectClient {
       dropoff_name: input.dropoffName,
       dropoff_phone_number: input.dropoffPhoneNumber,
       manifest_items: input.manifestItems.map((item) => ({ name: item.name, quantity: item.quantity })),
+      ...(this.testMode ? { test_specifications: { robo_courier_specification: { mode: 'auto' } } } : {}),
     });
   }
 }
