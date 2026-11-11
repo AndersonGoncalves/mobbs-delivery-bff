@@ -22,6 +22,12 @@ export interface AutomaticCashEntryInput {
   paymentMethod: string;
   /** Id do pagamento de mesa/balcão. Sem ele, a venda (delivery/retirada) é uma entrada por pedido. */
   paymentId?: string;
+  /** Pedido explícito do usuário (11/11/2026) — `true` só quando o pagamento vem de "Registrar
+   * parcial" (`TableOrderService.addPartialPayment`, mesa/balcão ainda aberta); os pagamentos do
+   * fechamento de conta (`closeOrder`, mesmo com mais de uma forma de pagamento dividida) nunca
+   * marcam isso, mesmo sendo também `paymentId`-based — a descrição do movimento só destaca
+   * "pagamento parcial" pro primeiro caso. */
+  isPartialPayment?: boolean;
 }
 
 /**
