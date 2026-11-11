@@ -74,6 +74,9 @@ export type RestaurantProfileUpdate = Partial<
   // campo omitido) é o único jeito de o form "remover a imagem padrão" sem mandar o perfil
   // inteiro de novo: `undefined` é descartado pelo JSON.stringify antes de chegar aqui.
   defaultProductImageUrl?: string | null;
+  // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-17 — mesmo raciocínio acima,
+  // aplicado a `logoUrl` (bug real 11/11/2026: "remover logo" nunca persistia).
+  logoUrl?: string | null;
 };
 
 export interface IRestaurantRepository {

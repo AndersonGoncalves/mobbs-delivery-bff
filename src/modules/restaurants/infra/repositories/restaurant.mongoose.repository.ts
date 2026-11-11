@@ -26,7 +26,10 @@ interface RestaurantLeanDocument {
   name: string;
   slug: string;
   isActive: boolean;
-  logoUrl?: string;
+  // `null` depois de `$set: { logoUrl: null }` (remoção explícita) — normalizado pra `undefined`
+  // em `toEntity`, já que `IRestaurant.logoUrl` nunca guarda null. Mesmo padrão de
+  // `defaultProductImageUrl` abaixo.
+  logoUrl?: string | null;
   primaryColor?: string;
   onPrimaryColor?: string;
   // `null` depois de `$set: { defaultProductImageUrl: null }` (remoção explícita) — normalizado
@@ -147,7 +150,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     name: doc.name,
     slug: doc.slug,
     isActive: doc.isActive,
-    logoUrl: doc.logoUrl,
+    logoUrl: doc.logoUrl ?? undefined,
     primaryColor: doc.primaryColor,
     onPrimaryColor: doc.onPrimaryColor,
     defaultProductImageUrl: doc.defaultProductImageUrl ?? undefined,

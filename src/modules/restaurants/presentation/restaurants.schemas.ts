@@ -53,8 +53,10 @@ export const restaurantProfileSchema = z
     // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-14 — `.optional()` de
     // propósito (achado real: sem isso, salvar a página "App do cliente" sem nunca ter enviado
     // logo falhava `.url()`, já que o form manda a chave sempre, mesmo vazia) — mesmo padrão de
-    // `defaultProductImageUrl`/`instagramUrl` abaixo.
-    logoUrl: z.string().url().optional(),
+    // `defaultProductImageUrl`/`instagramUrl` abaixo. `.nullable()` adicionado depois (REQ-17,
+    // bug real 11/11/2026): `null` explícito é o sinal de "remover a logo já configurada",
+    // distinto de campo omitido = "nunca enviou" — mesmo padrão de `defaultProductImageUrl`.
+    logoUrl: z.string().url().optional().nullable(),
     primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Cor deve estar em formato #RRGGBB'),
     onPrimaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Cor deve estar em formato #RRGGBB'),
     // specs/0031-imagem-padrao-disponibilidade-checkout-ajustes REQ-1.

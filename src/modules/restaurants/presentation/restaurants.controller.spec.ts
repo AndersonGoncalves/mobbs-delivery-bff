@@ -539,6 +539,40 @@ describe('RestaurantsController', () => {
       ).rejects.toMatchObject({ statusCode: 400 });
     });
 
+    // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-17.
+    it('PUT /restaurants/me aceita e persiste logoUrl', async () => {
+      const logoUrl = 'https://storage.example.com/restaurants/1/logo.png';
+      const { repository, routes } = setup({ updateProfile: jest.fn().mockResolvedValue(buildRestaurant({ logoUrl })) });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['PUT /restaurants/me'], { body: { logoUrl } }, { json });
+
+      expect(repository.updateProfile).toHaveBeenCalledWith('1', { logoUrl });
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ logoUrl }));
+    });
+
+    // Bug real (2026-11-11): clicar em "remover logo" no front mandava `undefined`, que o
+    // JSON.stringify descarta antes do PUT chegar aqui — a logo antiga nunca era limpa. `null`
+    // explícito é o sinal de remoção que de fato chega no `$set` do Mongo. Regressão do fix de
+    // REQ-14 (que resolveu "salvar sem nunca ter enviado logo", mas nunca testou "remover uma já
+    // salva") — mesmo padrão já corrigido pra `defaultProductImageUrl` logo abaixo.
+    it('PUT /restaurants/me com logoUrl: null persiste null (remove a logo configurada)', async () => {
+      const { repository, routes } = setup({ updateProfile: jest.fn().mockResolvedValue(buildRestaurant({ logoUrl: undefined })) });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['PUT /restaurants/me'], { body: { logoUrl: null } }, { json });
+
+      expect(repository.updateProfile).toHaveBeenCalledWith('1', { logoUrl: null });
+    });
+
+    it('rejeita PUT /restaurants/me com logoUrl que não é uma URL', async () => {
+      const { routes } = setup();
+
+      await expect(
+        runAuthenticatedChain(routes['PUT /restaurants/me'], { body: { logoUrl: 'não-é-url' } }, { json: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
     // specs/0031-imagem-padrao-disponibilidade-checkout-ajustes REQ-1.
     it('PUT /restaurants/me aceita e persiste defaultProductImageUrl', async () => {
       const defaultProductImageUrl = 'https://storage.example.com/restaurants/1/default-product-image.png';
