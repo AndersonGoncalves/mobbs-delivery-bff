@@ -226,8 +226,24 @@ describe('AccountsPayableController', () => {
     expect(cashRegisterRepository.findOpenSessionByRestaurant).toHaveBeenCalledWith('r-1');
     expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith(
       'cr-1',
-      expect.objectContaining({ type: 'saida', amount: 1500, description: expect.stringContaining('Aluguel setembro') }),
+      expect.objectContaining({ type: 'saida', amount: 1500, description: expect.stringContaining('Aluguel setembro'), paymentMethod: 'cash' }),
     );
+  });
+
+  // Pedido explícito do usuário (11/11/2026, achado real) — o lançamento ia sempre como Dinheiro,
+  // mesmo quando o título era liquidado via Pix/cartão; agora a forma de pagamento escolhida na
+  // retaguarda é a que entra no movimento de caixa.
+  it('AC-2: PATCH .../pay com paymentMethod explícito lança o movimento com essa forma, não Dinheiro', async () => {
+    const { cashRegisterRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/accounts-payable/:id/pay'],
+      { restaurantId: 'r-1', params: { id: 'ap-1' }, body: { paidValue: 1500, paymentMethod: 'pix' } },
+      { json },
+    );
+
+    expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-1', expect.objectContaining({ paymentMethod: 'pix' }));
   });
 
   it('AC-2: PATCH .../pay com affectsCashRegister: false não lança nada no caixa', async () => {

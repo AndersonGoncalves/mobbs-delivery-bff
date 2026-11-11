@@ -30,17 +30,24 @@ export const saveAccountReceivableSchema = z.object({
  * lançamento no Movimento de Caixa (`CashRegisterController`/`CashRegisterService` só conhecem
  * pagamentos de pedido via `addAutomaticEntry`); este campo liga/desliga esse lançamento manual
  * quando a sessão de caixa está aberta, sem nunca forçar abertura de sessão.
+ *
+ * Pedido explícito do usuário (11/11/2026) — `paymentMethod` opcional (default `'cash'` no
+ * controller, mesmo default já usado no lançamento manual/`CashRegisterPage.tsx`): antes o
+ * movimento de caixa gerado aqui sempre entrava como Dinheiro, mesmo quando o título foi
+ * liquidado via Pix/cartão.
  */
 export const markAccountPayablePaidSchema = z.object({
   paidValue: z.number().positive('Valor pago deve ser maior que zero'),
   paidAt: isoDateString.optional(),
   affectsCashRegister: z.boolean().optional(),
+  paymentMethod: paymentMethodSchema.optional(),
 });
 
 export const markAccountReceivablePaidSchema = z.object({
   receivedValue: z.number().positive('Valor recebido deve ser maior que zero'),
   receivedAt: isoDateString.optional(),
   affectsCashRegister: z.boolean().optional(),
+  paymentMethod: paymentMethodSchema.optional(),
 });
 
 /** REQ-4 — valor inicial não pode ser negativo (pode ser zero, ex.: sem troco inicial). */

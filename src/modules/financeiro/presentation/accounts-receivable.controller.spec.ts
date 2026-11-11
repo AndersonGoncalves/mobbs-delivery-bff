@@ -215,8 +215,23 @@ describe('AccountsReceivableController', () => {
     expect(cashRegisterRepository.findOpenSessionByRestaurant).toHaveBeenCalledWith('r-1');
     expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith(
       'cr-1',
-      expect.objectContaining({ type: 'entrada', amount: 300, description: expect.stringContaining('Fiado - Empresa X') }),
+      expect.objectContaining({ type: 'entrada', amount: 300, description: expect.stringContaining('Fiado - Empresa X'), paymentMethod: 'cash' }),
     );
+  });
+
+  // Pedido explícito do usuário (11/11/2026, achado real) — o lançamento ia sempre como Dinheiro,
+  // mesmo quando o título era recebido via Pix/cartão.
+  it('REQ-3: PATCH .../receive com paymentMethod explícito lança o movimento com essa forma, não Dinheiro', async () => {
+    const { cashRegisterRepository, routes } = setup();
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/accounts-receivable/:id/receive'],
+      { restaurantId: 'r-1', params: { id: 'ar-1' }, body: { receivedValue: 300, paymentMethod: 'pix' } },
+      { json },
+    );
+
+    expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-1', expect.objectContaining({ paymentMethod: 'pix' }));
   });
 
   it('REQ-3: PATCH .../receive com affectsCashRegister: false não lança nada no caixa', async () => {
