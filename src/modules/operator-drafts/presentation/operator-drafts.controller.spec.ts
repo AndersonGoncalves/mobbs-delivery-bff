@@ -527,6 +527,30 @@ describe('OperatorDraftsController (specs/0174-pdv-extensao-chrome-lateral)', ()
 
       expect(res.json).toHaveBeenCalledWith(200, expect.objectContaining({ customer: { id: 'c-1', name: 'Maria', phone: '5511999999999' } }));
     });
+
+    // T019 (specs/0174) — pré-requisito pra UI filtrar a lista de pagamento pelo cliente
+    // (interseção com `restaurant.acceptedPaymentMethods`, mesma regra do finalize).
+    it('devolve allowedPaymentMethods do cliente, quando configurado', async () => {
+      const { routes } = buildController({
+        customerRepository: {
+          findByPhone: jest.fn().mockResolvedValue({
+            id: 'c-1',
+            name: 'Maria',
+            phone: '5511999999999',
+            createdByRestaurantId: 'r-1',
+            allowedPaymentMethods: ['cash', 'pix'],
+          }),
+        },
+      });
+      const res = { json: jest.fn() };
+
+      await runOperatorChain(routes['GET /restaurants/me/operator-drafts/customers'], { ...baseReq, query: { phone: '5511999999999' } }, res);
+
+      expect(res.json).toHaveBeenCalledWith(
+        200,
+        expect.objectContaining({ customer: expect.objectContaining({ allowedPaymentMethods: ['cash', 'pix'] }) }),
+      );
+    });
   });
 
   describe('POST .../operator-drafts/customers (cadastro rápido)', () => {

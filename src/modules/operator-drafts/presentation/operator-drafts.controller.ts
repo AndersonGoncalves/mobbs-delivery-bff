@@ -155,7 +155,16 @@ export class OperatorDraftsController extends BaseRouter {
         return;
       }
       const addresses = await this.addressRepository.listByCustomer(customer.id);
-      res.json(200, { customer: { id: customer.id, name: customer.name, phone: customer.phone }, addresses, blocked });
+      res.json(200, {
+        // T019 (specs/0174) — `allowedPaymentMethods` exposto aqui pela primeira vez: a UI
+        // (web/extensão) precisa dele pra pré-filtrar a lista de formas de pagamento mostrada
+        // (interseção com `restaurant.acceptedPaymentMethods`), mesma regra já aplicada no
+        // servidor em `resolveAllowedPaymentMethods` no finalize — isso é só UX, a validação real
+        // continua sendo a do servidor.
+        customer: { id: customer.id, name: customer.name, phone: customer.phone, allowedPaymentMethods: customer.allowedPaymentMethods },
+        addresses,
+        blocked,
+      });
     });
 
     // REQ-14 — cadastro rápido quando a busca por telefone não encontra ninguém; nunca duplica
@@ -169,7 +178,7 @@ export class OperatorDraftsController extends BaseRouter {
         const ownOrders = await this.orderRepository.findManyByCustomerAndRestaurant(existing.id, req.restaurantId!);
         const hasRelationship = ownOrders.length > 0 || existing.createdByRestaurantId === req.restaurantId;
         if (hasRelationship) {
-          res.json(200, { id: existing.id, name: existing.name, phone: existing.phone });
+          res.json(200, { id: existing.id, name: existing.name, phone: existing.phone, allowedPaymentMethods: existing.allowedPaymentMethods });
           return;
         }
         // Achado crítico de auditoria (31/10/2026) — "findByPhone global permite correlação de
