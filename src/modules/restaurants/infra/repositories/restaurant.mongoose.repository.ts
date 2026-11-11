@@ -29,7 +29,9 @@ interface RestaurantLeanDocument {
   logoUrl?: string;
   primaryColor?: string;
   onPrimaryColor?: string;
-  defaultProductImageUrl?: string;
+  // `null` depois de `$set: { defaultProductImageUrl: null }` (remoção explícita) — normalizado
+  // pra `undefined` em `toEntity`, já que `IRestaurant.defaultProductImageUrl` nunca guarda null.
+  defaultProductImageUrl?: string | null;
   businessHours?: IBusinessHours[];
   address?: IRestaurantAddress;
   phone?: string;
@@ -148,7 +150,7 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     logoUrl: doc.logoUrl,
     primaryColor: doc.primaryColor,
     onPrimaryColor: doc.onPrimaryColor,
-    defaultProductImageUrl: doc.defaultProductImageUrl,
+    defaultProductImageUrl: doc.defaultProductImageUrl ?? undefined,
     businessHours: doc.businessHours ?? [],
     address: doc.address,
     phone: doc.phone,
@@ -273,6 +275,9 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
     deliveryFeeCents?: number;
     welcomeMessage?: string;
     referralCode?: string;
+    primaryColor?: string;
+    onPrimaryColor?: string;
+    useWhiteBackground?: boolean;
   }): Promise<IRestaurant> {
     const doc = await RestaurantModel.create(input);
     return toEntity(doc.toObject());

@@ -93,6 +93,8 @@ describe('AsaasOnboardingController (specs/0101-integracao-asaas, fase 1)', () =
       isKdsAppEnabled: jest.fn().mockResolvedValue(false),
       isComandaAppEnabled: jest.fn().mockResolvedValue(false),
       isTotemAppEnabled: jest.fn().mockResolvedValue(false),
+      isInstagramAutomationEnabled: jest.fn().mockResolvedValue(false),
+      getSnapshot: jest.fn(),
     };
     const { restaurantRepository, routes } = setup({ platformConfigRepository });
 
@@ -112,6 +114,8 @@ describe('AsaasOnboardingController (specs/0101-integracao-asaas, fase 1)', () =
       isKdsAppEnabled: jest.fn().mockResolvedValue(true),
       isComandaAppEnabled: jest.fn().mockResolvedValue(true),
       isTotemAppEnabled: jest.fn().mockResolvedValue(true),
+      isInstagramAutomationEnabled: jest.fn().mockResolvedValue(true),
+      getSnapshot: jest.fn(),
     };
     const { restaurantRepository, routes } = setup({ platformConfigRepository });
 
@@ -214,6 +218,8 @@ describe('AsaasOnboardingController (specs/0101-integracao-asaas, fase 1)', () =
       isKdsAppEnabled: jest.fn().mockResolvedValue(false),
       isComandaAppEnabled: jest.fn().mockResolvedValue(false),
       isTotemAppEnabled: jest.fn().mockResolvedValue(false),
+      isInstagramAutomationEnabled: jest.fn().mockResolvedValue(false),
+      getSnapshot: jest.fn(),
     };
     const { restaurantRepository, routes } = setup({ platformConfigRepository });
 

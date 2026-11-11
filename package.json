@@ -34,6 +34,7 @@
     "activate:kds-app": "ts-node --transpile-only scripts/set-platform-config.ts -- --key=kdsAppEnabled --value=true",
     "activate:comanda-app": "ts-node --transpile-only scripts/set-platform-config.ts -- --key=comandaAppEnabled --value=true",
     "activate:totem-app": "ts-node --transpile-only scripts/set-platform-config.ts -- --key=totemAppEnabled --value=true",
+    "activate:instagram-automation": "ts-node --transpile-only scripts/set-platform-config.ts -- --key=instagramAutomationEnabled --value=true",
     "loadtest:seed": "ts-node --transpile-only scripts/load-test/seed.ts",
     "loadtest:emulator": "firebase emulators:start --only auth --project mobbs-delivery-app",
     "loadtest:fixtures": "ts-node --transpile-only scripts/load-test/k6/generate-fixtures.ts",

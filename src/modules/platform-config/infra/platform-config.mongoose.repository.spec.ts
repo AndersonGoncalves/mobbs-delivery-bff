@@ -27,28 +27,63 @@ describe('PlatformConfigMongooseRepository (specs/0201-controle-integracoes-cnpj
   });
 
   // (ajuste 10/11/2026, pedido explícito do usuário) — mesmo fail-safe (ADR-4) e mesma
-  // independência entre switches dos 3 novos campos (KDS/Comanda/Totem).
-  it('AC-6 (KDS/Comanda/Totem): sem documento, todos devolvem false', async () => {
+  // independência entre switches dos novos campos (KDS/Comanda/Totem/Automação Instagram).
+  it('AC-6 (KDS/Comanda/Totem/Instagram): sem documento, todos devolvem false', async () => {
     mockDoc(null);
     const repository = new PlatformConfigMongooseRepository();
     expect(await repository.isKdsAppEnabled()).toBe(false);
     expect(await repository.isComandaAppEnabled()).toBe(false);
     expect(await repository.isTotemAppEnabled()).toBe(false);
+    expect(await repository.isInstagramAutomationEnabled()).toBe(false);
   });
 
   it('cada switch de app reflete só o próprio campo, independente dos outros', async () => {
-    mockDoc({ kdsAppEnabled: true, comandaAppEnabled: false, totemAppEnabled: false });
+    mockDoc({ kdsAppEnabled: true, comandaAppEnabled: false, totemAppEnabled: false, instagramAutomationEnabled: false });
     const repository = new PlatformConfigMongooseRepository();
     expect(await repository.isKdsAppEnabled()).toBe(true);
     expect(await repository.isComandaAppEnabled()).toBe(false);
     expect(await repository.isTotemAppEnabled()).toBe(false);
+    expect(await repository.isInstagramAutomationEnabled()).toBe(false);
   });
 
-  it('isComandaAppEnabled/isTotemAppEnabled também refletem o documento quando ligados', async () => {
-    mockDoc({ kdsAppEnabled: false, comandaAppEnabled: true, totemAppEnabled: true });
+  it('isComandaAppEnabled/isTotemAppEnabled/isInstagramAutomationEnabled também refletem o documento quando ligados', async () => {
+    mockDoc({ kdsAppEnabled: false, comandaAppEnabled: true, totemAppEnabled: true, instagramAutomationEnabled: true });
     const repository = new PlatformConfigMongooseRepository();
     expect(await repository.isKdsAppEnabled()).toBe(false);
     expect(await repository.isComandaAppEnabled()).toBe(true);
     expect(await repository.isTotemAppEnabled()).toBe(true);
+    expect(await repository.isInstagramAutomationEnabled()).toBe(true);
+  });
+
+  // (ajuste 11/11/2026, pedido explícito do usuário) — `getSnapshot` devolve booleano + carimbo de
+  // ativação de cada switch, usado pelo controller só pra calcular a tag "Novo" do menu.
+  describe('getSnapshot', () => {
+    it('sem documento, devolve tudo desligado e sem nenhum carimbo', async () => {
+      mockDoc(null);
+      const snapshot = await new PlatformConfigMongooseRepository().getSnapshot();
+      expect(snapshot).toEqual({
+        cnpjIntegrationsEnabled: false,
+        cnpjIntegrationsEnabledAt: undefined,
+        kdsAppEnabled: false,
+        kdsAppEnabledAt: undefined,
+        comandaAppEnabled: false,
+        comandaAppEnabledAt: undefined,
+        totemAppEnabled: false,
+        totemAppEnabledAt: undefined,
+        instagramAutomationEnabled: false,
+        instagramAutomationEnabledAt: undefined,
+      });
+    });
+
+    it('devolve o carimbo de ativação de cada switch junto do booleano', async () => {
+      const kdsAppEnabledAt = new Date('2026-11-05T12:00:00.000Z');
+      mockDoc({ kdsAppEnabled: true, kdsAppEnabledAt });
+      const snapshot = await new PlatformConfigMongooseRepository().getSnapshot();
+      expect(snapshot.kdsAppEnabled).toBe(true);
+      expect(snapshot.kdsAppEnabledAt).toEqual(kdsAppEnabledAt);
+      // Os outros switches continuam desligados e sem carimbo, independentes do KDS.
+      expect(snapshot.comandaAppEnabled).toBe(false);
+      expect(snapshot.comandaAppEnabledAt).toBeUndefined();
+    });
   });
 });

@@ -551,6 +551,18 @@ describe('RestaurantsController', () => {
       expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ defaultProductImageUrl }));
     });
 
+    // Bug real (2026-11-11): clicar em "remover imagem padrão" no front mandava `undefined`, que
+    // o JSON.stringify descarta antes do PUT chegar aqui — a imagem antiga nunca era limpa.
+    // `null` explícito é o sinal de remoção que de fato chega no `$set` do Mongo.
+    it('PUT /restaurants/me com defaultProductImageUrl: null persiste null (remove a imagem configurada)', async () => {
+      const { repository, routes } = setup({ updateProfile: jest.fn().mockResolvedValue(buildRestaurant({ defaultProductImageUrl: undefined })) });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['PUT /restaurants/me'], { body: { defaultProductImageUrl: null } }, { json });
+
+      expect(repository.updateProfile).toHaveBeenCalledWith('1', { defaultProductImageUrl: null });
+    });
+
     it('rejeita PUT /restaurants/me com defaultProductImageUrl que não é uma URL', async () => {
       const { routes } = setup();
 

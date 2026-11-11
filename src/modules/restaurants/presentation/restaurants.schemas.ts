@@ -62,8 +62,10 @@ export const restaurantProfileSchema = z
     // propósito (diferente de `logoUrl`/`primaryColor` acima): a maioria dos restaurantes nunca
     // configura isso, então o form da retaguarda manda `undefined` (chave omitida) quando vazio,
     // não uma string vazia — não pode falhar `.url()` no primeiro "Salvar" de quem nunca mexeu
-    // nesse campo.
-    defaultProductImageUrl: z.string().url().optional(),
+    // nesse campo. `.nullable()` adicionado depois: `null` explícito é o sinal de "remover a
+    // imagem já configurada" (distinto de campo omitido = "nunca configurou") — ver
+    // `restaurant.repository.interface.ts`.
+    defaultProductImageUrl: z.string().url().optional().nullable(),
     address: z.object({
       street: z.string().min(1),
       number: z.string().min(1),

@@ -69,7 +69,12 @@ export type RestaurantProfileUpdate = Partial<
     | 'asaasTransferPixKey'
     | 'asaasTransferPixKeyType'
   >
->;
+> & {
+  // specs/0031-imagem-padrao-disponibilidade-checkout-ajustes — `null` explícito (distinto de
+  // campo omitido) é o único jeito de o form "remover a imagem padrão" sem mandar o perfil
+  // inteiro de novo: `undefined` é descartado pelo JSON.stringify antes de chegar aqui.
+  defaultProductImageUrl?: string | null;
+};
 
 export interface IRestaurantRepository {
   /** specs/0038-autocadastro-restaurante REQ-2 — os demais campos nascem com o default já
@@ -89,6 +94,15 @@ export interface IRestaurantRepository {
     allowCustomerCancelOrder?: boolean;
     productImageOnRight?: boolean;
     category?: string;
+    /** Pedido explícito do usuário (11/11/2026) — autocadastro nasce com a identidade visual
+     * padrão da plataforma (cor da marca), em vez de `primaryColor`/`onPrimaryColor` ausentes
+     * (sem default no schema) até o dono configurar de verdade na retaguarda. */
+    primaryColor?: string;
+    onPrimaryColor?: string;
+    /** Pedido explícito do usuário (11/11/2026) — mesmo racional de `primaryColor` acima: nasce
+     * com "Fundo branco", em vez do default `false`/"Fundo colorido" do schema (mantido pros
+     * demais caminhos de criação). */
+    useWhiteBackground?: boolean;
     /** specs/0062-confirmar-pedido-whatsapp-restaurante REQ-3 — grava de verdade no autocadastro
      * (não só serve como fallback em memória no builder). */
     newOrderRestaurantWhatsAppTemplate?: string;

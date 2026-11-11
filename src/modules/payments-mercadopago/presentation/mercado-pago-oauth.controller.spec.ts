@@ -56,6 +56,8 @@ describe('MercadoPagoOAuthController (specs/0170-integracao-mercado-pago)', () =
       isKdsAppEnabled: jest.fn().mockResolvedValue(false),
       isComandaAppEnabled: jest.fn().mockResolvedValue(false),
       isTotemAppEnabled: jest.fn().mockResolvedValue(false),
+      isInstagramAutomationEnabled: jest.fn().mockResolvedValue(false),
+      getSnapshot: jest.fn(),
     };
     const { restaurantRepository, routes } = setup({ platformConfigRepository });
 

@@ -18,6 +18,21 @@ const platformConfigSchema = new Schema(
     kdsAppEnabled: { type: Boolean, default: false },
     comandaAppEnabled: { type: Boolean, default: false },
     totemAppEnabled: { type: Boolean, default: false },
+    // (ajuste 11/11/2026, pedido explícito do usuário) — mesma mecânica dos 3 switches acima,
+    // libera ou não "Automação Instagram" no menu da retaguarda.
+    instagramAutomationEnabled: { type: Boolean, default: false },
+    // (ajuste 11/11/2026, pedido explícito do usuário) — carimbo de quando cada switch virou
+    // `true` (gravado pelo script de ativação, nunca pelo usuário diretamente), usado só pra
+    // calcular a tag "Novo" no menu (10 dias desde a ativação, ver `platform-config.controller.ts`
+    // `isNew`). Sem default — ausente = nunca foi ativado. Desligar o switch NÃO limpa o carimbo
+    // (não precisa: `isNew` já exige `enabled === true` antes de olhar a data), mas ativar de novo
+    // sempre regrava com a data atual — reinicia a contagem dos 10 dias a cada reativação, pedido
+    // explícito do usuário.
+    cnpjIntegrationsEnabledAt: { type: Date },
+    kdsAppEnabledAt: { type: Date },
+    comandaAppEnabledAt: { type: Date },
+    totemAppEnabledAt: { type: Date },
+    instagramAutomationEnabledAt: { type: Date },
   },
   { _id: false, timestamps: true },
 );

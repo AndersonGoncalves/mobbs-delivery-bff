@@ -102,6 +102,13 @@ export class RestaurantSignupController extends BaseRouter {
         deliveryFeeMode: 'free',
         deliveryFeeCents: 0,
         welcomeMessage: buildDefaultWelcomeMessage(businessType),
+        // Pedido explícito do usuário (11/11/2026) — autocadastro nasce com a identidade visual
+        // padrão da plataforma, em vez de primaryColor/onPrimaryColor ausentes (sem default no
+        // schema) e useWhiteBackground colorido (default `false` do schema), até o dono
+        // configurar de verdade na retaguarda (App do cliente).
+        primaryColor: '#3E44E8',
+        onPrimaryColor: '#FFFFFF',
+        useWhiteBackground: true,
       });
       await this.restaurantOperatorRepository.create(restaurant.id, email, 'dono', ownerName);
       if (referrerCustomerId) {
