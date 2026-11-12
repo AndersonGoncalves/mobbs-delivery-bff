@@ -59,8 +59,9 @@ export class MercadoPagoOAuthController extends BaseRouter {
     });
 
     application.post('/restaurants/me/mercadopago/callback', ...operatorAuthenticated, async (req: Request, res: Response) => {
-      // specs/0201-controle-integracoes-cnpj-plataforma REQ-2/ADR-1 — defesa em profundidade.
-      if (this.platformConfigRepository && !(await this.platformConfigRepository.isCnpjIntegrationsEnabled())) {
+      // specs/0209-desacoplar-integracoes-cnpj-plataforma (substitui specs/0201 REQ-2/ADR-1) —
+      // defesa em profundidade, switch próprio do Mercado Pago, independente do Asaas.
+      if (this.platformConfigRepository && !(await this.platformConfigRepository.isMercadoPagoIntegrationEnabled())) {
         throw new ForbiddenError('Integração com Mercado Pago indisponível no momento');
       }
       const input = parseBody(mercadoPagoOAuthCallbackSchema, req.body);

@@ -7,23 +7,35 @@ function mockDoc(data: Record<string, unknown> | null) {
   jest.spyOn(PlatformConfigModel, 'findById').mockReturnValue(query);
 }
 
-describe('PlatformConfigMongooseRepository (specs/0201-controle-integracoes-cnpj-plataforma)', () => {
+describe('PlatformConfigMongooseRepository (specs/0209-desacoplar-integracoes-cnpj-plataforma)', () => {
   afterEach(() => jest.restoreAllMocks());
 
   // ADR-4 — fail-safe: sem documento (ambiente novo, nunca configurado), o valor efetivo é `false`.
-  it('AC-6: sem documento, isCnpjIntegrationsEnabled devolve false', async () => {
+  it('AC-6: sem documento, isAsaasIntegrationEnabled/isMercadoPagoIntegrationEnabled/isIfoodIntegrationEnabled/isNinetyNineFoodIntegrationEnabled devolvem false', async () => {
     mockDoc(null);
-    expect(await new PlatformConfigMongooseRepository().isCnpjIntegrationsEnabled()).toBe(false);
+    const repository = new PlatformConfigMongooseRepository();
+    expect(await repository.isAsaasIntegrationEnabled()).toBe(false);
+    expect(await repository.isMercadoPagoIntegrationEnabled()).toBe(false);
+    expect(await repository.isIfoodIntegrationEnabled()).toBe(false);
+    expect(await repository.isNinetyNineFoodIntegrationEnabled()).toBe(false);
   });
 
-  it('documento com cnpjIntegrationsEnabled: true devolve true', async () => {
-    mockDoc({ cnpjIntegrationsEnabled: true });
-    expect(await new PlatformConfigMongooseRepository().isCnpjIntegrationsEnabled()).toBe(true);
+  it('cada switch de integração reflete só o próprio campo, independente dos outros', async () => {
+    mockDoc({ asaasIntegrationEnabled: true, mercadoPagoIntegrationEnabled: false, ifoodIntegrationEnabled: false, ninetyNineFoodIntegrationEnabled: false });
+    const repository = new PlatformConfigMongooseRepository();
+    expect(await repository.isAsaasIntegrationEnabled()).toBe(true);
+    expect(await repository.isMercadoPagoIntegrationEnabled()).toBe(false);
+    expect(await repository.isIfoodIntegrationEnabled()).toBe(false);
+    expect(await repository.isNinetyNineFoodIntegrationEnabled()).toBe(false);
   });
 
-  it('documento com cnpjIntegrationsEnabled: false devolve false', async () => {
-    mockDoc({ cnpjIntegrationsEnabled: false });
-    expect(await new PlatformConfigMongooseRepository().isCnpjIntegrationsEnabled()).toBe(false);
+  it('isMercadoPagoIntegrationEnabled/isIfoodIntegrationEnabled/isNinetyNineFoodIntegrationEnabled também refletem o documento quando ligados', async () => {
+    mockDoc({ asaasIntegrationEnabled: false, mercadoPagoIntegrationEnabled: true, ifoodIntegrationEnabled: true, ninetyNineFoodIntegrationEnabled: true });
+    const repository = new PlatformConfigMongooseRepository();
+    expect(await repository.isAsaasIntegrationEnabled()).toBe(false);
+    expect(await repository.isMercadoPagoIntegrationEnabled()).toBe(true);
+    expect(await repository.isIfoodIntegrationEnabled()).toBe(true);
+    expect(await repository.isNinetyNineFoodIntegrationEnabled()).toBe(true);
   });
 
   // (ajuste 10/11/2026, pedido explícito do usuário) — mesmo fail-safe (ADR-4) e mesma
@@ -62,8 +74,14 @@ describe('PlatformConfigMongooseRepository (specs/0201-controle-integracoes-cnpj
       mockDoc(null);
       const snapshot = await new PlatformConfigMongooseRepository().getSnapshot();
       expect(snapshot).toEqual({
-        cnpjIntegrationsEnabled: false,
-        cnpjIntegrationsEnabledAt: undefined,
+        asaasIntegrationEnabled: false,
+        asaasIntegrationEnabledAt: undefined,
+        mercadoPagoIntegrationEnabled: false,
+        mercadoPagoIntegrationEnabledAt: undefined,
+        ifoodIntegrationEnabled: false,
+        ifoodIntegrationEnabledAt: undefined,
+        ninetyNineFoodIntegrationEnabled: false,
+        ninetyNineFoodIntegrationEnabledAt: undefined,
         kdsAppEnabled: false,
         kdsAppEnabledAt: undefined,
         comandaAppEnabled: false,

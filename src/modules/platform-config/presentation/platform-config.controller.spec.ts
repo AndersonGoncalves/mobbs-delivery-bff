@@ -6,7 +6,10 @@ type Handler = (req: Request, res: Response) => Promise<void>;
 
 function buildSnapshot(overrides: Partial<PlatformConfigSnapshot> = {}): PlatformConfigSnapshot {
   return {
-    cnpjIntegrationsEnabled: false,
+    asaasIntegrationEnabled: false,
+    mercadoPagoIntegrationEnabled: false,
+    ifoodIntegrationEnabled: false,
+    ninetyNineFoodIntegrationEnabled: false,
     kdsAppEnabled: false,
     comandaAppEnabled: false,
     totemAppEnabled: false,
@@ -17,7 +20,10 @@ function buildSnapshot(overrides: Partial<PlatformConfigSnapshot> = {}): Platfor
 
 function setup(snapshot: PlatformConfigSnapshot = buildSnapshot()) {
   const platformConfigRepository: IPlatformConfigRepository = {
-    isCnpjIntegrationsEnabled: jest.fn(),
+    isAsaasIntegrationEnabled: jest.fn(),
+    isMercadoPagoIntegrationEnabled: jest.fn(),
+    isIfoodIntegrationEnabled: jest.fn(),
+    isNinetyNineFoodIntegrationEnabled: jest.fn(),
     isKdsAppEnabled: jest.fn(),
     isComandaAppEnabled: jest.fn(),
     isTotemAppEnabled: jest.fn(),
@@ -35,13 +41,19 @@ function setup(snapshot: PlatformConfigSnapshot = buildSnapshot()) {
   return { platformConfigRepository, run };
 }
 
-describe('PlatformConfigController (specs/0201-controle-integracoes-cnpj-plataforma)', () => {
+describe('PlatformConfigController (specs/0209-desacoplar-integracoes-cnpj-plataforma)', () => {
   // ADR-3 — endpoint público, sem auth (não há middleware antes do handler na rota registrada).
   it('AC-6: GET /platform/config é público e devolve tudo desligado por padrão', async () => {
     const { json } = await setup().run('GET /platform/config');
     expect(json).toHaveBeenCalledWith(200, {
-      cnpjIntegrationsEnabled: false,
-      cnpjIntegrationsIsNew: false,
+      asaasIntegrationEnabled: false,
+      asaasIntegrationIsNew: false,
+      mercadoPagoIntegrationEnabled: false,
+      mercadoPagoIntegrationIsNew: false,
+      ifoodIntegrationEnabled: false,
+      ifoodIntegrationIsNew: false,
+      ninetyNineFoodIntegrationEnabled: false,
+      ninetyNineFoodIntegrationIsNew: false,
       kdsAppEnabled: false,
       kdsAppIsNew: false,
       comandaAppEnabled: false,
@@ -53,17 +65,35 @@ describe('PlatformConfigController (specs/0201-controle-integracoes-cnpj-platafo
     });
   });
 
-  it('AC-5: GET /platform/config devolve cnpjIntegrationsEnabled: true quando o switch está ligado', async () => {
-    const { json } = await setup(buildSnapshot({ cnpjIntegrationsEnabled: true })).run('GET /platform/config');
-    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ cnpjIntegrationsEnabled: true }));
+  it('AC-5: GET /platform/config devolve asaasIntegrationEnabled: true quando o switch está ligado, independente do Mercado Pago', async () => {
+    const { json } = await setup(buildSnapshot({ asaasIntegrationEnabled: true })).run('GET /platform/config');
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ asaasIntegrationEnabled: true, mercadoPagoIntegrationEnabled: false }));
+  });
+
+  it('devolve mercadoPagoIntegrationEnabled: true quando o switch está ligado, independente do Asaas', async () => {
+    const { json } = await setup(buildSnapshot({ mercadoPagoIntegrationEnabled: true })).run('GET /platform/config');
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ mercadoPagoIntegrationEnabled: true, asaasIntegrationEnabled: false }));
+  });
+
+  it('devolve ifoodIntegrationEnabled/ninetyNineFoodIntegrationEnabled, cada um independente dos outros', async () => {
+    const { json } = await setup(buildSnapshot({ ifoodIntegrationEnabled: true })).run('GET /platform/config');
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({
+      ifoodIntegrationEnabled: true,
+      ninetyNineFoodIntegrationEnabled: false,
+      asaasIntegrationEnabled: false,
+      mercadoPagoIntegrationEnabled: false,
+    }));
   });
 
   // (ajuste 10/11/2026, pedido explícito do usuário) — os switches de app, cada um
-  // independente dos outros (e do switch de CNPJ). (ajuste 11/11/2026) — Automação Instagram junto.
+  // independente dos outros (e dos switches de integração). (ajuste 11/11/2026) — Automação Instagram junto.
   it('devolve kdsAppEnabled/comandaAppEnabled/totemAppEnabled/instagramAutomationEnabled, cada um independente dos outros', async () => {
     const { json } = await setup(buildSnapshot({ kdsAppEnabled: true })).run('GET /platform/config');
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({
-      cnpjIntegrationsEnabled: false,
+      asaasIntegrationEnabled: false,
+      mercadoPagoIntegrationEnabled: false,
+      ifoodIntegrationEnabled: false,
+      ninetyNineFoodIntegrationEnabled: false,
       kdsAppEnabled: true,
       comandaAppEnabled: false,
       totemAppEnabled: false,

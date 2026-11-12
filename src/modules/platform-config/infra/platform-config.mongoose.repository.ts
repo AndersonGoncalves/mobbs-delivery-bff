@@ -2,9 +2,24 @@ import type { IPlatformConfigRepository, PlatformConfigSnapshot } from '../domai
 import { PLATFORM_CONFIG_SINGLETON_ID, PlatformConfigModel } from './platform-config.mongoose.model';
 
 export class PlatformConfigMongooseRepository implements IPlatformConfigRepository {
-  async isCnpjIntegrationsEnabled(): Promise<boolean> {
+  async isAsaasIntegrationEnabled(): Promise<boolean> {
     const doc = await PlatformConfigModel.findById(PLATFORM_CONFIG_SINGLETON_ID).lean();
-    return doc?.cnpjIntegrationsEnabled ?? false;
+    return doc?.asaasIntegrationEnabled ?? false;
+  }
+
+  async isMercadoPagoIntegrationEnabled(): Promise<boolean> {
+    const doc = await PlatformConfigModel.findById(PLATFORM_CONFIG_SINGLETON_ID).lean();
+    return doc?.mercadoPagoIntegrationEnabled ?? false;
+  }
+
+  async isIfoodIntegrationEnabled(): Promise<boolean> {
+    const doc = await PlatformConfigModel.findById(PLATFORM_CONFIG_SINGLETON_ID).lean();
+    return doc?.ifoodIntegrationEnabled ?? false;
+  }
+
+  async isNinetyNineFoodIntegrationEnabled(): Promise<boolean> {
+    const doc = await PlatformConfigModel.findById(PLATFORM_CONFIG_SINGLETON_ID).lean();
+    return doc?.ninetyNineFoodIntegrationEnabled ?? false;
   }
 
   async isKdsAppEnabled(): Promise<boolean> {
@@ -30,8 +45,14 @@ export class PlatformConfigMongooseRepository implements IPlatformConfigReposito
   async getSnapshot(): Promise<PlatformConfigSnapshot> {
     const doc = await PlatformConfigModel.findById(PLATFORM_CONFIG_SINGLETON_ID).lean();
     return {
-      cnpjIntegrationsEnabled: doc?.cnpjIntegrationsEnabled ?? false,
-      cnpjIntegrationsEnabledAt: doc?.cnpjIntegrationsEnabledAt,
+      asaasIntegrationEnabled: doc?.asaasIntegrationEnabled ?? false,
+      asaasIntegrationEnabledAt: doc?.asaasIntegrationEnabledAt,
+      mercadoPagoIntegrationEnabled: doc?.mercadoPagoIntegrationEnabled ?? false,
+      mercadoPagoIntegrationEnabledAt: doc?.mercadoPagoIntegrationEnabledAt,
+      ifoodIntegrationEnabled: doc?.ifoodIntegrationEnabled ?? false,
+      ifoodIntegrationEnabledAt: doc?.ifoodIntegrationEnabledAt,
+      ninetyNineFoodIntegrationEnabled: doc?.ninetyNineFoodIntegrationEnabled ?? false,
+      ninetyNineFoodIntegrationEnabledAt: doc?.ninetyNineFoodIntegrationEnabledAt,
       kdsAppEnabled: doc?.kdsAppEnabled ?? false,
       kdsAppEnabledAt: doc?.kdsAppEnabledAt,
       comandaAppEnabled: doc?.comandaAppEnabled ?? false,

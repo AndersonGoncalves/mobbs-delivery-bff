@@ -32,10 +32,11 @@ export class AsaasOnboardingController extends BaseRouter {
     super();
   }
 
-  // specs/0201-controle-integracoes-cnpj-plataforma REQ-2/ADR-1 — defesa em profundidade: o
-  // switch também bloqueia aqui, não só esconde o menu na UI.
-  private async assertCnpjIntegrationsEnabled(): Promise<void> {
-    if (this.platformConfigRepository && !(await this.platformConfigRepository.isCnpjIntegrationsEnabled())) {
+  // specs/0209-desacoplar-integracoes-cnpj-plataforma (substitui specs/0201 REQ-2/ADR-1) — defesa
+  // em profundidade: o switch (agora próprio do Asaas, independente do Mercado Pago) também
+  // bloqueia aqui, não só esconde o menu na UI.
+  private async assertAsaasIntegrationEnabled(): Promise<void> {
+    if (this.platformConfigRepository && !(await this.platformConfigRepository.isAsaasIntegrationEnabled())) {
       throw new ForbiddenError('Integração com Asaas (subconta) indisponível no momento');
     }
   }
@@ -48,7 +49,7 @@ export class AsaasOnboardingController extends BaseRouter {
     ];
 
     application.post('/restaurants/me/asaas/subaccount', ...operatorAuthenticated, async (req: Request, res: Response) => {
-      await this.assertCnpjIntegrationsEnabled();
+      await this.assertAsaasIntegrationEnabled();
       const input = parseBody(createAsaasSubaccountSchema, req.body);
 
       // Achado real (pedido explícito do usuário) — se já existe uma subconta vinculada antes
@@ -109,7 +110,7 @@ export class AsaasOnboardingController extends BaseRouter {
     // `forgetAsaasSubaccount` (`previousAsaasSubaccounts`) de volta aos campos ativos, sem
     // chamar o Asaas de novo (mesmo espírito de "Reativar" sobre `disconnectAsaasSubaccount`).
     application.post('/restaurants/me/asaas/subaccount/reconnect', ...operatorAuthenticated, async (req: Request, res: Response) => {
-      await this.assertCnpjIntegrationsEnabled();
+      await this.assertAsaasIntegrationEnabled();
       const { asaasAccountId } = parseBody(reconnectAsaasSubaccountSchema, req.body);
       await this.restaurantRepository.reconnectPreviousAsaasSubaccount(req.restaurantId!, asaasAccountId);
       res.json(200, { onlinePaymentsEnabled: true, asaasAccountId });

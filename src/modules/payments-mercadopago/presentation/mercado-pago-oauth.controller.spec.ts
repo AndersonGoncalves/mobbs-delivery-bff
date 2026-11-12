@@ -49,10 +49,13 @@ describe('MercadoPagoOAuthController (specs/0170-integracao-mercado-pago)', () =
     return { restaurantRepository, routes };
   }
 
-  // specs/0201-controle-integracoes-cnpj-plataforma REQ-2.
-  it('specs/0201: switch desabilitado rejeita a conexão sem chamar o Mercado Pago', async () => {
+  // specs/0209-desacoplar-integracoes-cnpj-plataforma REQ-2 (substitui specs/0201 REQ-2).
+  it('specs/0209: switch do Mercado Pago desabilitado rejeita a conexão sem chamar o Mercado Pago', async () => {
     const platformConfigRepository: IPlatformConfigRepository = {
-      isCnpjIntegrationsEnabled: jest.fn().mockResolvedValue(false),
+      isAsaasIntegrationEnabled: jest.fn().mockResolvedValue(false),
+      isMercadoPagoIntegrationEnabled: jest.fn().mockResolvedValue(false),
+      isIfoodIntegrationEnabled: jest.fn().mockResolvedValue(false),
+      isNinetyNineFoodIntegrationEnabled: jest.fn().mockResolvedValue(false),
       isKdsAppEnabled: jest.fn().mockResolvedValue(false),
       isComandaAppEnabled: jest.fn().mockResolvedValue(false),
       isTotemAppEnabled: jest.fn().mockResolvedValue(false),
@@ -66,6 +69,25 @@ describe('MercadoPagoOAuthController (specs/0170-integracao-mercado-pago)', () =
     ).rejects.toThrow('Integração com Mercado Pago indisponível no momento');
     expect(restaurantRepository.saveMercadoPagoTokens).not.toHaveBeenCalled();
     expect(MockedMercadoPagoClient.prototype.exchangeCodeForToken).not.toHaveBeenCalled();
+  });
+
+  it('specs/0209: switch do Mercado Pago habilitado (independente do Asaas) permite a conexão', async () => {
+    const platformConfigRepository: IPlatformConfigRepository = {
+      isAsaasIntegrationEnabled: jest.fn().mockResolvedValue(false),
+      isMercadoPagoIntegrationEnabled: jest.fn().mockResolvedValue(true),
+      isIfoodIntegrationEnabled: jest.fn().mockResolvedValue(false),
+      isNinetyNineFoodIntegrationEnabled: jest.fn().mockResolvedValue(false),
+      isKdsAppEnabled: jest.fn().mockResolvedValue(false),
+      isComandaAppEnabled: jest.fn().mockResolvedValue(false),
+      isTotemAppEnabled: jest.fn().mockResolvedValue(false),
+      isInstagramAutomationEnabled: jest.fn().mockResolvedValue(false),
+      getSnapshot: jest.fn(),
+    };
+    const { restaurantRepository, routes } = setup({ platformConfigRepository });
+
+    await runOperatorChain(routes['POST /restaurants/me/mercadopago/callback'], { restaurantId: 'r-1', body: { code: 'code-1' } }, { json: jest.fn(), send: jest.fn() });
+
+    expect(restaurantRepository.saveMercadoPagoTokens).toHaveBeenCalled();
   });
 
   it('AC-1: operador dono/gerente troca o code por tokens e persiste sem expor access_token/refresh_token', async () => {

@@ -3,19 +3,20 @@ import { BaseRouter } from '../../../shared/router/base.router';
 import type { IPlatformConfigRepository } from '../domain/platform-config.repository.interface';
 
 /**
- * specs/0201-controle-integracoes-cnpj-plataforma — endpoint público (ADR-3: não é dado
- * sensível nem específico de restaurante, precisa estar disponível antes até do login, ex. pra
- * montar a tela de checkout). App cliente e retaguarda leem o mesmo valor daqui pra esconder
- * Asaas subconta/Mercado Pago/Cartão de Crédito Online enquanto desabilitado.
+ * specs/0209-desacoplar-integracoes-cnpj-plataforma — endpoint público (ADR-3 de specs/0201: não
+ * é dado sensível nem específico de restaurante, precisa estar disponível antes até do login, ex.
+ * pra montar a tela de checkout). App cliente e retaguarda leem os mesmos valores daqui pra
+ * esconder Asaas subconta/Mercado Pago/iFood/99Food/Cartão de Crédito Online, cada um pelo seu
+ * próprio switch (antes era um switch único, `cnpjIntegrationsEnabled`, specs/0201).
  *
  * (ajuste 10/11/2026, pedido explícito do usuário) — mesmo endpoint também devolve
  * `kdsAppEnabled`/`comandaAppEnabled`/`totemAppEnabled`, pros respectivos apps (mobbs-delivery-kds/
- * -comanda/-totem) se autoverificarem no boot, mesmo princípio do switch de CNPJ.
+ * -comanda/-totem) se autoverificarem no boot, mesmo princípio dos switches acima.
  *
  * (ajuste 11/11/2026, pedido explícito do usuário) — mais um campo, `instagramAutomationEnabled`,
  * usado pelo menu lateral da retaguarda (`nav-items.tsx`) pra liberar "Automação Instagram".
  *
- * (ajuste 11/11/2026, pedido explícito do usuário, follow-up) — tag "Novo" no menu: mais 5 campos
+ * (ajuste 11/11/2026, pedido explícito do usuário, follow-up) — tag "Novo" no menu: mais campos
  * `<switch>IsNew`, `true` só nos primeiros 10 dias depois do switch correspondente ter virado
  * `true` (`PlatformConfigSnapshot.<switch>EnabledAt`, carimbado pelo script de ativação). Depois
  * dos 10 dias (ou se o switch nunca foi ativado/está desligado), some pra sempre — reativar
@@ -38,8 +39,14 @@ export class PlatformConfigController extends BaseRouter {
     application.get('/platform/config', async (_req: Request, res: Response) => {
       const snapshot = await this.platformConfigRepository.getSnapshot();
       res.json(200, {
-        cnpjIntegrationsEnabled: snapshot.cnpjIntegrationsEnabled,
-        cnpjIntegrationsIsNew: isNew(snapshot.cnpjIntegrationsEnabled, snapshot.cnpjIntegrationsEnabledAt),
+        asaasIntegrationEnabled: snapshot.asaasIntegrationEnabled,
+        asaasIntegrationIsNew: isNew(snapshot.asaasIntegrationEnabled, snapshot.asaasIntegrationEnabledAt),
+        mercadoPagoIntegrationEnabled: snapshot.mercadoPagoIntegrationEnabled,
+        mercadoPagoIntegrationIsNew: isNew(snapshot.mercadoPagoIntegrationEnabled, snapshot.mercadoPagoIntegrationEnabledAt),
+        ifoodIntegrationEnabled: snapshot.ifoodIntegrationEnabled,
+        ifoodIntegrationIsNew: isNew(snapshot.ifoodIntegrationEnabled, snapshot.ifoodIntegrationEnabledAt),
+        ninetyNineFoodIntegrationEnabled: snapshot.ninetyNineFoodIntegrationEnabled,
+        ninetyNineFoodIntegrationIsNew: isNew(snapshot.ninetyNineFoodIntegrationEnabled, snapshot.ninetyNineFoodIntegrationEnabledAt),
         kdsAppEnabled: snapshot.kdsAppEnabled,
         kdsAppIsNew: isNew(snapshot.kdsAppEnabled, snapshot.kdsAppEnabledAt),
         comandaAppEnabled: snapshot.comandaAppEnabled,

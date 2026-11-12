@@ -2643,17 +2643,27 @@ describe('OrdersController', () => {
       MockedMercadoPagoClient.prototype.refundPayment = jest.fn().mockResolvedValue(undefined);
     });
 
-    // specs/0201-controle-integracoes-cnpj-plataforma REQ-2 — mesmo com o restaurante já
-    // vinculado, o switch global rejeita primeiro (defesa em profundidade, independente da UI).
-    it('specs/0201: switch desabilitado rejeita creditCardOnline mesmo com Mercado Pago vinculado', async () => {
-      const platformConfigRepository: IPlatformConfigRepository = {
-        isCnpjIntegrationsEnabled: jest.fn().mockResolvedValue(false),
+    // specs/0209-desacoplar-integracoes-cnpj-plataforma REQ-2 (substitui specs/0201 REQ-2) — dois
+    // switches independentes agora: `creditCardOnline` só é aceito se PELO MENOS UM dos dois
+    // estiver ligado, mesmo com o restaurante já vinculado (defesa em profundidade, independente
+    // da UI).
+    function buildPlatformConfigRepository(overrides: Partial<IPlatformConfigRepository> = {}): IPlatformConfigRepository {
+      return {
+        isAsaasIntegrationEnabled: jest.fn().mockResolvedValue(false),
+        isMercadoPagoIntegrationEnabled: jest.fn().mockResolvedValue(false),
+        isIfoodIntegrationEnabled: jest.fn().mockResolvedValue(false),
+        isNinetyNineFoodIntegrationEnabled: jest.fn().mockResolvedValue(false),
         isKdsAppEnabled: jest.fn().mockResolvedValue(false),
         isComandaAppEnabled: jest.fn().mockResolvedValue(false),
         isTotemAppEnabled: jest.fn().mockResolvedValue(false),
         isInstagramAutomationEnabled: jest.fn().mockResolvedValue(false),
         getSnapshot: jest.fn(),
+        ...overrides,
       };
+    }
+
+    it('specs/0209: os dois switches desabilitados rejeitam creditCardOnline mesmo com Mercado Pago vinculado', async () => {
+      const platformConfigRepository = buildPlatformConfigRepository();
       const { routes } = setup({
         restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ mercadoPagoAccessToken: 'token-restaurante' })) },
         platformConfigRepository,
@@ -2669,15 +2679,24 @@ describe('OrdersController', () => {
       expect(MockedMercadoPagoClient.prototype.createPreference).not.toHaveBeenCalled();
     });
 
-    it('specs/0201: switch habilitado permite creditCardOnline normalmente', async () => {
-      const platformConfigRepository: IPlatformConfigRepository = {
-        isCnpjIntegrationsEnabled: jest.fn().mockResolvedValue(true),
-        isKdsAppEnabled: jest.fn().mockResolvedValue(true),
-        isComandaAppEnabled: jest.fn().mockResolvedValue(true),
-        isTotemAppEnabled: jest.fn().mockResolvedValue(true),
-        isInstagramAutomationEnabled: jest.fn().mockResolvedValue(true),
-        getSnapshot: jest.fn(),
-      };
+    it('specs/0209: isMercadoPagoIntegrationEnabled habilitado permite creditCardOnline normalmente', async () => {
+      const platformConfigRepository = buildPlatformConfigRepository({ isMercadoPagoIntegrationEnabled: jest.fn().mockResolvedValue(true) });
+      const { routes } = setup({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ mercadoPagoAccessToken: 'token-restaurante' })) },
+        platformConfigRepository,
+      });
+
+      await runAuthenticatedChain(
+        routes['POST /orders'],
+        { body: buildValidBody({ paymentMethod: 'creditCardOnline' }), user: { uid: 'customer-1' } },
+        { json: jest.fn() },
+      );
+
+      expect(MockedMercadoPagoClient.prototype.createPreference).toHaveBeenCalled();
+    });
+
+    it('specs/0209: isAsaasIntegrationEnabled sozinho já basta (OR, não precisa dos dois)', async () => {
+      const platformConfigRepository = buildPlatformConfigRepository({ isAsaasIntegrationEnabled: jest.fn().mockResolvedValue(true) });
       const { routes } = setup({
         restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ mercadoPagoAccessToken: 'token-restaurante' })) },
         platformConfigRepository,

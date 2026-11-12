@@ -86,10 +86,13 @@ describe('AsaasOnboardingController (specs/0101-integracao-asaas, fase 1)', () =
     expect(payload).toMatchObject({ onlinePaymentsEnabled: true });
   });
 
-  // specs/0201-controle-integracoes-cnpj-plataforma REQ-2.
-  it('specs/0201: switch desabilitado rejeita a criação de subconta sem chamar o Asaas', async () => {
+  // specs/0209-desacoplar-integracoes-cnpj-plataforma REQ-2 (substitui specs/0201 REQ-2).
+  it('specs/0209: switch do Asaas desabilitado rejeita a criação de subconta sem chamar o Asaas', async () => {
     const platformConfigRepository: IPlatformConfigRepository = {
-      isCnpjIntegrationsEnabled: jest.fn().mockResolvedValue(false),
+      isAsaasIntegrationEnabled: jest.fn().mockResolvedValue(false),
+      isMercadoPagoIntegrationEnabled: jest.fn().mockResolvedValue(false),
+      isIfoodIntegrationEnabled: jest.fn().mockResolvedValue(false),
+      isNinetyNineFoodIntegrationEnabled: jest.fn().mockResolvedValue(false),
       isKdsAppEnabled: jest.fn().mockResolvedValue(false),
       isComandaAppEnabled: jest.fn().mockResolvedValue(false),
       isTotemAppEnabled: jest.fn().mockResolvedValue(false),
@@ -108,9 +111,12 @@ describe('AsaasOnboardingController (specs/0101-integracao-asaas, fase 1)', () =
     expect(restaurantRepository.saveAsaasSubaccount).not.toHaveBeenCalled();
   });
 
-  it('specs/0201: switch habilitado permite a criação normalmente', async () => {
+  it('specs/0209: switch do Asaas habilitado permite a criação normalmente', async () => {
     const platformConfigRepository: IPlatformConfigRepository = {
-      isCnpjIntegrationsEnabled: jest.fn().mockResolvedValue(true),
+      isAsaasIntegrationEnabled: jest.fn().mockResolvedValue(true),
+      isMercadoPagoIntegrationEnabled: jest.fn().mockResolvedValue(true),
+      isIfoodIntegrationEnabled: jest.fn().mockResolvedValue(true),
+      isNinetyNineFoodIntegrationEnabled: jest.fn().mockResolvedValue(true),
       isKdsAppEnabled: jest.fn().mockResolvedValue(true),
       isComandaAppEnabled: jest.fn().mockResolvedValue(true),
       isTotemAppEnabled: jest.fn().mockResolvedValue(true),
@@ -211,10 +217,13 @@ describe('AsaasOnboardingController (specs/0101-integracao-asaas, fase 1)', () =
     expect(json).toHaveBeenCalledWith(200, { onlinePaymentsEnabled: true, asaasAccountId: 'acc-antiga' });
   });
 
-  // specs/0201-controle-integracoes-cnpj-plataforma REQ-2.
-  it('specs/0201: switch desabilitado rejeita a reconexão também', async () => {
+  // specs/0209-desacoplar-integracoes-cnpj-plataforma REQ-2 (substitui specs/0201 REQ-2).
+  it('specs/0209: switch do Asaas desabilitado rejeita a reconexão também', async () => {
     const platformConfigRepository: IPlatformConfigRepository = {
-      isCnpjIntegrationsEnabled: jest.fn().mockResolvedValue(false),
+      isAsaasIntegrationEnabled: jest.fn().mockResolvedValue(false),
+      isMercadoPagoIntegrationEnabled: jest.fn().mockResolvedValue(false),
+      isIfoodIntegrationEnabled: jest.fn().mockResolvedValue(false),
+      isNinetyNineFoodIntegrationEnabled: jest.fn().mockResolvedValue(false),
       isKdsAppEnabled: jest.fn().mockResolvedValue(false),
       isComandaAppEnabled: jest.fn().mockResolvedValue(false),
       isTotemAppEnabled: jest.fn().mockResolvedValue(false),
