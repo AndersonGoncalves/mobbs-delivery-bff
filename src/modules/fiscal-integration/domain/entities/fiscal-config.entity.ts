@@ -6,6 +6,10 @@ export type FiscalEnvironment = 'homologacao' | 'producao';
  * eles lança erro explícito até ganharem implementação própria. */
 export type FiscalDocumentType = 'nfce' | 'cfe' | 'nfe';
 
+/** specs/0207-dados-fiscais-cadastro — mesmas 4 opções que a Focus NFe usa no cadastro de empresa
+ * dela (`regime_tributario`: 1/2/3/4). */
+export type FiscalTaxRegime = 'simplesNacional' | 'simplesNacionalExcesso' | 'regimeNormal' | 'mei';
+
 /**
  * specs/0091-integracao-fiscal-focusnfe — configuração fiscal de UM restaurante (coleção
  * própria, `plan.md` — diferente do padrão do iFood, que guarda credenciais direto em
@@ -50,6 +54,15 @@ export interface IFiscalConfig {
    * só por esta integração.
    */
   cnpj: string;
+  /** specs/0207-dados-fiscais-cadastro REQ-1 — opcional. NÃO deriva CST/CSOSN automaticamente do
+   * lado da Focus NFe (confirmado na doc deles) — usado só pra decidir se a emissão automática
+   * segue com o CSOSN genérico já usado hoje (Simples Nacional/excesso/MEI, REQ-2) ou bloqueia com
+   * aviso (Regime Normal, REQ-3), e se a reemissão manual mostra o diálogo de confirmação de risco
+   * (REQ-5, ver `OrderCard.tsx`/`ClosedOrdersPanel.tsx`). Vazio mantém o comportamento de hoje
+   * (assume Simples Nacional, REQ-4). Único campo novo desta spec em `FiscalConfig` — Inscrição
+   * Estadual e CSC foram cortados do escopo (cadastro duplicado do painel da Focus NFe, sem uso
+   * funcional do nosso lado). */
+  taxRegime?: FiscalTaxRegime;
   createdAt: string;
   updatedAt: string;
 }

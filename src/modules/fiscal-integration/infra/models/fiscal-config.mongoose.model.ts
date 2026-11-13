@@ -15,6 +15,9 @@ const fiscalConfigSchema = new Schema(
     autoEmitEnabled: { type: Boolean, required: true, default: true },
     webhookToken: { type: String, required: true },
     cnpj: { type: String, required: true },
+    // specs/0207-dados-fiscais-cadastro REQ-1 — opcional, sem default (vazio mantém o
+    // comportamento de hoje, assume Simples Nacional na emissão).
+    taxRegime: { type: String, enum: ['simplesNacional', 'simplesNacionalExcesso', 'regimeNormal', 'mei'] },
   },
   { timestamps: true },
 );

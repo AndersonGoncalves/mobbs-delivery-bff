@@ -529,3 +529,33 @@ describe('ProductMongooseRepository.listByRestaurantPage (achado de auditoria 20
     expect(findSpy).toHaveBeenCalledWith({ restaurantId: 'r-1', name: { $regex: 'Pizza', $options: 'i' }, isAvailable: true });
   });
 });
+
+// specs/0207-dados-fiscais-cadastro REQ-9/AC-5 — produto gravado antes desta spec (sem `unit` no
+// documento) é tratado como `'UN'` na leitura, mesmo padrão já usado por `isAlcoholic ?? false`.
+describe('ProductMongooseRepository.findManyByIds (specs/0207-dados-fiscais-cadastro)', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('produto sem `unit` (gravado antes desta spec) é lido como "UN"', async () => {
+    jest.spyOn(ProductModel, 'find').mockReturnValue({
+      lean: jest.fn().mockResolvedValue([{ _id: 'p-1', restaurantId: 'r-1', name: 'Produto antigo', price: 10, isAvailable: true }]),
+    } as never);
+    const repository = new ProductMongooseRepository({} as IPromotionRepository);
+
+    const [product] = await repository.findManyByIds(['p-1']);
+
+    expect(product.unit).toBe('UN');
+  });
+
+  it('produto com `unit` cadastrado mantém o valor salvo', async () => {
+    jest.spyOn(ProductModel, 'find').mockReturnValue({
+      lean: jest.fn().mockResolvedValue([{ _id: 'p-1', restaurantId: 'r-1', name: 'Produto', price: 10, isAvailable: true, unit: 'KG' }]),
+    } as never);
+    const repository = new ProductMongooseRepository({} as IPromotionRepository);
+
+    const [product] = await repository.findManyByIds(['p-1']);
+
+    expect(product.unit).toBe('KG');
+  });
+});

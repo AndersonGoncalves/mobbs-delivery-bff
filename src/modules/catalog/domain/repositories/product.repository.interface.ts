@@ -1,5 +1,5 @@
 import { DayOfWeek } from '../../../../shared/utils/day-of-week';
-import { IProduct, IProductAdditionalGroupInput } from '../entities/product.entity';
+import { IProduct, IProductAdditionalGroupInput, ProductCommercialUnit } from '../entities/product.entity';
 
 export type NewProductInput = {
   menuCategoryId: string;
@@ -22,6 +22,11 @@ export type NewProductInput = {
   posId?: string;
   cost?: number;
   ncmCode?: string;
+  /** specs/0207-dados-fiscais-cadastro — ver comentários dos mesmos campos em `IProduct`. */
+  cestCode?: string;
+  gtin?: string;
+  /** default `'UN'` quando ausente (ver `toEntity`/schema Mongoose). */
+  unit?: ProductCommercialUnit;
   activeDays?: DayOfWeek[];
   isAlcoholic?: boolean;
   scheduleStartTime?: string;

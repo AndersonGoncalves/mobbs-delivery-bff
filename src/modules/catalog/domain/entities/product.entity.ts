@@ -91,6 +91,9 @@ export interface IProductAdditionalGroupReference {
 
 export type IProductAdditionalGroupInput = IProductAdditionalGroup | IProductAdditionalGroupReference;
 
+/** specs/0207-dados-fiscais-cadastro REQ-8 */
+export type ProductCommercialUnit = 'UN' | 'KG' | 'L' | 'CX' | 'PC' | 'M';
+
 export interface IProduct {
   id: string;
   restaurantId: string;
@@ -153,6 +156,20 @@ export interface IProduct {
    * nesta v1, sem validação contra a tabela oficial — uso fiscal de verdade fica pra quando
    * `specs/0091-integracao-fiscal-focusnfe` for implementada. */
   ncmCode?: string;
+  /** specs/0207-dados-fiscais-cadastro REQ-6 — CEST, opcional, texto livre (mesmo padrão do
+   * `ncmCode`: sem validação contra a tabela oficial nesta v1). Enviado em `items[].cest` só
+   * quando preenchido (REQ-11) — CEST só é obrigatório pra produto sujeito a Substituição
+   * Tributária, omitir é o comportamento correto pros demais. */
+  cestCode?: string;
+  /** specs/0207-dados-fiscais-cadastro REQ-7 — GTIN (código de barras), opcional, texto livre.
+   * Sem valor, a emissão envia `"SEM GTIN"` (REQ-12, convenção padrão de NFe) — nunca omite o
+   * campo. */
+  gtin?: string;
+  /** specs/0207-dados-fiscais-cadastro REQ-8/REQ-9 — unidade comercial, obrigatória, `'UN'` como
+   * default em produto novo; produto cadastrado antes desta spec sem o campo é tratado como
+   * `'UN'` (migração/backfill via `default` do schema Mongoose, nunca fica inválido). Usada em
+   * `unidade_comercial`/`unidade_tributavel` na emissão (REQ-13) em vez do valor fixo de hoje. */
+  unit: ProductCommercialUnit;
   /** specs/0116-ajustes-cadastro-produto REQ-6/REQ-7 — mesma mecânica de
    * `MenuCategory.activeDays` (`specs/0115`): ausente/vazio = todos os dias; filtro roda
    * client-side (`MenuPageController.load()`, app). */
