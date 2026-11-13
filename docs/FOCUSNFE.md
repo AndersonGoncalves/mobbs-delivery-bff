@@ -11,6 +11,12 @@ nosso sistema — o BFF só usa o token de API depois disso.
 > (modelo 65) apenas; `documentType: 'cfe'|'nfe'` já existem no cadastro (dependem do regime
 > tributário/UF de cada restaurante, decisão fiscal, não do software) mas **lançam erro
 > explícito** se escolhidos (`FocusNfeApiClient.emitCfe`/`emitNfe`) — implementação futura.
+>
+> **Atualização (13/11/2026, pedido explícito do usuário)**: primeiro teste real de ponta a
+> ponta feito, com conta trial + empresa (CNPJ de MEI) cadastrada de verdade na FocusNFe — ver
+> seção 7. Confirma que todo o pipeline técnico (token → emissão → rejeição → exibição na
+> retaguarda → reemissão manual) funciona; o que falta é só cadastro/credenciamento da empresa
+> junto à SEFAZ, fora do nosso sistema e da própria FocusNFe.
 
 ## 1. Cadastro na FocusNFe (feito pelo restaurante, fora do mobbs)
 
@@ -96,6 +102,51 @@ ambiente e resolvidas a partir de `FiscalConfig.environment` (não de `process.e
 homologação: https://homologacao.focusnfe.com.br
 produção:    https://api.focusnfe.com.br
 ```
+
+## 7. Primeiro teste real de ponta a ponta (13/11/2026)
+
+Achado real, pedido explícito do usuário — primeira vez que a integração rodou contra a API real
+da FocusNFe (não um mock), com uma conta trial + empresa cadastrada de verdade (CNPJ de MEI,
+certificado A1 anexado e validado no painel deles). Confirmado direto no MongoDB de produção
+(`mobbs-delivery-bff-mongo-1`, servidor AWS — ver `aws/infra-aws-linux.md`).
+
+**Configuração salva** (`FiscalConfig`, coleção `fiscalConfig`):
+```
+environment: 'homologacao'
+documentType: 'nfce'
+cnpj: '07.456.684/0001-80'
+autoEmitEnabled: true
+productionEnabled: false
+```
+
+**Resultado da reemissão manual** (`Order.fiscal`, pedido real de teste):
+```
+status: 'rejeitado'
+rejectedReason: 'Rejeicao: Emissor nao habilitado para emissao da NF-e/NFC-e'
+```
+
+**O que isso confirma**: o pipeline técnico inteiro funciona — token aceito pela FocusNFe,
+requisição de emissão chegou e foi repassada à SEFAZ, a rejeição da SEFAZ voltou pelo client
+(`FocusNfeApiClient`), foi interpretada corretamente (`FiscalEmissionService.applyResult`) e
+exibida na retaguarda com o motivo exato, com o botão de reemissão funcionando (REQ-4). **Nenhum
+bug de código encontrado.**
+
+**O que falta, fora do nosso sistema**: a mensagem "Emissor não habilitado" vem da SEFAZ do
+estado, não da FocusNFe nem de nós — indica que a empresa (CNPJ) ainda não está devidamente
+credenciada para emitir NFC-e naquele estado. Causas prováveis, em ordem de probabilidade:
+
+1. **Inscrição Estadual não preenchida** no cadastro da empresa na FocusNFe (campo ficou em
+   branco no teste) — sem IE ativa vinculada ao CNPJ, a SEFAZ nunca habilita o emissor.
+2. **Credenciamento específico de NFC-e pendente** — vários estados exigem um passo administrativo
+   separado da IE normal, feito direto no site da SEFAZ estadual ("Credenciamento de Emissor de
+   NFC-e"); não é algo que a FocusNFe ou o nosso sistema resolvem.
+
+Confirmar os dois pontos com o contador do restaurante-piloto antes do próximo teste.
+
+**Cronologia que também validou o comportamento do gatilho automático**: o pedido de teste chegou
+a "entregue" ANTES da configuração fiscal existir — o gatilho automático (`emitForOrder`)
+corretamente não fez nada (sem config = no-op, por design). A rejeição só apareceu depois, via
+clique manual em "Reemitir nota fiscal" — comportamento esperado, não um bug.
 
 ## Fora de escopo (v1)
 
