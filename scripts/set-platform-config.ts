@@ -33,9 +33,10 @@
  *   npm run activate:instagram-automation
  *
  * Ativar (--value=true) também carimba `<key>At` com a data/hora atual — usado só pra calcular a
- * tag "Novo" no menu (10 dias desde a ativação, `isNew` em `platform-config.controller.ts`).
- * Reativar um switch já ligado antes (desligar e ligar de novo) regrava o carimbo com a data
- * atual, reiniciando a contagem — pedido explícito do usuário (11/11/2026).
+ * tag "Novo" no menu (30 dias desde a ativação — era 10, ajuste 13/11/2026 — `isNew` em
+ * `platform-config.controller.ts`). Reativar um switch já ligado antes (desligar e ligar de novo)
+ * regrava o carimbo com a data atual, reiniciando a contagem — pedido explícito do usuário
+ * (11/11/2026).
  */
 import * as dotenv from 'dotenv';
 import mongoose from 'mongoose';

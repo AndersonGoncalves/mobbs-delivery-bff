@@ -106,19 +106,20 @@ describe('PlatformConfigController (specs/0209-desacoplar-integracoes-cnpj-plata
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ instagramAutomationEnabled: true }));
   });
 
-  // (ajuste 11/11/2026, pedido explícito do usuário) — tag "Novo" no menu: cada `<switch>IsNew`
-  // só é `true` nos primeiros 10 dias depois do `<switch>EnabledAt` (carimbado pelo script de
-  // ativação) — depois disso, ou se o switch nunca foi ativado, ou se está desligado, some.
+  // (ajuste 11/11/2026, pedido explícito do usuário; janela 10->30 dias em 13/11/2026, também
+  // pedido explícito) — tag "Novo" no menu: cada `<switch>IsNew` só é `true` nos primeiros 30
+  // dias depois do `<switch>EnabledAt` (carimbado pelo script de ativação) — depois disso, ou se
+  // o switch nunca foi ativado, ou se está desligado, some.
   describe('isNew (tag "Novo" no menu)', () => {
-    it('isNew é true quando o switch foi ativado há menos de 10 dias', async () => {
+    it('isNew é true quando o switch foi ativado há menos de 30 dias', async () => {
       const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
       const { json } = await setup(buildSnapshot({ kdsAppEnabled: true, kdsAppEnabledAt: fiveDaysAgo })).run('GET /platform/config');
       expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ kdsAppIsNew: true }));
     });
 
-    it('isNew é false quando o switch foi ativado há mais de 10 dias', async () => {
-      const elevenDaysAgo = new Date(Date.now() - 11 * 24 * 60 * 60 * 1000);
-      const { json } = await setup(buildSnapshot({ kdsAppEnabled: true, kdsAppEnabledAt: elevenDaysAgo })).run('GET /platform/config');
+    it('isNew é false quando o switch foi ativado há mais de 30 dias', async () => {
+      const thirtyOneDaysAgo = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000);
+      const { json } = await setup(buildSnapshot({ kdsAppEnabled: true, kdsAppEnabledAt: thirtyOneDaysAgo })).run('GET /platform/config');
       expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ kdsAppIsNew: false }));
     });
 

@@ -17,17 +17,18 @@ import type { IPlatformConfigRepository } from '../domain/platform-config.reposi
  * usado pelo menu lateral da retaguarda (`nav-items.tsx`) pra liberar "Automação Instagram".
  *
  * (ajuste 11/11/2026, pedido explícito do usuário, follow-up) — tag "Novo" no menu: mais campos
- * `<switch>IsNew`, `true` só nos primeiros 10 dias depois do switch correspondente ter virado
- * `true` (`PlatformConfigSnapshot.<switch>EnabledAt`, carimbado pelo script de ativação). Depois
- * dos 10 dias (ou se o switch nunca foi ativado/está desligado), some pra sempre — reativar
- * reinicia a contagem (novo carimbo a cada ativação, pedido explícito do usuário). Calculado aqui
- * (não no repositório) porque é regra de apresentação do menu, não do domínio do switch em si.
+ * `<switch>IsNew`, `true` só nos primeiros 30 dias (ajuste 13/11/2026, pedido explícito do
+ * usuário — era 10 dias) depois do switch correspondente ter virado `true`
+ * (`PlatformConfigSnapshot.<switch>EnabledAt`, carimbado pelo script de ativação). Depois da
+ * janela (ou se o switch nunca foi ativado/está desligado), some pra sempre — reativar reinicia a
+ * contagem (novo carimbo a cada ativação, pedido explícito do usuário). Calculado aqui (não no
+ * repositório) porque é regra de apresentação do menu, não do domínio do switch em si.
  */
-const TEN_DAYS_MS = 10 * 24 * 60 * 60 * 1000;
+const NEW_TAG_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
 function isNew(enabled: boolean, enabledAt: Date | undefined): boolean {
   if (!enabled || !enabledAt) return false;
-  return Date.now() - new Date(enabledAt).getTime() < TEN_DAYS_MS;
+  return Date.now() - new Date(enabledAt).getTime() < NEW_TAG_WINDOW_MS;
 }
 
 export class PlatformConfigController extends BaseRouter {
