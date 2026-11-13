@@ -102,7 +102,15 @@ export class FiscalEmissionService {
     }
 
     return {
-      cnpj_emitente: cnpjEmitente,
+      // Achado real (13/11/2026, pedido explícito do usuário — analisar o payload de verdade
+      // enviado à FocusNFe): `FiscalConfig.cnpj` é digitado pelo operador COM máscara
+      // ("07.456.684/0001-80", `FiscalIntegrationPage.tsx` não aplica nenhuma, só valida o
+      // dígito verificador via `isValidCnpj`, que internamente já ignora a máscara) — mas os
+      // exemplos reais da documentação da FocusNFe mostram `cnpj_emitente` sempre como 14 dígitos
+      // puros, sem pontuação ("51916585000125"). Enviar com máscara é a causa mais provável da
+      // rejeição "Emissor não habilitado para emissão da NF-e/NFC-e" (SEFAZ 203: "emissor não
+      // habilitado... ou o CNPJ informado está incorreto") mesmo com CSC/credenciamento OK.
+      cnpj_emitente: cnpjEmitente.replace(/\D/g, ''),
       data_emissao: new Date().toISOString(),
       // '1' = operação presencial — convenção usada mesmo pra venda por delivery/app quando o
       // documento é NFCe de consumidor final (suposição documentada, `docs/FOCUSNFE.md`).

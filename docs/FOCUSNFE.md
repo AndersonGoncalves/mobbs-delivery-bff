@@ -128,20 +128,38 @@ rejectedReason: 'Rejeicao: Emissor nao habilitado para emissao da NF-e/NFC-e'
 **O que isso confirma**: o pipeline técnico inteiro funciona — token aceito pela FocusNFe,
 requisição de emissão chegou e foi repassada à SEFAZ, a rejeição da SEFAZ voltou pelo client
 (`FocusNfeApiClient`), foi interpretada corretamente (`FiscalEmissionService.applyResult`) e
-exibida na retaguarda com o motivo exato, com o botão de reemissão funcionando (REQ-4). **Nenhum
-bug de código encontrado.**
+exibida na retaguarda com o motivo exato, com o botão de reemissão funcionando (REQ-4).
 
-**O que falta, fora do nosso sistema**: a mensagem "Emissor não habilitado" vem da SEFAZ do
-estado, não da FocusNFe nem de nós — indica que a empresa (CNPJ) ainda não está devidamente
-credenciada para emitir NFC-e naquele estado. Causas prováveis, em ordem de probabilidade:
+**O que faltava, fora do nosso sistema (resolvido pelo usuário em seguida)**: a mensagem
+"Emissor não habilitado" vem da SEFAZ do estado — o usuário preencheu Inscrição Estadual/Regime
+Tributário na FocusNFe (já estavam corretos) e completou o credenciamento de NFC-e + geração do
+CSC de homologação direto no portal da SEFAZ-CE (`nfceh.sefaz.ce.gov.br`). Mesmo assim, **a
+rejeição continuou idêntica** depois de reemitir — sinal de que a causa não era (só) cadastro na
+SEFAZ.
 
-1. **Inscrição Estadual não preenchida** no cadastro da empresa na FocusNFe (campo ficou em
-   branco no teste) — sem IE ativa vinculada ao CNPJ, a SEFAZ nunca habilita o emissor.
-2. **Credenciamento específico de NFC-e pendente** — vários estados exigem um passo administrativo
-   separado da IE normal, feito direto no site da SEFAZ estadual ("Credenciamento de Emissor de
-   NFC-e"); não é algo que a FocusNFe ou o nosso sistema resolvem.
+### 7.1. Bug real encontrado: CNPJ enviado com máscara (13/11/2026)
 
-Confirmar os dois pontos com o contador do restaurante-piloto antes do próximo teste.
+Pedido explícito do usuário — "analise o XML/payload que enviamos" — ao reler
+`FiscalEmissionService.buildEmitInput` com a config real do banco de produção, achado: `cnpj_emitente`
+usava `FiscalConfig.cnpj` **direto, sem normalizar**. `FiscalIntegrationPage.tsx` não aplica
+nenhuma máscara/remoção de pontuação no campo "CNPJ do emitente" — só valida o dígito verificador
+(`isValidCnpj`, que internamente já ignora pontuação pra validar, mas devolve só um booleano, não
+a versão normalizada) — então o valor salvo e reenviado pra API era literalmente
+`"07.456.684/0001-80"` (com pontos e barra), enquanto os exemplos reais da documentação da
+FocusNFe mostram `cnpj_emitente` sempre como 14 dígitos puros (ex.: `"51916585000125"`). A SEFAZ
+documenta justamente um código de rejeição (203) para "emissor não habilitado... ou o CNPJ
+informado está incorreto" — bate exatamente com o sintoma.
+
+**Corrigido**: `cnpj_emitente: cnpjEmitente.replace(/\D/g, '')` em `buildEmitInput`
+(`fiscal-emission.service.ts`) — normaliza pra 14 dígitos puros na hora de montar o payload,
+independente de como o operador digitou no formulário. `FiscalConfig.cnpj` continua guardado com
+a máscara (não mudamos o que é persistido, só o que é enviado à API) — teste novo cobre isso
+(`fiscal-emission.service.spec.ts`, "normaliza o CNPJ do emitente...").
+
+**Ainda não confirmado**: se essa era a ÚNICA causa da rejeição, ou se o credenciamento/CSC da
+SEFAZ também precisava do tempo de propagação já levantado antes — só um novo teste real (depois
+desta correção) vai confirmar. Próximo passo: reemitir os pedidos de teste e ver se a rejeição
+muda.
 
 **Cronologia que também validou o comportamento do gatilho automático**: o pedido de teste chegou
 a "entregue" ANTES da configuração fiscal existir — o gatilho automático (`emitForOrder`)
