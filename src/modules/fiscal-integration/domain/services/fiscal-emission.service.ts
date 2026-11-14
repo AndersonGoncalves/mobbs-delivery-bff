@@ -192,7 +192,7 @@ export class FiscalEmissionService {
       const input = await this.buildEmitInput(order, config.cnpj);
 
       const result = await client.emitNfce(order.id, input);
-      await this.applyResult(order.id, result);
+      await this.applyResult(order.id, result, config.environment);
     } catch (error) {
       await this.orderRepository.updateFiscal(order.id, {
         status: 'rejeitado',
@@ -202,9 +202,28 @@ export class FiscalEmissionService {
     }
   }
 
-  private async applyResult(orderId: string, result: FocusNfeDocumentResult): Promise<void> {
+  /** Achado real (14/11/2026) — `caminho_danfe` devolvido pela FocusNFe é relativo ao domínio
+   * DELA (`homologacao.focusnfe.com.br`/`api.focusnfe.com.br`), nunca ao nosso; salvar o valor
+   * cru (como fazíamos antes) virava um link quebrado (404) no front, que resolve o `href` contra
+   * `bsdelivery.com.br`. Resolve pra URL absoluta aqui, na escrita, uma vez só — nunca no front. */
+  private resolveDocumentUrl(path: string | undefined, environment: IFiscalConfig['environment']): string | undefined {
+    if (!path) return path;
+    if (/^https?:\/\//.test(path)) return path;
+    const baseUrl = environment === 'producao' ? this.focusNfeBaseUrl.producao : this.focusNfeBaseUrl.homologacao;
+    return `${baseUrl}${path}`;
+  }
+
+  private async applyResult(orderId: string, result: FocusNfeDocumentResult, environment: IFiscalConfig['environment']): Promise<void> {
     if (result.status === 'autorizado') {
-      await this.orderRepository.updateFiscal(orderId, { status: 'emitido', ref: result.ref ?? orderId, documentUrl: result.caminho_danfe });
+      await this.orderRepository.updateFiscal(orderId, {
+        status: 'emitido',
+        ref: result.ref ?? orderId,
+        documentUrl: this.resolveDocumentUrl(result.caminho_danfe, environment),
+        // Pedido explícito do usuário (14/11/2026) — a SEFAZ só aceita cancelar em até 30
+        // minutos a partir deste instante; o front usa pra decidir se mostra "Cancelar nota
+        // fiscal" (ver `IOrderFiscal.emittedAt`).
+        emittedAt: new Date().toISOString(),
+      });
       return;
     }
     if (result.status === 'processando_autorizacao') {
@@ -221,9 +240,11 @@ export class FiscalEmissionService {
   }
 
   /** REQ-3 — aplica o payload recebido no webhook ao pedido identificado por `ref` (== `Order.id`
-   * nesta implementação, ver `FocusNfeApiClient`). */
-  async applyWebhookResult(orderId: string, result: FocusNfeDocumentResult): Promise<void> {
-    await this.applyResult(orderId, result);
+   * nesta implementação, ver `FocusNfeApiClient`). `environment` vem do `FiscalConfig` que o
+   * controller já carregou pra validar o token do webhook — precisa aqui pra resolver
+   * `caminho_danfe` (achado real 14/11/2026, ver `resolveDocumentUrl`). */
+  async applyWebhookResult(orderId: string, result: FocusNfeDocumentResult, environment: IFiscalConfig['environment']): Promise<void> {
+    await this.applyResult(orderId, result, environment);
   }
 
   /** REQ-6 — cancelamento da nota já emitida. Pressupõe que o controller já validou
@@ -234,6 +255,11 @@ export class FiscalEmissionService {
     if (result.status !== 'cancelado') {
       throw new Error(result.mensagem_sefaz ?? result.erros?.map((item) => item.mensagem).join('; ') ?? 'FocusNFe rejeitou o cancelamento da nota');
     }
-    await this.orderRepository.updateFiscal(order.id, { status: 'cancelado', ref: order.fiscal!.ref, documentUrl: order.fiscal!.documentUrl });
+    await this.orderRepository.updateFiscal(order.id, {
+      status: 'cancelado',
+      ref: order.fiscal!.ref,
+      documentUrl: order.fiscal!.documentUrl,
+      emittedAt: order.fiscal!.emittedAt,
+    });
   }
 }

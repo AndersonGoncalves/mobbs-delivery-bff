@@ -279,6 +279,12 @@ export interface IOrderFiscal {
   documentUrl?: string;
   /** Motivo da rejeição (SEFAZ) ou mensagem de erro técnico, só quando `status === 'rejeitado'`. */
   rejectedReason?: string;
+  /** Pedido explícito do usuário (14/11/2026) — gravado quando `status` vira `'emitido'`; a SEFAZ
+   * só aceita cancelamento em até 30 minutos a partir deste instante (`FocusNfeApiClient.
+   * cancelNfce`) — o front usa pra decidir se mostra "Cancelar nota fiscal" ou não. Nota emitida
+   * antes desta spec (sem o campo) nunca mostra o botão — mais seguro que assumir dentro do
+   * prazo. */
+  emittedAt?: string;
 }
 
 export type UberDeliveryStatus = 'solicitado' | 'aceito' | 'a_caminho' | 'entregue' | 'cancelado';
