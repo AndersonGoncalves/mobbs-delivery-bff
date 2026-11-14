@@ -113,7 +113,7 @@ export class CashRegisterService implements ICashRegisterService {
       type: 'entrada',
       amount: input.amount,
       description: input.paymentId
-        ? `Mesa/balcão #${input.orderNumber} (${methodLabel})`
+        ? `Mesa/balcão${input.isPartialPayment ? ' - pagamento parcial' : ''} #${input.orderNumber} (${methodLabel})`
         : `Venda #${input.orderNumber} (${methodLabel})`,
       orderId: input.orderId,
       paymentMethod: input.paymentMethod,

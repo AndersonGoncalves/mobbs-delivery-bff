@@ -313,7 +313,7 @@ export class TableOrderService {
       id: paymentId, method, amount, paidAt: new Date().toISOString(), paidBy: operatorId,
     });
     if (!updated) throw new ConflictError('O pedido não está mais aberto');
-    await this.recordTablePayment(updated, method, amount, paymentId);
+    await this.recordTablePayment(updated, method, amount, paymentId, true);
     return updated;
   }
 
@@ -392,7 +392,7 @@ export class TableOrderService {
     return closed;
   }
 
-  private async recordTablePayment(order: IOrder, method: IOrder['paymentMethod'], amount: number, paymentId: string) {
+  private async recordTablePayment(order: IOrder, method: IOrder['paymentMethod'], amount: number, paymentId: string, isPartial = false) {
     if (!this.cashRegisterService || !(amount > 0)) return;
     try {
       await this.cashRegisterService.addAutomaticEntry({
@@ -402,6 +402,7 @@ export class TableOrderService {
         amount,
         paymentMethod: method,
         paymentId,
+        isPartialPayment: isPartial,
       });
     } catch (error) {
       console.error(`[financeiro] erro lançando movimento de caixa do pedido de mesa ${order.id}:`, error);

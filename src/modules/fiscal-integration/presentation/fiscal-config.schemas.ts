@@ -12,6 +12,8 @@ export const saveFiscalConfigSchema = z.object({
   environment: z.enum(['homologacao', 'producao']),
   documentType: z.enum(['nfce', 'cfe', 'nfe']),
   cnpj: z.string().refine(isValidCnpj, { message: 'CNPJ inválido' }),
+  // specs/0207-dados-fiscais-cadastro REQ-1 — opcional.
+  taxRegime: z.enum(['simplesNacional', 'simplesNacionalExcesso', 'regimeNormal', 'mei']).optional(),
 });
 
 export const setFiscalProductionEnabledSchema = z.object({

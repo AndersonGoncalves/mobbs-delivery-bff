@@ -44,6 +44,14 @@ export interface FocusNfeItemInput {
   unidade_tributavel: string;
   icms_origem: string;
   icms_situacao_tributaria: string;
+  /** specs/0207-dados-fiscais-cadastro REQ-11 — só enviado quando o produto tem CEST cadastrado
+   * (`Product.cestCode`); omitido pros demais (CEST só é obrigatório pra produto sujeito a
+   * Substituição Tributária). */
+  cest?: string;
+  /** specs/0207-dados-fiscais-cadastro REQ-12 — `Product.gtin` quando cadastrado, senão
+   * `"SEM GTIN"` (convenção padrão de NFe pra produto sem código de barras) — nunca omitido. */
+  gtin?: string;
+  gtin_tributavel?: string;
 }
 
 export interface FocusNfePaymentInput {

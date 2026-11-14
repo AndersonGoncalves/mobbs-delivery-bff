@@ -1,6 +1,7 @@
 import { IOrder } from '../../../orders/domain/entities/order.entity';
 import { IOrderRepository } from '../../../orders/domain/repositories/order.repository.interface';
 import { IProductRepository } from '../../../catalog/domain/repositories/product.repository.interface';
+import { IProduct } from '../../../catalog/domain/entities/product.entity';
 import { IFiscalConfigRepository } from '../repositories/fiscal-config.repository.interface';
 import { IFiscalConfig } from '../entities/fiscal-config.entity';
 import { FocusNfeApiClient } from '../../infra/focus-nfe-client';
@@ -25,6 +26,30 @@ function buildOrder(overrides: Partial<IOrder> = {}): IOrder {
     total: 35,
     paymentMethod: 'pix',
     createdAt: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
+function buildProduct(overrides: Partial<IProduct> = {}): IProduct {
+  return {
+    id: 'p-1',
+    restaurantId: 'r-1',
+    menuCategoryId: 'cat-1',
+    name: 'Pizza',
+    price: 30,
+    isAvailable: true,
+    additionalGroups: [],
+    isFeatured: false,
+    featuredOrder: 0,
+    availableAsAdditional: false,
+    tracksStock: false,
+    activeDays: [],
+    isAlcoholic: false,
+    isBestSeller: false,
+    bestSellerOrder: 0,
+    isSuggestedInCart: false,
+    cartSuggestionOrder: 0,
+    unit: 'UN',
     ...overrides,
   };
 }
@@ -93,6 +118,25 @@ describe('FiscalEmissionService (specs/0091-integracao-fiscal-focusnfe)', () => 
       expect(MockedClient.prototype.emitNfce).toHaveBeenCalledWith('o-1', expect.objectContaining({ cnpj_emitente: '11222333000181' }));
       expect(orderRepository.updateFiscal).toHaveBeenCalledWith('o-1', { status: 'pendente' });
       expect(orderRepository.updateFiscal).toHaveBeenLastCalledWith('o-1', { status: 'emitido', ref: 'o-1', documentUrl: '/notas/o-1.html' });
+    });
+
+    // Achado real (13/11/2026, pedido explícito do usuário — análise do payload de verdade
+    // enviado à FocusNFe durante um teste real em homologação): `FiscalConfig.cnpj` é digitado
+    // pelo operador COM máscara (`FiscalIntegrationPage.tsx` não normaliza, só valida o dígito
+    // verificador) — enviar `cnpj_emitente` com máscara causava rejeição "Emissor não habilitado
+    // para emissão da NF-e/NFC-e" mesmo com CSC e credenciamento corretos na SEFAZ, porque os
+    // exemplos reais da FocusNFe esperam só os 14 dígitos.
+    it('normaliza o CNPJ do emitente (remove máscara) antes de enviar à FocusNFe, mesmo que o operador tenha digitado com pontuação', async () => {
+      MockedClient.prototype.emitNfce = jest.fn().mockResolvedValue({ ref: 'o-1', status: 'autorizado' });
+      const { service } = setup({
+        fiscalConfigRepository: {
+          findByRestaurantId: jest.fn().mockResolvedValue(buildConfig({ cnpj: '07.456.684/0001-80' })),
+        },
+      });
+
+      await service.emitForOrder(buildOrder());
+
+      expect(MockedClient.prototype.emitNfce).toHaveBeenCalledWith('o-1', expect.objectContaining({ cnpj_emitente: '07456684000180' }));
     });
 
     it('AC-5/REQ-6: pedido cancelado nunca gera nota (nem tenta chamar a FocusNFe)', async () => {
@@ -191,6 +235,105 @@ describe('FiscalEmissionService (specs/0091-integracao-fiscal-focusnfe)', () => 
 
       expect(MockedClient.prototype.emitNfce).toHaveBeenCalled();
       expect(orderRepository.updateFiscal).toHaveBeenCalledWith('o-1', { status: 'pendente' });
+    });
+
+    // specs/0207-dados-fiscais-cadastro.
+    describe.each([
+      ['sem taxRegime cadastrado', undefined],
+      ['simplesNacional', 'simplesNacional' as const],
+      ['simplesNacionalExcesso', 'simplesNacionalExcesso' as const],
+      ['mei', 'mei' as const],
+    ])('AC-2 (0207): %s', (_label, taxRegime) => {
+      it('emite normalmente com o CSOSN genérico de hoje', async () => {
+        MockedClient.prototype.emitNfce = jest.fn().mockResolvedValue({ ref: 'o-1', status: 'autorizado' });
+        const { service, orderRepository } = setup({
+          fiscalConfigRepository: { findByRestaurantId: jest.fn().mockResolvedValue(buildConfig({ taxRegime })) },
+        });
+
+        await service.emitForOrder(buildOrder());
+
+        expect(MockedClient.prototype.emitNfce).toHaveBeenCalledWith('o-1', expect.objectContaining({ items: expect.arrayContaining([expect.objectContaining({ icms_situacao_tributaria: '102' })]) }));
+        expect(orderRepository.updateFiscal).toHaveBeenLastCalledWith('o-1', { status: 'emitido', ref: 'o-1', documentUrl: undefined });
+      });
+    });
+
+    it('AC-3 (0207): taxRegime "regimeNormal" bloqueia a emissão automática, sem chamar a FocusNFe', async () => {
+      const { service, orderRepository } = setup({
+        fiscalConfigRepository: { findByRestaurantId: jest.fn().mockResolvedValue(buildConfig({ taxRegime: 'regimeNormal' })) },
+      });
+
+      await service.emitForOrder(buildOrder());
+
+      expect(MockedClient.prototype.emitNfce).not.toHaveBeenCalled();
+      expect(orderRepository.updateFiscal).toHaveBeenCalledWith('o-1', {
+        status: 'rejeitado',
+        rejectedReason: 'Regime tributário Normal exige configuração de CST por produto — revisar com contador antes de emitir.',
+      });
+    });
+
+    it('AC-7 (0207): produto com CEST cadastrado inclui "cest" no item; sem CEST, o campo não é enviado', async () => {
+      MockedClient.prototype.emitNfce = jest.fn().mockResolvedValue({ ref: 'o-1', status: 'autorizado' });
+      const { service } = setup({
+        productRepository: { listByRestaurant: jest.fn().mockResolvedValue([buildProduct({ id: 'p-1', cestCode: '0300100' })]) },
+      });
+
+      await service.emitForOrder(buildOrder());
+
+      const [, input] = MockedClient.prototype.emitNfce.mock.calls[0];
+      expect(input.items[0].cest).toBe('0300100');
+    });
+
+    it('AC-7 (0207): produto sem CEST não inclui o campo no item', async () => {
+      MockedClient.prototype.emitNfce = jest.fn().mockResolvedValue({ ref: 'o-1', status: 'autorizado' });
+      const { service } = setup({
+        productRepository: { listByRestaurant: jest.fn().mockResolvedValue([buildProduct({ id: 'p-1' })]) },
+      });
+
+      await service.emitForOrder(buildOrder());
+
+      const [, input] = MockedClient.prototype.emitNfce.mock.calls[0];
+      expect(input.items[0]).not.toHaveProperty('cest');
+    });
+
+    it('AC-8 (0207): produto sem GTIN emite "SEM GTIN"; produto com GTIN emite o valor cadastrado', async () => {
+      MockedClient.prototype.emitNfce = jest.fn().mockResolvedValue({ ref: 'o-1', status: 'autorizado' });
+      const { service } = setup({
+        productRepository: { listByRestaurant: jest.fn().mockResolvedValue([buildProduct({ id: 'p-1', gtin: '7891234567890' })]) },
+      });
+
+      await service.emitForOrder(buildOrder());
+
+      const [, input] = MockedClient.prototype.emitNfce.mock.calls[0];
+      expect(input.items[0].gtin).toBe('7891234567890');
+      expect(input.items[0].gtin_tributavel).toBe('7891234567890');
+    });
+
+    it('AC-8 (0207): produto sem GTIN emite "SEM GTIN"', async () => {
+      MockedClient.prototype.emitNfce = jest.fn().mockResolvedValue({ ref: 'o-1', status: 'autorizado' });
+      const { service } = setup({
+        productRepository: { listByRestaurant: jest.fn().mockResolvedValue([buildProduct({ id: 'p-1' })]) },
+      });
+
+      await service.emitForOrder(buildOrder());
+
+      const [, input] = MockedClient.prototype.emitNfce.mock.calls[0];
+      expect(input.items[0].gtin).toBe('SEM GTIN');
+      expect(input.items[0].gtin_tributavel).toBe('SEM GTIN');
+    });
+
+    it('AC-9 (0207): produto com unidade "KG" emite unidade_comercial/unidade_tributavel como "KG"; taxa de entrega continua "UN"', async () => {
+      MockedClient.prototype.emitNfce = jest.fn().mockResolvedValue({ ref: 'o-1', status: 'autorizado' });
+      const { service } = setup({
+        productRepository: { listByRestaurant: jest.fn().mockResolvedValue([buildProduct({ id: 'p-1', unit: 'KG' })]) },
+      });
+
+      await service.emitForOrder(buildOrder({ deliveryFee: 5 }));
+
+      const [, input] = MockedClient.prototype.emitNfce.mock.calls[0];
+      expect(input.items[0].unidade_comercial).toBe('KG');
+      expect(input.items[0].unidade_tributavel).toBe('KG');
+      const deliveryFeeItem = input.items.find((item: { codigo_produto: string }) => item.codigo_produto === 'TAXA-ENTREGA');
+      expect(deliveryFeeItem.unidade_comercial).toBe('UN');
     });
 
     it('AC-3/REQ-4: rejeição da FocusNFe grava status "rejeitado" com o motivo, sem lançar', async () => {

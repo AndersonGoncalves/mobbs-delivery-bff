@@ -74,6 +74,12 @@ function toEntity(doc: ProductLeanDocument): IProduct {
     posId: doc.posId,
     cost: doc.cost,
     ncmCode: doc.ncmCode,
+    // specs/0207-dados-fiscais-cadastro REQ-9 — produto gravado antes desta spec (sem `unit`) é
+    // tratado como `'UN'` na leitura, mesmo padrão de `isAlcoholic ?? false` acima; o `default`
+    // do schema Mongoose só se aplica a documento novo, não resolve sozinho o `.lean()`.
+    cestCode: doc.cestCode,
+    gtin: doc.gtin,
+    unit: doc.unit ?? 'UN',
     activeDays: doc.activeDays,
     isAlcoholic: doc.isAlcoholic ?? false,
     scheduleStartTime: doc.scheduleStartTime,

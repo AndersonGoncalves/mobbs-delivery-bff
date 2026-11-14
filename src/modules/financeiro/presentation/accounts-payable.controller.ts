@@ -90,7 +90,7 @@ export class AccountsPayableController extends BaseRouter {
       '/restaurants/me/accounts-payable/:id/pay',
       ...authenticated,
       async (req: Request, res: Response) => {
-        const { paidValue, paidAt, affectsCashRegister } = parseBody(markAccountPayablePaidSchema, req.body);
+        const { paidValue, paidAt, affectsCashRegister, paymentMethod } = parseBody(markAccountPayablePaidSchema, req.body);
         const existingAccount = await this.findOwnedAccount(req.params.id, req.restaurantId!);
         const account = await this.accountPayableRepository.markAsPaid(
           req.params.id,
@@ -104,6 +104,7 @@ export class AccountsPayableController extends BaseRouter {
               type: 'saida',
               amount: paidValue,
               description: `Pagamento: ${existingAccount.description}`,
+              paymentMethod: paymentMethod ?? 'cash',
             });
           }
         }

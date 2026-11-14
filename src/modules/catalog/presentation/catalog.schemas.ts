@@ -168,6 +168,11 @@ const productSchemaShape = {
   posId: z.string().optional(),
   cost: z.number().nonnegative().optional(),
   ncmCode: z.string().optional(),
+  // specs/0207-dados-fiscais-cadastro REQ-6/REQ-7/REQ-8 — `unit` tem default (REQ-9: produto
+  // novo já nasce `UN`; backfill de produto antigo sem o campo é no schema Mongoose/repository).
+  cestCode: z.string().optional(),
+  gtin: z.string().optional(),
+  unit: z.enum(['UN', 'KG', 'L', 'CX', 'PC', 'M']).default('UN'),
   activeDays: z.array(dayOfWeekSchema).optional(),
   isAlcoholic: z.boolean().default(false),
   scheduleStartTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),

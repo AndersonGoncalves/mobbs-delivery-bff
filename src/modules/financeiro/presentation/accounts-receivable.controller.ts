@@ -83,7 +83,7 @@ export class AccountsReceivableController extends BaseRouter {
       '/restaurants/me/accounts-receivable/:id/receive',
       ...authenticated,
       async (req: Request, res: Response) => {
-        const { receivedValue, receivedAt, affectsCashRegister } = parseBody(markAccountReceivablePaidSchema, req.body);
+        const { receivedValue, receivedAt, affectsCashRegister, paymentMethod } = parseBody(markAccountReceivablePaidSchema, req.body);
         const existingAccount = await this.findOwnedAccount(req.params.id, req.restaurantId!);
         const account = await this.accountReceivableRepository.markAsReceived(
           req.params.id,
@@ -97,6 +97,7 @@ export class AccountsReceivableController extends BaseRouter {
               type: 'entrada',
               amount: receivedValue,
               description: `Recebimento: ${existingAccount.description}`,
+              paymentMethod: paymentMethod ?? 'cash',
             });
           }
         }

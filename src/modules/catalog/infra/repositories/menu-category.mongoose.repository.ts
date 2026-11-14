@@ -66,6 +66,10 @@ function toProductLight(doc: ProductLightLeanDocument, promotionPercentageByProd
     bestSellerOrder: doc.bestSellerOrder ?? 0,
     isSuggestedInCart: doc.isSuggestedInCart ?? false,
     cartSuggestionOrder: doc.cartSuggestionOrder ?? 0,
+    // specs/0207-dados-fiscais-cadastro — `unit` é só de retaguarda (emissão fiscal), fora do
+    // `.select()` abaixo igual `posId`/`cost`/`ncmCode`; default aqui só pra satisfazer
+    // `IProduct` (campo obrigatório), mesmo padrão de `isBestSeller`/etc. acima.
+    unit: 'UN',
   };
 }
 

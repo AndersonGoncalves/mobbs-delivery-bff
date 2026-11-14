@@ -1,25 +1,42 @@
 /**
- * specs/0201-controle-integracoes-cnpj-plataforma ADR-2 — liga/desliga um dos switches globais
- * (platform-wide, não por restaurante) no documento singleton `platformConfig`. A escrita é
- * sempre um script pontual rodado pelo usuário, nunca um endpoint de API (ADR-2) — leitura é
- * pública via `GET /platform/config`.
+ * specs/0209-desacoplar-integracoes-cnpj-plataforma (substitui specs/0201 ADR-2) — liga/desliga
+ * um dos switches globais (platform-wide, não por restaurante) no documento singleton
+ * `platformConfig`. A escrita é sempre um script pontual rodado pelo usuário, nunca um endpoint
+ * de API (ADR-2) — leitura é pública via `GET /platform/config`.
  *
  * Switches disponíveis (todos nascem `false` — fail-safe, ADR-4):
- *   cnpjIntegrationsEnabled  Asaas (subconta), Mercado Pago e Cartão de Crédito Online
- *   kdsAppEnabled            app KDS (mobbs-delivery-kds)
- *   comandaAppEnabled        app Comanda (mobbs-delivery-comanda)
- *   totemAppEnabled          app Totem/Autoatendimento (mobbs-delivery-totem) — platform-wide,
- *                            não confundir com `restaurant.totemEnabled` (por restaurante)
+ *   asaasIntegrationEnabled            Asaas (subconta)
+ *   mercadoPagoIntegrationEnabled      Mercado Pago (OAuth) — junto, os dois acima liberam
+ *                                      "Cartão de Crédito Online" (REQ-2 de specs/0209: qualquer
+ *                                      um dos dois já é suficiente, não precisa dos dois)
+ *   ifoodIntegrationEnabled            menu iFood na retaguarda (visual só, sem enforcement no BFF)
+ *   ninetyNineFoodIntegrationEnabled   menu 99Food na retaguarda (visual só, sem enforcement no BFF)
+ *   kdsAppEnabled                      app KDS (mobbs-delivery-kds)
+ *   comandaAppEnabled                  app Comanda (mobbs-delivery-comanda)
+ *   totemAppEnabled                    app Totem/Autoatendimento (mobbs-delivery-totem) —
+ *                                      platform-wide, não confundir com `restaurant.totemEnabled`
+ *                                      (por restaurante)
+ *   instagramAutomationEnabled        item "Automação Instagram" no menu da retaguarda
  *
  * Uso:
- *   npm run set:platform-config -- --key=cnpjIntegrationsEnabled --value=true
+ *   npm run set:platform-config -- --key=asaasIntegrationEnabled --value=true
  *   npm run set:platform-config -- --key=kdsAppEnabled --value=false
  *
  * Atalhos de ativação (equivalentes, um por switch — ver package.json):
- *   npm run activate:cnpj-integrations
+ *   npm run activate:asaas-integration
+ *   npm run activate:mercadopago-integration
+ *   npm run activate:ifood-integration
+ *   npm run activate:99food-integration
  *   npm run activate:kds-app
  *   npm run activate:comanda-app
  *   npm run activate:totem-app
+ *   npm run activate:instagram-automation
+ *
+ * Ativar (--value=true) também carimba `<key>At` com a data/hora atual — usado só pra calcular a
+ * tag "Novo" no menu (30 dias desde a ativação — era 10, ajuste 13/11/2026 — `isNew` em
+ * `platform-config.controller.ts`). Reativar um switch já ligado antes (desligar e ligar de novo)
+ * regrava o carimbo com a data atual, reiniciando a contagem — pedido explícito do usuário
+ * (11/11/2026).
  */
 import * as dotenv from 'dotenv';
 import mongoose from 'mongoose';
@@ -28,7 +45,16 @@ dotenv.config({ path: '.env' });
 
 import { PLATFORM_CONFIG_SINGLETON_ID, PlatformConfigModel } from '../src/modules/platform-config/infra/platform-config.mongoose.model';
 
-const VALID_KEYS = ['cnpjIntegrationsEnabled', 'kdsAppEnabled', 'comandaAppEnabled', 'totemAppEnabled'] as const;
+const VALID_KEYS = [
+  'asaasIntegrationEnabled',
+  'mercadoPagoIntegrationEnabled',
+  'ifoodIntegrationEnabled',
+  'ninetyNineFoodIntegrationEnabled',
+  'kdsAppEnabled',
+  'comandaAppEnabled',
+  'totemAppEnabled',
+  'instagramAutomationEnabled',
+] as const;
 type ConfigKey = (typeof VALID_KEYS)[number];
 
 function parseArgs(argv: string[]): Record<string, string> {
@@ -57,9 +83,13 @@ async function main(): Promise<void> {
   await mongoose.connect(dbUrl);
   try {
     const nextValue = value === 'true';
+    const update: Record<string, unknown> = { [key]: nextValue };
+    // Carimba a data só ao ATIVAR (nunca ao desligar) — reativar depois regrava com a data atual,
+    // reiniciando os 10 dias da tag "Novo" (pedido explícito do usuário).
+    if (nextValue) update[`${key}At`] = new Date();
     await PlatformConfigModel.updateOne(
       { _id: PLATFORM_CONFIG_SINGLETON_ID },
-      { $set: { [key]: nextValue } },
+      { $set: update },
       { upsert: true, setDefaultsOnInsert: true },
     );
 
@@ -67,10 +97,14 @@ async function main(): Promise<void> {
     console.log(`"${key}" agora é ${nextValue}.`);
     console.log('Estado atual de platformConfig:');
     console.log({
-      cnpjIntegrationsEnabled: doc?.cnpjIntegrationsEnabled ?? false,
+      asaasIntegrationEnabled: doc?.asaasIntegrationEnabled ?? false,
+      mercadoPagoIntegrationEnabled: doc?.mercadoPagoIntegrationEnabled ?? false,
+      ifoodIntegrationEnabled: doc?.ifoodIntegrationEnabled ?? false,
+      ninetyNineFoodIntegrationEnabled: doc?.ninetyNineFoodIntegrationEnabled ?? false,
       kdsAppEnabled: doc?.kdsAppEnabled ?? false,
       comandaAppEnabled: doc?.comandaAppEnabled ?? false,
       totemAppEnabled: doc?.totemAppEnabled ?? false,
+      instagramAutomationEnabled: doc?.instagramAutomationEnabled ?? false,
     });
   } finally {
     await mongoose.disconnect();

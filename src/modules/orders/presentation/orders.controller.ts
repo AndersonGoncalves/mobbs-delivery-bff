@@ -176,13 +176,17 @@ export class OrdersController extends BaseRouter {
         throw new BadRequestError('Restaurante não tem chave Pix cadastrada');
       }
 
-      // specs/0201-controle-integracoes-cnpj-plataforma REQ-2/ADR-1 — switch global: enquanto
-      // desabilitado, `creditCardOnline` nunca é aceito, mesmo que o restaurante já tenha um
-      // gateway vinculado (defesa em profundidade, independente do que a UI esconde).
+      // specs/0209-desacoplar-integracoes-cnpj-plataforma (substitui specs/0201 REQ-2/ADR-1) —
+      // dois switches globais independentes agora (Asaas/Mercado Pago): `creditCardOnline` só é
+      // aceito se PELO MENOS UM dos dois estiver habilitado na plataforma, mesmo que o
+      // restaurante já tenha um gateway vinculado (defesa em profundidade, independente do que a
+      // UI esconde) — qual gateway processa de fato continua decidido pelo check de vínculo do
+      // restaurante logo abaixo, não por este.
       if (
         payload.paymentMethod === 'creditCardOnline' &&
         this.platformConfigRepository &&
-        !(await this.platformConfigRepository.isCnpjIntegrationsEnabled())
+        !(await this.platformConfigRepository.isAsaasIntegrationEnabled()) &&
+        !(await this.platformConfigRepository.isMercadoPagoIntegrationEnabled())
       ) {
         throw new ForbiddenError('Cartão de crédito online indisponível no momento');
       }

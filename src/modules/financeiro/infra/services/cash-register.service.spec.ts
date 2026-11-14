@@ -122,6 +122,26 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
       expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-1', expect.objectContaining({ paymentId: 'pay-2', paymentMethod: 'pix', amount: 6 }));
     });
 
+    // Pedido explícito do usuário (11/11/2026) — descrição do movimento precisa deixar claro
+    // quando o pagamento de mesa/balcão foi um "Registrar parcial" (conta ainda aberta), distinto
+    // do(s) pagamento(s) do fechamento normal da conta — mesmo quando o fechamento também é
+    // `paymentId`-based (dividido em mais de uma forma de pagamento).
+    it('pagamento parcial de mesa/balcão ("Registrar parcial") destaca "pagamento parcial" na descrição', async () => {
+      const { cashRegisterRepository, service } = setup();
+
+      await service.addAutomaticEntry({ restaurantId: 'r-1', orderId: 'o-1', orderNumber: 115, amount: 2, paymentMethod: 'cash', paymentId: 'pay-1', isPartialPayment: true });
+
+      expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-1', expect.objectContaining({ description: 'Mesa/balcão - pagamento parcial #115 (Dinheiro)' }));
+    });
+
+    it('pagamento do fechamento da conta (isPartialPayment ausente) NÃO destaca "pagamento parcial", mesmo sendo paymentId-based', async () => {
+      const { cashRegisterRepository, service } = setup();
+
+      await service.addAutomaticEntry({ restaurantId: 'r-1', orderId: 'o-1', orderNumber: 72, amount: 10, paymentMethod: 'cash', paymentId: 'pay-1' });
+
+      expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-1', expect.objectContaining({ description: 'Mesa/balcão #72 (Dinheiro)' }));
+    });
+
     it('pagamento de mesa não duplica um lançamento antigo do pedido inteiro', async () => {
       const { cashRegisterRepository, service } = setup({
         cashRegisterRepository: {

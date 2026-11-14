@@ -17,7 +17,7 @@ type AsyncHandler = (req: Request, res: Response) => Promise<void>;
  * existir.
  * `autoEmitEnabled` adicionado em specs/0204-controle-emissao-fiscal-automatica REQ-5. */
 function toPublicView(
-  config: { restaurantId: string; environment: string; documentType: string; productionEnabled: boolean; autoEmitEnabled: boolean; cnpj: string; createdAt: string } | null,
+  config: { restaurantId: string; environment: string; documentType: string; productionEnabled: boolean; autoEmitEnabled: boolean; cnpj: string; taxRegime?: string; createdAt: string } | null,
 ) {
   if (!config) return { connected: false };
   return {
@@ -27,6 +27,8 @@ function toPublicView(
     productionEnabled: config.productionEnabled,
     autoEmitEnabled: config.autoEmitEnabled,
     cnpj: config.cnpj,
+    // specs/0207-dados-fiscais-cadastro REQ-1.
+    taxRegime: config.taxRegime,
     createdAt: config.createdAt,
   };
 }

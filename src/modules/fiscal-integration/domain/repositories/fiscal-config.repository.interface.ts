@@ -1,10 +1,12 @@
-import { FiscalDocumentType, FiscalEnvironment, IFiscalConfig } from '../entities/fiscal-config.entity';
+import { FiscalDocumentType, FiscalEnvironment, FiscalTaxRegime, IFiscalConfig } from '../entities/fiscal-config.entity';
 
 export interface SaveFiscalConfigInput {
   focusNfeToken: string;
   environment: FiscalEnvironment;
   documentType: FiscalDocumentType;
   cnpj: string;
+  /** specs/0207-dados-fiscais-cadastro REQ-1 — opcional. */
+  taxRegime?: FiscalTaxRegime;
 }
 
 export interface IFiscalConfigRepository {

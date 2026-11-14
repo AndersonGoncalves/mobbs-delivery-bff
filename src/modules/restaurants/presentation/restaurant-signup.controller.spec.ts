@@ -262,6 +262,27 @@ describe('RestaurantSignupController', () => {
     expect(businessHoursArg).toHaveLength(7);
   });
 
+  // Pedido explícito do usuário (11/11/2026) — restaurante nasce com a identidade visual padrão
+  // da plataforma (App do cliente), em vez de primaryColor/onPrimaryColor ausentes e fundo
+  // colorido (defaults do schema), até o dono configurar de verdade na retaguarda.
+  it('restaurante novo nasce com primaryColor/onPrimaryColor/useWhiteBackground da identidade visual padrão', async () => {
+    const { restaurantRepository, routes } = setup();
+
+    await runAuthenticatedChain(
+      routes['POST /restaurants/signup'],
+      { body: { name: 'Pizzaria do João', ownerName: 'João da Silva', whatsapp: '11999999999', businessType: 'pizzaria' }, user: { email: 'joao@exemplo.com' } },
+      { json: jest.fn() },
+    );
+
+    expect(restaurantRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        primaryColor: '#3E44E8',
+        onPrimaryColor: '#FFFFFF',
+        useWhiteBackground: true,
+      }),
+    );
+  });
+
   // specs/0062-confirmar-pedido-whatsapp-restaurante AC-2.
   it('AC-2: restaurante nasce com newOrderRestaurantWhatsAppTemplate já preenchido (não vazio/undefined)', async () => {
     const { restaurantRepository, routes } = setup();

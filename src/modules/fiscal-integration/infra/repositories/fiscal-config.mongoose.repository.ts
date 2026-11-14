@@ -13,6 +13,7 @@ interface FiscalConfigLeanDocument {
   autoEmitEnabled: boolean;
   webhookToken: string;
   cnpj: string;
+  taxRegime?: IFiscalConfig['taxRegime'];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -27,6 +28,7 @@ function toEntity(doc: FiscalConfigLeanDocument): IFiscalConfig {
     autoEmitEnabled: doc.autoEmitEnabled,
     webhookToken: doc.webhookToken,
     cnpj: doc.cnpj,
+    taxRegime: doc.taxRegime,
     createdAt: doc.createdAt.toISOString(),
     updatedAt: doc.updatedAt.toISOString(),
   };

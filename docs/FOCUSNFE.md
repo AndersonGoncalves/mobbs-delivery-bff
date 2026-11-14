@@ -11,6 +11,12 @@ nosso sistema — o BFF só usa o token de API depois disso.
 > (modelo 65) apenas; `documentType: 'cfe'|'nfe'` já existem no cadastro (dependem do regime
 > tributário/UF de cada restaurante, decisão fiscal, não do software) mas **lançam erro
 > explícito** se escolhidos (`FocusNfeApiClient.emitCfe`/`emitNfe`) — implementação futura.
+>
+> **Atualização (13/11/2026, pedido explícito do usuário)**: primeiro teste real de ponta a
+> ponta feito, com conta trial + empresa (CNPJ de MEI) cadastrada de verdade na FocusNFe — ver
+> seção 7. Confirma que todo o pipeline técnico (token → emissão → rejeição → exibição na
+> retaguarda → reemissão manual) funciona; o que falta é só cadastro/credenciamento da empresa
+> junto à SEFAZ, fora do nosso sistema e da própria FocusNFe.
 
 ## 1. Cadastro na FocusNFe (feito pelo restaurante, fora do mobbs)
 
@@ -96,6 +102,69 @@ ambiente e resolvidas a partir de `FiscalConfig.environment` (não de `process.e
 homologação: https://homologacao.focusnfe.com.br
 produção:    https://api.focusnfe.com.br
 ```
+
+## 7. Primeiro teste real de ponta a ponta (13/11/2026)
+
+Achado real, pedido explícito do usuário — primeira vez que a integração rodou contra a API real
+da FocusNFe (não um mock), com uma conta trial + empresa cadastrada de verdade (CNPJ de MEI,
+certificado A1 anexado e validado no painel deles). Confirmado direto no MongoDB de produção
+(`mobbs-delivery-bff-mongo-1`, servidor AWS — ver `aws/infra-aws-linux.md`).
+
+**Configuração salva** (`FiscalConfig`, coleção `fiscalConfig`):
+```
+environment: 'homologacao'
+documentType: 'nfce'
+cnpj: '07.456.684/0001-80'
+autoEmitEnabled: true
+productionEnabled: false
+```
+
+**Resultado da reemissão manual** (`Order.fiscal`, pedido real de teste):
+```
+status: 'rejeitado'
+rejectedReason: 'Rejeicao: Emissor nao habilitado para emissao da NF-e/NFC-e'
+```
+
+**O que isso confirma**: o pipeline técnico inteiro funciona — token aceito pela FocusNFe,
+requisição de emissão chegou e foi repassada à SEFAZ, a rejeição da SEFAZ voltou pelo client
+(`FocusNfeApiClient`), foi interpretada corretamente (`FiscalEmissionService.applyResult`) e
+exibida na retaguarda com o motivo exato, com o botão de reemissão funcionando (REQ-4).
+
+**O que faltava, fora do nosso sistema (resolvido pelo usuário em seguida)**: a mensagem
+"Emissor não habilitado" vem da SEFAZ do estado — o usuário preencheu Inscrição Estadual/Regime
+Tributário na FocusNFe (já estavam corretos) e completou o credenciamento de NFC-e + geração do
+CSC de homologação direto no portal da SEFAZ-CE (`nfceh.sefaz.ce.gov.br`). Mesmo assim, **a
+rejeição continuou idêntica** depois de reemitir — sinal de que a causa não era (só) cadastro na
+SEFAZ.
+
+### 7.1. Bug real encontrado: CNPJ enviado com máscara (13/11/2026)
+
+Pedido explícito do usuário — "analise o XML/payload que enviamos" — ao reler
+`FiscalEmissionService.buildEmitInput` com a config real do banco de produção, achado: `cnpj_emitente`
+usava `FiscalConfig.cnpj` **direto, sem normalizar**. `FiscalIntegrationPage.tsx` não aplica
+nenhuma máscara/remoção de pontuação no campo "CNPJ do emitente" — só valida o dígito verificador
+(`isValidCnpj`, que internamente já ignora pontuação pra validar, mas devolve só um booleano, não
+a versão normalizada) — então o valor salvo e reenviado pra API era literalmente
+`"07.456.684/0001-80"` (com pontos e barra), enquanto os exemplos reais da documentação da
+FocusNFe mostram `cnpj_emitente` sempre como 14 dígitos puros (ex.: `"51916585000125"`). A SEFAZ
+documenta justamente um código de rejeição (203) para "emissor não habilitado... ou o CNPJ
+informado está incorreto" — bate exatamente com o sintoma.
+
+**Corrigido**: `cnpj_emitente: cnpjEmitente.replace(/\D/g, '')` em `buildEmitInput`
+(`fiscal-emission.service.ts`) — normaliza pra 14 dígitos puros na hora de montar o payload,
+independente de como o operador digitou no formulário. `FiscalConfig.cnpj` continua guardado com
+a máscara (não mudamos o que é persistido, só o que é enviado à API) — teste novo cobre isso
+(`fiscal-emission.service.spec.ts`, "normaliza o CNPJ do emitente...").
+
+**Ainda não confirmado**: se essa era a ÚNICA causa da rejeição, ou se o credenciamento/CSC da
+SEFAZ também precisava do tempo de propagação já levantado antes — só um novo teste real (depois
+desta correção) vai confirmar. Próximo passo: reemitir os pedidos de teste e ver se a rejeição
+muda.
+
+**Cronologia que também validou o comportamento do gatilho automático**: o pedido de teste chegou
+a "entregue" ANTES da configuração fiscal existir — o gatilho automático (`emitForOrder`)
+corretamente não fez nada (sem config = no-op, por design). A rejeição só apareceu depois, via
+clique manual em "Reemitir nota fiscal" — comportamento esperado, não um bug.
 
 ## Fora de escopo (v1)
 

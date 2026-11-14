@@ -79,6 +79,11 @@ const productSchema = new Schema(
     posId: { type: String },
     cost: { type: Number },
     ncmCode: { type: String },
+    // specs/0207-dados-fiscais-cadastro — `unit` com `required`/`default` resolve o backfill
+    // (REQ-9) de produto já cadastrado sem o campo, sem precisar de migração/script separado.
+    cestCode: { type: String },
+    gtin: { type: String },
+    unit: { type: String, enum: ['UN', 'KG', 'L', 'CX', 'PC', 'M'], required: true, default: 'UN' },
     activeDays: { type: [String], default: [] },
     isAlcoholic: { type: Boolean, required: true, default: false },
     scheduleStartTime: { type: String },

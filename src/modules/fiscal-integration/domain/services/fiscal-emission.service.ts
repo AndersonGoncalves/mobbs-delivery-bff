@@ -60,24 +60,36 @@ export class FiscalEmissionService {
 
   private async buildEmitInput(order: IOrder, cnpjEmitente: string): Promise<EmitNfceInput> {
     const products = await this.productRepository.listByRestaurant(order.restaurantId);
-    const ncmByProductId = new Map(products.map((product) => [product.id, product.ncmCode]));
+    // specs/0207-dados-fiscais-cadastro — produto inteiro (não só o NCM) pra resolver
+    // cestCode/gtin/unit por item também (REQ-11/REQ-12/REQ-13).
+    const productById = new Map(products.map((product) => [product.id, product]));
 
-    const items: FocusNfeItemInput[] = order.items.map((item, index) => ({
-      numero_item: index + 1,
-      codigo_ncm: ncmByProductId.get(item.productId) || GENERIC_NCM,
-      codigo_produto: item.productId,
-      descricao: item.productName,
-      quantidade_comercial: item.quantity,
-      quantidade_tributavel: item.quantity,
-      cfop: GENERIC_CFOP,
-      valor_unitario_comercial: item.unitPrice,
-      valor_unitario_tributavel: item.unitPrice,
-      valor_bruto: Math.round(item.unitPrice * item.quantity * 100) / 100,
-      unidade_comercial: GENERIC_UNIT,
-      unidade_tributavel: GENERIC_UNIT,
-      icms_origem: GENERIC_ICMS_ORIGEM,
-      icms_situacao_tributaria: GENERIC_ICMS_CST,
-    }));
+    const items: FocusNfeItemInput[] = order.items.map((item, index) => {
+      const product = productById.get(item.productId);
+      const unit = product?.unit ?? GENERIC_UNIT;
+      return {
+        numero_item: index + 1,
+        codigo_ncm: product?.ncmCode || GENERIC_NCM,
+        codigo_produto: item.productId,
+        descricao: item.productName,
+        quantidade_comercial: item.quantity,
+        quantidade_tributavel: item.quantity,
+        cfop: GENERIC_CFOP,
+        valor_unitario_comercial: item.unitPrice,
+        valor_unitario_tributavel: item.unitPrice,
+        valor_bruto: Math.round(item.unitPrice * item.quantity * 100) / 100,
+        unidade_comercial: unit,
+        unidade_tributavel: unit,
+        icms_origem: GENERIC_ICMS_ORIGEM,
+        icms_situacao_tributaria: GENERIC_ICMS_CST,
+        // REQ-11 — só enviado quando cadastrado (CEST só é obrigatório pra produto com
+        // Substituição Tributária; omitir é o comportamento correto pros demais).
+        ...(product?.cestCode ? { cest: product.cestCode } : {}),
+        // REQ-12 — "SEM GTIN" quando ausente (convenção padrão de NFe), nunca omitido.
+        gtin: product?.gtin ?? 'SEM GTIN',
+        gtin_tributavel: product?.gtin ?? 'SEM GTIN',
+      };
+    });
 
     // specs/0080-troco-pagamento-dinheiro-checkout — `Order` não guarda a taxa de entrega como
     // item separado (`deliveryFee` é um campo agregado, `IOrder.deliveryFee`); quando houver,
@@ -102,7 +114,15 @@ export class FiscalEmissionService {
     }
 
     return {
-      cnpj_emitente: cnpjEmitente,
+      // Achado real (13/11/2026, pedido explícito do usuário — analisar o payload de verdade
+      // enviado à FocusNFe): `FiscalConfig.cnpj` é digitado pelo operador COM máscara
+      // ("07.456.684/0001-80", `FiscalIntegrationPage.tsx` não aplica nenhuma, só valida o
+      // dígito verificador via `isValidCnpj`, que internamente já ignora a máscara) — mas os
+      // exemplos reais da documentação da FocusNFe mostram `cnpj_emitente` sempre como 14 dígitos
+      // puros, sem pontuação ("51916585000125"). Enviar com máscara é a causa mais provável da
+      // rejeição "Emissor não habilitado para emissão da NF-e/NFC-e" (SEFAZ 203: "emissor não
+      // habilitado... ou o CNPJ informado está incorreto") mesmo com CSC/credenciamento OK.
+      cnpj_emitente: cnpjEmitente.replace(/\D/g, ''),
       data_emissao: new Date().toISOString(),
       // '1' = operação presencial — convenção usada mesmo pra venda por delivery/app quando o
       // documento é NFCe de consumidor final (suposição documentada, `docs/FOCUSNFE.md`).
@@ -135,6 +155,20 @@ export class FiscalEmissionService {
     // (reemissão manual) nunca olha este campo, é o caminho que substitui a automação quando ela
     // está off (REQ-3).
     if (!config.autoEmitEnabled) return;
+    // specs/0207-dados-fiscais-cadastro REQ-3 — Regime Normal nunca deriva CST automaticamente
+    // (o CSOSN `102` usado hoje só vale pra Simples Nacional/MEI); em vez de emitir com código
+    // tributário errado de propósito, a automática para aqui, com pendência explicando o motivo.
+    // REQ-5: a reemissão manual CONTINUA liberada (não tem guard equivalente em `doEmit`), mas só
+    // depois de um aviso de confirmação na tela (`OrderCard.tsx`/`ClosedOrdersPanel.tsx`) — sem
+    // isso, bloquear só aqui não protegeria de nada, já que os dois caminhos chamam o mesmo
+    // `doEmit` com o mesmo CSOSN genérico.
+    if (config.taxRegime === 'regimeNormal') {
+      await this.orderRepository.updateFiscal(order.id, {
+        status: 'rejeitado',
+        rejectedReason: 'Regime tributário Normal exige configuração de CST por produto — revisar com contador antes de emitir.',
+      });
+      return;
+    }
 
     await this.orderRepository.updateFiscal(order.id, { status: 'pendente' });
     await this.doEmit(order, config);
