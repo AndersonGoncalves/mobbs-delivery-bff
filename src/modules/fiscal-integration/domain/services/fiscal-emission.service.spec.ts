@@ -117,7 +117,31 @@ describe('FiscalEmissionService (specs/0091-integracao-fiscal-focusnfe)', () => 
 
       expect(MockedClient.prototype.emitNfce).toHaveBeenCalledWith('o-1', expect.objectContaining({ cnpj_emitente: '11222333000181' }));
       expect(orderRepository.updateFiscal).toHaveBeenCalledWith('o-1', { status: 'pendente' });
-      expect(orderRepository.updateFiscal).toHaveBeenLastCalledWith('o-1', { status: 'emitido', ref: 'o-1', documentUrl: '/notas/o-1.html' });
+      expect(orderRepository.updateFiscal).toHaveBeenLastCalledWith('o-1', {
+        status: 'emitido',
+        ref: 'o-1',
+        documentUrl: 'https://homologacao.focusnfe.com.br/notas/o-1.html',
+        emittedAt: expect.any(String),
+      });
+    });
+
+    // Achado real (13/11/2026, pedido explícito do usuário — análise do payload de verdade
+    // enviado à FocusNFe durante um teste real em homologação): `FiscalConfig.cnpj` é digitado
+    // pelo operador COM máscara (`FiscalIntegrationPage.tsx` não normaliza, só valida o dígito
+    // verificador) — enviar `cnpj_emitente` com máscara causava rejeição "Emissor não habilitado
+    // para emissão da NF-e/NFC-e" mesmo com CSC e credenciamento corretos na SEFAZ, porque os
+    // exemplos reais da FocusNFe esperam só os 14 dígitos.
+    it('normaliza o CNPJ do emitente (remove máscara) antes de enviar à FocusNFe, mesmo que o operador tenha digitado com pontuação', async () => {
+      MockedClient.prototype.emitNfce = jest.fn().mockResolvedValue({ ref: 'o-1', status: 'autorizado' });
+      const { service } = setup({
+        fiscalConfigRepository: {
+          findByRestaurantId: jest.fn().mockResolvedValue(buildConfig({ cnpj: '07.456.684/0001-80' })),
+        },
+      });
+
+      await service.emitForOrder(buildOrder());
+
+      expect(MockedClient.prototype.emitNfce).toHaveBeenCalledWith('o-1', expect.objectContaining({ cnpj_emitente: '07456684000180' }));
     });
 
     // Achado real (13/11/2026, pedido explícito do usuário — análise do payload de verdade
@@ -253,7 +277,7 @@ describe('FiscalEmissionService (specs/0091-integracao-fiscal-focusnfe)', () => 
         await service.emitForOrder(buildOrder());
 
         expect(MockedClient.prototype.emitNfce).toHaveBeenCalledWith('o-1', expect.objectContaining({ items: expect.arrayContaining([expect.objectContaining({ icms_situacao_tributaria: '102' })]) }));
-        expect(orderRepository.updateFiscal).toHaveBeenLastCalledWith('o-1', { status: 'emitido', ref: 'o-1', documentUrl: undefined });
+        expect(orderRepository.updateFiscal).toHaveBeenLastCalledWith('o-1', { status: 'emitido', ref: 'o-1', documentUrl: undefined, emittedAt: expect.any(String) });
       });
     });
 
@@ -365,7 +389,12 @@ describe('FiscalEmissionService (specs/0091-integracao-fiscal-focusnfe)', () => 
       await service.retryEmission(buildOrder({ fiscal: { status: 'rejeitado', rejectedReason: 'Rejeição 704' } }), buildConfig());
 
       expect(MockedClient.prototype.emitNfce).toHaveBeenCalled();
-      expect(orderRepository.updateFiscal).toHaveBeenLastCalledWith('o-1', { status: 'emitido', ref: 'o-1', documentUrl: '/notas/o-1.html' });
+      expect(orderRepository.updateFiscal).toHaveBeenLastCalledWith('o-1', {
+        status: 'emitido',
+        ref: 'o-1',
+        documentUrl: 'https://homologacao.focusnfe.com.br/notas/o-1.html',
+        emittedAt: expect.any(String),
+      });
     });
 
     // specs/0204-controle-emissao-fiscal-automatica AC-2/REQ-3 — a reemissão manual é exatamente
@@ -380,7 +409,12 @@ describe('FiscalEmissionService (specs/0091-integracao-fiscal-focusnfe)', () => 
       );
 
       expect(MockedClient.prototype.emitNfce).toHaveBeenCalled();
-      expect(orderRepository.updateFiscal).toHaveBeenLastCalledWith('o-1', { status: 'emitido', ref: 'o-1', documentUrl: '/notas/o-1.html' });
+      expect(orderRepository.updateFiscal).toHaveBeenLastCalledWith('o-1', {
+        status: 'emitido',
+        ref: 'o-1',
+        documentUrl: 'https://homologacao.focusnfe.com.br/notas/o-1.html',
+        emittedAt: expect.any(String),
+      });
     });
   });
 
@@ -409,9 +443,30 @@ describe('FiscalEmissionService (specs/0091-integracao-fiscal-focusnfe)', () => 
     it('aplica o resultado assíncrono recebido via webhook ao pedido', async () => {
       const { service, orderRepository } = setup();
 
-      await service.applyWebhookResult('o-1', { ref: 'o-1', status: 'autorizado', caminho_danfe: '/notas/o-1.html' });
+      await service.applyWebhookResult('o-1', { ref: 'o-1', status: 'autorizado', caminho_danfe: '/notas/o-1.html' }, 'homologacao');
 
-      expect(orderRepository.updateFiscal).toHaveBeenCalledWith('o-1', { status: 'emitido', ref: 'o-1', documentUrl: '/notas/o-1.html' });
+      expect(orderRepository.updateFiscal).toHaveBeenCalledWith('o-1', {
+        status: 'emitido',
+        ref: 'o-1',
+        documentUrl: 'https://homologacao.focusnfe.com.br/notas/o-1.html',
+        emittedAt: expect.any(String),
+      });
+    });
+
+    // Achado real (14/11/2026) — `caminho_danfe` é relativo ao domínio DA FOCUSNFE, nunca ao
+    // nosso; salvar o valor cru virava link quebrado (404) no front (href resolvido contra
+    // bsdelivery.com.br). `environment` decide qual dos dois domínios prefixar.
+    it('em produção, resolve contra api.focusnfe.com.br, não homologacao', async () => {
+      const { service, orderRepository } = setup();
+
+      await service.applyWebhookResult('o-1', { ref: 'o-1', status: 'autorizado', caminho_danfe: '/notas/o-1.html' }, 'producao');
+
+      expect(orderRepository.updateFiscal).toHaveBeenCalledWith('o-1', {
+        status: 'emitido',
+        ref: 'o-1',
+        documentUrl: 'https://api.focusnfe.com.br/notas/o-1.html',
+        emittedAt: expect.any(String),
+      });
     });
   });
 });

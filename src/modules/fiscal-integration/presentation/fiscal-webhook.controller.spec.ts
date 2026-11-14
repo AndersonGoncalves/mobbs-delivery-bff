@@ -79,7 +79,11 @@ describe('FiscalWebhookController (specs/0091-integracao-fiscal-focusnfe REQ-3)'
       { json: jest.fn(), send },
     );
 
-    expect(fiscalEmissionService.applyWebhookResult).toHaveBeenCalledWith('o-1', { ref: 'o-1', status: 'autorizado', caminho_danfe: '/notas/o-1.html' });
+    expect(fiscalEmissionService.applyWebhookResult).toHaveBeenCalledWith(
+      'o-1',
+      { ref: 'o-1', status: 'autorizado', caminho_danfe: '/notas/o-1.html' },
+      'homologacao',
+    );
     expect(send).toHaveBeenCalledWith(200);
   });
 

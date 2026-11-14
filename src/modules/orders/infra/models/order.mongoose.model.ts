@@ -97,6 +97,9 @@ const orderFiscalSchema = new Schema(
     ref: { type: String },
     documentUrl: { type: String },
     rejectedReason: { type: String },
+    // String (ISO), não Date — mesmo padrão de `tableClosedAt` acima: evita conversão explícita
+    // no `toEntity()` (`fiscal` é passado direto, sem mapear campo a campo).
+    emittedAt: { type: String },
   },
   { _id: false },
 );
