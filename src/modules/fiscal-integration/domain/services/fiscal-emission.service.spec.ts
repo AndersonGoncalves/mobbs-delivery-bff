@@ -144,6 +144,25 @@ describe('FiscalEmissionService (specs/0091-integracao-fiscal-focusnfe)', () => 
       expect(MockedClient.prototype.emitNfce).toHaveBeenCalledWith('o-1', expect.objectContaining({ cnpj_emitente: '07456684000180' }));
     });
 
+    // Achado real (13/11/2026, pedido explícito do usuário — análise do payload de verdade
+    // enviado à FocusNFe durante um teste real em homologação): `FiscalConfig.cnpj` é digitado
+    // pelo operador COM máscara (`FiscalIntegrationPage.tsx` não normaliza, só valida o dígito
+    // verificador) — enviar `cnpj_emitente` com máscara causava rejeição "Emissor não habilitado
+    // para emissão da NF-e/NFC-e" mesmo com CSC e credenciamento corretos na SEFAZ, porque os
+    // exemplos reais da FocusNFe esperam só os 14 dígitos.
+    it('normaliza o CNPJ do emitente (remove máscara) antes de enviar à FocusNFe, mesmo que o operador tenha digitado com pontuação', async () => {
+      MockedClient.prototype.emitNfce = jest.fn().mockResolvedValue({ ref: 'o-1', status: 'autorizado' });
+      const { service } = setup({
+        fiscalConfigRepository: {
+          findByRestaurantId: jest.fn().mockResolvedValue(buildConfig({ cnpj: '07.456.684/0001-80' })),
+        },
+      });
+
+      await service.emitForOrder(buildOrder());
+
+      expect(MockedClient.prototype.emitNfce).toHaveBeenCalledWith('o-1', expect.objectContaining({ cnpj_emitente: '07456684000180' }));
+    });
+
     it('AC-5/REQ-6: pedido cancelado nunca gera nota (nem tenta chamar a FocusNFe)', async () => {
       const { service, orderRepository } = setup();
 
