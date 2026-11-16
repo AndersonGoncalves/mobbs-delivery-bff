@@ -444,7 +444,7 @@ describe('FiscalEmissionService (specs/0091-integracao-fiscal-focusnfe)', () => 
     it('aplica o resultado assíncrono recebido via webhook ao pedido', async () => {
       const { service, orderRepository } = setup();
 
-      await service.applyWebhookResult('o-1', { ref: 'o-1', status: 'autorizado', caminho_danfe: '/notas/o-1.html' }, 'homologacao');
+      await service.applyWebhookResult('o-1', { ref: 'o-1', status: 'autorizado', caminho_danfe: '/notas/o-1.html' }, buildConfig({ environment: 'homologacao' }));
 
       expect(orderRepository.updateFiscal).toHaveBeenCalledWith('o-1', {
         status: 'emitido',
@@ -460,7 +460,7 @@ describe('FiscalEmissionService (specs/0091-integracao-fiscal-focusnfe)', () => 
     it('em produção, resolve contra api.focusnfe.com.br, não homologacao', async () => {
       const { service, orderRepository } = setup();
 
-      await service.applyWebhookResult('o-1', { ref: 'o-1', status: 'autorizado', caminho_danfe: '/notas/o-1.html' }, 'producao');
+      await service.applyWebhookResult('o-1', { ref: 'o-1', status: 'autorizado', caminho_danfe: '/notas/o-1.html' }, buildConfig({ environment: 'producao' }));
 
       expect(orderRepository.updateFiscal).toHaveBeenCalledWith('o-1', {
         status: 'emitido',
@@ -468,6 +468,79 @@ describe('FiscalEmissionService (specs/0091-integracao-fiscal-focusnfe)', () => 
         documentUrl: 'https://api.focusnfe.com.br/notas/o-1.html',
         emittedAt: expect.any(String),
       });
+    });
+  });
+
+  // Pedido explícito do usuário (16/11/2026) — tributos aproximados (Lei 12.741/2012) e IE do
+  // emitente, validados contra uma emissão real em produção (pedido #180, 16/11/2026): nunca vêm
+  // no JSON da FocusNFe, só no XML da nota (`caminho_xml_nota_fiscal`).
+  describe('tributos/IE extraídos do XML da nota (REQ-2, achado real 16/11/2026)', () => {
+    beforeEach(() => {
+      MockedClient.prototype.fetchNfceXmlFields = jest.fn();
+    });
+
+    it('baixa o XML (URL resolvida pro domínio da FocusNFe) e grava tributos + dados completos do emitente + os dois endereços', async () => {
+      MockedClient.prototype.emitNfce = jest.fn().mockResolvedValue({
+        ref: 'o-1', status: 'autorizado', caminho_danfe: '/notas/o-1.html', caminho_xml_nota_fiscal: '/arquivos/x/o-1.xml',
+        url_consulta_nf: 'http://www.sefaz.ce.gov.br/nfce/consulta',
+      });
+      MockedClient.prototype.fetchNfceXmlFields = jest.fn().mockResolvedValue({
+        approxTaxAmount: 0.44,
+        emitterName: 'CECILIA ANGELITA DE LIMA CRUZ',
+        emitterCnpj: '07456684000180',
+        emitterIe: '060760753',
+        emitterPhone: '85986404604',
+        emitterAddress: { street: 'DOM AURELIANO MATOS', number: '2298', neighborhood: 'CENTRO', zipCode: '62930000', city: 'Limoeiro do Norte', state: 'CE' },
+      });
+      const { service, orderRepository } = setup();
+
+      await service.emitForOrder(buildOrder());
+
+      expect(MockedClient.prototype.fetchNfceXmlFields).toHaveBeenCalledWith('https://homologacao.focusnfe.com.br/arquivos/x/o-1.xml');
+      expect(orderRepository.updateFiscal).toHaveBeenLastCalledWith('o-1', {
+        status: 'emitido',
+        ref: 'o-1',
+        documentUrl: 'https://homologacao.focusnfe.com.br/notas/o-1.html',
+        emittedAt: expect.any(String),
+        accessKey: undefined,
+        number: undefined,
+        series: undefined,
+        qrCode: undefined,
+        approxTaxAmount: 0.44,
+        emitterName: 'CECILIA ANGELITA DE LIMA CRUZ',
+        emitterCnpj: '07456684000180',
+        emitterIe: '060760753',
+        emitterPhone: '85986404604',
+        emitterAddress: { street: 'DOM AURELIANO MATOS', number: '2298', neighborhood: 'CENTRO', zipCode: '62930000', city: 'Limoeiro do Norte', state: 'CE' },
+        consultaUrl: 'http://www.sefaz.ce.gov.br/nfce/consulta',
+        xmlUrl: 'https://homologacao.focusnfe.com.br/arquivos/x/o-1.xml',
+      });
+    });
+
+    it('nota autorizada sem caminho_xml_nota_fiscal (resposta incompleta): nunca tenta baixar XML, grava sem os campos extraídos do XML', async () => {
+      MockedClient.prototype.emitNfce = jest.fn().mockResolvedValue({ ref: 'o-1', status: 'autorizado', caminho_danfe: '/notas/o-1.html' });
+      const { service, orderRepository } = setup();
+
+      await service.emitForOrder(buildOrder());
+
+      expect(MockedClient.prototype.fetchNfceXmlFields).not.toHaveBeenCalled();
+      const [, patch] = (orderRepository.updateFiscal as jest.Mock).mock.calls.at(-1)!;
+      expect(patch.approxTaxAmount).toBeUndefined();
+      expect(patch.emitterName).toBeUndefined();
+      expect(patch.emitterAddress).toBeUndefined();
+      expect(patch.xmlUrl).toBeUndefined();
+    });
+
+    it('falha ao baixar/ler o XML nunca derruba a emissão — nota ainda sai "emitida", só sem os campos extraídos do XML', async () => {
+      MockedClient.prototype.emitNfce = jest.fn().mockResolvedValue({
+        ref: 'o-1', status: 'autorizado', caminho_danfe: '/notas/o-1.html', caminho_xml_nota_fiscal: '/arquivos/x/o-1.xml',
+      });
+      MockedClient.prototype.fetchNfceXmlFields = jest.fn().mockResolvedValue({});
+      const { service, orderRepository } = setup();
+
+      await service.emitForOrder(buildOrder());
+
+      expect(orderRepository.updateFiscal).toHaveBeenLastCalledWith('o-1', expect.objectContaining({ status: 'emitido' }));
     });
   });
 });

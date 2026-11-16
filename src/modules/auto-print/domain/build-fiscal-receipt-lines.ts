@@ -20,6 +20,31 @@ function formatAccessKey(key: string): string {
   return key.replace(/(\d{4})(?=\d)/g, '$1 ').trim();
 }
 
+/** XX.XXX.XXX/XXXX-XX — máscara padrão de CNPJ (14 dígitos), aplicada aqui porque o XML devolve
+ * só os dígitos crus (`<CNPJ>07456684000180</CNPJ>`). */
+function formatCnpj(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length !== 14) return raw;
+  return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
+}
+
+/** XXXXX-XXX — máscara padrão de CEP (8 dígitos), mesmo motivo de `formatCnpj` (XML devolve cru). */
+function formatCep(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length !== 8) return raw;
+  return `${digits.slice(0, 5)}-${digits.slice(5)}`;
+}
+
+/** (XX) XXXXX-XXXX (celular, 11 dígitos) ou (XX) XXXX-XXXX (fixo, 10 dígitos) — `<fone>` do XML
+ * vem só com DDD + número, sem o "55" do país (diferente do padrão E.164 usado em
+ * `normalizePhoneNumber` em outros módulos). */
+function formatPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length === 11) return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  if (digits.length === 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  return raw;
+}
+
 /**
  * Pedido explícito do usuário (16/11/2026) — cupom fiscal simplificado, impresso automaticamente
  * pela bridge junto do ticket do pedido (`ReceiptLine[]`, mesmo mecanismo de `buildReceiptLines`,
@@ -37,11 +62,34 @@ export function buildFiscalReceiptLines(order: IOrder, restaurant: IRestaurant):
   const itemCount = order.items.reduce((sum, item) => sum + item.quantity, 0);
   const lines: ReceiptLine[] = [];
 
-  lines.push({ text: stripAccents(restaurant.name).toUpperCase(), bold: true });
-  if (restaurant.document) lines.push({ text: `CNPJ: ${restaurant.document}` });
+  // Pedido explícito do usuário (16/11/2026) — cabeçalho inteiro vem do XML da nota (dados reais
+  // do emitente cadastrados no painel da FocusNFe), nunca do nosso `Restaurant`/`FiscalConfig` —
+  // os dois podem divergir do que foi cadastrado de fato pra emissão fiscal. Nome/CNPJ caem no
+  // fallback de `Restaurant` só se o XML não puder ser lido (nunca existia fallback pros outros
+  // campos — IE/endereço/telefone — por isso esses somem juntos nesse caso, sem substituto).
+  const emitterName = fiscal.emitterName ?? restaurant.name;
+  lines.push({ text: stripAccents(emitterName).toUpperCase(), bold: true });
+
+  const emitterCnpj = fiscal.emitterCnpj ?? restaurant.document;
+  if (emitterCnpj) {
+    const cnpjLine = `CNPJ: ${formatCnpj(emitterCnpj)}` + (fiscal.emitterIe ? `  IE: ${fiscal.emitterIe}` : '');
+    lines.push({ text: cnpjLine });
+  }
+  const address = fiscal.emitterAddress;
+  if (address?.street) {
+    lines.push({ text: `${stripAccents(address.street).toUpperCase()}, ${address.number ?? 'S/N'} - ${stripAccents(address.neighborhood ?? '').toUpperCase()}` });
+  }
+  if (address?.zipCode || fiscal.emitterPhone) {
+    const cepPart = address?.zipCode ? `CEP: ${formatCep(address.zipCode)}` : '';
+    const phonePart = fiscal.emitterPhone ? `Tel.: ${formatPhone(fiscal.emitterPhone)}` : '';
+    lines.push({ text: [cepPart, phonePart].filter(Boolean).join(' - ') });
+  }
+  if (address?.city) {
+    lines.push({ text: `${stripAccents(address.city)} - ${address.state ?? ''}` });
+  }
   lines.push({ text: 'DANFE NFC-e - Documento Auxiliar da', bold: true });
   lines.push({ text: 'Nota Fiscal de Consumidor Eletronica', bold: true });
-  lines.push({ text: '-'.repeat(32) });
+  lines.push({ text: '', divider: true });
 
   lines.push({ text: `ITENS (${itemCount})` });
   for (const item of order.items) {
@@ -50,8 +98,13 @@ export function buildFiscalReceiptLines(order: IOrder, restaurant: IRestaurant):
   if (order.deliveryFee > 0) {
     lines.push({ text: `# Taxa de entrega ${money(order.deliveryFee)}` });
   }
-  lines.push({ text: '-'.repeat(32) });
+  lines.push({ text: '', divider: true });
   lines.push({ text: `TOTAL: ${money(order.total)}`, bold: true });
+  // Pedido explícito do usuário (16/11/2026) — tributos aproximados (Lei 12.741/2012), só existem
+  // no XML da nota (nunca no JSON da FocusNFe) — ver `FocusNfeApiClient.fetchNfceXmlFields`.
+  if (fiscal.approxTaxAmount !== undefined) {
+    lines.push({ text: `Tributos aprox. (Lei 12.741/2012): ${money(fiscal.approxTaxAmount)}` });
+  }
   lines.push({ text: '' });
 
   lines.push({ text: `NFC-e no ${fiscal.number ?? '-'} Serie ${fiscal.series ?? '-'}` });
@@ -64,7 +117,10 @@ export function buildFiscalReceiptLines(order: IOrder, restaurant: IRestaurant):
     lines.push({ text: '' });
   }
   lines.push({ text: 'Consulte pela Chave de Acesso em' });
-  lines.push({ text: 'www.nfce.fazenda.gov.br' });
+  // Pedido explícito do usuário (16/11/2026) — URL de consulta real do estado do emitente
+  // (`url_consulta_nf`, já devolvida pela FocusNFe) em vez da genérica federal fixa; só cai no
+  // fallback se a FocusNFe não devolver (nunca aconteceu nos testes reais, mas defesa barata).
+  lines.push({ text: fiscal.consultaUrl ?? 'www.nfce.fazenda.gov.br' });
   if (fiscal.qrCode) {
     lines.push({ text: '', qr: fiscal.qrCode });
   }

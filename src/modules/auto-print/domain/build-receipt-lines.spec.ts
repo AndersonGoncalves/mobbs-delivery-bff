@@ -106,4 +106,14 @@ describe('buildReceiptLines (specs/0139-impressao-automatica-bridge)', () => {
     expect(texts.some((text) => text.includes('Extra: Bacon'))).toBe(true);
     expect(texts).toContain('  Obs.: sem cebola');
   });
+
+  // Pedido explícito do usuário (16/11/2026) — achado real: linha tracejada fixa (32 traços)
+  // ficava curta porque a largura real da impressora (default 48) é maior. `divider: true` deixa
+  // a bridge desenhar a linha na largura certa via `drawLine()`, em vez do BFF adivinhar um número.
+  it('usa divider em vez de texto cru de traços nas linhas separadoras', () => {
+    const lines = buildReceiptLines(buildOrder(), buildRestaurant(), buildCustomer());
+
+    expect(lines.filter((line) => line.divider).length).toBeGreaterThan(0);
+    expect(lines.some((line) => line.text.includes('-----'))).toBe(false);
+  });
 });

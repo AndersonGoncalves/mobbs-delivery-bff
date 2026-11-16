@@ -88,6 +88,32 @@ export interface FocusNfeDocumentResult {
   erros?: { mensagem: string; campo?: string }[];
 }
 
+/** Pedido explícito do usuário (16/11/2026) — campos que a FocusNFe NUNCA devolve no JSON (nem na
+ * emissão, nem na consulta) — só existem no XML da própria nota, confirmado contra uma emissão
+ * real em produção (pedido #180, 16/11/2026): `vTotTrib` (tributos aproximados, Lei 12.741/2012,
+ * sempre dentro de `<ICMSTot>`), e os dados do emitente — razão social, CNPJ, IE e endereço
+ * completo, sempre dentro de `<emit>`/`<enderEmit>`. Usados só pra montar o cupom fiscal
+ * simplificado (`buildFiscalReceiptLines`) — pedido explícito do usuário: o cabeçalho do cupom
+ * passa a vir inteiro do XML (o documento fiscal de verdade), nunca do nosso `Restaurant`/
+ * `FiscalConfig` — os dois podem divergir do que foi cadastrado de fato no painel da FocusNFe. */
+export interface NfceXmlEmitterAddress {
+  street?: string;
+  number?: string;
+  neighborhood?: string;
+  zipCode?: string;
+  city?: string;
+  state?: string;
+}
+
+export interface NfceXmlFields {
+  approxTaxAmount?: number;
+  emitterName?: string;
+  emitterCnpj?: string;
+  emitterIe?: string;
+  emitterPhone?: string;
+  emitterAddress?: NfceXmlEmitterAddress;
+}
+
 /** Ver nota no cabeçalho do arquivo — suposição documentada, não confirmada contra webhook real. */
 export type FocusNfeWebhookPayload = FocusNfeDocumentResult;
 
@@ -140,6 +166,53 @@ export class FocusNfeApiClient {
   /** `DELETE /v2/nfce/{ref}` (REQ-6) — `justificativa` precisa ter 15-255 caracteres. */
   async cancelNfce(ref: string, justificativa: string): Promise<FocusNfeDocumentResult> {
     return this.request<FocusNfeDocumentResult>('DELETE', `/v2/nfce/${encodeURIComponent(ref)}`, { justificativa });
+  }
+
+  /** Pedido explícito do usuário (16/11/2026) — baixa o XML da nota (confirmado real: URL pública,
+   * sem autenticação, ~6,5KB, mesmo domínio de `caminho_danfe`) e extrai só os dois campos que o
+   * JSON da FocusNFe nunca devolve (ver `NfceXmlFields`), via regex ancorada no bloco certo do XML
+   * (nunca o primeiro `<vTotTrib>`/`<IE>` que aparecer — o documento tem um `vTotTrib` por item
+   * além do total, e poderia ter uma segunda `IE` se o destinatário tivesse uma cadastrada).
+   * Nunca lança: falha aqui é só o cupom simplificado sair sem esses dois campos, nunca motivo pra
+   * reverter uma emissão já autorizada. */
+  async fetchNfceXmlFields(xmlUrl: string): Promise<NfceXmlFields> {
+    try {
+      const response = await fetchWithTimeout(xmlUrl, {}, 10_000);
+      if (!response.ok) return {};
+      const xml = await response.text();
+      const tag = (block: string, name: string): string | undefined => block.match(new RegExp(`<${name}>([^<]+)</${name}>`))?.[1];
+
+      const totalBlock = xml.match(/<ICMSTot>([\s\S]*?)<\/ICMSTot>/)?.[1] ?? '';
+      const emitBlock = xml.match(/<emit>([\s\S]*?)<\/emit>/)?.[1] ?? '';
+      // `<enderEmit>` fica DENTRO de `<emit>` — pegar ancorado no bloco do emitente, nunca no XML
+      // inteiro, pelo mesmo motivo do `<IE>`/`<CNPJ>`: o `<dest>` (destinatário) é irmão de
+      // `<emit>`, nunca filho, mas mais vale a defesa explícita do que confiar nisso sem âncora.
+      const enderBlock = emitBlock.match(/<enderEmit>([\s\S]*?)<\/enderEmit>/)?.[1] ?? '';
+
+      const approxTaxAmount = tag(totalBlock, 'vTotTrib');
+      const emitterAddress: NfceXmlEmitterAddress | undefined = enderBlock
+        ? {
+            street: tag(enderBlock, 'xLgr'),
+            number: tag(enderBlock, 'nro'),
+            neighborhood: tag(enderBlock, 'xBairro'),
+            zipCode: tag(enderBlock, 'CEP'),
+            city: tag(enderBlock, 'xMun'),
+            state: tag(enderBlock, 'UF'),
+          }
+        : undefined;
+
+      return {
+        approxTaxAmount: approxTaxAmount ? Number(approxTaxAmount) : undefined,
+        emitterName: tag(emitBlock, 'xNome'),
+        emitterCnpj: tag(emitBlock, 'CNPJ'),
+        emitterIe: tag(emitBlock, 'IE'),
+        emitterPhone: tag(enderBlock, 'fone'),
+        emitterAddress,
+      };
+    } catch (error) {
+      console.error(`[fiscal-integration] erro inesperado baixando/lendo o XML da nota (${xmlUrl}):`, error);
+      return {};
+    }
   }
 
   /** `POST /v2/hooks` — registro do webhook de retorno. Pronto pra uso, mas não chamado

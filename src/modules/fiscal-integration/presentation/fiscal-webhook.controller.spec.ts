@@ -82,7 +82,7 @@ describe('FiscalWebhookController (specs/0091-integracao-fiscal-focusnfe REQ-3)'
     expect(fiscalEmissionService.applyWebhookResult).toHaveBeenCalledWith(
       'o-1',
       { ref: 'o-1', status: 'autorizado', caminho_danfe: '/notas/o-1.html' },
-      'homologacao',
+      expect.objectContaining({ restaurantId: 'r-1', environment: 'homologacao' }),
     );
     expect(send).toHaveBeenCalledWith(200);
   });

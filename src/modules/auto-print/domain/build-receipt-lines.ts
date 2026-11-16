@@ -10,6 +10,13 @@ export interface ReceiptLine {
    * imprime este conteúdo como QR code em vez de texto (`text` fica vazio/label, ignorado nesse
    * caso). Usado só pelo cupom fiscal (`buildFiscalReceiptLines`) — nunca pelo ticket normal. */
   qr?: string;
+  /** Pedido explícito do usuário (16/11/2026) — achado real: o BFF não sabe a largura de verdade
+   * configurada na impressora (`PRINTER_WIDTH` só existe no `.env` da bridge); mandar
+   * `'-'.repeat(32)` fixo deixava um espaço vazio grande quando a largura real é 48 (default da
+   * `node-thermal-printer`, `createPrinter` em `printer.ts` nunca sobrescreve). Quando presente
+   * (`text` fica vazio, ignorado), a bridge chama `drawLine()` da própria lib — desenha a linha
+   * na largura exata configurada, qualquer que ela seja, sem o BFF precisar adivinhar um número. */
+  divider?: boolean;
 }
 
 const PAYMENT_LABELS: Record<PaymentMethod, string> = {
@@ -67,7 +74,7 @@ export function buildReceiptLines(order: IOrder, restaurant: IRestaurant, custom
   lines.push({ text: `ID PEDIDO: ${order.orderNumber}` });
   lines.push({ text: `Horario: ${formatOrderDateTime(order.createdAt)}` });
   lines.push({ text: `Tipo: ${ORDER_TYPE_LABELS[order.orderType]}` });
-  lines.push({ text: '-'.repeat(32) });
+  lines.push({ text: '', divider: true });
 
   if (customer) {
     lines.push({ text: `NOME: ${stripAccents(customer.name).toUpperCase()}` });
@@ -83,7 +90,7 @@ export function buildReceiptLines(order: IOrder, restaurant: IRestaurant, custom
     lines.push({ text: `# ${item.quantity}x ${stripAccents(item.productName)} ${money(item.unitPrice * item.quantity)}` });
     if (item.selections && item.selections.length > 0) lines.push(...selectionLines(item.selections));
     if (item.notes) lines.push({ text: `  Obs.: ${stripAccents(item.notes)}` });
-    lines.push({ text: '-'.repeat(32) });
+    lines.push({ text: '', divider: true });
   }
 
   lines.push({ text: '' });
@@ -92,7 +99,7 @@ export function buildReceiptLines(order: IOrder, restaurant: IRestaurant, custom
   lines.push({ text: `Entrega: ${money(order.deliveryFee)}` });
   lines.push({ text: '' });
   lines.push({ text: `TOTAL: ${money(order.total)}`, bold: true });
-  lines.push({ text: '-'.repeat(32) });
+  lines.push({ text: '', divider: true });
   lines.push({ text: `Pagamento: ${PAYMENT_LABELS[order.paymentMethod]}` });
   lines.push({ text: '' });
   lines.push({ text: '-- BsDelivery --' });

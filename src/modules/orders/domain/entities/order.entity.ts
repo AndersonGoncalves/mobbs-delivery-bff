@@ -301,6 +301,36 @@ export interface IOrderFiscal {
   number?: string;
   series?: string;
   qrCode?: string;
+  /** Pedido explícito do usuário (16/11/2026) — extraídos do XML da nota (nunca vêm no JSON da
+   * FocusNFe, confirmado contra emissão real em produção, pedido #180): tributos aproximados
+   * (Lei 12.741/2012, `<vTotTrib>` dentro de `<ICMSTot>`). Ausente quando o download/leitura do
+   * XML falha (nunca bloqueia a emissão — ver `FocusNfeApiClient.fetchNfceXmlFields`) — nesse caso
+   * o cupom simplificado só sai sem essa linha. */
+  approxTaxAmount?: number;
+  /** Pedido explícito do usuário (16/11/2026) — dados do emitente extraídos do XML da nota
+   * (`<emit>`/`<enderEmit>`), nunca do nosso `Restaurant`/`FiscalConfig`: o cabeçalho do cupom
+   * fiscal simplificado reflete exatamente o que está cadastrado de verdade no painel da
+   * FocusNFe (que pode divergir do nosso cadastro). Todos ausentes juntos quando o download/
+   * leitura do XML falha — nesse caso o cabeçalho cai no fallback de `Restaurant`. */
+  emitterName?: string;
+  emitterCnpj?: string;
+  emitterIe?: string;
+  emitterPhone?: string;
+  emitterAddress?: {
+    street?: string;
+    number?: string;
+    neighborhood?: string;
+    zipCode?: string;
+    city?: string;
+    state?: string;
+  };
+  /** Pedido explícito do usuário (16/11/2026) — "guarde os dois endereços": a URL de consulta
+   * genérica da SEFAZ do estado do emitente (`url_consulta_nf`, ex.
+   * `www.sefaz.ce.gov.br/nfce/consulta` — já vem pronta da FocusNFe, hoje descartada) e a URL do
+   * XML da própria nota (resolvida pro domínio da FocusNFe, mesmo tratamento de `documentUrl`) —
+   * trilha de auditoria: dá pra abrir o XML original de uma nota antiga sem reconstruir o caminho. */
+  consultaUrl?: string;
+  xmlUrl?: string;
 }
 
 export type UberDeliveryStatus = 'solicitado' | 'aceito' | 'a_caminho' | 'entregue' | 'cancelado';

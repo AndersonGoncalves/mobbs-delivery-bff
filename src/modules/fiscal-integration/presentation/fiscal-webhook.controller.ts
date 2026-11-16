@@ -54,7 +54,7 @@ export class FiscalWebhookController extends BaseRouter {
         throw new NotFoundError('Pedido não encontrado');
       }
 
-      await this.fiscalEmissionService.applyWebhookResult(order.id, payload, config.environment);
+      await this.fiscalEmissionService.applyWebhookResult(order.id, payload, config);
       res.send(200);
     });
   }

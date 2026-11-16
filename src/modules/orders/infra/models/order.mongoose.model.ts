@@ -105,6 +105,27 @@ const orderFiscalSchema = new Schema(
     number: { type: String },
     series: { type: String },
     qrCode: { type: String },
+    // Pedido explícito do usuário (16/11/2026) — ver IOrderFiscal.approxTaxAmount/emitter*.
+    approxTaxAmount: { type: Number },
+    emitterName: { type: String },
+    emitterCnpj: { type: String },
+    emitterIe: { type: String },
+    emitterPhone: { type: String },
+    emitterAddress: {
+      type: {
+        street: { type: String },
+        number: { type: String },
+        neighborhood: { type: String },
+        zipCode: { type: String },
+        city: { type: String },
+        state: { type: String },
+      },
+      default: undefined,
+      _id: false,
+    },
+    // Pedido explícito do usuário (16/11/2026) — ver IOrderFiscal.consultaUrl/xmlUrl.
+    consultaUrl: { type: String },
+    xmlUrl: { type: String },
   },
   { _id: false },
 );
