@@ -215,11 +215,13 @@ export class FiscalEmissionService {
 
   private async applyResult(orderId: string, result: FocusNfeDocumentResult, config: IFiscalConfig): Promise<void> {
     if (result.status === 'autorizado') {
-      // Pedido explícito do usuário (16/11/2026) — tributos aproximados (Lei 12.741/2012) e IE do
-      // emitente nunca vêm no JSON da FocusNFe (confirmado contra emissão real em produção,
-      // pedido #180) — só existem no XML da própria nota. Baixa e extrai aqui, uma vez, no mesmo
-      // momento em que já resolvemos `documentUrl`; nunca bloqueia a emissão (`fetchNfceXmlFields`
-      // já nunca lança, mas o `?? {}` aqui é defesa extra).
+      // Pedido explícito do usuário (16/11/2026) — tributos aproximados (Lei 12.741/2012), split
+      // Federal/Estadual e dados do emitente nunca vêm no JSON da FocusNFe (confirmado contra
+      // emissão real em produção, pedido #180) — só existem no XML da própria nota. Protocolo de
+      // autorização É diferente: já vem pronto em `result.protocolo` (ver abaixo), a FocusNFe
+      // sempre devolve no JSON — baixar o XML aqui é só pros outros campos. Baixa e extrai uma
+      // vez, no mesmo momento em que já resolvemos `documentUrl`; nunca bloqueia a emissão
+      // (`fetchNfceXmlFields` já nunca lança, mas o `?? {}` aqui é defesa extra).
       const xmlUrl = this.resolveDocumentUrl(result.caminho_xml_nota_fiscal, config.environment);
       const xmlFields = xmlUrl ? await this.clientFor(config).fetchNfceXmlFields(xmlUrl) : {};
       await this.orderRepository.updateFiscal(orderId, {
@@ -236,7 +238,14 @@ export class FiscalEmissionService {
         number: result.numero,
         series: result.serie,
         qrCode: result.qrcode_url,
+        // Pedido explícito do usuário (16/11/2026) — `result.protocolo` já vem pronto no JSON
+        // (confirmado real, ver docstring de `IOrderFiscal.protocol`); `xmlFields.protocol` é só
+        // reforço pro caso raro do JSON da emissão síncrona não trazer.
+        protocol: result.protocolo ?? xmlFields.protocol,
         approxTaxAmount: xmlFields.approxTaxAmount,
+        approxTaxFederal: xmlFields.approxTaxFederal,
+        approxTaxState: xmlFields.approxTaxState,
+        approxTaxSource: xmlFields.approxTaxSource,
         emitterName: xmlFields.emitterName,
         emitterCnpj: xmlFields.emitterCnpj,
         emitterIe: xmlFields.emitterIe,

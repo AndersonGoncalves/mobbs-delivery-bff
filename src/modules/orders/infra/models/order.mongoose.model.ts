@@ -105,8 +105,13 @@ const orderFiscalSchema = new Schema(
     number: { type: String },
     series: { type: String },
     qrCode: { type: String },
+    // Pedido explícito do usuário (16/11/2026) — ver IOrderFiscal.protocol.
+    protocol: { type: String },
     // Pedido explícito do usuário (16/11/2026) — ver IOrderFiscal.approxTaxAmount/emitter*.
     approxTaxAmount: { type: Number },
+    approxTaxFederal: { type: Number },
+    approxTaxState: { type: Number },
+    approxTaxSource: { type: String },
     emitterName: { type: String },
     emitterCnpj: { type: String },
     emitterIe: { type: String },

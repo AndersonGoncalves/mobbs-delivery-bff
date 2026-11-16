@@ -1,6 +1,7 @@
 import { buildFiscalReceiptLines } from './build-fiscal-receipt-lines';
 import { IOrder } from '../../orders/domain/entities/order.entity';
 import { IRestaurant } from '../../restaurants/domain/entities/restaurant.entity';
+import { ICustomer } from '../../customers/domain/entities/customer.entity';
 
 function buildOrder(overrides: Partial<IOrder> = {}): IOrder {
   return {
@@ -36,9 +37,13 @@ function buildRestaurant(overrides: Partial<IRestaurant> = {}): IRestaurant {
   return { id: 'r-1', name: 'Pizzaria do Zé', document: '16800957000152', ...overrides } as IRestaurant;
 }
 
+function buildCustomer(overrides: Partial<ICustomer> = {}): ICustomer {
+  return { id: 'c-1', name: 'Joao da Silva', phone: '85999999999', ...overrides } as ICustomer;
+}
+
 describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', () => {
   it('reproduz a estrutura de um DANFCE simplificado: cabeçalho, itens, total, identificação da nota e chave de acesso em grupos de 4', () => {
-    const lines = buildFiscalReceiptLines(buildOrder(), buildRestaurant());
+    const lines = buildFiscalReceiptLines(buildOrder(), buildRestaurant(), null);
     const texts = lines.map((line) => line.text);
 
     expect(texts).toContain('PIZZARIA DO ZE');
@@ -50,7 +55,6 @@ describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', 
     expect(texts).toContain('# Taxa de entrega R$5,00');
     expect(texts).toContain('TOTAL: R$41,00');
     expect(texts).toContain('NFC-e no 123 Serie 1');
-    expect(texts).toContain('1234 5678 9012 3456 7890 1234 5678 9012 3456 7890 1234');
   });
 
   // Pedido explícito do usuário (16/11/2026) — cabeçalho inteiro vem do XML da nota (dados reais
@@ -68,6 +72,7 @@ describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', 
         },
       }),
       buildRestaurant({ name: 'Nome cadastrado na retaguarda (nunca usado aqui)', document: '00000000000000' }),
+      null,
     );
     const texts = lines.map((line) => line.text);
 
@@ -79,12 +84,12 @@ describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', 
   });
 
   it('imprime o QR code de consulta quando a FocusNFe devolveu qrCode', () => {
-    const lines = buildFiscalReceiptLines(buildOrder(), buildRestaurant());
+    const lines = buildFiscalReceiptLines(buildOrder(), buildRestaurant(), null);
     expect(lines).toContainEqual(expect.objectContaining({ qr: 'https://www.homologacao.focusnfe.com.br/qr/o-1' }));
   });
 
   it('sem QR code (FocusNFe não devolveu), não inclui nenhuma linha de QR', () => {
-    const lines = buildFiscalReceiptLines(buildOrder({ fiscal: { status: 'emitido', ref: 'o-1' } }), buildRestaurant());
+    const lines = buildFiscalReceiptLines(buildOrder({ fiscal: { status: 'emitido', ref: 'o-1' } }), buildRestaurant(), null);
     expect(lines.some((line) => line.qr)).toBe(false);
   });
 
@@ -94,6 +99,7 @@ describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', 
     const lines = buildFiscalReceiptLines(
       buildOrder({ fiscal: { status: 'emitido', ref: 'o-1', approxTaxAmount: 0.44 } }),
       buildRestaurant(),
+      null,
     );
     const texts = lines.map((line) => line.text);
 
@@ -101,7 +107,7 @@ describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', 
   });
 
   it('sem approxTaxAmount (XML não baixado/lido), não inclui essa linha', () => {
-    const lines = buildFiscalReceiptLines(buildOrder({ fiscal: { status: 'emitido', ref: 'o-1' } }), buildRestaurant());
+    const lines = buildFiscalReceiptLines(buildOrder({ fiscal: { status: 'emitido', ref: 'o-1' } }), buildRestaurant(), null);
     const texts = lines.map((line) => line.text);
 
     expect(texts.some((text) => text.startsWith('Tributos aprox.'))).toBe(false);
@@ -113,6 +119,7 @@ describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', 
     const lines = buildFiscalReceiptLines(
       buildOrder({ fiscal: { status: 'emitido', ref: 'o-1', consultaUrl: 'http://www.sefaz.ce.gov.br/nfce/consulta' } }),
       buildRestaurant(),
+      null,
     );
     const texts = lines.map((line) => line.text);
 
@@ -121,7 +128,7 @@ describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', 
   });
 
   it('sem consultaUrl (FocusNFe não devolveu), cai no fallback genérico federal', () => {
-    const lines = buildFiscalReceiptLines(buildOrder({ fiscal: { status: 'emitido', ref: 'o-1' } }), buildRestaurant());
+    const lines = buildFiscalReceiptLines(buildOrder({ fiscal: { status: 'emitido', ref: 'o-1' } }), buildRestaurant(), null);
     const texts = lines.map((line) => line.text);
 
     expect(texts).toContain('www.nfce.fazenda.gov.br');
@@ -129,9 +136,165 @@ describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', 
 
   // Pedido explícito do usuário (16/11/2026) — mesmo achado do ticket normal (`build-receipt-lines`).
   it('usa divider em vez de texto cru de traços nas linhas separadoras', () => {
-    const lines = buildFiscalReceiptLines(buildOrder(), buildRestaurant());
+    const lines = buildFiscalReceiptLines(buildOrder(), buildRestaurant(), null);
 
     expect(lines.filter((line) => line.divider).length).toBeGreaterThan(0);
     expect(lines.some((line) => line.text.includes('-----'))).toBe(false);
+  });
+
+  // Pedido explícito do usuário (16/11/2026) — 5 ajustes de fidelidade ao DANFCE real + 3 novos
+  // ajustes (chave numa linha só, CONSUMIDOR com dados reais, linha em branco cabeçalho/itens).
+
+  it('inclui a linha estática "Não permite aproveitamento de crédito de ICMS"', () => {
+    const lines = buildFiscalReceiptLines(buildOrder(), buildRestaurant(), null);
+    const texts = lines.map((line) => line.text);
+
+    expect(texts).toContain('Nao permite aproveitamento de credito de ICMS');
+  });
+
+  it('pula uma linha em branco entre o cabeçalho e os itens', () => {
+    const lines = buildFiscalReceiptLines(buildOrder(), buildRestaurant(), null);
+    const itemsIndex = lines.findIndex((line) => line.text === 'ITENS (2)');
+    const headerDividerIndex = lines.findIndex((line) => line.divider);
+
+    expect(headerDividerIndex).toBeGreaterThan(-1);
+    expect(itemsIndex).toBeGreaterThan(headerDividerIndex);
+    expect(lines[headerDividerIndex - 1]).toEqual(expect.objectContaining({ text: '' }));
+  });
+
+  it('inclui "Qtd. Total de Itens" com a soma das quantidades', () => {
+    const lines = buildFiscalReceiptLines(buildOrder(), buildRestaurant(), null);
+    const texts = lines.map((line) => line.text);
+
+    expect(texts).toContain('Qtd. Total de Itens: 2');
+  });
+
+  it('imprime a forma de pagamento e o valor pago', () => {
+    const lines = buildFiscalReceiptLines(buildOrder({ paymentMethod: 'pix' }), buildRestaurant(), null);
+    const texts = lines.map((line) => line.text);
+
+    expect(texts).toContain('Forma de pagamento');
+    expect(texts).toContain('- Pagamento Instantaneo (PIX) R$41,00');
+  });
+
+  it('calcula o troco quando o pagamento é em dinheiro e cashChangeFor foi informado', () => {
+    const lines = buildFiscalReceiptLines(
+      buildOrder({ paymentMethod: 'cash', cashChangeFor: 50 }),
+      buildRestaurant(),
+      null,
+    );
+    const texts = lines.map((line) => line.text);
+
+    expect(texts).toContain('- Dinheiro R$41,00');
+    expect(texts).toContain('Troco: R$9,00');
+  });
+
+  it('não imprime linha de troco quando o pagamento não é em dinheiro', () => {
+    const lines = buildFiscalReceiptLines(buildOrder({ paymentMethod: 'pix' }), buildRestaurant(), null);
+    const texts = lines.map((line) => line.text);
+
+    expect(texts.some((text) => text.startsWith('Troco:'))).toBe(false);
+  });
+
+  it('imprime o split Federal/Estadual e a Fonte quando extraídos do XML (infAdic/infCpl)', () => {
+    const lines = buildFiscalReceiptLines(
+      buildOrder({
+        fiscal: {
+          status: 'emitido', ref: 'o-1',
+          approxTaxFederal: 0.16, approxTaxState: 0.28,
+          approxTaxSource: 'IBPT/empresometro.com.br AA45DF',
+        },
+      }),
+      buildRestaurant(),
+      null,
+    );
+    const texts = lines.map((line) => line.text);
+
+    expect(texts).toContain('Trib. aprox: R$0,16 Federal; R$0,28 Estadual');
+    expect(texts).toContain('Fonte: IBPT/empresometro.com.br AA45DF');
+  });
+
+  it('sem approxTaxFederal/approxTaxState, não inclui a linha de split nem a Fonte', () => {
+    const lines = buildFiscalReceiptLines(buildOrder({ fiscal: { status: 'emitido', ref: 'o-1' } }), buildRestaurant(), null);
+    const texts = lines.map((line) => line.text);
+
+    expect(texts.some((text) => text.startsWith('Trib. aprox:'))).toBe(false);
+    expect(texts.some((text) => text.startsWith('Fonte:'))).toBe(false);
+  });
+
+  it('mostra a URL de consulta antes da chave de acesso (ordem igual ao DANFCE real)', () => {
+    const lines = buildFiscalReceiptLines(buildOrder(), buildRestaurant(), null);
+    const texts = lines.map((line) => line.text);
+    const consultaIndex = texts.indexOf('Consulte pela Chave de Acesso em');
+    const chaveHeadingIndex = texts.indexOf('CHAVE DE ACESSO');
+
+    expect(consultaIndex).toBeGreaterThan(-1);
+    expect(chaveHeadingIndex).toBeGreaterThan(consultaIndex);
+  });
+
+  it('imprime a chave de acesso numa única linha, em negrito e com fonte reduzida', () => {
+    const lines = buildFiscalReceiptLines(buildOrder(), buildRestaurant(), null);
+    const keyLine = lines.find((line) => line.text.replace(/\s/g, '') === '12345678901234567890123456789012345678901234');
+
+    expect(keyLine).toEqual(expect.objectContaining({ bold: true, small: true }));
+    expect(lines.filter((line) => line.text.includes('1234 5678')).length).toBe(1);
+  });
+
+  it('sem accessKey, não inclui a seção "CHAVE DE ACESSO"', () => {
+    const lines = buildFiscalReceiptLines(buildOrder({ fiscal: { status: 'emitido', ref: 'o-1' } }), buildRestaurant(), null);
+    const texts = lines.map((line) => line.text);
+
+    expect(texts).not.toContain('CHAVE DE ACESSO');
+  });
+
+  it('CONSUMIDOR mostra "NÃO IDENTIFICADO" quando não há customer ou customer sem CPF', () => {
+    const linesSemCustomer = buildFiscalReceiptLines(buildOrder(), buildRestaurant(), null);
+    const linesCustomerSemCpf = buildFiscalReceiptLines(buildOrder(), buildRestaurant(), buildCustomer({ document: undefined }));
+
+    for (const lines of [linesSemCustomer, linesCustomerSemCpf]) {
+      const texts = lines.map((line) => line.text);
+      expect(texts).toContain('CONSUMIDOR NAO IDENTIFICADO');
+    }
+  });
+
+  it('CONSUMIDOR mostra CPF e nome reais do pedido quando o customer tem document cadastrado', () => {
+    const lines = buildFiscalReceiptLines(
+      buildOrder(),
+      buildRestaurant(),
+      buildCustomer({ name: 'Joao da Silva', document: '12345678900' }),
+    );
+    const texts = lines.map((line) => line.text);
+
+    expect(texts).toContain('CPF: 123.456.789-00');
+    expect(texts).toContain('JOAO DA SILVA');
+    expect(texts).not.toContain('CONSUMIDOR NAO IDENTIFICADO');
+  });
+
+  it('inclui o rótulo "Consulta via Leitor de QR Code" antes do QR', () => {
+    const lines = buildFiscalReceiptLines(buildOrder(), buildRestaurant(), null);
+    const texts = lines.map((line) => line.text);
+    const labelIndex = texts.indexOf('Consulta via Leitor de QR Code');
+    const qrIndex = lines.findIndex((line) => line.qr);
+
+    expect(labelIndex).toBeGreaterThan(-1);
+    expect(qrIndex).toBeGreaterThan(labelIndex);
+  });
+
+  it('imprime o protocolo de autorização quando fiscal.protocol está presente', () => {
+    const lines = buildFiscalReceiptLines(
+      buildOrder({ fiscal: { status: 'emitido', ref: 'o-1', protocol: '223261032153733' } }),
+      buildRestaurant(),
+      null,
+    );
+    const texts = lines.map((line) => line.text);
+
+    expect(texts).toContain('Protocolo de autorizacao: 223261032153733');
+  });
+
+  it('sem fiscal.protocol, não inclui a linha de protocolo', () => {
+    const lines = buildFiscalReceiptLines(buildOrder({ fiscal: { status: 'emitido', ref: 'o-1' } }), buildRestaurant(), null);
+    const texts = lines.map((line) => line.text);
+
+    expect(texts.some((text) => text.startsWith('Protocolo de autorizacao:'))).toBe(false);
   });
 });

@@ -100,7 +100,16 @@ export class AutoPrintController extends BaseRouter {
         return;
       }
       const orders = await this.orderRepository.findPendingFiscalPrint(req.restaurantId!, restaurant!.autoPrintMaxAgeMinutes ?? 5);
-      const pending = orders.map((order) => ({ orderId: order.id, lines: buildFiscalReceiptLines(order, restaurant!) }));
+      // Pedido explícito do usuário (16/11/2026) — seção "CONSUMIDOR" do cupom: só identifica o
+      // cliente quando ele tem CPF/CNPJ cadastrado (`Customer.document`) — nunca enviamos esse
+      // dado pra FocusNFe (a nota em si sempre sai anônima), isso é só uma informação a mais no
+      // papel impresso, não altera o documento fiscal oficial.
+      const pending = await Promise.all(
+        orders.map(async (order) => {
+          const customer = await this.customerRepository.findById(order.customerId);
+          return { orderId: order.id, lines: buildFiscalReceiptLines(order, restaurant!, customer) };
+        }),
+      );
       res.json(200, { orders: pending });
     });
 

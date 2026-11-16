@@ -114,6 +114,10 @@ describe('FocusNfeApiClient (specs/0091-integracao-fiscal-focusnfe)', () => {
 
       expect(result).toEqual({
         approxTaxAmount: 0.44,
+        approxTaxFederal: undefined,
+        approxTaxState: undefined,
+        approxTaxSource: undefined,
+        protocol: '223261031969253',
         emitterName: 'CECILIA ANGELITA DE LIMA CRUZ',
         emitterCnpj: '07456684000180',
         emitterIe: '060760753',
@@ -127,6 +131,47 @@ describe('FocusNfeApiClient (specs/0091-integracao-fiscal-focusnfe)', () => {
           state: 'CE',
         },
       });
+    });
+
+    // Pedido explícito do usuário (16/11/2026) — achado real: o protocolo de autorização
+    // (`<protNFe><infProt><nProt>`) é IRMÃO de `</NFe>`, nunca aninhado em `<emit>`/`<ICMSTot>` —
+    // a extração precisa procurar fora do bloco `<infNFe>`.
+    it('extrai o protocolo de autorização de <protNFe>, mesmo fora de <infNFe>', async () => {
+      mockFetchXml(200, REAL_XML);
+
+      const result = await client.fetchNfceXmlFields('https://api.focusnfe.com.br/arquivos/x/o-1.xml');
+
+      expect(result.protocol).toBe('223261031969253');
+    });
+
+    // Pedido explícito do usuário (16/11/2026) — split Federal/Estadual e Fonte, extraídos do
+    // texto livre de <infAdic><infCpl> (validado contra o XML real do pedido #181).
+    it('extrai o split Federal/Estadual e a Fonte de <infAdic><infCpl>', async () => {
+      const xmlComInfAdic = REAL_XML.replace(
+        '</infNFe></NFe>',
+        '<infAdic><infCpl>Trib. aprox. R$: 0,16 Federal,  0,28 Estadual Fonte: IBPT/empresometro.com.br AA45DF</infCpl></infAdic></infNFe></NFe>',
+      );
+      mockFetchXml(200, xmlComInfAdic);
+
+      const result = await client.fetchNfceXmlFields('https://api.focusnfe.com.br/arquivos/x/o-1.xml');
+
+      expect(result.approxTaxFederal).toBe(0.16);
+      expect(result.approxTaxState).toBe(0.28);
+      expect(result.approxTaxSource).toBe('IBPT/empresometro.com.br AA45DF');
+    });
+
+    it('infCpl em formato inesperado: não lança, devolve o split/Fonte undefined', async () => {
+      const xmlComInfAdic = REAL_XML.replace(
+        '</infNFe></NFe>',
+        '<infAdic><infCpl>Texto qualquer sem o padrao esperado</infCpl></infAdic></infNFe></NFe>',
+      );
+      mockFetchXml(200, xmlComInfAdic);
+
+      const result = await client.fetchNfceXmlFields('https://api.focusnfe.com.br/arquivos/x/o-1.xml');
+
+      expect(result.approxTaxFederal).toBeUndefined();
+      expect(result.approxTaxState).toBeUndefined();
+      expect(result.approxTaxSource).toBeUndefined();
     });
 
     it('resposta não-OK (XML indisponível/expirado): devolve objeto vazio, nunca lança', async () => {
@@ -148,6 +193,10 @@ describe('FocusNfeApiClient (specs/0091-integracao-fiscal-focusnfe)', () => {
 
       await expect(client.fetchNfceXmlFields('https://api.focusnfe.com.br/arquivos/x/o-1.xml')).resolves.toEqual({
         approxTaxAmount: undefined,
+        approxTaxFederal: undefined,
+        approxTaxState: undefined,
+        approxTaxSource: undefined,
+        protocol: undefined,
         emitterName: 'Loja',
         emitterCnpj: undefined,
         emitterIe: undefined,
