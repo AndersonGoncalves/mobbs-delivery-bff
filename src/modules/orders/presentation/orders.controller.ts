@@ -31,9 +31,11 @@ import { IFoodClient } from '../../ifood-integration/infra/ifood-client';
 import { NinetyNineFoodAuthService } from '../../ninety-nine-food-integration/infra/ninety-nine-food-auth.service';
 import { NinetyNineFoodClient } from '../../ninety-nine-food-integration/infra/ninety-nine-food-client';
 import { FiscalEmissionService } from '../../fiscal-integration/domain/services/fiscal-emission.service';
+import { IFiscalConfigRepository } from '../../fiscal-integration/domain/repositories/fiscal-config.repository.interface';
 import { ConfirmOnlinePaymentService } from '../domain/services/confirm-online-payment.service';
 import { StockReservationService } from '../domain/services/stock-reservation.service';
 import { isOrderCancellableByOperator, isValidOrderStatusTransition } from '../domain/order-status-transitions';
+import { isFiscalPrintMissed } from '../domain/is-fiscal-print-missed';
 import { buildOrderPixCode } from '../domain/build-order-pix-code';
 import { computeOrderPricing } from '../domain/compute-order-pricing';
 import { resolveInitialOrderStatus } from '../domain/resolve-initial-order-status';
@@ -117,6 +119,12 @@ export class OrdersController extends BaseRouter {
     // specs/0201-controle-integracoes-cnpj-plataforma REQ-2/ADR-1 — opcional só pra não quebrar
     // composição/testes existentes que não injetam; em produção é sempre passado (main.ts).
     private readonly platformConfigRepository?: IPlatformConfigRepository,
+    // Pedido explícito do usuário (16/11/2026) — achado da revisão da mudança de gatilho fiscal
+    // pra "saiuParaEntrega": esse status pode ser cancelado pelo operador
+    // (`isOrderCancellableByOperator`), o que agora torna possível cancelar um pedido que já tem
+    // nota emitida (antes impossível — a nota só emitia em "entregue", terminal/não cancelável).
+    // Usado só pra cancelar a nota automaticamente nesse caso (`cancelFiscalDocumentIfEmitted`).
+    private readonly fiscalConfigRepository?: IFiscalConfigRepository,
   ) {
     super();
     if (rawMaterialRepository) {
@@ -442,7 +450,7 @@ export class OrdersController extends BaseRouter {
       ]);
       const withCustomersAndPayments = await this.attachCustomers(await this.attachPaymentSummaries(orders));
       // specs/0156-filtro-idade-impressao-automatica REQ-3.
-      res.json(200, this.attachAutoPrintMissed(withCustomersAndPayments, restaurant!));
+      res.json(200, this.attachFiscalPrintMissed(this.attachAutoPrintMissed(withCustomersAndPayments, restaurant!)));
     });
 
     // specs/0137-papeis-garcom-motoboy REQ-3/AC-3 — próprias entregas ativas do motoboy logado
@@ -661,6 +669,10 @@ export class OrdersController extends BaseRouter {
         await this.tryCancelOrderViaIFood(updated, reason);
         // specs/0122-integracao-99food REQ-5 — mesmo raciocínio, API diferente.
         await this.tryCancelOrderVia99Food(updated, reason);
+        // Pedido explícito do usuário (16/11/2026) — achado da revisão da mudança de gatilho
+        // fiscal pra "saiuParaEntrega" (ver docstring de `fiscalConfigRepository` no construtor):
+        // cancelar aqui um pedido com nota já emitida não pode deixá-la esquecida como "emitido".
+        await this.cancelFiscalDocumentIfEmitted(order, reason);
 
         void this.whatsAppNotificationService.sendOrderStatusUpdate(updated, reason).catch((error) => {
           console.error(`[whatsapp] erro inesperado enviando atualização de status do pedido ${updated.id}:`, error);
@@ -803,6 +815,32 @@ export class OrdersController extends BaseRouter {
     }
   }
 
+  /**
+   * Pedido explícito do usuário (16/11/2026) — gatilho fiscal em "saiuParaEntrega" (ver
+   * `handleStatusChangeSideEffects`) tornou possível cancelar um pedido que já tem nota emitida
+   * (antes impossível, a nota só emitia em "entregue", terminal/não cancelável). Cancela a nota
+   * junto, dentro da mesma janela de 30 minutos da SEFAZ que `FocusNfeApiClient.cancelNfce` exige
+   * (`order.fiscal.emittedAt`) — fora da janela, não tenta (a SEFAZ rejeitaria de qualquer forma):
+   * fica `emitido` pra o operador resolver manualmente depois (mesmo fluxo que já existe hoje pra
+   * nota rejeitada/pendente). Fire-and-forget/try-catch, mesmo padrão de `refundCashbackIfUsed`
+   * acima: falha aqui nunca reverte o cancelamento do pedido, que já aconteceu.
+   */
+  private async cancelFiscalDocumentIfEmitted(order: IOrder, reason: string): Promise<void> {
+    if (order.fiscal?.status !== 'emitido' || !order.fiscal.ref) return;
+    if (!this.fiscalEmissionService || !this.fiscalConfigRepository) return;
+    if (!order.fiscal.emittedAt || Date.now() - new Date(order.fiscal.emittedAt).getTime() > 30 * 60_000) {
+      console.error(`[fiscal-integration] pedido ${order.id} cancelado com nota emitida fora da janela de 30min — cancele manualmente se ainda possível`);
+      return;
+    }
+    try {
+      const config = await this.fiscalConfigRepository.findByRestaurantId(order.restaurantId);
+      if (!config) return;
+      await this.fiscalEmissionService.cancelDocument(order, config, `Pedido cancelado: ${reason}`);
+    } catch (error) {
+      console.error(`[fiscal-integration] erro inesperado cancelando documento fiscal do pedido ${order.id}:`, error);
+    }
+  }
+
   // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-16 — busca o `Product` de cada
   // item só uma vez (mesmo produto pode se repetir entre itens do carrinho), pra resolver
   // `linkedProductId` de cada seleção contra a árvore atual de `additionalGroups`.
@@ -924,12 +962,27 @@ export class OrdersController extends BaseRouter {
       }
     }
 
-    // specs/0091-integracao-fiscal-focusnfe REQ-2 — emissão fiscal automática, em paralelo,
-    // nunca bloqueando a resposta (o próprio serviço nunca lança — ver `FiscalEmissionService`
-    // — este catch é só defesa extra, mesmo padrão fire-and-forget do WhatsApp acima).
-    if (status === 'entregue' && this.fiscalEmissionService) {
-      void this.fiscalEmissionService.emitForOrder(updated).catch((error) => {
+    // Pedido explícito do usuário (16/11/2026) — gatilho movido de "entregue" pra
+    // "saiuParaEntrega"/"pronto para retirada": é o momento em que o pedido ainda está no
+    // estabelecimento, a tempo de imprimir o cupom fiscal e grudar no pacote antes de sair (em
+    // "entregue" já é tarde, o pedido já saiu). Decisão B (explicada ao usuário) — ESPERA a
+    // emissão terminar (até um teto de 10s) antes de responder, pra tentar ao máximo não deixar o
+    // pedido avançar sem nota; depois do teto, libera mesmo assim (o serviço nunca lança — ver
+    // `FiscalEmissionService` — a emissão continua rodando em background e, se terminar depois,
+    // o cupom ainda entra na fila de impressão fiscal normalmente).
+    if (status === 'saiuParaEntrega' && this.fiscalEmissionService) {
+      const emission = this.fiscalEmissionService.emitForOrder(updated).catch((error) => {
         console.error(`[fiscal-integration] erro inesperado emitindo documento fiscal do pedido ${updated.id}:`, error);
+      });
+      // `clearTimeout` quando a emissão termina primeiro — sem isso o timer de 10s fica
+      // pendurado até estourar sozinho mesmo com a resposta já liberada, atrasando o shutdown do
+      // processo (visível nos testes como "worker process failed to exit gracefully").
+      await new Promise<void>((resolve) => {
+        const timeout = setTimeout(resolve, 10_000);
+        void emission.finally(() => {
+          clearTimeout(timeout);
+          resolve();
+        });
       });
     }
   }
@@ -1215,6 +1268,12 @@ export class OrdersController extends BaseRouter {
   /** specs/0156-filtro-idade-impressao-automatica REQ-3 (+ specs/0164: só conta pedido já confirmado, janela desde a confirmação) — calculado na hora de responder, nunca
    * gravado no banco: sempre consistente com `autoPrintMaxAgeMinutes` vigente, mesmo que o
    * restaurante reconfigure esse valor depois (um valor persistido ficaria preso à config antiga). */
+  // Pedido explícito do usuário (16/11/2026) — mesmo padrão acima, pro cupom fiscal (ver
+  // `isFiscalPrintMissed`).
+  private attachFiscalPrintMissed<T extends IOrder>(orders: T[]): (T & { fiscalPrintMissed: boolean })[] {
+    return orders.map((order) => ({ ...order, fiscalPrintMissed: isFiscalPrintMissed(order) }));
+  }
+
   private attachAutoPrintMissed<T extends IOrder>(orders: T[], restaurant: IRestaurant): (T & { autoPrintMissed: boolean })[] {
     const cutoff = Date.now() - (restaurant.autoPrintMaxAgeMinutes ?? 5) * 60_000;
     return orders.map((order) => ({

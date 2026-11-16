@@ -215,6 +215,24 @@ export interface IOrderRepository {
   /** specs/0139-impressao-automatica-bridge REQ-3 — idempotente: confirmar de novo o mesmo pedido não dá erro. */
   markAutoPrinted(id: string, restaurantId: string): Promise<void>;
 
+  /** Pedido explícito do usuário (16/11/2026) — mesmo padrão de `findPendingAutoPrint`, mas pro
+   * cupom fiscal: pedidos com `fiscal.status === 'emitido'` ainda não impressos
+   * (`fiscalPrintStatus !== 'printed'`), mais antigos primeiro. Mesma janela de idade
+   * (`maxAgeMinutes`, desde `fiscal.emittedAt`) — sem ela, a bridge reconectando depois de ficar
+   * offline imprimiria todas as notas represadas de uma vez. Calculado ao vivo, não é fila
+   * persistida. */
+  findPendingFiscalPrint(restaurantId: string, maxAgeMinutes: number): Promise<IOrder[]>;
+
+  /** Pedido explícito do usuário (16/11/2026) — idempotente, mesmo padrão de `markAutoPrinted`. */
+  markFiscalPrinted(id: string, restaurantId: string): Promise<void>;
+
+  /** Pedido explícito do usuário (16/11/2026) — volta `fiscalPrintStatus` pra ausente (pendente de
+   * impressão). Chamado pelo `FiscalEmissionService` toda vez que uma nova emissão é autorizada,
+   * pro caso raro de uma nota cancelada ser reemitida com sucesso num pedido cujo
+   * `fiscalPrintStatus` já estava `'printed'` da nota anterior — sem isso, o cupom da nota NOVA
+   * nunca entraria na fila de impressão. */
+  resetFiscalPrintStatus(id: string): Promise<void>;
+
   /** specs/0091-integracao-fiscal-focusnfe — substitui `Order.fiscal` por completo (nunca
    * PATCH/merge parcial — quem chama, `FiscalEmissionService`, já monta o objeto inteiro a cada
    * transição de status fiscal). */

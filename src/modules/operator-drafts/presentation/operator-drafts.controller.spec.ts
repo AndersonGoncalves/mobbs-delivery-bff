@@ -7,6 +7,14 @@ import { ICouponRepository } from '../../coupons/domain/repositories/coupon.repo
 import { IProductRepository } from '../../catalog/domain/repositories/product.repository.interface';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
+import { IRawMaterialRepository } from '../../raw-materials/domain/repositories/raw-material.repository.interface';
+import { IStockMovementRepository } from '../../raw-materials/domain/repositories/stock-movement.repository.interface';
+import { IRestaurantTableRepository } from '../../table-service/domain/repositories/table.repository.interface';
+import { ITableWaiterRepository } from '../../table-service/domain/repositories/waiter.repository.interface';
+import { ITableMapLayoutRepository } from '../../table-service/domain/repositories/table-map-layout.repository.interface';
+import { IRestaurantOperatorRepository } from '../../restaurant-operators/domain/repositories/restaurant-operator.repository.interface';
+import { ICashRegisterService } from '../../financeiro/domain/services/i-cash-register.service';
+import { FiscalEmissionService } from '../../fiscal-integration/domain/services/fiscal-emission.service';
 import { IOperatorDraft, OperatorDraftPatch, emptyDraftPatch } from '../domain/entities/operator-draft.entity';
 import { IOperatorDraftRepository, OperatorDraftWriteResult } from '../domain/repositories/operator-draft.repository.interface';
 import { OperatorDraftsController } from './operator-drafts.controller';
@@ -170,6 +178,13 @@ function buildController(overrides: {
   blockedCustomerRepository?: Partial<IBlockedCustomerRepository>;
   customerRepository?: Partial<ICustomerRepository>;
   productRepository?: Partial<IProductRepository>;
+  // Pedido explícito do usuário (16/11/2026) — balcão fecha sozinho no PDV
+  // (`TableOrderService.closeOrder`, ver `OperatorDraftsController`). `enableTableOrderService`
+  // injeta o mínimo necessário pra isso existir de verdade (sem ele, o controller se comporta
+  // exatamente como antes desta feature — nunca fecha sozinho).
+  enableTableOrderService?: boolean;
+  fiscalEmissionService?: Partial<FiscalEmissionService>;
+  cashRegisterService?: Partial<ICashRegisterService>;
 } = {}) {
   const operatorDraftRepository = overrides.operatorDraftRepository ?? new FakeOperatorDraftRepository();
   const createdOrders = new Map<string, Record<string, unknown>>();
@@ -182,6 +197,16 @@ function buildController(overrides: {
     countByCustomerAndCoupon: jest.fn().mockResolvedValue(0),
     findById: jest.fn().mockImplementation(async (id: string) => createdOrders.get(id) ?? null),
     findManyByCustomerAndRestaurant: jest.fn().mockResolvedValue([]),
+    // Pedido explícito do usuário (16/11/2026) — usado por `TableOrderService.closeOrder` (fechar
+    // o balcão sozinho no PDV, ver `enableTableOrderService` acima); muta o pedido guardado aqui
+    // igual o Mongoose faria de verdade, pra `findById` depois devolver o pedido já fechado.
+    closeTableOrder: jest.fn().mockImplementation(async (id: string, _restaurantId: string, input: { payments: unknown; closedAt: string; clientRequestId: string }) => {
+      const existing = createdOrders.get(id);
+      if (!existing) return null;
+      const closed = { ...existing, status: 'entregue', tableClosedAt: input.closedAt, tablePayments: input.payments, tableCloseClientRequestId: input.clientRequestId };
+      createdOrders.set(id, closed);
+      return closed;
+    }),
     ...overrides.orderRepository,
   };
   const restaurantRepository: Partial<IRestaurantRepository> = {
@@ -207,6 +232,20 @@ function buildController(overrides: {
   // `rejeitaPriceMismatches` nem roda (mesmo padrão do `stockReservationService` logo abaixo).
   const productRepository: Partial<IProductRepository> | undefined = overrides.productRepository;
 
+  // Pedido explícito do usuário (16/11/2026) — mínimo necessário pra `TableOrderService` existir
+  // de verdade no controller (ver docstring do campo `enableTableOrderService` acima); nenhum dos
+  // métodos de mesa/garçom/layout é chamado por `closeOrder`, só precisam existir como objeto.
+  const tableRepository = { releaseFromOrder: jest.fn().mockResolvedValue(true) };
+  const waiterRepository = {};
+  const layoutRepository = {};
+  const restaurantOperatorRepository = {};
+  const fiscalEmissionService = overrides.fiscalEmissionService
+    ? { emitForOrder: jest.fn().mockResolvedValue(undefined), ...overrides.fiscalEmissionService }
+    : undefined;
+  const cashRegisterService = overrides.cashRegisterService
+    ? { addAutomaticEntry: jest.fn().mockResolvedValue(undefined), ...overrides.cashRegisterService }
+    : undefined;
+
   const { application, routes } = buildFakeApplication();
   const noopMiddleware = async () => {};
   new OperatorDraftsController(
@@ -218,12 +257,18 @@ function buildController(overrides: {
     blockedCustomerRepository as IBlockedCustomerRepository,
     couponRepository as ICouponRepository,
     noopMiddleware,
-    undefined,
-    undefined,
-    productRepository as IProductRepository | undefined,
+    overrides.enableTableOrderService ? ({} as IStockMovementRepository) : undefined,
+    overrides.enableTableOrderService ? ({} as IRawMaterialRepository) : undefined,
+    (productRepository ?? (overrides.enableTableOrderService ? { findById: jest.fn().mockResolvedValue({ id: 'p-1', restaurantId: 'r-1', price: 20, additionalGroups: [] }) } : undefined)) as IProductRepository | undefined,
+    overrides.enableTableOrderService ? (tableRepository as unknown as IRestaurantTableRepository) : undefined,
+    overrides.enableTableOrderService ? (waiterRepository as unknown as ITableWaiterRepository) : undefined,
+    overrides.enableTableOrderService ? (layoutRepository as unknown as ITableMapLayoutRepository) : undefined,
+    overrides.enableTableOrderService ? (restaurantOperatorRepository as unknown as IRestaurantOperatorRepository) : undefined,
+    cashRegisterService as ICashRegisterService | undefined,
+    fiscalEmissionService as FiscalEmissionService | undefined,
   ).initializeRoutes(application);
 
-  return { routes, operatorDraftRepository, orderRepository, restaurantRepository, customerRepository, blockedCustomerRepository };
+  return { routes, operatorDraftRepository, orderRepository, restaurantRepository, customerRepository, blockedCustomerRepository, fiscalEmissionService, cashRegisterService, tableRepository };
 }
 
 describe('OperatorDraftsController (specs/0174-pdv-extensao-chrome-lateral)', () => {
@@ -331,6 +376,91 @@ describe('OperatorDraftsController (specs/0174-pdv-extensao-chrome-lateral)', ()
       const res = { json: jest.fn() };
       await runOperatorChain(routes['POST /restaurants/me/operator-drafts/:slot/finalize'], financeiroReq('2', { revision: 1, clientRequestId: 'r-1' }), res);
       expect(orderRepository.create).toHaveBeenCalledWith(expect.objectContaining({ orderType: 'table', source: 'operador-web' }));
+    });
+
+    // Pedido explícito do usuário (16/11/2026) — balcão fecha sozinho no próprio PDV, sem
+    // precisar visitar Atendimento de mesas: dispara o mesmíssimo `TableOrderService.closeOrder`
+    // que uma mesa fechada manualmente usa.
+    describe('balcão fecha sozinho no PDV (sem precisar de Atendimento de mesas)', () => {
+      it('finaliza balcão já fechado (entregue, tableClosedAt), com nota fiscal emitida e caixa lançado', async () => {
+        const { routes, fiscalEmissionService, cashRegisterService } = buildController({
+          enableTableOrderService: true,
+          fiscalEmissionService: {},
+          cashRegisterService: {},
+        });
+        const putRes = { json: jest.fn() };
+        await runOperatorChain(
+          routes['PUT /restaurants/me/operator-drafts/:slot'],
+          financeiroReq('1', { revision: 0, modality: 'counter', items: [buildItem({ unitPrice: 20, quantity: 1 })], paymentMethod: 'cash' }),
+          putRes,
+        );
+
+        const res = { json: jest.fn() };
+        await runOperatorChain(routes['POST /restaurants/me/operator-drafts/:slot/finalize'], financeiroReq('1', { revision: 1, clientRequestId: 'r-balcao-1' }), res);
+
+        const { order } = (res.json as jest.Mock).mock.calls[0][1];
+        expect(order.status).toBe('entregue');
+        expect(order.tableClosedAt).toBeDefined();
+        expect(fiscalEmissionService!.emitForOrder).toHaveBeenCalledWith(expect.objectContaining({ id: order.id, status: 'entregue' }));
+        expect(cashRegisterService!.addAutomaticEntry).toHaveBeenCalledWith(expect.objectContaining({ orderId: order.id, amount: 20, paymentMethod: 'cash' }));
+      });
+
+      it.each(['delivery', 'pickup'])('delivery/retirada (%s) NUNCA fecha sozinho — continua "aguardandoConfirmacao" pro fluxo normal do kanban', async (modality) => {
+        const { routes, fiscalEmissionService } = buildController({ enableTableOrderService: true, fiscalEmissionService: {} });
+        const putRes = { json: jest.fn() };
+        await runOperatorChain(
+          routes['PUT /restaurants/me/operator-drafts/:slot'],
+          financeiroReq('1', {
+            revision: 0, modality, items: [buildItem()], paymentMethod: 'cash',
+            customerName: 'Ana', customerPhone: '5585999999999', deliveryAddress: 'Rua A, 1',
+          }),
+          putRes,
+        );
+
+        const res = { json: jest.fn() };
+        await runOperatorChain(routes['POST /restaurants/me/operator-drafts/:slot/finalize'], financeiroReq('1', { revision: 1, clientRequestId: `r-${modality}-1` }), res);
+
+        const { order } = (res.json as jest.Mock).mock.calls[0][1];
+        expect(order.status).not.toBe('entregue');
+        expect(order.tableClosedAt).toBeUndefined();
+        expect(fiscalEmissionService!.emitForOrder).not.toHaveBeenCalled();
+      });
+
+      it('falha ao fechar sozinho nunca derruba a finalização — pedido criado continua na resposta (fecha manualmente em Atendimento de mesas depois)', async () => {
+        const { routes, orderRepository } = buildController({
+          enableTableOrderService: true,
+          orderRepository: { closeTableOrder: jest.fn().mockRejectedValue(new Error('Mongo indisponível')) },
+        });
+        const putRes = { json: jest.fn() };
+        await runOperatorChain(
+          routes['PUT /restaurants/me/operator-drafts/:slot'],
+          financeiroReq('1', { revision: 0, modality: 'counter', items: [buildItem()], paymentMethod: 'cash' }),
+          putRes,
+        );
+
+        const res = { json: jest.fn() };
+        await runOperatorChain(routes['POST /restaurants/me/operator-drafts/:slot/finalize'], financeiroReq('1', { revision: 1, clientRequestId: 'r-balcao-fail-1' }), res);
+
+        expect(res.json).toHaveBeenCalledWith(201, expect.objectContaining({ order: expect.objectContaining({ orderType: 'table' }) }));
+        expect(orderRepository.create).toHaveBeenCalledTimes(1);
+      });
+
+      it('sem TableOrderService configurado (defesa de composição), comporta-se como antes — balcão não fecha sozinho', async () => {
+        const { routes } = buildController();
+        const putRes = { json: jest.fn() };
+        await runOperatorChain(
+          routes['PUT /restaurants/me/operator-drafts/:slot'],
+          financeiroReq('1', { revision: 0, modality: 'counter', items: [buildItem()], paymentMethod: 'cash' }),
+          putRes,
+        );
+
+        const res = { json: jest.fn() };
+        await runOperatorChain(routes['POST /restaurants/me/operator-drafts/:slot/finalize'], financeiroReq('1', { revision: 1, clientRequestId: 'r-balcao-sem-service' }), res);
+
+        const { order } = (res.json as jest.Mock).mock.calls[0][1];
+        expect(order.status).not.toBe('entregue');
+        expect(order.tableClosedAt).toBeUndefined();
+      });
     });
 
     it('AC-14: troco menor que o total é rejeitado (400), sem criar pedido', async () => {

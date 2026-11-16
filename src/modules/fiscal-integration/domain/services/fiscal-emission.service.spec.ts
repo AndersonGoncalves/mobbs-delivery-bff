@@ -93,6 +93,7 @@ describe('FiscalEmissionService (specs/0091-integracao-fiscal-focusnfe)', () => 
     };
     const orderRepository: Partial<IOrderRepository> = {
       updateFiscal: jest.fn().mockResolvedValue(buildOrder()),
+      resetFiscalPrintStatus: jest.fn(),
       ...overrides.orderRepository,
     };
     const productRepository: Partial<IProductRepository> = {

@@ -8,6 +8,7 @@ import { ICustomerRepository } from '../../customers/domain/repositories/custome
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { buildReceiptLines } from '../domain/build-receipt-lines';
+import { buildFiscalReceiptLines } from '../domain/build-fiscal-receipt-lines';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
@@ -82,6 +83,30 @@ export class AutoPrintController extends BaseRouter {
         throw new NotFoundError('Pedido não encontrado');
       }
       await this.orderRepository.markAutoPrinted(order.id, req.restaurantId!);
+      res.send(204);
+    });
+
+    // Pedido explícito do usuário (16/11/2026) — mesmo padrão da fila acima, pro cupom fiscal
+    // simplificado: qualquer pedido (mesa, balcão, delivery, retirada) com nota emitida ainda não
+    // impressa. Fila separada da do ticket normal — um pedido pode estar pendente nas duas ao
+    // mesmo tempo, a bridge imprime os dois (dois papéis). Achado da revisão (16/11/2026) — mesmo
+    // switch e mesma janela de idade do ticket normal (linhas acima): sem isso, desligar
+    // "Impressão automática" não pararia o cupom fiscal, e a bridge reconectando depois de ficar
+    // offline imprimiria todas as notas represadas de uma vez.
+    application.get('/restaurants/me/fiscal-print-queue/pending', ...bridgeAuthenticated, async (req: Request, res: Response) => {
+      const restaurant = await this.restaurantRepository.findById(req.restaurantId!);
+      if (!restaurant!.autoPrintEnabled) {
+        res.json(200, { orders: [] });
+        return;
+      }
+      const orders = await this.orderRepository.findPendingFiscalPrint(req.restaurantId!, restaurant!.autoPrintMaxAgeMinutes ?? 5);
+      const pending = orders.map((order) => ({ orderId: order.id, lines: buildFiscalReceiptLines(order, restaurant!) }));
+      res.json(200, { orders: pending });
+    });
+
+    // Idempotente, mesmo padrão de `/print-queue/:orderId/printed`.
+    application.post('/restaurants/me/fiscal-print-queue/:orderId/printed', ...bridgeAuthenticated, async (req: Request, res: Response) => {
+      await this.orderRepository.markFiscalPrinted(req.params.orderId, req.restaurantId!);
       res.send(204);
     });
 

@@ -401,6 +401,35 @@ export class OrderMongooseRepository implements IOrderRepository {
     await OrderModel.updateOne({ _id: id, restaurantId }, { $set: { autoPrintStatus: 'printed' } });
   }
 
+  // Pedido explícito do usuário (16/11/2026) — mesmo padrão de `findPendingAutoPrint`, pro cupom
+  // fiscal: qualquer pedido com nota emitida e ainda não impressa, de qualquer orderType (mesa,
+  // balcão, delivery, retirada todos emitem nota). Achado da revisão (16/11/2026) — faltava a
+  // mesma janela de idade do ticket normal (`maxAgeMinutes`, desde `fiscal.emittedAt`): sem isso,
+  // a bridge reconectando depois de ficar offline tentaria imprimir TODAS as notas represadas de
+  // uma vez, exatamente o problema que a janela do ticket normal já existe pra evitar.
+  async findPendingFiscalPrint(restaurantId: string, maxAgeMinutes: number): Promise<IOrder[]> {
+    const cutoff = new Date(Date.now() - maxAgeMinutes * 60_000).toISOString();
+    const docs = await OrderModel.find({
+      restaurantId,
+      'fiscal.status': 'emitido',
+      'fiscal.emittedAt': { $gte: cutoff },
+      fiscalPrintStatus: { $ne: 'printed' },
+    })
+      .sort({ createdAt: 1 })
+      .lean<OrderLeanDocument[]>();
+    return docs.map(toEntity);
+  }
+
+  // Pedido explícito do usuário (16/11/2026) — idempotente, mesmo padrão de `markAutoPrinted`.
+  async markFiscalPrinted(id: string, restaurantId: string): Promise<void> {
+    await OrderModel.updateOne({ _id: id, restaurantId }, { $set: { fiscalPrintStatus: 'printed' } });
+  }
+
+  // Pedido explícito do usuário (16/11/2026) — ver docstring da interface.
+  async resetFiscalPrintStatus(id: string): Promise<void> {
+    await OrderModel.updateOne({ _id: id }, { $unset: { fiscalPrintStatus: 1 } });
+  }
+
   // specs/0137-papeis-garcom-motoboy REQ-3.
   async findActiveByRestaurantAndMotoboy(restaurantId: string, motoboyId: string): Promise<IOrder[]> {
     const docs = await OrderModel.find({
