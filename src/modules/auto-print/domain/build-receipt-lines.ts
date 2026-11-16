@@ -22,6 +22,10 @@ export interface ReceiptLine {
    * (44 dígitos + espaços = 54 caracteres, maior que os 48 da Fonte A normal, por isso quebrava
    * em duas linhas) caber numa linha só, igual o DANFE real. Nunca usado pelo ticket normal. */
   small?: boolean;
+  /** Pedido explícito do usuário (16/11/2026) — centraliza a linha (a bridge chama `alignCenter()`
+   * antes e `alignLeft()` depois), usado só no bloco "consulte pela chave de acesso" do cupom
+   * fiscal (URL de consulta, rótulo e a própria chave) e no rótulo do QR code. */
+  center?: boolean;
 }
 
 const PAYMENT_LABELS: Record<PaymentMethod, string> = {

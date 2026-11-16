@@ -53,7 +53,7 @@ describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', 
     expect(texts.some((text) => text.includes('DANFE NFC-e'))).toBe(true);
     expect(texts).toContain('# 2x Pizza Calabresa R$36,00');
     expect(texts).toContain('# Taxa de entrega R$5,00');
-    expect(texts).toContain('TOTAL: R$41,00');
+    expect(texts.some((text) => /^TOTAL:\s+R\$41,00$/.test(text))).toBe(true);
     expect(texts).toContain('NFC-e no 123 Serie 1');
   });
 
@@ -162,19 +162,35 @@ describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', 
     expect(lines[headerDividerIndex - 1]).toEqual(expect.objectContaining({ text: '' }));
   });
 
-  it('inclui "Qtd. Total de Itens" com a soma das quantidades', () => {
+  // Pedido explícito do usuário (16/11/2026) — "Qtd. Total de Itens" e "TOTAL" em duas colunas
+  // (rótulo à esquerda, valor empurrado pra ponta direita da linha de 48 colunas).
+  it('inclui "Qtd. Total de Itens" com a soma das quantidades, alinhada à direita', () => {
     const lines = buildFiscalReceiptLines(buildOrder(), buildRestaurant(), null);
     const texts = lines.map((line) => line.text);
+    const qtdLine = texts.find((text) => text.startsWith('Qtd. Total de Itens:'));
 
-    expect(texts).toContain('Qtd. Total de Itens: 2');
+    expect(qtdLine).toBeDefined();
+    expect(qtdLine).toMatch(/^Qtd\. Total de Itens:\s+2$/);
+    expect(qtdLine).toHaveLength(48);
   });
 
-  it('imprime a forma de pagamento e o valor pago', () => {
+  it('alinha o TOTAL à direita, numa linha de 48 colunas', () => {
+    const lines = buildFiscalReceiptLines(buildOrder(), buildRestaurant(), null);
+    const totalLine = lines.find((line) => line.text.startsWith('TOTAL:'));
+
+    expect(totalLine?.text).toMatch(/^TOTAL:\s+R\$41,00$/);
+    expect(totalLine?.text).toHaveLength(48);
+    expect(totalLine?.bold).toBe(true);
+  });
+
+  // Pedido explícito do usuário (16/11/2026) — "Forma de pagamento" / "Valor pago" também em
+  // duas colunas, mesmo padrão do total.
+  it('imprime a forma de pagamento e o valor pago em duas colunas alinhadas', () => {
     const lines = buildFiscalReceiptLines(buildOrder({ paymentMethod: 'pix' }), buildRestaurant(), null);
     const texts = lines.map((line) => line.text);
 
-    expect(texts).toContain('Forma de pagamento');
-    expect(texts).toContain('- Pagamento Instantaneo (PIX) R$41,00');
+    expect(texts.some((text) => /^Forma de pagamento\s+Valor pago$/.test(text))).toBe(true);
+    expect(texts.some((text) => /^- Pagamento Instantaneo \(PIX\)\s+R\$41,00$/.test(text))).toBe(true);
   });
 
   it('calcula o troco quando o pagamento é em dinheiro e cashChangeFor foi informado', () => {
@@ -185,7 +201,7 @@ describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', 
     );
     const texts = lines.map((line) => line.text);
 
-    expect(texts).toContain('- Dinheiro R$41,00');
+    expect(texts.some((text) => /^- Dinheiro\s+R\$41,00$/.test(text))).toBe(true);
     expect(texts).toContain('Troco: R$9,00');
   });
 
@@ -232,6 +248,26 @@ describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', 
     expect(chaveHeadingIndex).toBeGreaterThan(consultaIndex);
   });
 
+  // Pedido explícito do usuário (16/11/2026) — bloco inteiro centralizado: da chamada pra
+  // consulta até a chave de acesso.
+  it('centraliza o bloco "consulte pela chave de acesso" inteiro, da chamada até a chave', () => {
+    const lines = buildFiscalReceiptLines(
+      buildOrder({ fiscal: { status: 'emitido', ref: 'o-1', accessKey: '12345678901234567890123456789012345678901234', consultaUrl: 'http://www.sefaz.ce.gov.br/nfce/consulta' } }),
+      buildRestaurant(),
+      null,
+    );
+
+    const consulta = lines.find((line) => line.text === 'Consulte pela Chave de Acesso em');
+    const url = lines.find((line) => line.text === 'http://www.sefaz.ce.gov.br/nfce/consulta');
+    const heading = lines.find((line) => line.text === 'CHAVE DE ACESSO');
+    const keyLine = lines.find((line) => line.text.replace(/\s/g, '') === '12345678901234567890123456789012345678901234');
+
+    expect(consulta?.center).toBe(true);
+    expect(url?.center).toBe(true);
+    expect(heading?.center).toBe(true);
+    expect(keyLine?.center).toBe(true);
+  });
+
   it('imprime a chave de acesso numa única linha, em negrito e com fonte reduzida', () => {
     const lines = buildFiscalReceiptLines(buildOrder(), buildRestaurant(), null);
     const keyLine = lines.find((line) => line.text.replace(/\s/g, '') === '12345678901234567890123456789012345678901234');
@@ -270,25 +306,31 @@ describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', 
     expect(texts).not.toContain('CONSUMIDOR NAO IDENTIFICADO');
   });
 
-  it('inclui o rótulo "Consulta via Leitor de QR Code" antes do QR', () => {
+  it('inclui o rótulo "Consulta via Leitor de QR Code" centralizado, antes do QR', () => {
     const lines = buildFiscalReceiptLines(buildOrder(), buildRestaurant(), null);
     const texts = lines.map((line) => line.text);
     const labelIndex = texts.indexOf('Consulta via Leitor de QR Code');
     const qrIndex = lines.findIndex((line) => line.qr);
 
     expect(labelIndex).toBeGreaterThan(-1);
+    expect(lines[labelIndex].center).toBe(true);
     expect(qrIndex).toBeGreaterThan(labelIndex);
   });
 
-  it('imprime o protocolo de autorização quando fiscal.protocol está presente', () => {
+  // Pedido explícito do usuário (16/11/2026) — protocolo de autorização ganha a data/hora da
+  // emissão ao lado (mesmo timestamp de "Emissao:").
+  it('imprime o protocolo de autorização com a data/hora da emissão ao lado', () => {
     const lines = buildFiscalReceiptLines(
-      buildOrder({ fiscal: { status: 'emitido', ref: 'o-1', protocol: '223261032153733' } }),
+      buildOrder({ fiscal: { status: 'emitido', ref: 'o-1', protocol: '223261032153733', emittedAt: '2026-11-16T20:07:34.000Z' } }),
       buildRestaurant(),
       null,
     );
     const texts = lines.map((line) => line.text);
+    const protocolLine = texts.find((text) => text.startsWith('Protocolo de autorizacao:'));
 
-    expect(texts).toContain('Protocolo de autorizacao: 223261032153733');
+    expect(protocolLine).toBeDefined();
+    expect(protocolLine).toContain('223261032153733');
+    expect(protocolLine).toMatch(/\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}:\d{2}$/);
   });
 
   it('sem fiscal.protocol, não inclui a linha de protocolo', () => {
@@ -296,5 +338,58 @@ describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', 
     const texts = lines.map((line) => line.text);
 
     expect(texts.some((text) => text.startsWith('Protocolo de autorizacao:'))).toBe(false);
+  });
+
+  // Pedido explícito do usuário (16/11/2026) — ajustes de layout em cima da foto real do cupom:
+  // linha em branco, traços novos em 4 pontos, e remoção do rodapé "-- BsDelivery --".
+  it('pula uma linha em branco entre o endereço do emitente e o bloco "DANFE NFC-e"', () => {
+    const lines = buildFiscalReceiptLines(buildOrder(), buildRestaurant(), null);
+    const danfeIndex = lines.findIndex((line) => line.text.includes('DANFE NFC-e'));
+
+    expect(danfeIndex).toBeGreaterThan(0);
+    expect(lines[danfeIndex - 1]).toEqual(expect.objectContaining({ text: '' }));
+  });
+
+  it('inclui um traço logo depois de "ITENS (N)", antes da lista de itens', () => {
+    const lines = buildFiscalReceiptLines(buildOrder(), buildRestaurant(), null);
+    const itensIndex = lines.findIndex((line) => line.text === 'ITENS (2)');
+
+    expect(itensIndex).toBeGreaterThan(-1);
+    expect(lines[itensIndex + 1]).toEqual(expect.objectContaining({ divider: true }));
+  });
+
+  it('inclui um traço depois do bloco de totais/tributos, antes de "Forma de pagamento"', () => {
+    const lines = buildFiscalReceiptLines(buildOrder(), buildRestaurant(), null);
+    const formaIndex = lines.findIndex((line) => line.text.startsWith('Forma de pagamento'));
+
+    expect(formaIndex).toBeGreaterThan(0);
+    expect(lines[formaIndex - 1]).toEqual(expect.objectContaining({ divider: true }));
+  });
+
+  it('inclui um traço depois do bloco centralizado da chave de acesso, antes de "CONSUMIDOR"', () => {
+    const lines = buildFiscalReceiptLines(buildOrder(), buildRestaurant(), null);
+    const consumidorIndex = lines.findIndex((line) => line.text === 'CONSUMIDOR');
+
+    expect(consumidorIndex).toBeGreaterThan(0);
+    expect(lines[consumidorIndex - 1]).toEqual(expect.objectContaining({ divider: true }));
+  });
+
+  it('inclui um traço depois da identificação do consumidor, antes do rótulo de QR', () => {
+    const lines = buildFiscalReceiptLines(
+      buildOrder(),
+      buildRestaurant(),
+      buildCustomer({ name: 'Joao da Silva', document: '12345678900' }),
+    );
+    const nameIndex = lines.findIndex((line) => line.text === 'JOAO DA SILVA');
+
+    expect(nameIndex).toBeGreaterThan(-1);
+    expect(lines[nameIndex + 1]).toEqual(expect.objectContaining({ divider: true }));
+  });
+
+  it('não imprime mais o rodapé "-- BsDelivery --"', () => {
+    const lines = buildFiscalReceiptLines(buildOrder(), buildRestaurant(), null);
+    const texts = lines.map((line) => line.text);
+
+    expect(texts).not.toContain('-- BsDelivery --');
   });
 });
