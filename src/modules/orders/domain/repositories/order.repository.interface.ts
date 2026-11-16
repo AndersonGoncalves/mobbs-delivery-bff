@@ -217,9 +217,11 @@ export interface IOrderRepository {
 
   /** Pedido explícito do usuário (16/11/2026) — mesmo padrão de `findPendingAutoPrint`, mas pro
    * cupom fiscal: pedidos com `fiscal.status === 'emitido'` ainda não impressos
-   * (`fiscalPrintStatus !== 'printed'`), mais antigos primeiro. Calculado ao vivo, não é fila
+   * (`fiscalPrintStatus !== 'printed'`), mais antigos primeiro. Mesma janela de idade
+   * (`maxAgeMinutes`, desde `fiscal.emittedAt`) — sem ela, a bridge reconectando depois de ficar
+   * offline imprimiria todas as notas represadas de uma vez. Calculado ao vivo, não é fila
    * persistida. */
-  findPendingFiscalPrint(restaurantId: string): Promise<IOrder[]>;
+  findPendingFiscalPrint(restaurantId: string, maxAgeMinutes: number): Promise<IOrder[]>;
 
   /** Pedido explícito do usuário (16/11/2026) — idempotente, mesmo padrão de `markAutoPrinted`. */
   markFiscalPrinted(id: string, restaurantId: string): Promise<void>;

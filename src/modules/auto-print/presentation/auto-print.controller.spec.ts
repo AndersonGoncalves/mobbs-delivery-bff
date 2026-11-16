@@ -182,7 +182,7 @@ describe('AutoPrintController', () => {
 
       await runBridgeChain(routes['GET /restaurants/me/fiscal-print-queue/pending'], { restaurantId: 'r-1' }, { json, send: jest.fn() });
 
-      expect(orderRepository.findPendingFiscalPrint).toHaveBeenCalledWith('r-1');
+      expect(orderRepository.findPendingFiscalPrint).toHaveBeenCalledWith('r-1', 5);
       expect(json).toHaveBeenCalledWith(200, { orders: [expect.objectContaining({ orderId: 'o-1', lines: expect.any(Array) })] });
     });
 
@@ -192,6 +192,30 @@ describe('AutoPrintController', () => {
 
       await runBridgeChain(routes['GET /restaurants/me/fiscal-print-queue/pending'], { restaurantId: 'r-1' }, { json, send: jest.fn() });
 
+      expect(json).toHaveBeenCalledWith(200, { orders: [] });
+    });
+
+    // Achado da revisão (16/11/2026) — sem a mesma janela de idade do ticket normal, a bridge
+    // reconectando depois de ficar offline imprimiria todas as notas represadas de uma vez.
+    it('repassa autoPrintMaxAgeMinutes configurado pra findPendingFiscalPrint (mesma janela do ticket normal)', async () => {
+      const { orderRepository, routes } = setup({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ autoPrintMaxAgeMinutes: 20 })) },
+      });
+
+      await runBridgeChain(routes['GET /restaurants/me/fiscal-print-queue/pending'], { restaurantId: 'r-1' }, { json: jest.fn(), send: jest.fn() });
+
+      expect(orderRepository.findPendingFiscalPrint).toHaveBeenCalledWith('r-1', 20);
+    });
+
+    it('com autoPrintEnabled desligado, devolve lista vazia sem consultar a fila fiscal', async () => {
+      const { orderRepository, routes } = setup({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ autoPrintEnabled: false })) },
+      });
+      const json = jest.fn();
+
+      await runBridgeChain(routes['GET /restaurants/me/fiscal-print-queue/pending'], { restaurantId: 'r-1' }, { json, send: jest.fn() });
+
+      expect(orderRepository.findPendingFiscalPrint).not.toHaveBeenCalled();
       expect(json).toHaveBeenCalledWith(200, { orders: [] });
     });
 

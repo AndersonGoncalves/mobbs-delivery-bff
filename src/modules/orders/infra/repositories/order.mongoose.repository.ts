@@ -403,11 +403,16 @@ export class OrderMongooseRepository implements IOrderRepository {
 
   // Pedido explícito do usuário (16/11/2026) — mesmo padrão de `findPendingAutoPrint`, pro cupom
   // fiscal: qualquer pedido com nota emitida e ainda não impressa, de qualquer orderType (mesa,
-  // balcão, delivery, retirada todos emitem nota).
-  async findPendingFiscalPrint(restaurantId: string): Promise<IOrder[]> {
+  // balcão, delivery, retirada todos emitem nota). Achado da revisão (16/11/2026) — faltava a
+  // mesma janela de idade do ticket normal (`maxAgeMinutes`, desde `fiscal.emittedAt`): sem isso,
+  // a bridge reconectando depois de ficar offline tentaria imprimir TODAS as notas represadas de
+  // uma vez, exatamente o problema que a janela do ticket normal já existe pra evitar.
+  async findPendingFiscalPrint(restaurantId: string, maxAgeMinutes: number): Promise<IOrder[]> {
+    const cutoff = new Date(Date.now() - maxAgeMinutes * 60_000).toISOString();
     const docs = await OrderModel.find({
       restaurantId,
       'fiscal.status': 'emitido',
+      'fiscal.emittedAt': { $gte: cutoff },
       fiscalPrintStatus: { $ne: 'printed' },
     })
       .sort({ createdAt: 1 })

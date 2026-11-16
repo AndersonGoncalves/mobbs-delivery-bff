@@ -90,6 +90,57 @@ describe('OrderMongooseRepository.findPendingAutoPrint', () => {
   });
 });
 
+// Pedido explícito do usuário (16/11/2026), achado da revisão: mesma janela de idade de
+// `findPendingAutoPrint` acima, agora pro cupom fiscal — sem ela, a bridge reconectando depois de
+// ficar offline imprimiria todas as notas represadas de uma vez.
+describe('OrderMongooseRepository.findPendingFiscalPrint', () => {
+  const NOW = new Date('2026-11-16T12:00:00.000Z');
+
+  beforeEach(() => {
+    jest.useFakeTimers({ now: NOW });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.clearAllMocks();
+  });
+
+  it('calcula o corte (cutoff) a partir de maxAgeMinutes, contado desde fiscal.emittedAt', async () => {
+    const { sort } = mockFindResult([]);
+    const repository = new OrderMongooseRepository();
+
+    await repository.findPendingFiscalPrint('r-1', 5);
+
+    expect(OrderModel.find).toHaveBeenCalledWith({
+      restaurantId: 'r-1',
+      'fiscal.status': 'emitido',
+      'fiscal.emittedAt': { $gte: new Date(NOW.getTime() - 5 * 60_000).toISOString() },
+      fiscalPrintStatus: { $ne: 'printed' },
+    });
+    expect(sort).toHaveBeenCalledWith({ createdAt: 1 });
+  });
+
+  it('mapeia um pedido com nota emitida pendente de impressão', async () => {
+    mockFindResult([buildDoc({ status: 'saiuParaEntrega', fiscal: { status: 'emitido', ref: 'order-1' } })]);
+    const repository = new OrderMongooseRepository();
+
+    const orders = await repository.findPendingFiscalPrint('r-1', 5);
+
+    expect(orders).toHaveLength(1);
+    expect(orders[0].fiscal?.status).toBe('emitido');
+  });
+
+  it('respeita maxAgeMinutes configurado, diferente do default', async () => {
+    mockFindResult([]);
+    const repository = new OrderMongooseRepository();
+
+    await repository.findPendingFiscalPrint('r-1', 20);
+
+    const [[filter]] = (OrderModel.find as jest.Mock).mock.calls;
+    expect(filter['fiscal.emittedAt']).toEqual({ $gte: new Date(NOW.getTime() - 20 * 60_000).toISOString() });
+  });
+});
+
 // specs/0198-rastreamento-motoboy-tempo-real REQ-3.
 describe('OrderMongooseRepository.findDistinctMotoboyIdsByStatus', () => {
   afterEach(() => jest.restoreAllMocks());

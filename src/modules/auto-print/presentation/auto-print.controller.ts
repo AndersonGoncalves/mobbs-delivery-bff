@@ -89,10 +89,17 @@ export class AutoPrintController extends BaseRouter {
     // Pedido explícito do usuário (16/11/2026) — mesmo padrão da fila acima, pro cupom fiscal
     // simplificado: qualquer pedido (mesa, balcão, delivery, retirada) com nota emitida ainda não
     // impressa. Fila separada da do ticket normal — um pedido pode estar pendente nas duas ao
-    // mesmo tempo, a bridge imprime os dois (dois papéis).
+    // mesmo tempo, a bridge imprime os dois (dois papéis). Achado da revisão (16/11/2026) — mesmo
+    // switch e mesma janela de idade do ticket normal (linhas acima): sem isso, desligar
+    // "Impressão automática" não pararia o cupom fiscal, e a bridge reconectando depois de ficar
+    // offline imprimiria todas as notas represadas de uma vez.
     application.get('/restaurants/me/fiscal-print-queue/pending', ...bridgeAuthenticated, async (req: Request, res: Response) => {
       const restaurant = await this.restaurantRepository.findById(req.restaurantId!);
-      const orders = await this.orderRepository.findPendingFiscalPrint(req.restaurantId!);
+      if (!restaurant!.autoPrintEnabled) {
+        res.json(200, { orders: [] });
+        return;
+      }
+      const orders = await this.orderRepository.findPendingFiscalPrint(req.restaurantId!, restaurant!.autoPrintMaxAgeMinutes ?? 5);
       const pending = orders.map((order) => ({ orderId: order.id, lines: buildFiscalReceiptLines(order, restaurant!) }));
       res.json(200, { orders: pending });
     });
