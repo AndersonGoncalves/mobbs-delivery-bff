@@ -83,4 +83,77 @@ describe('FocusNfeApiClient (specs/0091-integracao-fiscal-focusnfe)', () => {
     await expect(client.emitCfe()).rejects.toThrow(/CFe/);
     await expect(client.emitNfe()).rejects.toThrow(/NFe/);
   });
+
+  // Pedido explícito do usuário (16/11/2026) — validado contra o XML real de uma emissão em
+  // produção (pedido #180, 16/11/2026): tributos aproximados (Lei 12.741/2012) e IE do emitente
+  // nunca vêm no JSON da FocusNFe, só no XML da própria nota.
+  describe('fetchNfceXmlFields (achado real 16/11/2026)', () => {
+    function mockFetchXml(status: number, xml: string | undefined) {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: status >= 200 && status < 300,
+        status,
+        text: jest.fn().mockResolvedValue(xml ?? ''),
+      }) as unknown as typeof fetch;
+    }
+
+    // Fixture reduzida do XML real (pedido #180, 16/11/2026) — propositalmente com um `vTotTrib`
+    // de ITEM diferente do TOTAL (0.10 vs 0.44), pra provar que a extração pega o de `<ICMSTot>`,
+    // nunca o primeiro `vTotTrib` que aparecer no documento.
+    const REAL_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<nfeProc><NFe><infNFe><emit><xNome>CECILIA ANGELITA DE LIMA CRUZ</xNome><CNPJ>07456684000180</CNPJ>
+<enderEmit><xLgr>DOM AURELIANO MATOS</xLgr><nro>2298</nro><xBairro>CENTRO</xBairro><cMun>2307601</cMun><xMun>Limoeiro do Norte</xMun><UF>CE</UF><CEP>62930000</CEP><fone>85986404604</fone></enderEmit>
+<IE>060760753</IE><CRT>1</CRT></emit>
+<det nItem="1"><imposto><vTotTrib>0.10</vTotTrib></imposto></det>
+<total><ICMSTot><vNF>1.00</vNF><vTotTrib>0.44</vTotTrib></ICMSTot></total>
+</infNFe></NFe><protNFe><infProt><nProt>223261031969253</nProt></infProt></protNFe></nfeProc>`;
+
+    it('extrai vTotTrib de <ICMSTot> (nunca o do item) e os dados completos do emitente de <emit>/<enderEmit>', async () => {
+      mockFetchXml(200, REAL_XML);
+
+      const result = await client.fetchNfceXmlFields('https://api.focusnfe.com.br/arquivos/x/o-1.xml');
+
+      expect(result).toEqual({
+        approxTaxAmount: 0.44,
+        emitterName: 'CECILIA ANGELITA DE LIMA CRUZ',
+        emitterCnpj: '07456684000180',
+        emitterIe: '060760753',
+        emitterPhone: '85986404604',
+        emitterAddress: {
+          street: 'DOM AURELIANO MATOS',
+          number: '2298',
+          neighborhood: 'CENTRO',
+          zipCode: '62930000',
+          city: 'Limoeiro do Norte',
+          state: 'CE',
+        },
+      });
+    });
+
+    it('resposta não-OK (XML indisponível/expirado): devolve objeto vazio, nunca lança', async () => {
+      mockFetchXml(404, undefined);
+
+      await expect(client.fetchNfceXmlFields('https://api.focusnfe.com.br/arquivos/x/o-1.xml')).resolves.toEqual({});
+    });
+
+    it('falha de rede/timeout: devolve objeto vazio, nunca lança (best-effort)', async () => {
+      global.fetch = jest.fn().mockRejectedValue(new Error('timeout')) as unknown as typeof fetch;
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      await expect(client.fetchNfceXmlFields('https://api.focusnfe.com.br/arquivos/x/o-1.xml')).resolves.toEqual({});
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('XML sem IE/endereço/tributos (só nome): devolve só o nome, resto undefined, sem lançar', async () => {
+      mockFetchXml(200, '<nfeProc><NFe><infNFe><emit><xNome>Loja</xNome></emit><total><ICMSTot><vNF>1.00</vNF></ICMSTot></total></infNFe></NFe></nfeProc>');
+
+      await expect(client.fetchNfceXmlFields('https://api.focusnfe.com.br/arquivos/x/o-1.xml')).resolves.toEqual({
+        approxTaxAmount: undefined,
+        emitterName: 'Loja',
+        emitterCnpj: undefined,
+        emitterIe: undefined,
+        emitterPhone: undefined,
+        emitterAddress: undefined,
+      });
+    });
+  });
 });

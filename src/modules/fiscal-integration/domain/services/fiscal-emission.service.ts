@@ -192,7 +192,7 @@ export class FiscalEmissionService {
       const input = await this.buildEmitInput(order, config.cnpj);
 
       const result = await client.emitNfce(order.id, input);
-      await this.applyResult(order.id, result, config.environment);
+      await this.applyResult(order.id, result, config);
     } catch (error) {
       await this.orderRepository.updateFiscal(order.id, {
         status: 'rejeitado',
@@ -213,12 +213,19 @@ export class FiscalEmissionService {
     return `${baseUrl}${path}`;
   }
 
-  private async applyResult(orderId: string, result: FocusNfeDocumentResult, environment: IFiscalConfig['environment']): Promise<void> {
+  private async applyResult(orderId: string, result: FocusNfeDocumentResult, config: IFiscalConfig): Promise<void> {
     if (result.status === 'autorizado') {
+      // Pedido explícito do usuário (16/11/2026) — tributos aproximados (Lei 12.741/2012) e IE do
+      // emitente nunca vêm no JSON da FocusNFe (confirmado contra emissão real em produção,
+      // pedido #180) — só existem no XML da própria nota. Baixa e extrai aqui, uma vez, no mesmo
+      // momento em que já resolvemos `documentUrl`; nunca bloqueia a emissão (`fetchNfceXmlFields`
+      // já nunca lança, mas o `?? {}` aqui é defesa extra).
+      const xmlUrl = this.resolveDocumentUrl(result.caminho_xml_nota_fiscal, config.environment);
+      const xmlFields = xmlUrl ? await this.clientFor(config).fetchNfceXmlFields(xmlUrl) : {};
       await this.orderRepository.updateFiscal(orderId, {
         status: 'emitido',
         ref: result.ref ?? orderId,
-        documentUrl: this.resolveDocumentUrl(result.caminho_danfe, environment),
+        documentUrl: this.resolveDocumentUrl(result.caminho_danfe, config.environment),
         // Pedido explícito do usuário (14/11/2026) — a SEFAZ só aceita cancelar em até 30
         // minutos a partir deste instante; o front usa pra decidir se mostra "Cancelar nota
         // fiscal" (ver `IOrderFiscal.emittedAt`).
@@ -229,6 +236,18 @@ export class FiscalEmissionService {
         number: result.numero,
         series: result.serie,
         qrCode: result.qrcode_url,
+        approxTaxAmount: xmlFields.approxTaxAmount,
+        emitterName: xmlFields.emitterName,
+        emitterCnpj: xmlFields.emitterCnpj,
+        emitterIe: xmlFields.emitterIe,
+        emitterPhone: xmlFields.emitterPhone,
+        emitterAddress: xmlFields.emitterAddress,
+        // Pedido explícito do usuário (16/11/2026) — "guarde os dois endereços": a URL de consulta
+        // genérica da SEFAZ (já vem pronta da FocusNFe, nunca precisa resolver — diferente de
+        // `caminho_danfe`/`caminho_xml_nota_fiscal`, que são relativos ao domínio DELA) e a URL do
+        // próprio XML, resolvida do mesmo jeito que `documentUrl`.
+        consultaUrl: result.url_consulta_nf,
+        xmlUrl,
       });
       // Caso raro (nota cancelada e reemitida com sucesso) — ver docstring do método no
       // repositório.
@@ -249,11 +268,12 @@ export class FiscalEmissionService {
   }
 
   /** REQ-3 — aplica o payload recebido no webhook ao pedido identificado por `ref` (== `Order.id`
-   * nesta implementação, ver `FocusNfeApiClient`). `environment` vem do `FiscalConfig` que o
-   * controller já carregou pra validar o token do webhook — precisa aqui pra resolver
-   * `caminho_danfe` (achado real 14/11/2026, ver `resolveDocumentUrl`). */
-  async applyWebhookResult(orderId: string, result: FocusNfeDocumentResult, environment: IFiscalConfig['environment']): Promise<void> {
-    await this.applyResult(orderId, result, environment);
+   * nesta implementação, ver `FocusNfeApiClient`). `config` é o `FiscalConfig` que o controller já
+   * carregou pra validar o token do webhook — precisa do objeto inteiro (não só `environment`,
+   * achado real 14/11/2026) porque `applyResult` agora também baixa o XML da nota pra extrair
+   * tributos/IE (16/11/2026), o que exige montar um client autenticado (`clientFor`). */
+  async applyWebhookResult(orderId: string, result: FocusNfeDocumentResult, config: IFiscalConfig): Promise<void> {
+    await this.applyResult(orderId, result, config);
   }
 
   /** REQ-6 — cancelamento da nota já emitida. Pressupõe que o controller já validou
