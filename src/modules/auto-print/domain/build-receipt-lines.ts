@@ -26,6 +26,11 @@ export interface ReceiptLine {
    * antes e `alignLeft()` depois), usado só no bloco "consulte pela chave de acesso" do cupom
    * fiscal (URL de consulta, rótulo e a própria chave) e no rótulo do QR code. */
   center?: boolean;
+  /** Pedido explícito do usuário (16/11/2026) — bypassa o fold de 48 colunas da própria lib
+   * (`append()` em vez de `println()` na bridge), sem trocar de fonte (diferente de `small`) —
+   * usado na linha "Protocolo de autorizacao: {protocolo}  {data}", que ultrapassa 48 caracteres
+   * mesmo em Fonte A normal (rótulo + protocolo de ~15 dígitos + espaços + data completa). */
+  noWrap?: boolean;
 }
 
 const PAYMENT_LABELS: Record<PaymentMethod, string> = {
