@@ -94,8 +94,9 @@ describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', 
   });
 
   // Pedido explícito do usuário (16/11/2026) — tributos aproximados (Lei 12.741/2012), extraídos
-  // do XML da nota (nunca vêm no JSON da FocusNFe).
-  it('imprime tributos aproximados quando o XML foi lido com sucesso', () => {
+  // do XML da nota (nunca vêm no JSON da FocusNFe), em duas colunas (rótulo esquerda, valor
+  // direita) — antes era uma string só concatenada.
+  it('imprime tributos aproximados quando o XML foi lido com sucesso, alinhado à direita', () => {
     const lines = buildFiscalReceiptLines(
       buildOrder({ fiscal: { status: 'emitido', ref: 'o-1', approxTaxAmount: 0.44 } }),
       buildRestaurant(),
@@ -103,7 +104,7 @@ describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', 
     );
     const texts = lines.map((line) => line.text);
 
-    expect(texts).toContain('Tributos aprox. (Lei 12.741/2012): R$0,44');
+    expect(texts.some((text) => /^Tributos aprox\. \(Lei 12\.741\/2012\):\s+R\$0,44$/.test(text))).toBe(true);
   });
 
   it('sem approxTaxAmount (XML não baixado/lido), não inclui essa linha', () => {
@@ -212,7 +213,9 @@ describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', 
     expect(texts.some((text) => text.startsWith('Troco:'))).toBe(false);
   });
 
-  it('imprime o split Federal/Estadual e a Fonte quando extraídos do XML (infAdic/infCpl)', () => {
+  // Pedido explícito do usuário (16/11/2026) — Federal e Estadual em 2 linhas separadas (antes
+  // era 1 linha só concatenando os dois valores), cada uma em 2 colunas.
+  it('imprime Trib. Federal aprox e Trib. Estadual aprox em linhas separadas, alinhadas à direita', () => {
     const lines = buildFiscalReceiptLines(
       buildOrder({
         fiscal: {
@@ -226,15 +229,18 @@ describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', 
     );
     const texts = lines.map((line) => line.text);
 
-    expect(texts).toContain('Trib. aprox: R$0,16 Federal; R$0,28 Estadual');
+    expect(texts.some((text) => /^Trib\. Federal aprox:\s+R\$0,16$/.test(text))).toBe(true);
+    expect(texts.some((text) => /^Trib\. Estadual aprox:\s+R\$0,28$/.test(text))).toBe(true);
+    expect(texts).not.toContain('Trib. aprox: R$0,16 Federal; R$0,28 Estadual');
     expect(texts).toContain('Fonte: IBPT/empresometro.com.br AA45DF');
   });
 
-  it('sem approxTaxFederal/approxTaxState, não inclui a linha de split nem a Fonte', () => {
+  it('sem approxTaxFederal/approxTaxState, não inclui as linhas de Trib. Federal/Estadual nem a Fonte', () => {
     const lines = buildFiscalReceiptLines(buildOrder({ fiscal: { status: 'emitido', ref: 'o-1' } }), buildRestaurant(), null);
     const texts = lines.map((line) => line.text);
 
-    expect(texts.some((text) => text.startsWith('Trib. aprox:'))).toBe(false);
+    expect(texts.some((text) => text.startsWith('Trib. Federal aprox:'))).toBe(false);
+    expect(texts.some((text) => text.startsWith('Trib. Estadual aprox:'))).toBe(false);
     expect(texts.some((text) => text.startsWith('Fonte:'))).toBe(false);
   });
 
@@ -325,12 +331,14 @@ describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', 
       buildRestaurant(),
       null,
     );
-    const texts = lines.map((line) => line.text);
-    const protocolLine = texts.find((text) => text.startsWith('Protocolo de autorizacao:'));
+    const protocolLine = lines.find((line) => line.text.startsWith('Protocolo de autorizacao:'));
 
     expect(protocolLine).toBeDefined();
-    expect(protocolLine).toContain('223261032153733');
-    expect(protocolLine).toMatch(/\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}:\d{2}$/);
+    expect(protocolLine?.text).toContain('223261032153733');
+    // Pedido explícito do usuário (16/11/2026) — achado real: rótulo + protocolo + data ultrapassa
+    // 48 caracteres mesmo em Fonte A normal — `noWrap` bypassa o fold de 48 colunas da bridge.
+    expect(protocolLine?.noWrap).toBe(true);
+    expect(protocolLine?.text).toMatch(/\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}:\d{2}$/);
   });
 
   it('sem fiscal.protocol, não inclui a linha de protocolo', () => {
@@ -358,12 +366,54 @@ describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', 
     expect(lines[itensIndex + 1]).toEqual(expect.objectContaining({ divider: true }));
   });
 
-  it('inclui um traço depois do bloco de totais/tributos, antes de "Forma de pagamento"', () => {
+  // Pedido explícito do usuário (16/11/2026) — reordenado: TOTAL -> traço -> forma de pagamento ->
+  // traço -> tributos -> traço -> NFC-e no... (antes os tributos vinham logo depois do TOTAL,
+  // antes da forma de pagamento).
+  it('inclui um traço logo depois do TOTAL, antes de "Forma de pagamento"', () => {
     const lines = buildFiscalReceiptLines(buildOrder(), buildRestaurant(), null);
+    const totalIndex = lines.findIndex((line) => line.text.startsWith('TOTAL:'));
     const formaIndex = lines.findIndex((line) => line.text.startsWith('Forma de pagamento'));
 
-    expect(formaIndex).toBeGreaterThan(0);
+    expect(totalIndex).toBeGreaterThan(-1);
+    expect(formaIndex).toBeGreaterThan(totalIndex);
+    expect(lines[totalIndex + 1]).toEqual(expect.objectContaining({ divider: true }));
     expect(lines[formaIndex - 1]).toEqual(expect.objectContaining({ divider: true }));
+  });
+
+  it('inclui um traço depois do bloco de forma de pagamento, antes dos tributos aproximados', () => {
+    const lines = buildFiscalReceiptLines(
+      buildOrder({ fiscal: { status: 'emitido', ref: 'o-1', approxTaxAmount: 0.44 } }),
+      buildRestaurant(),
+      null,
+    );
+    const pagamentoIndex = lines.findIndex((line) => line.text.startsWith('- Pagamento'));
+    const tributosIndex = lines.findIndex((line) => line.text.startsWith('Tributos aprox.'));
+
+    expect(pagamentoIndex).toBeGreaterThan(-1);
+    expect(tributosIndex).toBeGreaterThan(pagamentoIndex);
+    expect(lines[pagamentoIndex + 1]).toEqual(expect.objectContaining({ divider: true }));
+  });
+
+  it('inclui um traço depois do bloco de tributos aproximados, antes de "NFC-e no..."', () => {
+    const lines = buildFiscalReceiptLines(
+      buildOrder({ fiscal: { status: 'emitido', ref: 'o-1', number: '123', series: '1', approxTaxAmount: 0.44 } }),
+      buildRestaurant(),
+      null,
+    );
+    const tributosIndex = lines.findIndex((line) => line.text.startsWith('Tributos aprox.'));
+    const nfceIndex = lines.findIndex((line) => line.text.startsWith('NFC-e no'));
+
+    expect(tributosIndex).toBeGreaterThan(-1);
+    expect(nfceIndex).toBeGreaterThan(tributosIndex);
+    expect(lines[tributosIndex + 1]).toEqual(expect.objectContaining({ divider: true }));
+  });
+
+  it('inclui um traço depois de "Emissao: ... Via Consumidor", no lugar da linha em branco', () => {
+    const lines = buildFiscalReceiptLines(buildOrder(), buildRestaurant(), null);
+    const emissaoIndex = lines.findIndex((line) => line.text.startsWith('Emissao:'));
+
+    expect(emissaoIndex).toBeGreaterThan(-1);
+    expect(lines[emissaoIndex + 1]).toEqual(expect.objectContaining({ divider: true }));
   });
 
   it('inclui um traço depois do bloco centralizado da chave de acesso, antes de "CONSUMIDOR"', () => {
