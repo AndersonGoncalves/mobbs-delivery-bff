@@ -21,6 +21,16 @@ function formatAccessKey(key: string): string {
   return key.replace(/(\d{4})(?=\d)/g, '$1 ').trim();
 }
 
+/** Pedido explícito do usuário (16/11/2026) — duas colunas dentro da largura de 48 colunas da
+ * impressora (`rótulo` à esquerda, `valor` empurrado pra ponta direita), usado nas linhas de
+ * total/quantidade e na seção "Forma de pagamento". Nunca deixa menos de 1 espaço entre as duas
+ * colunas, mesmo se `left`+`right` ultrapassar 48 caracteres (texto variável, ex. rótulo de forma
+ * de pagamento mais longo — nesse caso a linha só fica mais larga que o ideal, nunca quebra). */
+function twoColumn(left: string, right: string, width = 48): string {
+  const gap = Math.max(1, width - left.length - right.length);
+  return `${left}${' '.repeat(gap)}${right}`;
+}
+
 /** XX.XXX.XXX/XXXX-XX — máscara padrão de CNPJ (14 dígitos), aplicada aqui porque o XML devolve
  * só os dígitos crus (`<CNPJ>07456684000180</CNPJ>`). */
 function formatCnpj(raw: string): string {
@@ -111,6 +121,9 @@ export function buildFiscalReceiptLines(order: IOrder, restaurant: IRestaurant, 
   if (address?.city) {
     lines.push({ text: `${stripAccents(address.city)} - ${address.state ?? ''}` });
   }
+  // Pedido explícito do usuário (16/11/2026) — linha em branco entre o endereço do emitente e o
+  // bloco "DANFE NFC-e" (antes vinha tudo colado).
+  lines.push({ text: '' });
   lines.push({ text: 'DANFE NFC-e - Documento Auxiliar da', bold: true });
   lines.push({ text: 'Nota Fiscal de Consumidor Eletronica', bold: true });
   // Pedido explícito do usuário (16/11/2026) — texto fixo presente em todo DANFCE real, faltava.
@@ -120,6 +133,8 @@ export function buildFiscalReceiptLines(order: IOrder, restaurant: IRestaurant, 
   lines.push({ text: '', divider: true });
 
   lines.push({ text: `ITENS (${itemCount})` });
+  // Pedido explícito do usuário (16/11/2026) — traço separando o cabeçalho "ITENS" da lista em si.
+  lines.push({ text: '', divider: true });
   for (const item of order.items) {
     lines.push({ text: `# ${item.quantity}x ${stripAccents(item.productName)} ${money(item.unitPrice * item.quantity)}` });
   }
@@ -127,10 +142,10 @@ export function buildFiscalReceiptLines(order: IOrder, restaurant: IRestaurant, 
     lines.push({ text: `# Taxa de entrega ${money(order.deliveryFee)}` });
   }
   lines.push({ text: '', divider: true });
-  // Pedido explícito do usuário (16/11/2026) — "Qtd. Total de Itens", presente no DANFCE real,
-  // faltava (só mostrávamos o valor total, nunca a quantidade).
-  lines.push({ text: `Qtd. Total de Itens: ${itemCount}` });
-  lines.push({ text: `TOTAL: ${money(order.total)}`, bold: true });
+  // Pedido explícito do usuário (16/11/2026) — "Qtd. Total de Itens" e "TOTAL" em duas colunas
+  // (rótulo à esquerda, valor na ponta direita), igual o DANFCE real — antes era uma string só.
+  lines.push({ text: twoColumn('Qtd. Total de Itens:', String(itemCount)) });
+  lines.push({ text: twoColumn('TOTAL:', money(order.total)), bold: true });
   // Pedido explícito do usuário (16/11/2026) — tributos aproximados (Lei 12.741/2012) + split
   // Federal/Estadual + fonte, extraídos do XML da nota (nunca no JSON da FocusNFe) — ver
   // `FocusNfeApiClient.fetchNfceXmlFields`. O split/fonte são texto livre no XML (`<infCpl>`),
@@ -144,13 +159,14 @@ export function buildFiscalReceiptLines(order: IOrder, restaurant: IRestaurant, 
   if (fiscal.approxTaxSource) {
     lines.push({ text: `Fonte: ${stripAccents(fiscal.approxTaxSource)}` });
   }
-  lines.push({ text: '' });
+  // Pedido explícito do usuário (16/11/2026) — traço separando o bloco de totais/tributos da
+  // forma de pagamento.
+  lines.push({ text: '', divider: true });
 
-  // Pedido explícito do usuário (16/11/2026) — forma de pagamento + valor pago + troco, ausente
-  // antes (nem mostrávamos qual foi a forma de pagamento) — dados já existem no pedido, não
-  // precisam do XML.
-  lines.push({ text: 'Forma de pagamento' });
-  lines.push({ text: `- ${PAYMENT_LABELS[order.paymentMethod]} ${money(order.total)}` });
+  // Pedido explícito do usuário (16/11/2026) — forma de pagamento + valor pago + troco, em duas
+  // colunas (mesmo padrão do total) — antes era uma string só, nem mostrava "Valor pago".
+  lines.push({ text: twoColumn('Forma de pagamento', 'Valor pago') });
+  lines.push({ text: twoColumn(`- ${PAYMENT_LABELS[order.paymentMethod]}`, money(order.total)) });
   if (order.paymentMethod === 'cash' && order.cashChangeFor !== undefined) {
     lines.push({ text: `Troco: ${money(Math.max(0, order.cashChangeFor - order.total))}` });
   }
@@ -160,23 +176,26 @@ export function buildFiscalReceiptLines(order: IOrder, restaurant: IRestaurant, 
   lines.push({ text: `Emissao: ${formatOrderDateTime(fiscal.emittedAt ?? order.createdAt)} - Via Consumidor` });
   lines.push({ text: '' });
 
-  // Pedido explícito do usuário (16/11/2026) — ordem invertida pra bater com o DANFCE real:
-  // consulta primeiro, "CHAVE DE ACESSO" + a chave em si depois (antes estava ao contrário).
-  lines.push({ text: 'Consulte pela Chave de Acesso em' });
+  // Pedido explícito do usuário (16/11/2026) — bloco inteiro centralizado (consulta + chave de
+  // acesso), igual o DANFCE real — ordem já invertida antes (consulta primeiro, chave depois).
+  lines.push({ text: 'Consulte pela Chave de Acesso em', center: true });
   // Pedido explícito do usuário (16/11/2026) — URL de consulta real do estado do emitente
   // (`url_consulta_nf`, já devolvida pela FocusNFe) em vez da genérica federal fixa; só cai no
   // fallback se a FocusNFe não devolver (nunca aconteceu nos testes reais, mas defesa barata).
-  lines.push({ text: fiscal.consultaUrl ?? 'www.nfce.fazenda.gov.br' });
+  lines.push({ text: fiscal.consultaUrl ?? 'www.nfce.fazenda.gov.br', center: true });
   lines.push({ text: '' });
 
   if (fiscal.accessKey) {
-    lines.push({ text: 'CHAVE DE ACESSO' });
-    // Pedido explícito do usuário (16/11/2026) — mesma linha, em negrito, fonte B (condensada):
-    // 44 dígitos + 10 espaços = 54 caracteres, maior que os 48 da fonte normal (por isso quebrava
-    // em duas linhas antes) — a fonte B cabe mais caracteres na mesma largura física do papel.
-    lines.push({ text: formatAccessKey(fiscal.accessKey), bold: true, small: true });
+    lines.push({ text: 'CHAVE DE ACESSO', center: true });
+    // Pedido explícito do usuário (16/11/2026) — mesma linha, em negrito, fonte B (condensada),
+    // centralizada: 44 dígitos + 10 espaços = 54 caracteres, maior que os 48 da fonte normal (por
+    // isso quebrava em duas linhas antes) — a fonte B cabe mais caracteres na mesma largura física
+    // do papel.
+    lines.push({ text: formatAccessKey(fiscal.accessKey), bold: true, small: true, center: true });
     lines.push({ text: '' });
   }
+  // Pedido explícito do usuário (16/11/2026) — traço depois do bloco centralizado da chave.
+  lines.push({ text: '', divider: true });
 
   // Pedido explícito do usuário (16/11/2026) — seção "CONSUMIDOR": identifica pelo CPF/CNPJ do
   // cliente SÓ quando cadastrado no nosso banco (`Customer.document`) — nunca reflete o que foi
@@ -188,20 +207,20 @@ export function buildFiscalReceiptLines(order: IOrder, restaurant: IRestaurant, 
   } else {
     lines.push({ text: 'CONSUMIDOR NAO IDENTIFICADO' });
   }
-  lines.push({ text: '' });
+  // Pedido explícito do usuário (16/11/2026) — traço depois da identificação do consumidor.
+  lines.push({ text: '', divider: true });
 
-  lines.push({ text: 'Consulta via Leitor de QR Code' });
+  lines.push({ text: 'Consulta via Leitor de QR Code', center: true });
   if (fiscal.qrCode) {
     lines.push({ text: '', qr: fiscal.qrCode });
   }
   lines.push({ text: '' });
-  // Pedido explícito do usuário (16/11/2026) — protocolo de autorização da SEFAZ, ausente antes
-  // (comentário anterior dizia, errado, que a FocusNFe nunca devolvia isso) — ver
-  // `IOrderFiscal.protocol`.
+  // Pedido explícito do usuário (16/11/2026) — protocolo de autorização da SEFAZ (comentário
+  // anterior dizia, errado, que a FocusNFe nunca devolvia isso — ver `IOrderFiscal.protocol`),
+  // com a data/hora da emissão ao lado (mesmo timestamp já usado em "Emissao:" acima).
   if (fiscal.protocol) {
-    lines.push({ text: `Protocolo de autorizacao: ${fiscal.protocol}` });
+    lines.push({ text: `Protocolo de autorizacao: ${fiscal.protocol}  ${formatOrderDateTime(fiscal.emittedAt ?? order.createdAt)}` });
   }
-  lines.push({ text: '-- BsDelivery --' });
 
   return lines;
 }
