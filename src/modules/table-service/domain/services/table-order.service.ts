@@ -383,12 +383,24 @@ export class TableOrderService {
     }
     if (order.tableId) await this.tableRepository.releaseFromOrder(order.tableId, restaurantId, order.id);
     // specs/0202-emissao-fiscal-pedidos-mesa REQ-1 — mesmo gatilho fiscal automático que
-    // `OrdersController` já dispara em "entregue" pra delivery/retirada, agora também aqui.
-    // Fire-and-forget: nunca bloqueia nem falha a resposta de fechamento (mesmo padrão de
-    // `orders.controller.ts`), e `emitForOrder` já é no-op silencioso sem `FiscalConfig`.
-    void this.fiscalEmissionService?.emitForOrder(closed).catch((error) => {
-      console.error(`[fiscal-integration] erro inesperado emitindo documento fiscal do pedido de mesa/balcão ${closed.id}:`, error);
-    });
+    // `OrdersController` já dispara em "saiuParaEntrega" pra delivery/retirada, agora também
+    // aqui. Pedido explícito do usuário (16/11/2026) — mesma Opção B decidida pra delivery/
+    // retirada: ESPERA a emissão terminar (até um teto de 10s) antes de responder, pra tentar ao
+    // máximo já sair com a nota emitida/impressa; depois do teto, libera mesmo assim (o serviço
+    // nunca lança — ver `FiscalEmissionService` — a emissão continua rodando em background e,
+    // se terminar depois, o cupom ainda entra na fila de impressão fiscal normalmente).
+    if (this.fiscalEmissionService) {
+      const emission = this.fiscalEmissionService.emitForOrder(closed).catch((error) => {
+        console.error(`[fiscal-integration] erro inesperado emitindo documento fiscal do pedido de mesa/balcão ${closed.id}:`, error);
+      });
+      await new Promise<void>((resolve) => {
+        const timeout = setTimeout(resolve, 10_000);
+        void emission.finally(() => {
+          clearTimeout(timeout);
+          resolve();
+        });
+      });
+    }
     return closed;
   }
 

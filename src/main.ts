@@ -570,6 +570,15 @@ server
       stockMovementRepository,
       rawMaterialRepository,
       productRepository,
+      // Pedido explícito do usuário (16/11/2026) — balcão fecha sozinho no próprio PDV (ver
+      // `OperatorDraftsController.handleFinalize`), mesma composição de dependências de
+      // `TableOrderService` usada por `TableServiceController` logo abaixo.
+      new RestaurantTableMongooseRepository(),
+      new TableWaiterMongooseRepository(),
+      new TableMapLayoutMongooseRepository(),
+      restaurantOperatorRepository,
+      cashRegisterService,
+      fiscalEmissionService,
     ),
     // specs/0140-confirmacao-automatica-pix REQ-1b — webhook gateway-agnóstico de confirmação de Pix.
     new PaymentWebhookController(

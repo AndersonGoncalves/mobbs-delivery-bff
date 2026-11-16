@@ -27,6 +27,13 @@ import { IRawMaterialRepository } from '../../raw-materials/domain/repositories/
 import { IStockMovementRepository } from '../../raw-materials/domain/repositories/stock-movement.repository.interface';
 import { IRestaurant } from '../../restaurants/domain/entities/restaurant.entity';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
+import { IRestaurantTableRepository } from '../../table-service/domain/repositories/table.repository.interface';
+import { ITableWaiterRepository } from '../../table-service/domain/repositories/waiter.repository.interface';
+import { ITableMapLayoutRepository } from '../../table-service/domain/repositories/table-map-layout.repository.interface';
+import { IRestaurantOperatorRepository } from '../../restaurant-operators/domain/repositories/restaurant-operator.repository.interface';
+import { ICashRegisterService } from '../../financeiro/domain/services/i-cash-register.service';
+import { FiscalEmissionService } from '../../fiscal-integration/domain/services/fiscal-emission.service';
+import { TableOrderService } from '../../table-service/domain/services/table-order.service';
 import { applyManualAdjustment } from '../domain/apply-manual-adjustment';
 import { OperatorDraftModality } from '../domain/entities/operator-draft.entity';
 import { validateDraftForFinalize } from '../domain/validate-draft-for-finalize';
@@ -61,6 +68,14 @@ const MODALITY_TO_ORDER_TYPE: Record<OperatorDraftModality, OrderType> = {
  */
 export class OperatorDraftsController extends BaseRouter {
   private readonly stockReservationService?: StockReservationService;
+  /** Pedido explícito do usuário (16/11/2026) — balcão fecha automaticamente no próprio PDV
+   * (ver `handleFinalize`), sem precisar visitar Atendimento de mesas: reaproveita o mesmíssimo
+   * `TableOrderService.closeOrder` (emissão fiscal, caixa automático, idempotência) que uma mesa
+   * fechada manualmente usa — mesmo padrão de composição de `TableServiceController`. `undefined`
+   * quando alguma dependência de mesa não foi injetada (nunca deveria em produção, só defesa de
+   * teste/composição): nesse caso o balcão simplesmente não fecha sozinho, mesmo comportamento de
+   * antes desta mudança (precisa fechar em Atendimento de mesas). */
+  private readonly tableOrderService?: TableOrderService;
 
   constructor(
     private readonly operatorDraftRepository: IOperatorDraftRepository,
@@ -74,10 +89,23 @@ export class OperatorDraftsController extends BaseRouter {
     stockMovementRepository?: IStockMovementRepository,
     rawMaterialRepository?: IRawMaterialRepository,
     private readonly productRepository?: IProductRepository,
+    tableRepository?: IRestaurantTableRepository,
+    waiterRepository?: ITableWaiterRepository,
+    layoutRepository?: ITableMapLayoutRepository,
+    restaurantOperatorRepository?: IRestaurantOperatorRepository,
+    cashRegisterService?: ICashRegisterService,
+    fiscalEmissionService?: FiscalEmissionService,
   ) {
     super();
     if (productRepository && rawMaterialRepository && stockMovementRepository) {
       this.stockReservationService = new StockReservationService(productRepository, rawMaterialRepository, stockMovementRepository);
+    }
+    if (tableRepository && waiterRepository && layoutRepository && restaurantOperatorRepository && this.stockReservationService) {
+      this.tableOrderService = new TableOrderService(
+        orderRepository, tableRepository, waiterRepository, layoutRepository, productRepository!, customerRepository,
+        restaurantRepository, this.stockReservationService, restaurantOperatorRepository, cashRegisterService,
+        fiscalEmissionService,
+      );
     }
   }
 
@@ -346,7 +374,29 @@ export class OperatorDraftsController extends BaseRouter {
       });
 
       const finalizedDraft = await this.operatorDraftRepository.markFinalized(restaurantId, operatorId, slot, order.id, payload.clientRequestId);
-      res.json(201, { order, draft: finalizedDraft });
+
+      // Pedido explícito do usuário (16/11/2026) — balcão fecha sozinho aqui, sem precisar
+      // visitar Atendimento de mesas: mesmo fechamento que uma mesa manual teria (emissão fiscal,
+      // caixa automático), e o pedido já nasce na aba "Fechados" (`findClosedTableOrders`, que
+      // não exige `tableId`). Nunca falha a resposta de finalizar: o pedido já foi criado e pago
+      // de verdade — se o fechamento automático falhar por algum motivo, o operador ainda
+      // consegue fechar manualmente em Atendimento de mesas, como já era antes desta mudança.
+      let finalOrder = order;
+      if (current.modality === 'counter' && this.tableOrderService) {
+        try {
+          finalOrder = await this.tableOrderService.closeOrder(
+            restaurantId,
+            order.id,
+            [{ method: current.paymentMethod!, amount: total }],
+            operatorId,
+            payload.clientRequestId,
+          );
+        } catch (error) {
+          console.error(`[operator-drafts] erro inesperado fechando automaticamente o pedido de balcão ${order.id}:`, error);
+        }
+      }
+
+      res.json(201, { order: finalOrder, draft: finalizedDraft });
     } catch (error) {
       // REQ-24 — falha antes da criação mantém o rascunho (nunca finalizado, nunca perdido):
       // desfaz o claim pra o operador poder tentar de novo com os mesmos dados.
