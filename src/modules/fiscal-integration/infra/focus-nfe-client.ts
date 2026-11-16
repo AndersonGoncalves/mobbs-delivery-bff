@@ -85,6 +85,11 @@ export interface FocusNfeDocumentResult {
   caminho_danfe?: string;
   qrcode_url?: string;
   url_consulta_nf?: string;
+  /** Pedido explícito do usuário (16/11/2026) — achado real: confirmado contra o endpoint de
+   * consulta (`GET /v2/nfce/{ref}`) de uma emissão real em produção, pedido #180 — protocolo de
+   * autorização da SEFAZ JÁ vem aqui, no JSON, sem precisar de XML nenhum (correção de um
+   * comentário anterior, errado, que dizia que a FocusNFe nunca devolvia isso). */
+  protocolo?: string;
   erros?: { mensagem: string; campo?: string }[];
 }
 
@@ -107,6 +112,18 @@ export interface NfceXmlEmitterAddress {
 
 export interface NfceXmlFields {
   approxTaxAmount?: number;
+  /** Pedido explícito do usuário (16/11/2026) — split Federal/Estadual dos tributos aproximados,
+   * extraído do texto livre de `<infAdic><infCpl>` (único lugar onde esse split aparece — nem o
+   * JSON nem `<ICMSTot>` trazem os dois valores separados, só o total em `vTotTrib`). Campo de
+   * texto livre (não um elemento de schema fixo da NFe) — a extração é tolerante: se o texto não
+   * bater com o padrão esperado, os três ficam undefined, nunca quebra nada. */
+  approxTaxFederal?: number;
+  approxTaxState?: number;
+  approxTaxSource?: string;
+  /** Pedido explícito do usuário (16/11/2026) — fallback: `result.protocolo` (JSON, sem custo
+   * nenhum) já cobre isso na maioria dos casos; `<protNFe><infProt><nProt>` aqui é só reforço pro
+   * caso raro do JSON não trazer (ex. resposta síncrona da emissão, nunca testada sem o campo). */
+  protocol?: string;
   emitterName?: string;
   emitterCnpj?: string;
   emitterIe?: string;
@@ -201,8 +218,28 @@ export class FocusNfeApiClient {
           }
         : undefined;
 
+      // Pedido explícito do usuário (16/11/2026) — `<protNFe>` fica DEPOIS de `</NFe>` (irmão
+      // dele, nunca dentro) — achado real: a primeira tentativa de extrair isso falhou por
+      // procurar dentro de `<emit>`/`<ICMSTot>`, onde esse bloco nunca existiu.
+      const protBlock = xml.match(/<protNFe[^>]*>([\s\S]*?)<\/protNFe>/)?.[1] ?? '';
+      const protocol = tag(protBlock, 'nProt');
+
+      // Pedido explícito do usuário (16/11/2026) — split Federal/Estadual, só existe como texto
+      // livre em `<infAdic><infCpl>` (nunca um elemento de schema fixo) — formato real observado:
+      // "Trib. aprox. R$: 0,16 Federal,  0,28 Estadual Fonte: IBPT/empresometro.com.br AA45DF".
+      // Extração tolerante: sem bater o padrão, os três campos ficam undefined (nunca quebra o
+      // resto do cupom por causa de um texto livre que pode variar).
+      const infAdicBlock = xml.match(/<infAdic>([\s\S]*?)<\/infAdic>/)?.[1] ?? '';
+      const infCpl = tag(infAdicBlock, 'infCpl') ?? '';
+      const taxSplitMatch = infCpl.match(/([\d,.]+)\s*Federal,?\s*([\d,.]+)\s*Estadual/i);
+      const taxSourceMatch = infCpl.match(/Fonte:\s*(.+)$/i);
+
       return {
         approxTaxAmount: approxTaxAmount ? Number(approxTaxAmount) : undefined,
+        approxTaxFederal: taxSplitMatch ? Number(taxSplitMatch[1].replace(',', '.')) : undefined,
+        approxTaxState: taxSplitMatch ? Number(taxSplitMatch[2].replace(',', '.')) : undefined,
+        approxTaxSource: taxSourceMatch?.[1]?.trim(),
+        protocol,
         emitterName: tag(emitBlock, 'xNome'),
         emitterCnpj: tag(emitBlock, 'CNPJ'),
         emitterIe: tag(emitBlock, 'IE'),

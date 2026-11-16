@@ -17,6 +17,11 @@ export interface ReceiptLine {
    * (`text` fica vazio, ignorado), a bridge chama `drawLine()` da própria lib — desenha a linha
    * na largura exata configurada, qualquer que ela seja, sem o BFF precisar adivinhar um número. */
   divider?: boolean;
+  /** Pedido explícito do usuário (16/11/2026) — imprime com a Fonte B (condensada) da impressora,
+   * que cabe mais caracteres na mesma largura física — usado só pra chave de acesso da NFCe
+   * (44 dígitos + espaços = 54 caracteres, maior que os 48 da Fonte A normal, por isso quebrava
+   * em duas linhas) caber numa linha só, igual o DANFE real. Nunca usado pelo ticket normal. */
+  small?: boolean;
 }
 
 const PAYMENT_LABELS: Record<PaymentMethod, string> = {

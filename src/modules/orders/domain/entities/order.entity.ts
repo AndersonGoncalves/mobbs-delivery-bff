@@ -295,18 +295,30 @@ export interface IOrderFiscal {
   /** Pedido explícito do usuário (16/11/2026) — dados devolvidos pela FocusNFe quando `status ===
    * 'emitido'`, usados só pra montar o cupom fiscal simplificado impresso automaticamente
    * (`buildFiscalReceiptLines`): chave de acesso (44 dígitos), número/série da NFCe e o conteúdo
-   * do QR code de consulta na SEFAZ. A FocusNFe não devolve protocolo de autorização nem valor
-   * aproximado de tributos — esses campos não existem aqui de propósito, nunca inventar um valor. */
+   * do QR code de consulta na SEFAZ. */
   accessKey?: string;
   number?: string;
   series?: string;
   qrCode?: string;
+  /** Pedido explícito do usuário (16/11/2026) — protocolo de autorização da SEFAZ. Achado real: um
+   * comentário anterior aqui dizia que a FocusNFe nunca devolvia isso — **estava errado**,
+   * confirmado contra `GET /v2/nfce/{ref}` de uma emissão real em produção (pedido #180): vem
+   * pronto no campo `protocolo` do JSON, sem precisar de XML. `FocusNfeApiClient.
+   * fetchNfceXmlFields` extrai de `<protNFe><infProt><nProt>` só como reforço, pro caso raro do
+   * JSON da emissão síncrona não trazer (nunca testado sem o campo). */
+  protocol?: string;
   /** Pedido explícito do usuário (16/11/2026) — extraídos do XML da nota (nunca vêm no JSON da
    * FocusNFe, confirmado contra emissão real em produção, pedido #180): tributos aproximados
-   * (Lei 12.741/2012, `<vTotTrib>` dentro de `<ICMSTot>`). Ausente quando o download/leitura do
-   * XML falha (nunca bloqueia a emissão — ver `FocusNfeApiClient.fetchNfceXmlFields`) — nesse caso
-   * o cupom simplificado só sai sem essa linha. */
+   * (Lei 12.741/2012, `<vTotTrib>` dentro de `<ICMSTot>`), e o split Federal/Estadual + fonte do
+   * cálculo, só existente como texto livre em `<infAdic><infCpl>` (nunca um elemento de schema
+   * fixo — por isso a extração é tolerante e os três podem ficar ausentes mesmo com
+   * `approxTaxAmount` presente, se o texto não bater com o padrão esperado). Ausentes quando o
+   * download/leitura do XML falha (nunca bloqueia a emissão) — nesse caso o cupom simplificado só
+   * sai sem essas linhas. */
   approxTaxAmount?: number;
+  approxTaxFederal?: number;
+  approxTaxState?: number;
+  approxTaxSource?: string;
   /** Pedido explícito do usuário (16/11/2026) — dados do emitente extraídos do XML da nota
    * (`<emit>`/`<enderEmit>`), nunca do nosso `Restaurant`/`FiscalConfig`: o cabeçalho do cupom
    * fiscal simplificado reflete exatamente o que está cadastrado de verdade no painel da
