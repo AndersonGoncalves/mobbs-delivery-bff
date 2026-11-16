@@ -52,6 +52,8 @@ describe('AutoPrintController', () => {
       findPendingAutoPrint: jest.fn().mockResolvedValue([buildOrder()]),
       markAutoPrinted: jest.fn().mockResolvedValue(undefined),
       findById: jest.fn().mockResolvedValue(buildOrder()),
+      findPendingFiscalPrint: jest.fn().mockResolvedValue([]),
+      markFiscalPrinted: jest.fn().mockResolvedValue(undefined),
       ...overrides.orderRepository,
     };
     const restaurantRepository: Partial<IRestaurantRepository> = {
@@ -160,6 +162,52 @@ describe('AutoPrintController', () => {
 
     expect(orderRepository.markAutoPrinted).toHaveBeenCalledWith('o-1', 'r-1');
     expect(send).toHaveBeenCalledWith(204);
+  });
+
+  // Pedido explícito do usuário (16/11/2026) — fila do cupom fiscal simplificado.
+  describe('GET/POST .../fiscal-print-queue (cupom fiscal simplificado)', () => {
+    function buildFiscalOrder(overrides: Record<string, unknown> = {}) {
+      return buildOrder({
+        status: 'saiuParaEntrega',
+        fiscal: { status: 'emitido', ref: 'o-1', number: '123', series: '1', accessKey: '1'.repeat(44), qrCode: 'https://qr.example' },
+        ...overrides,
+      });
+    }
+
+    it('GET .../fiscal-print-queue/pending devolve os pedidos com nota emitida pendente de impressão', async () => {
+      const { orderRepository, routes } = setup({
+        orderRepository: { findPendingFiscalPrint: jest.fn().mockResolvedValue([buildFiscalOrder()]) },
+      });
+      const json = jest.fn();
+
+      await runBridgeChain(routes['GET /restaurants/me/fiscal-print-queue/pending'], { restaurantId: 'r-1' }, { json, send: jest.fn() });
+
+      expect(orderRepository.findPendingFiscalPrint).toHaveBeenCalledWith('r-1');
+      expect(json).toHaveBeenCalledWith(200, { orders: [expect.objectContaining({ orderId: 'o-1', lines: expect.any(Array) })] });
+    });
+
+    it('GET .../fiscal-print-queue/pending sem pendências devolve lista vazia', async () => {
+      const { routes } = setup({ orderRepository: { findPendingFiscalPrint: jest.fn().mockResolvedValue([]) } });
+      const json = jest.fn();
+
+      await runBridgeChain(routes['GET /restaurants/me/fiscal-print-queue/pending'], { restaurantId: 'r-1' }, { json, send: jest.fn() });
+
+      expect(json).toHaveBeenCalledWith(200, { orders: [] });
+    });
+
+    it('POST .../fiscal-print-queue/:orderId/printed marca como impresso (idempotente)', async () => {
+      const { orderRepository, routes } = setup();
+      const send = jest.fn();
+
+      await runBridgeChain(
+        routes['POST /restaurants/me/fiscal-print-queue/:orderId/printed'],
+        { restaurantId: 'r-1', params: { orderId: 'o-1' } },
+        { json: jest.fn(), send },
+      );
+
+      expect(orderRepository.markFiscalPrinted).toHaveBeenCalledWith('o-1', 'r-1');
+      expect(send).toHaveBeenCalledWith(204);
+    });
   });
 
   it('POST .../auto-print/regenerate-key gera e devolve a nova chave', async () => {

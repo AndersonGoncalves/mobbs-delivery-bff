@@ -18,6 +18,7 @@ import { IRestaurantOperatorRepository } from '../../restaurant-operators/domain
 import { ICashRegisterService } from '../../financeiro/domain/services/i-cash-register.service';
 import { FiscalEmissionService } from '../../fiscal-integration/domain/services/fiscal-emission.service';
 import { TableOrderService } from '../domain/services/table-order.service';
+import { isFiscalPrintMissed } from '../../orders/domain/is-fiscal-print-missed';
 import {
   addTableOrderItemSchema,
   addTablePaymentSchema,
@@ -83,7 +84,9 @@ export class TableServiceController extends BaseRouter {
     });
 
     application.get('/restaurants/me/table-orders/active', ...authenticated, async (req: Request, res: Response) => {
-      res.json(200, await this.tableOrders.getActiveOrders(req.restaurantId!));
+      const orders = await this.tableOrders.getActiveOrders(req.restaurantId!);
+      // Pedido explícito do usuário (16/11/2026) — ver `isFiscalPrintMissed`.
+      res.json(200, orders.map((order) => ({ ...order, fiscalPrintMissed: isFiscalPrintMissed(order) })));
     });
 
     application.post('/restaurants/me/table-orders', ...authenticated, async (req: Request, res: Response) => {
@@ -93,7 +96,9 @@ export class TableServiceController extends BaseRouter {
 
     application.get('/restaurants/me/table-orders/history', ...authenticated, async (req: Request, res: Response) => {
       const { from, to } = parseBody(tableOrderHistoryQuerySchema, req.query);
-      res.json(200, await this.tableOrders.getClosedHistory(req.restaurantId!, new Date(from), new Date(to)));
+      const orders = await this.tableOrders.getClosedHistory(req.restaurantId!, new Date(from), new Date(to));
+      // Pedido explícito do usuário (16/11/2026) — ver `isFiscalPrintMissed`.
+      res.json(200, orders.map((order) => ({ ...order, fiscalPrintMissed: isFiscalPrintMissed(order) })));
     });
 
     application.get('/restaurants/me/table-orders/:id', ...authenticated, async (req: Request, res: Response) => {

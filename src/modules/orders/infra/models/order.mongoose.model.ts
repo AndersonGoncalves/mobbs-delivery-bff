@@ -100,6 +100,11 @@ const orderFiscalSchema = new Schema(
     // String (ISO), não Date — mesmo padrão de `tableClosedAt` acima: evita conversão explícita
     // no `toEntity()` (`fiscal` é passado direto, sem mapear campo a campo).
     emittedAt: { type: String },
+    // Pedido explícito do usuário (16/11/2026) — ver IOrderFiscal.accessKey/number/series/qrCode.
+    accessKey: { type: String },
+    number: { type: String },
+    series: { type: String },
+    qrCode: { type: String },
   },
   { _id: false },
 );
@@ -205,6 +210,8 @@ const orderSchema = new Schema(
     estimatedDeliveryAt: { type: Date },
     // specs/0139-impressao-automatica-bridge REQ-3.
     autoPrintStatus: { type: String, enum: ['printed'] },
+    // Pedido explícito do usuário (16/11/2026) — ver IOrder.fiscalPrintStatus.
+    fiscalPrintStatus: { type: String, enum: ['printed'] },
     // specs/0091-integracao-fiscal-focusnfe — ausente = sem integração fiscal/ainda não emitido.
     fiscal: { type: orderFiscalSchema, default: undefined },
     // specs/0121-integracao-uber-entregas — ausente = sem entrega via Uber Direct.
@@ -240,6 +247,10 @@ orderSchema.index({ restaurantId: 1, status: 1 });
 // `partialFilterExpression` do Mongo — índice parcial foi tentado e rejeitado por isso,
 // confirmado contra um Mongo real antes de decidir por este índice composto cheio).
 orderSchema.index({ restaurantId: 1, autoPrintStatus: 1, createdAt: 1 });
+
+// Mesmo racional do índice acima, pra `findPendingFiscalPrint` (fila do cupom fiscal) — ver
+// comentário de `fiscalPrintStatus`.
+orderSchema.index({ restaurantId: 1, fiscalPrintStatus: 1, 'fiscal.status': 1 });
 
 // Achado de auditoria (31/10/2026) — a correção acima cobriu `{restaurantId, status}`, não
 // intervalo de data: relatório financeiro/vendas por período (`findByRestaurantBetween`,

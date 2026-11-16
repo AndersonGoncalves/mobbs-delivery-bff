@@ -223,7 +223,16 @@ export class FiscalEmissionService {
         // minutos a partir deste instante; o front usa pra decidir se mostra "Cancelar nota
         // fiscal" (ver `IOrderFiscal.emittedAt`).
         emittedAt: new Date().toISOString(),
+        // Pedido explícito do usuário (16/11/2026) — só pro cupom fiscal simplificado impresso
+        // automaticamente (`buildFiscalReceiptLines`), ver `IOrderFiscal.accessKey`/etc.
+        accessKey: result.chave_nfe,
+        number: result.numero,
+        series: result.serie,
+        qrCode: result.qrcode_url,
       });
+      // Caso raro (nota cancelada e reemitida com sucesso) — ver docstring do método no
+      // repositório.
+      await this.orderRepository.resetFiscalPrintStatus(orderId);
       return;
     }
     if (result.status === 'processando_autorizacao') {
@@ -255,11 +264,8 @@ export class FiscalEmissionService {
     if (result.status !== 'cancelado') {
       throw new Error(result.mensagem_sefaz ?? result.erros?.map((item) => item.mensagem).join('; ') ?? 'FocusNFe rejeitou o cancelamento da nota');
     }
-    await this.orderRepository.updateFiscal(order.id, {
-      status: 'cancelado',
-      ref: order.fiscal!.ref,
-      documentUrl: order.fiscal!.documentUrl,
-      emittedAt: order.fiscal!.emittedAt,
-    });
+    // `...order.fiscal!` preserva accessKey/number/series/qrCode (updateFiscal substitui o objeto
+    // inteiro, nunca faz merge parcial).
+    await this.orderRepository.updateFiscal(order.id, { ...order.fiscal!, status: 'cancelado' });
   }
 }

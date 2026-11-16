@@ -474,6 +474,7 @@ const ordersController = new OrdersController(
   customerBalanceService,
   fiscalEmissionService,
   platformConfigRepository,
+  fiscalConfigRepository,
 );
 
 server

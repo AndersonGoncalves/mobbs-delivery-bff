@@ -190,6 +190,13 @@ export interface IOrder {
    * impressão automática é calculada ao vivo por `status === 'confirmado'`, sem precisar marcar
    * nada como "pendente" na criação/confirmação do pedido). */
   autoPrintStatus?: 'printed';
+  /** Pedido explícito do usuário (16/11/2026) — mesmo padrão de `autoPrintStatus`, campo
+   * separado (não dentro de `fiscal`) porque `updateFiscal` substitui `Order.fiscal` por inteiro a
+   * cada transição (nunca merge parcial) — guardar aqui evita que uma reemissão apague a marcação
+   * de impressão de uma emissão anterior por acidente. Ausente = ainda não impresso (a fila do
+   * cupom fiscal, `findPendingFiscalPrint`, é calculada ao vivo por `fiscal.status === 'emitido'`,
+   * igual ao ticket normal). */
+  fiscalPrintStatus?: 'printed';
   /**
    * specs/0091-integracao-fiscal-focusnfe REQ-2/REQ-3/REQ-4/REQ-5/REQ-6 — status da emissão do
    * documento fiscal (NFCe/CFe/NFe) via FocusNFe. Ausente = restaurante sem integração fiscal
@@ -285,6 +292,15 @@ export interface IOrderFiscal {
    * antes desta spec (sem o campo) nunca mostra o botão — mais seguro que assumir dentro do
    * prazo. */
   emittedAt?: string;
+  /** Pedido explícito do usuário (16/11/2026) — dados devolvidos pela FocusNFe quando `status ===
+   * 'emitido'`, usados só pra montar o cupom fiscal simplificado impresso automaticamente
+   * (`buildFiscalReceiptLines`): chave de acesso (44 dígitos), número/série da NFCe e o conteúdo
+   * do QR code de consulta na SEFAZ. A FocusNFe não devolve protocolo de autorização nem valor
+   * aproximado de tributos — esses campos não existem aqui de propósito, nunca inventar um valor. */
+  accessKey?: string;
+  number?: string;
+  series?: string;
+  qrCode?: string;
 }
 
 export type UberDeliveryStatus = 'solicitado' | 'aceito' | 'a_caminho' | 'entregue' | 'cancelado';

@@ -6,6 +6,10 @@ import { stripAccents } from '../../../shared/utils/strip-accents';
 export interface ReceiptLine {
   text: string;
   bold?: boolean;
+  /** Pedido explícito do usuário (16/11/2026) — quando presente, a bridge (`mobbs-delivery-print`)
+   * imprime este conteúdo como QR code em vez de texto (`text` fica vazio/label, ignorado nesse
+   * caso). Usado só pelo cupom fiscal (`buildFiscalReceiptLines`) — nunca pelo ticket normal. */
+  qr?: string;
 }
 
 const PAYMENT_LABELS: Record<PaymentMethod, string> = {

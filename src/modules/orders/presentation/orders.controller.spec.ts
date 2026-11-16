@@ -22,6 +22,7 @@ import { NinetyNineFoodClient } from '../../ninety-nine-food-integration/infra/n
 import { CustomerBalanceService } from '../../customer-balance/domain/services/customer-balance.service';
 import { ICustomerBalanceRepository } from '../../customer-balance/domain/repositories/customer-balance.repository.interface';
 import type { IPlatformConfigRepository } from '../../platform-config/domain/platform-config.repository.interface';
+import { IFiscalConfigRepository } from '../../fiscal-integration/domain/repositories/fiscal-config.repository.interface';
 import { OrdersController } from './orders.controller';
 
 // specs/0101-integracao-asaas (fase 1) — `tryChargeOrderPixViaAsaas`/`tryRefundOrderPixViaAsaas`
@@ -214,6 +215,22 @@ function buildOrder(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function buildFiscalConfig(overrides: Record<string, unknown> = {}) {
+  return {
+    restaurantId: 'r-1',
+    focusNfeToken: 'token-1',
+    environment: 'homologacao',
+    documentType: 'nfce',
+    productionEnabled: false,
+    autoEmitEnabled: true,
+    webhookToken: 'webhook-token-1',
+    cnpj: '11222333000181',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
 function buildCoupon(overrides: Record<string, unknown> = {}) {
   return {
     id: 'c-1',
@@ -272,8 +289,9 @@ describe('OrdersController', () => {
       rawMaterialRepository?: Partial<IRawMaterialRepository>;
       blockedCustomerRepository?: Partial<IBlockedCustomerRepository>;
       customerBalanceRepository?: ICustomerBalanceRepository;
-      fiscalEmissionService?: { emitForOrder: jest.Mock };
+      fiscalEmissionService?: { emitForOrder: jest.Mock; cancelDocument?: jest.Mock };
       platformConfigRepository?: IPlatformConfigRepository;
+      fiscalConfigRepository?: Partial<IFiscalConfigRepository>;
     } = {},
   ) {
     const orderRepository: Partial<IOrderRepository> = {
@@ -415,10 +433,19 @@ describe('OrdersController', () => {
     const customerBalanceRepository = overrides.customerBalanceRepository ?? buildFakeCustomerBalanceRepository();
     const customerBalanceService = new CustomerBalanceService(customerBalanceRepository);
     // specs/0091-integracao-fiscal-focusnfe REQ-2 — só o método usado pelo gatilho de "entregue".
-    const fiscalEmissionService = overrides.fiscalEmissionService ?? { emitForOrder: jest.fn().mockResolvedValue(undefined) };
+    const fiscalEmissionService = overrides.fiscalEmissionService ?? {
+      emitForOrder: jest.fn().mockResolvedValue(undefined),
+      cancelDocument: jest.fn().mockResolvedValue(undefined),
+    };
     // specs/0201-controle-integracoes-cnpj-plataforma — `undefined` por padrão (testes que não
     // tocam no assunto não precisam injetar; produção sempre injeta, ver main.ts).
     const platformConfigRepository = overrides.platformConfigRepository;
+    // Pedido explícito do usuário (16/11/2026) — `undefined` por padrão, mesmo raciocínio de
+    // `platformConfigRepository` acima (`cancelFiscalDocumentIfEmitted` já no-opa sem isso).
+    const fiscalConfigRepository: Partial<IFiscalConfigRepository> | undefined = overrides.fiscalConfigRepository && {
+      findByRestaurantId: jest.fn().mockResolvedValue(buildFiscalConfig()),
+      ...overrides.fiscalConfigRepository,
+    };
     const { application, routes } = buildFakeApplication();
     const controller = new OrdersController(
       orderRepository as IOrderRepository,
@@ -440,6 +467,7 @@ describe('OrdersController', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       fiscalEmissionService as any,
       platformConfigRepository,
+      fiscalConfigRepository as IFiscalConfigRepository | undefined,
     );
     controller.initializeRoutes(application);
     return {
@@ -459,6 +487,7 @@ describe('OrdersController', () => {
       blockedCustomerRepository,
       customerBalanceRepository,
       fiscalEmissionService,
+      fiscalConfigRepository,
       routes,
     };
   }
@@ -1775,34 +1804,61 @@ describe('OrdersController', () => {
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ status: 'entregue' }));
   });
 
-  it('specs/0091-integracao-fiscal-focusnfe REQ-2: pedido entregue dispara a emissão fiscal (fire-and-forget)', async () => {
+  // Pedido explícito do usuário (16/11/2026) — gatilho movido de "entregue" pra
+  // "saiuParaEntrega"/"pronto para retirada" (ver `handleStatusChangeSideEffects`): é o momento em
+  // que ainda dá tempo de imprimir o cupom fiscal e grudar no pacote antes do pedido sair.
+  it('specs/0091-integracao-fiscal-focusnfe REQ-2: pedido "saiu para entrega" dispara a emissão fiscal, esperando ela terminar antes de responder', async () => {
     const { fiscalEmissionService, routes } = setup({
-      orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ status: 'saiuParaEntrega' })) },
+      orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ status: 'emPreparo' })) },
     });
 
     await runOperatorChain(
       routes['PATCH /restaurants/me/orders/:id/status'],
-      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'entregue' } },
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'saiuParaEntrega' } },
       { json: jest.fn() },
     );
 
-    expect(fiscalEmissionService.emitForOrder).toHaveBeenCalledWith(expect.objectContaining({ status: 'entregue' }));
+    expect(fiscalEmissionService.emitForOrder).toHaveBeenCalledWith(expect.objectContaining({ status: 'saiuParaEntrega' }));
   });
 
   it('specs/0091-integracao-fiscal-focusnfe REQ-4: falha na emissão fiscal não impede a resposta 200 da mudança de status', async () => {
     const { routes } = setup({
-      orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ status: 'saiuParaEntrega' })) },
+      orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ status: 'emPreparo' })) },
       fiscalEmissionService: { emitForOrder: jest.fn().mockRejectedValue(new Error('FocusNFe indisponível')) },
     });
     const json = jest.fn();
 
     await runOperatorChain(
       routes['PATCH /restaurants/me/orders/:id/status'],
-      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'entregue' } },
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'saiuParaEntrega' } },
       { json },
     );
 
-    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ status: 'entregue' }));
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ status: 'saiuParaEntrega' }));
+  });
+
+  it('pedido explícito do usuário (16/11/2026) — emissão fiscal lenta não trava a resposta além do teto de 10s (Opção B com fallback)', async () => {
+    jest.useFakeTimers();
+    try {
+      const { routes } = setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ status: 'emPreparo' })) },
+        fiscalEmissionService: { emitForOrder: jest.fn().mockReturnValue(new Promise(() => {})) }, // nunca resolve
+      });
+      const json = jest.fn();
+
+      const pending = runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/status'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'saiuParaEntrega' } },
+        { json },
+      );
+
+      await jest.advanceTimersByTimeAsync(10_000);
+      await pending;
+
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ status: 'saiuParaEntrega' }));
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('AC-5: PATCH /restaurants/me/orders/:id/status bloqueia pular de aguardandoConfirmacao direto pra entregue', async () => {
@@ -1883,6 +1939,83 @@ describe('OrdersController', () => {
       { json: jest.fn() },
     );
     expect(orderRepository.updateStatus).toHaveBeenCalledWith('o-1', 'cancelado', 'r-1', 'Cliente desistiu');
+  });
+
+  it('Pedido explícito do usuário (16/11/2026): cancelar pedido com nota emitida há menos de 30min também cancela a nota fiscal', async () => {
+    const emittedAt = new Date(Date.now() - 5 * 60_000).toISOString();
+    const order = buildOrder({ status: 'saiuParaEntrega', fiscal: { status: 'emitido', ref: 'o-1', emittedAt } });
+    const { fiscalEmissionService, routes } = setup({
+      orderRepository: { findById: jest.fn().mockResolvedValue(order) },
+      fiscalConfigRepository: {},
+    });
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/cancel'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { reason: 'Cliente desistiu' } },
+      { json: jest.fn() },
+    );
+
+    expect(fiscalEmissionService.cancelDocument).toHaveBeenCalledWith(
+      order,
+      expect.objectContaining({ restaurantId: 'r-1', cnpj: '11222333000181' }),
+      'Pedido cancelado: Cliente desistiu',
+    );
+  });
+
+  it('Pedido explícito do usuário (16/11/2026): cancelar pedido com nota emitida há mais de 30min NÃO tenta cancelar a nota (fora da janela da SEFAZ)', async () => {
+    const emittedAt = new Date(Date.now() - 31 * 60_000).toISOString();
+    const order = buildOrder({ status: 'saiuParaEntrega', fiscal: { status: 'emitido', ref: 'o-1', emittedAt } });
+    const { fiscalEmissionService, routes } = setup({
+      orderRepository: { findById: jest.fn().mockResolvedValue(order) },
+      fiscalConfigRepository: {},
+    });
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/cancel'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { reason: 'Cliente desistiu' } },
+      { json: jest.fn() },
+    );
+
+    expect(fiscalEmissionService.cancelDocument).not.toHaveBeenCalled();
+  });
+
+  it('Pedido explícito do usuário (16/11/2026): cancelar pedido sem nota emitida nunca chama cancelDocument', async () => {
+    const order = buildOrder({ status: 'saiuParaEntrega' });
+    const { fiscalEmissionService, routes } = setup({
+      orderRepository: { findById: jest.fn().mockResolvedValue(order) },
+      fiscalConfigRepository: {},
+    });
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/cancel'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { reason: 'Cliente desistiu' } },
+      { json: jest.fn() },
+    );
+
+    expect(fiscalEmissionService.cancelDocument).not.toHaveBeenCalled();
+  });
+
+  it('Pedido explícito do usuário (16/11/2026): falha ao cancelar a nota fiscal nunca reverte o cancelamento do pedido', async () => {
+    const emittedAt = new Date(Date.now() - 5 * 60_000).toISOString();
+    const order = buildOrder({ status: 'saiuParaEntrega', fiscal: { status: 'emitido', ref: 'o-1', emittedAt } });
+    const { orderRepository, routes } = setup({
+      orderRepository: { findById: jest.fn().mockResolvedValue(order) },
+      fiscalEmissionService: {
+        emitForOrder: jest.fn().mockResolvedValue(undefined),
+        cancelDocument: jest.fn().mockRejectedValue(new Error('FocusNFe indisponível')),
+      },
+      fiscalConfigRepository: {},
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/cancel'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { reason: 'Cliente desistiu' } },
+      { json },
+    );
+
+    expect(orderRepository.updateStatus).toHaveBeenCalledWith('o-1', 'cancelado', 'r-1', 'Cliente desistiu');
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ status: 'cancelado' }));
   });
 
   it.each(['entregue', 'cancelado'])('0176: operador não cancela pedido %s', async (status) => {
