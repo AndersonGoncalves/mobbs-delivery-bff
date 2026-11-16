@@ -182,6 +182,8 @@ export function buildFiscalReceiptLines(order: IOrder, restaurant: IRestaurant, 
   lines.push({ text: `Emissao: ${formatOrderDateTime(fiscal.emittedAt ?? order.createdAt)} - Via Consumidor` });
   // Pedido explícito do usuário (16/11/2026) — traço no lugar da linha em branco que vinha aqui.
   lines.push({ text: '', divider: true });
+  // Pedido explícito do usuário (16/11/2026) — linha em branco antes de "Consulte pela Chave...".
+  lines.push({ text: '' });
 
   // Pedido explícito do usuário (16/11/2026) — bloco inteiro centralizado (consulta + chave de
   // acesso), igual o DANFCE real — ordem já invertida antes (consulta primeiro, chave depois).

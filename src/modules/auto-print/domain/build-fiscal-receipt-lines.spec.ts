@@ -416,6 +416,14 @@ describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', 
     expect(lines[emissaoIndex + 1]).toEqual(expect.objectContaining({ divider: true }));
   });
 
+  it('pula uma linha em branco antes de "Consulte pela Chave de Acesso em"', () => {
+    const lines = buildFiscalReceiptLines(buildOrder(), buildRestaurant(), null);
+    const consultaIndex = lines.findIndex((line) => line.text === 'Consulte pela Chave de Acesso em');
+
+    expect(consultaIndex).toBeGreaterThan(0);
+    expect(lines[consultaIndex - 1]).toEqual(expect.objectContaining({ text: '' }));
+  });
+
   it('inclui um traço depois do bloco centralizado da chave de acesso, antes de "CONSUMIDOR"', () => {
     const lines = buildFiscalReceiptLines(buildOrder(), buildRestaurant(), null);
     const consumidorIndex = lines.findIndex((line) => line.text === 'CONSUMIDOR');
