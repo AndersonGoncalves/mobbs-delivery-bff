@@ -384,12 +384,26 @@ export class OrderMongooseRepository implements IOrderRepository {
     // specs/0164 REQ-3 (revisa specs/0156 REQ-1) — a janela de idade conta desde a CONFIRMAÇÃO, não
     // desde `createdAt`: senão um pedido confirmado manualmente depois da janela nunca imprimiria.
     const cutoff = new Date(Date.now() - maxAgeMinutes * 60_000);
+    // Pedido explícito do usuário (17/11/2026) — mesa/balcão entra pelo mesmo mecanismo, mas com
+    // janela de idade contada a partir de `tableClosedAt` (fechamento), nunca de `confirmado` —
+    // mesa não passa por esse status e fica aberta por horas; contar da confirmação/criação faria
+    // o ticket chegar "velho demais" e nunca ser impresso (achado real, mesma armadilha que
+    // `findPendingFiscalPrint` já evita com `fiscal.emittedAt`).
     const docs = await OrderModel.find({
       restaurantId,
-      orderType: { $in: ['delivery', 'pickup'] },
-      status: { $ne: 'cancelado' },
       autoPrintStatus: { $ne: 'printed' },
-      statusHistory: { $elemMatch: { status: 'confirmado', changedAt: { $gte: cutoff } } },
+      $or: [
+        {
+          orderType: { $in: ['delivery', 'pickup'] },
+          status: { $ne: 'cancelado' },
+          statusHistory: { $elemMatch: { status: 'confirmado', changedAt: { $gte: cutoff } } },
+        },
+        {
+          orderType: 'table',
+          status: 'entregue',
+          tableClosedAt: { $gte: cutoff.toISOString() },
+        },
+      ],
     })
       .sort({ createdAt: 1 })
       .lean<OrderLeanDocument[]>();

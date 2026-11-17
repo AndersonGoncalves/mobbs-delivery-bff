@@ -51,8 +51,8 @@ describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', 
     // formatado (XX.XXX.XXX/XXXX-XX), igual o CNPJ real do XML seria.
     expect(texts).toContain('CNPJ: 16.800.957/0001-52');
     expect(texts.some((text) => text.includes('DANFE NFC-e'))).toBe(true);
-    expect(texts).toContain('# 2x Pizza Calabresa R$36,00');
-    expect(texts).toContain('# Taxa de entrega R$5,00');
+    expect(texts.some((text) => /^# 2x Pizza Calabresa\s+R\$36,00$/.test(text))).toBe(true);
+    expect(texts.some((text) => /^# Taxa de entrega\s+R\$5,00$/.test(text))).toBe(true);
     expect(texts.some((text) => /^TOTAL:\s+R\$41,00$/.test(text))).toBe(true);
     expect(texts).toContain('NFC-e no 123 Serie 1');
   });
@@ -323,6 +323,14 @@ describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', 
     expect(qrIndex).toBeGreaterThan(labelIndex);
   });
 
+  it('pula uma linha em branco antes de "Consulta via Leitor de QR Code"', () => {
+    const lines = buildFiscalReceiptLines(buildOrder(), buildRestaurant(), null);
+    const labelIndex = lines.findIndex((line) => line.text === 'Consulta via Leitor de QR Code');
+
+    expect(labelIndex).toBeGreaterThan(0);
+    expect(lines[labelIndex - 1]).toEqual(expect.objectContaining({ text: '' }));
+  });
+
   // Pedido explícito do usuário (16/11/2026) — protocolo de autorização ganha a data/hora da
   // emissão ao lado (mesmo timestamp de "Emissao:").
   it('imprime o protocolo de autorização com a data/hora da emissão ao lado', () => {
@@ -338,6 +346,9 @@ describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', 
     // Pedido explícito do usuário (16/11/2026) — achado real: rótulo + protocolo + data ultrapassa
     // 48 caracteres mesmo em Fonte A normal — `noWrap` bypassa o fold de 48 colunas da bridge.
     expect(protocolLine?.noWrap).toBe(true);
+    // Pedido explícito do usuário (17/11/2026) — fonte reduzida (Fonte B), pra essa quantidade de
+    // caracteres caber de verdade na largura física do papel (bypass sozinho não bastava).
+    expect(protocolLine?.small).toBe(true);
     expect(protocolLine?.text).toMatch(/\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}:\d{2}$/);
   });
 
@@ -394,7 +405,9 @@ describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', 
     expect(lines[pagamentoIndex + 1]).toEqual(expect.objectContaining({ divider: true }));
   });
 
-  it('inclui um traço depois do bloco de tributos aproximados, antes de "NFC-e no..."', () => {
+  // Pedido explícito do usuário (17/11/2026) — linha em branco logo acima do bloco de tributos
+  // (antes do traço do item anterior) e logo abaixo (antes do próximo traço).
+  it('inclui linha em branco acima e abaixo do bloco de tributos, e o traço antes de "NFC-e no..."', () => {
     const lines = buildFiscalReceiptLines(
       buildOrder({ fiscal: { status: 'emitido', ref: 'o-1', number: '123', series: '1', approxTaxAmount: 0.44 } }),
       buildRestaurant(),
@@ -405,7 +418,9 @@ describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', 
 
     expect(tributosIndex).toBeGreaterThan(-1);
     expect(nfceIndex).toBeGreaterThan(tributosIndex);
-    expect(lines[tributosIndex + 1]).toEqual(expect.objectContaining({ divider: true }));
+    expect(lines[tributosIndex - 1]).toEqual(expect.objectContaining({ text: '' }));
+    expect(lines[tributosIndex + 1]).toEqual(expect.objectContaining({ text: '' }));
+    expect(lines[tributosIndex + 2]).toEqual(expect.objectContaining({ divider: true }));
   });
 
   it('inclui um traço depois de "Emissao: ... Via Consumidor", no lugar da linha em branco', () => {
@@ -414,6 +429,14 @@ describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', 
 
     expect(emissaoIndex).toBeGreaterThan(-1);
     expect(lines[emissaoIndex + 1]).toEqual(expect.objectContaining({ divider: true }));
+  });
+
+  it('pula uma linha em branco antes de "Consulte pela Chave de Acesso em"', () => {
+    const lines = buildFiscalReceiptLines(buildOrder(), buildRestaurant(), null);
+    const consultaIndex = lines.findIndex((line) => line.text === 'Consulte pela Chave de Acesso em');
+
+    expect(consultaIndex).toBeGreaterThan(0);
+    expect(lines[consultaIndex - 1]).toEqual(expect.objectContaining({ text: '' }));
   });
 
   it('inclui um traço depois do bloco centralizado da chave de acesso, antes de "CONSUMIDOR"', () => {
@@ -441,5 +464,93 @@ describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', 
     const texts = lines.map((line) => line.text);
 
     expect(texts).not.toContain('-- BsDelivery --');
+  });
+
+  // Pedido explícito do usuário (17/11/2026) — achado real: o cupom fiscal de mesa/balcão não
+  // mostrava taxa de serviço/couvert/ajuste, então o TOTAL não batia com a soma dos itens impressos.
+  describe('taxa de serviço, couvert e ajuste de mesa/balcão (17/11/2026)', () => {
+    function buildTableOrder(overrides: Partial<IOrder> = {}): IOrder {
+      return buildOrder({
+        orderType: 'table',
+        subtotal: 100,
+        deliveryFee: 0,
+        total: 110,
+        ...overrides,
+      });
+    }
+
+    it('imprime a taxa de serviço quando maior que zero, em duas colunas', () => {
+      const lines = buildTableOrder({ serviceChargeAmount: 10 });
+      const resultLines = buildFiscalReceiptLines(lines, buildRestaurant(), null);
+      const texts = resultLines.map((line) => line.text);
+
+      expect(texts.some((text) => /^# Taxa de servico\s+R\$10,00$/.test(text))).toBe(true);
+    });
+
+    it('não imprime a taxa de serviço quando ausente ou zero', () => {
+      const semServiceCharge = buildFiscalReceiptLines(buildTableOrder(), buildRestaurant(), null);
+      const comServiceChargeZero = buildFiscalReceiptLines(buildTableOrder({ serviceChargeAmount: 0 }), buildRestaurant(), null);
+
+      for (const lines of [semServiceCharge, comServiceChargeZero]) {
+        expect(lines.some((line) => line.text.startsWith('# Taxa de servico'))).toBe(false);
+      }
+    });
+
+    it('imprime o couvert quando maior que zero, em duas colunas', () => {
+      const lines = buildFiscalReceiptLines(buildTableOrder({ coverCharge: 15 }), buildRestaurant(), null);
+      const texts = lines.map((line) => line.text);
+
+      expect(texts.some((text) => /^# Couvert\s+R\$15,00$/.test(text))).toBe(true);
+    });
+
+    it('não imprime o couvert quando ausente ou zero', () => {
+      const semCouvert = buildFiscalReceiptLines(buildTableOrder(), buildRestaurant(), null);
+      const comCouvertZero = buildFiscalReceiptLines(buildTableOrder({ coverCharge: 0 }), buildRestaurant(), null);
+
+      for (const lines of [semCouvert, comCouvertZero]) {
+        expect(lines.some((line) => line.text.startsWith('# Couvert'))).toBe(false);
+      }
+    });
+
+    it('imprime o ajuste manual (desconto fixo) com a descrição entre parênteses', () => {
+      const lines = buildFiscalReceiptLines(
+        buildTableOrder({ tableAdjustment: { type: 'discount', mode: 'fixed', value: 5, description: 'cortesia' } }),
+        buildRestaurant(),
+        null,
+      );
+      const texts = lines.map((line) => line.text);
+
+      expect(texts.some((text) => /^# Desconto \(cortesia\)\s+R\$5,00$/.test(text))).toBe(true);
+    });
+
+    it('imprime o ajuste manual (acréscimo percentual) calculado sobre subtotal + serviço + couvert', () => {
+      const lines = buildFiscalReceiptLines(
+        buildTableOrder({
+          serviceChargeAmount: 10,
+          coverCharge: 10,
+          tableAdjustment: { type: 'surcharge', mode: 'percent', value: 10 },
+        }),
+        buildRestaurant(),
+        null,
+      );
+      const texts = lines.map((line) => line.text);
+
+      // base = 100 (subtotal) + 10 (serviço) + 10 (couvert) = 120; 10% = 12
+      expect(texts.some((text) => /^# Acrescimo\s+R\$12,00$/.test(text))).toBe(true);
+    });
+
+    it('não imprime linha de ajuste quando o pedido não tem tableAdjustment', () => {
+      const lines = buildFiscalReceiptLines(buildTableOrder(), buildRestaurant(), null);
+      const texts = lines.map((line) => line.text);
+
+      expect(texts.some((text) => text.startsWith('# Desconto') || text.startsWith('# Acrescimo'))).toBe(false);
+    });
+
+    it('pedido de delivery nunca imprime essas linhas (campos de mesa inexistentes)', () => {
+      const lines = buildFiscalReceiptLines(buildOrder(), buildRestaurant(), null);
+      const texts = lines.map((line) => line.text);
+
+      expect(texts.some((text) => text.startsWith('# Taxa de servico') || text.startsWith('# Couvert') || text.startsWith('# Desconto') || text.startsWith('# Acrescimo'))).toBe(false);
+    });
   });
 });

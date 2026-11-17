@@ -116,4 +116,80 @@ describe('buildReceiptLines (specs/0139-impressao-automatica-bridge)', () => {
     expect(lines.filter((line) => line.divider).length).toBeGreaterThan(0);
     expect(lines.some((line) => line.text.includes('-----'))).toBe(false);
   });
+
+  // Pedido explícito do usuário (17/11/2026) — mesa/balcão passa a entrar na fila automática,
+  // então `buildReceiptLines` precisa do mesmo branch de totais/pagamento que `OrderPrintArea.tsx`
+  // já tinha só pro ticket impresso via navegador.
+  describe('mesa/balcão (17/11/2026)', () => {
+    function buildTableOrder(overrides: Partial<IOrder> = {}): IOrder {
+      return buildOrder({
+        orderType: 'table',
+        tableName: 'Mesa 5',
+        subtotal: 100,
+        deliveryFee: 0,
+        total: 100,
+        ...overrides,
+      });
+    }
+
+    it('mostra "Mesa: {nome}" no cabeçalho quando tableName está presente', () => {
+      const lines = buildReceiptLines(buildTableOrder({ tableName: 'Mesa da Varanda' }), buildRestaurant(), null);
+
+      expect(lines.map((line) => line.text)).toContain('Mesa: Mesa da Varanda');
+    });
+
+    it('mostra "Balcao" quando não há tableName', () => {
+      const lines = buildReceiptLines(buildTableOrder({ tableName: undefined }), buildRestaurant(), null);
+
+      expect(lines.map((line) => line.text)).toContain('Balcao');
+    });
+
+    it('mostra Subtotal, Taxa de servico, Couvert e o ajuste, em vez de Itens/Desconto/Entrega', () => {
+      const lines = buildReceiptLines(
+        buildTableOrder({
+          serviceChargeAmount: 10,
+          coverCharge: 15,
+          tableAdjustment: { type: 'discount', mode: 'fixed', value: 5, description: 'cortesia' },
+          total: 120,
+        }),
+        buildRestaurant(),
+        null,
+      );
+      const texts = lines.map((line) => line.text);
+
+      expect(texts).toContain('Subtotal: R$100,00');
+      expect(texts).toContain('Taxa de servico: R$10,00');
+      expect(texts).toContain('Couvert: R$15,00');
+      expect(texts).toContain('Desconto (cortesia): R$5,00');
+      expect(texts).not.toContain('Itens (4): R$100,00');
+      expect(texts.some((text) => text.startsWith('Entrega:'))).toBe(false);
+    });
+
+    it('não mostra taxa de servico/couvert/ajuste quando ausentes', () => {
+      const lines = buildReceiptLines(buildTableOrder(), buildRestaurant(), null);
+      const texts = lines.map((line) => line.text);
+
+      expect(texts.some((text) => text.startsWith('Taxa de servico'))).toBe(false);
+      expect(texts.some((text) => text.startsWith('Couvert'))).toBe(false);
+      expect(texts.some((text) => text.startsWith('Desconto') || text.startsWith('Acrescimo'))).toBe(false);
+    });
+
+    it('mostra uma linha "Pago (forma)" por pagamento de tablePayments, em vez de "Pagamento:"', () => {
+      const lines = buildReceiptLines(
+        buildTableOrder({
+          tablePayments: [
+            { id: 'pay-1', method: 'cash', amount: 60, paidAt: '2026-11-17T20:00:00.000Z', paidBy: 'op-1' },
+            { id: 'pay-2', method: 'pix', amount: 40, paidAt: '2026-11-17T20:01:00.000Z', paidBy: 'op-1' },
+          ],
+        }),
+        buildRestaurant(),
+        null,
+      );
+      const texts = lines.map((line) => line.text);
+
+      expect(texts).toContain('Pago (Dinheiro): R$60,00');
+      expect(texts).toContain('Pago (Pix): R$40,00');
+      expect(texts.some((text) => text.startsWith('Pagamento:'))).toBe(false);
+    });
+  });
 });

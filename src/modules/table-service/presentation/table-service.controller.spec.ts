@@ -13,7 +13,7 @@ import { StockReservationService } from '../../orders/domain/services/stock-rese
 import { FiscalEmissionService } from '../../fiscal-integration/domain/services/fiscal-emission.service';
 import { TableServiceController } from './table-service.controller';
 
-type FakeRequest = Partial<Pick<Request, 'params' | 'body'>> & {
+type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & {
   restaurantId?: string;
   operatorRole?: Request['operatorRole'];
   user?: { uid: string };
@@ -543,6 +543,53 @@ describe('TableServiceController', () => {
     // caminho de balcão passa por aqui sem precisar de mesa vinculada.
     expect(tableRepository.releaseFromOrder).not.toHaveBeenCalled();
     expect(fiscalEmissionService!.emitForOrder).toHaveBeenCalledWith(closedOrder);
+  });
+
+  // Pedido explícito do usuário (17/11/2026) — ver `isAutoPrintMissed`: mesa fechada há mais tempo
+  // que `autoPrintMaxAgeMinutes` sem a comanda impressa, pro operador saber na tela "Fechados".
+  it('GET /restaurants/me/table-orders/history inclui autoPrintMissed/fiscalPrintMissed por pedido', async () => {
+    const tooOld = new Date(Date.now() - 10 * 60_000).toISOString();
+    const recent = new Date(Date.now() - 1 * 60_000).toISOString();
+    const orders = [
+      { id: 'o-missed', restaurantId: 'r-1', orderType: 'table', status: 'entregue', tableClosedAt: tooOld },
+      { id: 'o-fresh', restaurantId: 'r-1', orderType: 'table', status: 'entregue', tableClosedAt: recent },
+      { id: 'o-printed', restaurantId: 'r-1', orderType: 'table', status: 'entregue', tableClosedAt: tooOld, autoPrintStatus: 'printed' },
+    ];
+    const { routes } = setup({
+      orderRepository: { findClosedTableOrders: jest.fn().mockResolvedValue(orders) },
+      restaurantRepository: { findById: jest.fn().mockResolvedValue({ id: 'r-1', autoPrintMaxAgeMinutes: 5 }) },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['GET /restaurants/me/table-orders/history'],
+      { restaurantId: 'r-1', query: { from: '2026-11-01T00:00:00.000Z', to: '2026-11-18T00:00:00.000Z' } },
+      { json, send: jest.fn() },
+    );
+
+    expect(json).toHaveBeenCalledWith(200, [
+      expect.objectContaining({ id: 'o-missed', autoPrintMissed: true }),
+      expect.objectContaining({ id: 'o-fresh', autoPrintMissed: false }),
+      expect.objectContaining({ id: 'o-printed', autoPrintMissed: false }),
+    ]);
+  });
+
+  it('GET /restaurants/me/table-orders/:id inclui autoPrintMissed/fiscalPrintMissed do pedido', async () => {
+    const tooOld = new Date(Date.now() - 10 * 60_000).toISOString();
+    const order = { id: 'o-table', restaurantId: 'r-1', orderType: 'table', status: 'entregue', tableClosedAt: tooOld };
+    const { routes } = setup({
+      orderRepository: { findById: jest.fn().mockResolvedValue(order) },
+      restaurantRepository: { findById: jest.fn().mockResolvedValue({ id: 'r-1', autoPrintMaxAgeMinutes: 5 }) },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['GET /restaurants/me/table-orders/:id'],
+      { restaurantId: 'r-1', params: { id: 'o-table' } },
+      { json, send: jest.fn() },
+    );
+
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ id: 'o-table', autoPrintMissed: true }));
   });
 
   // Pedido explícito do usuário — mesa aberta por engano/teste, sem nenhum item, precisa fechar

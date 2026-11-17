@@ -57,6 +57,16 @@ function formatOrderDateTime(iso: string): string {
   return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+/** Pedido explícito do usuário (17/11/2026) — valor em dinheiro do ajuste manual de mesa/balcão
+ * (`order.tableAdjustment`), igual `tableAdjustmentAmount` em `OrderPrintArea.tsx`
+ * (mobbs-delivery-web) e em `build-fiscal-receipt-lines.ts` — percentual sobre subtotal + taxa de
+ * serviço + couvert, fixo usa o valor cru. */
+function tableAdjustmentAmount(order: IOrder): number {
+  if (!order.tableAdjustment) return 0;
+  const base = order.subtotal + (order.serviceChargeAmount ?? 0) + (order.coverCharge ?? 0);
+  return order.tableAdjustment.mode === 'percent' ? (base * order.tableAdjustment.value) / 100 : order.tableAdjustment.value;
+}
+
 function selectionLines(selections: IOrderItemSelection[], depth = 0): ReceiptLine[] {
   return selections.flatMap((selection) => {
     const prefix = ' '.repeat(depth * 2 + 2);
@@ -74,8 +84,10 @@ function selectionLines(selections: IOrderItemSelection[], depth = 0): ReceiptLi
  * manualmente — qualquer mudança de layout lá deve ser replicada aqui (e vice-versa), os dois
  * lados têm teste cobrindo o texto exato esperado.
  *
- * Só cobre `delivery`/`pickup` (único tipo que passa pela fila de impressão automática, REQ-2 —
- * pedido de mesa/balcão nunca entra nela).
+ * Pedido explícito do usuário (17/11/2026) — passa a cobrir também `table` (mesa/balcão), que
+ * agora entra na fila automática no fechamento da mesa (`findPendingAutoPrint`) — antes só
+ * `delivery`/`pickup` entravam, mesa dependia só de `window.print()` no navegador. O ramo de
+ * totais/pagamento de mesa espelha o branch `order.orderType === 'table'` de `OrderPrintArea.tsx`.
  */
 export function buildReceiptLines(order: IOrder, restaurant: IRestaurant, customer: ICustomer | null): ReceiptLine[] {
   const itemCount = order.items.reduce((sum, item) => sum + item.quantity, 0);
@@ -97,6 +109,9 @@ export function buildReceiptLines(order: IOrder, restaurant: IRestaurant, custom
   if (order.orderType === 'delivery') {
     lines.push({ text: `Endereco: ${stripAccents(order.deliveryAddress ?? 'nao informado')}` });
   }
+  if (order.orderType === 'table') {
+    lines.push({ text: order.tableName ? `Mesa: ${stripAccents(order.tableName)}` : 'Balcao' });
+  }
   lines.push({ text: '' });
 
   lines.push({ text: `ITENS (${itemCount})` });
@@ -108,13 +123,35 @@ export function buildReceiptLines(order: IOrder, restaurant: IRestaurant, custom
   }
 
   lines.push({ text: '' });
-  lines.push({ text: `Itens (${itemCount}): ${money(order.subtotal)}` });
-  lines.push({ text: `Desconto: ${money(order.discount)}` });
-  lines.push({ text: `Entrega: ${money(order.deliveryFee)}` });
+  // Pedido explícito do usuário (17/11/2026) — mesa/balcão mostra subtotal + taxa de serviço +
+  // couvert + ajuste manual (condicionados a existirem), em vez de "Itens/Desconto/Entrega" —
+  // espelha o branch `order.orderType === 'table'` de `OrderPrintArea.tsx`.
+  if (order.orderType === 'table') {
+    lines.push({ text: `Subtotal: ${money(order.subtotal)}` });
+    if ((order.serviceChargeAmount ?? 0) > 0) lines.push({ text: `Taxa de servico: ${money(order.serviceChargeAmount!)}` });
+    if ((order.coverCharge ?? 0) > 0) lines.push({ text: `Couvert: ${money(order.coverCharge!)}` });
+    if (order.tableAdjustment) {
+      const label = order.tableAdjustment.type === 'discount' ? 'Desconto' : 'Acrescimo';
+      const description = order.tableAdjustment.description ? ` (${stripAccents(order.tableAdjustment.description)})` : '';
+      lines.push({ text: `${label}${description}: ${money(tableAdjustmentAmount(order))}` });
+    }
+  } else {
+    lines.push({ text: `Itens (${itemCount}): ${money(order.subtotal)}` });
+    lines.push({ text: `Desconto: ${money(order.discount)}` });
+    lines.push({ text: `Entrega: ${money(order.deliveryFee)}` });
+  }
   lines.push({ text: '' });
   lines.push({ text: `TOTAL: ${money(order.total)}`, bold: true });
   lines.push({ text: '', divider: true });
-  lines.push({ text: `Pagamento: ${PAYMENT_LABELS[order.paymentMethod]}` });
+  // Pedido explícito do usuário (17/11/2026) — mesa/balcão pode ter vários pagamentos
+  // (`tablePayments`, um por método usado pra fechar a conta), em vez de um único `paymentMethod`.
+  if (order.orderType === 'table') {
+    for (const payment of order.tablePayments ?? []) {
+      lines.push({ text: `Pago (${PAYMENT_LABELS[payment.method]}): ${money(payment.amount)}` });
+    }
+  } else {
+    lines.push({ text: `Pagamento: ${PAYMENT_LABELS[order.paymentMethod]}` });
+  }
   lines.push({ text: '' });
   lines.push({ text: '-- BsDelivery --' });
 

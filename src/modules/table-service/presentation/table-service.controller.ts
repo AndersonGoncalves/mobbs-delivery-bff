@@ -19,6 +19,7 @@ import { ICashRegisterService } from '../../financeiro/domain/services/i-cash-re
 import { FiscalEmissionService } from '../../fiscal-integration/domain/services/fiscal-emission.service';
 import { TableOrderService } from '../domain/services/table-order.service';
 import { isFiscalPrintMissed } from '../../orders/domain/is-fiscal-print-missed';
+import { isAutoPrintMissed } from '../../orders/domain/is-auto-print-missed';
 import {
   addTableOrderItemSchema,
   addTablePaymentSchema,
@@ -45,7 +46,7 @@ export class TableServiceController extends BaseRouter {
     private readonly orderRepository: IOrderRepository,
     customerRepository: ICustomerRepository,
     productRepository: IProductRepository,
-    restaurantRepository: IRestaurantRepository,
+    private readonly restaurantRepository: IRestaurantRepository,
     stockReservationService: StockReservationService,
     private readonly restaurantOperatorMiddleware: AsyncHandler,
     // specs/0137-papeis-garcom-motoboy REQ-7 — seletor de garçom da mesa passa a listar
@@ -96,13 +97,28 @@ export class TableServiceController extends BaseRouter {
 
     application.get('/restaurants/me/table-orders/history', ...authenticated, async (req: Request, res: Response) => {
       const { from, to } = parseBody(tableOrderHistoryQuerySchema, req.query);
-      const orders = await this.tableOrders.getClosedHistory(req.restaurantId!, new Date(from), new Date(to));
+      const [orders, restaurant] = await Promise.all([
+        this.tableOrders.getClosedHistory(req.restaurantId!, new Date(from), new Date(to)),
+        this.restaurantRepository.findById(req.restaurantId!),
+      ]);
       // Pedido explícito do usuário (16/11/2026) — ver `isFiscalPrintMissed`.
-      res.json(200, orders.map((order) => ({ ...order, fiscalPrintMissed: isFiscalPrintMissed(order) })));
+      // Pedido explícito do usuário (17/11/2026) — ver `isAutoPrintMissed`: mesa fechada há mais
+      // tempo que `autoPrintMaxAgeMinutes` sem a comanda impressa, pro operador saber que precisa
+      // imprimir manualmente (tela "Fechados").
+      const maxAgeMinutes = restaurant!.autoPrintMaxAgeMinutes ?? 5;
+      res.json(200, orders.map((order) => ({ ...order, fiscalPrintMissed: isFiscalPrintMissed(order), autoPrintMissed: isAutoPrintMissed(order, maxAgeMinutes) })));
     });
 
     application.get('/restaurants/me/table-orders/:id', ...authenticated, async (req: Request, res: Response) => {
-      res.json(200, await this.tableOrders.getOrder(req.restaurantId!, req.params.id));
+      const [order, restaurant] = await Promise.all([
+        this.tableOrders.getOrder(req.restaurantId!, req.params.id),
+        this.restaurantRepository.findById(req.restaurantId!),
+      ]);
+      // Pedido explícito do usuário (17/11/2026) — mesma checagem de `isAutoPrintMissed`/
+      // `isFiscalPrintMissed` das listas acima, aqui pro frontend reconsultar UM pedido específico
+      // (ex. logo depois de fechar a mesa) sem precisar buscar a lista inteira de novo.
+      const maxAgeMinutes = restaurant!.autoPrintMaxAgeMinutes ?? 5;
+      res.json(200, { ...order, fiscalPrintMissed: isFiscalPrintMissed(order), autoPrintMissed: isAutoPrintMissed(order, maxAgeMinutes) });
     });
 
     application.post('/restaurants/me/table-orders/:id/items', ...authenticated, async (req: Request, res: Response) => {
