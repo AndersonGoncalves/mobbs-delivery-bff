@@ -135,11 +135,13 @@ export function buildFiscalReceiptLines(order: IOrder, restaurant: IRestaurant, 
   lines.push({ text: `ITENS (${itemCount})` });
   // Pedido explícito do usuário (16/11/2026) — traço separando o cabeçalho "ITENS" da lista em si.
   lines.push({ text: '', divider: true });
+  // Pedido explícito do usuário (17/11/2026) — cada item em duas colunas (descrição à esquerda,
+  // valor na ponta direita), mesmo padrão já usado em TOTAL/Forma de pagamento.
   for (const item of order.items) {
-    lines.push({ text: `# ${item.quantity}x ${stripAccents(item.productName)} ${money(item.unitPrice * item.quantity)}` });
+    lines.push({ text: twoColumn(`# ${item.quantity}x ${stripAccents(item.productName)}`, money(item.unitPrice * item.quantity)) });
   }
   if (order.deliveryFee > 0) {
-    lines.push({ text: `# Taxa de entrega ${money(order.deliveryFee)}` });
+    lines.push({ text: twoColumn('# Taxa de entrega', money(order.deliveryFee)) });
   }
   lines.push({ text: '', divider: true });
   // Pedido explícito do usuário (16/11/2026) — "Qtd. Total de Itens" e "TOTAL" em duas colunas
@@ -164,6 +166,8 @@ export function buildFiscalReceiptLines(order: IOrder, restaurant: IRestaurant, 
   // Federal/Estadual + fonte, extraídos do XML da nota (nunca no JSON da FocusNFe) — ver
   // `FocusNfeApiClient.fetchNfceXmlFields`. O split/fonte são texto livre no XML (`<infCpl>`),
   // por isso podem ficar ausentes mesmo com `approxTaxAmount` presente.
+  // Pedido explícito do usuário (17/11/2026) — linha em branco acima do bloco de tributos.
+  lines.push({ text: '' });
   if (fiscal.approxTaxAmount !== undefined) {
     lines.push({ text: twoColumn('Tributos aprox. (Lei 12.741/2012):', money(fiscal.approxTaxAmount)) });
   }
@@ -176,6 +180,8 @@ export function buildFiscalReceiptLines(order: IOrder, restaurant: IRestaurant, 
   if (fiscal.approxTaxSource) {
     lines.push({ text: `Fonte: ${stripAccents(fiscal.approxTaxSource)}` });
   }
+  // Pedido explícito do usuário (17/11/2026) — linha em branco abaixo do bloco de tributos.
+  lines.push({ text: '' });
   lines.push({ text: '', divider: true });
 
   lines.push({ text: `NFC-e no ${fiscal.number ?? '-'} Serie ${fiscal.series ?? '-'}` });
@@ -218,6 +224,8 @@ export function buildFiscalReceiptLines(order: IOrder, restaurant: IRestaurant, 
   }
   // Pedido explícito do usuário (16/11/2026) — traço depois da identificação do consumidor.
   lines.push({ text: '', divider: true });
+  // Pedido explícito do usuário (17/11/2026) — linha em branco acima de "Consulta via Leitor...".
+  lines.push({ text: '' });
 
   lines.push({ text: 'Consulta via Leitor de QR Code', center: true });
   if (fiscal.qrCode) {
@@ -228,9 +236,11 @@ export function buildFiscalReceiptLines(order: IOrder, restaurant: IRestaurant, 
   // anterior dizia, errado, que a FocusNFe nunca devolvia isso — ver `IOrderFiscal.protocol`),
   // com a data/hora da emissão ao lado (mesmo timestamp já usado em "Emissao:" acima). Achado
   // real: rótulo + protocolo (~15 dígitos) + data completa ultrapassa 48 caracteres mesmo em Fonte
-  // A normal — `noWrap` bypassa o fold de 48 colunas da bridge pra manter tudo numa linha só.
+  // A normal — `noWrap` bypassa o fold de 48 colunas da bridge pra manter tudo numa linha só, e
+  // `small` (17/11/2026) reduz a fonte (Fonte B condensada) pra essa quantidade de caracteres
+  // realmente caber na largura física do papel (bypass sozinho não bastava).
   if (fiscal.protocol) {
-    lines.push({ text: `Protocolo de autorizacao: ${fiscal.protocol}  ${formatOrderDateTime(fiscal.emittedAt ?? order.createdAt)}`, noWrap: true });
+    lines.push({ text: `Protocolo de autorizacao: ${fiscal.protocol}  ${formatOrderDateTime(fiscal.emittedAt ?? order.createdAt)}`, noWrap: true, small: true });
   }
 
   return lines;
