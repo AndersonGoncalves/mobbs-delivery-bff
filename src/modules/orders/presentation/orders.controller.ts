@@ -36,6 +36,7 @@ import { ConfirmOnlinePaymentService } from '../domain/services/confirm-online-p
 import { StockReservationService } from '../domain/services/stock-reservation.service';
 import { isOrderCancellableByOperator, isValidOrderStatusTransition } from '../domain/order-status-transitions';
 import { isFiscalPrintMissed } from '../domain/is-fiscal-print-missed';
+import { isAutoPrintMissed } from '../domain/is-auto-print-missed';
 import { buildOrderPixCode } from '../domain/build-order-pix-code';
 import { computeOrderPricing } from '../domain/compute-order-pricing';
 import { resolveInitialOrderStatus } from '../domain/resolve-initial-order-status';
@@ -1274,23 +1275,11 @@ export class OrdersController extends BaseRouter {
     return orders.map((order) => ({ ...order, fiscalPrintMissed: isFiscalPrintMissed(order) }));
   }
 
+  // Pedido explícito do usuário (17/11/2026) — lógica movida pra `isAutoPrintMissed` (compartilhada
+  // com `TableServiceController`, que precisa da mesma checagem pra mesa/balcão).
   private attachAutoPrintMissed<T extends IOrder>(orders: T[], restaurant: IRestaurant): (T & { autoPrintMissed: boolean })[] {
-    const cutoff = Date.now() - (restaurant.autoPrintMaxAgeMinutes ?? 5) * 60_000;
-    return orders.map((order) => ({
-      ...order,
-      autoPrintMissed:
-        order.autoPrintStatus !== 'printed' &&
-        order.status !== 'cancelado' &&
-        (order.orderType === 'delivery' || order.orderType === 'pickup') &&
-        this.confirmedAtMs(order) !== undefined &&
-        this.confirmedAtMs(order)! < cutoff,
-    }));
-  }
-
-  /** specs/0164 REQ-3 — instante (ms) da confirmação do pedido, ou `undefined` se ainda não foi confirmado. */
-  private confirmedAtMs(order: IOrder): number | undefined {
-    const entry = order.statusHistory.find((history) => history.status === 'confirmado');
-    return entry ? new Date(entry.changedAt).getTime() : undefined;
+    const maxAgeMinutes = restaurant.autoPrintMaxAgeMinutes ?? 5;
+    return orders.map((order) => ({ ...order, autoPrintMissed: isAutoPrintMissed(order, maxAgeMinutes) }));
   }
 
   /**
