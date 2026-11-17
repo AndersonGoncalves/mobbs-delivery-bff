@@ -209,6 +209,12 @@ export interface IOrderRepository {
    * specs/0156-filtro-idade-impressao-automatica REQ-1 — `maxAgeMinutes` exclui pedido confirmado há
    * mais tempo que isso (desde a confirmação, specs/0164 REQ-3), evita despejar pedidos represados
    * quando o bridge volta a ficar online depois de ficar fora do ar.
+   *
+   * Pedido explícito do usuário (17/11/2026) — inclui também pedidos de `table` (mesa/balcão)
+   * fechados (`status: 'entregue'`) e ainda não impressos, com a MESMA defesa de represamento, só
+   * que a janela de idade conta a partir de `tableClosedAt` (fechamento), não de `confirmado` —
+   * mesa nunca passa por esse status, e fica aberta facilmente por horas, então contar a partir da
+   * criação/confirmação faria todo ticket de mesa chegar "velho demais" e nunca ser impresso.
    */
   findPendingAutoPrint(restaurantId: string, maxAgeMinutes: number): Promise<IOrder[]>;
 

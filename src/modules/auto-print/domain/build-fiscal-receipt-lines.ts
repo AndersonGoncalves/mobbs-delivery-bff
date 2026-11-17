@@ -65,6 +65,16 @@ function formatPhone(raw: string): string {
   return raw;
 }
 
+/** Pedido explícito do usuário (17/11/2026) — valor em dinheiro do ajuste manual de mesa/balcão
+ * (`order.tableAdjustment`), igual `tableAdjustmentAmount` em `OrderPrintArea.tsx`
+ * (mobbs-delivery-web) — percentual calculado sobre subtotal + taxa de serviço + couvert, fixo usa
+ * o valor cru. Só existe pra pedidos de mesa/balcão, nunca delivery/retirada. */
+function tableAdjustmentAmount(order: IOrder): number {
+  if (!order.tableAdjustment) return 0;
+  const base = order.subtotal + (order.serviceChargeAmount ?? 0) + (order.coverCharge ?? 0);
+  return order.tableAdjustment.mode === 'percent' ? (base * order.tableAdjustment.value) / 100 : order.tableAdjustment.value;
+}
+
 /** Pedido explícito do usuário (16/11/2026) — rótulos no mesmo estilo da FocusNFe (ex.
  * "Pagamento Instantâneo (PIX)"), diferentes dos rótulos do ticket normal (`build-receipt-lines.ts`
  * tem os seus próprios, mais informais — "Cartao de Credito Maquininha" etc.). */
@@ -142,6 +152,23 @@ export function buildFiscalReceiptLines(order: IOrder, restaurant: IRestaurant, 
   }
   if (order.deliveryFee > 0) {
     lines.push({ text: twoColumn('# Taxa de entrega', money(order.deliveryFee)) });
+  }
+  // Pedido explícito do usuário (17/11/2026) — taxa de serviço, couvert e ajuste manual (desconto/
+  // acréscimo) de mesa/balcão, condicionados a existirem no pedido — mesmo padrão da "Taxa de
+  // entrega" acima. Antes o cupom fiscal só somava `order.items`, então o TOTAL de uma mesa com
+  // taxa de serviço saía maior que a soma dos itens impressos, sem nenhuma linha explicando a
+  // diferença (achado real, nunca existia pra mesa/balcão, só pro ticket normal em
+  // `OrderPrintArea.tsx`).
+  if ((order.serviceChargeAmount ?? 0) > 0) {
+    lines.push({ text: twoColumn('# Taxa de servico', money(order.serviceChargeAmount!)) });
+  }
+  if ((order.coverCharge ?? 0) > 0) {
+    lines.push({ text: twoColumn('# Couvert', money(order.coverCharge!)) });
+  }
+  if (order.tableAdjustment) {
+    const label = order.tableAdjustment.type === 'discount' ? 'Desconto' : 'Acrescimo';
+    const description = order.tableAdjustment.description ? ` (${stripAccents(order.tableAdjustment.description)})` : '';
+    lines.push({ text: twoColumn(`# ${label}${description}`, money(tableAdjustmentAmount(order))) });
   }
   lines.push({ text: '', divider: true });
   // Pedido explícito do usuário (16/11/2026) — "Qtd. Total de Itens" e "TOTAL" em duas colunas

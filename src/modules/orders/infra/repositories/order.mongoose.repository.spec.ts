@@ -58,12 +58,51 @@ describe('OrderMongooseRepository.findPendingAutoPrint', () => {
 
     expect(OrderModel.find).toHaveBeenCalledWith({
       restaurantId: 'r-1',
-      orderType: { $in: ['delivery', 'pickup'] },
-      status: { $ne: 'cancelado' },
       autoPrintStatus: { $ne: 'printed' },
-      statusHistory: { $elemMatch: { status: 'confirmado', changedAt: { $gte: new Date(NOW.getTime() - 5 * 60_000) } } },
+      $or: [
+        {
+          orderType: { $in: ['delivery', 'pickup'] },
+          status: { $ne: 'cancelado' },
+          statusHistory: { $elemMatch: { status: 'confirmado', changedAt: { $gte: new Date(NOW.getTime() - 5 * 60_000) } } },
+        },
+        {
+          orderType: 'table',
+          status: 'entregue',
+          tableClosedAt: { $gte: new Date(NOW.getTime() - 5 * 60_000).toISOString() },
+        },
+      ],
     });
     expect(sort).toHaveBeenCalledWith({ createdAt: 1 });
+  });
+
+  // Pedido explícito do usuário (17/11/2026) — mesa/balcão entra na mesma fila, mas com a janela
+  // de idade contada a partir de `tableClosedAt` (fechamento), não de `confirmado` — mesa nunca
+  // passa por esse status e fica aberta por horas.
+  it('mesa/balcão: filtra por status "entregue" e tableClosedAt, janela de idade própria', async () => {
+    mockFindResult([]);
+    const repository = new OrderMongooseRepository();
+
+    await repository.findPendingAutoPrint('r-1', 60);
+
+    const [[filter]] = (OrderModel.find as jest.Mock).mock.calls;
+    const tableClause = filter.$or.find((clause: { orderType: string }) => clause.orderType === 'table');
+
+    expect(tableClause).toEqual({
+      orderType: 'table',
+      status: 'entregue',
+      tableClosedAt: { $gte: new Date(NOW.getTime() - 60 * 60_000).toISOString() },
+    });
+  });
+
+  it('mapeia um pedido de mesa fechado (status "entregue")', async () => {
+    mockFindResult([buildDoc({ orderType: 'table', status: 'entregue', tableClosedAt: NOW.toISOString() })]);
+    const repository = new OrderMongooseRepository();
+
+    const orders = await repository.findPendingAutoPrint('r-1', 60);
+
+    expect(orders).toHaveLength(1);
+    expect(orders[0].orderType).toBe('table');
+    expect(orders[0].status).toBe('entregue');
   });
 
   it('specs/0164 AC-1: mapeia um pedido já confirmado normalmente', async () => {
@@ -85,7 +124,8 @@ describe('OrderMongooseRepository.findPendingAutoPrint', () => {
     await repository.findPendingAutoPrint('r-1', 30);
 
     const [[filter]] = (OrderModel.find as jest.Mock).mock.calls;
-    expect(filter.statusHistory.$elemMatch.changedAt).toEqual({ $gte: new Date(NOW.getTime() - 30 * 60_000) });
+    const deliveryClause = filter.$or.find((clause: { orderType: unknown }) => clause.orderType && typeof clause.orderType === 'object');
+    expect(deliveryClause.statusHistory.$elemMatch.changedAt).toEqual({ $gte: new Date(NOW.getTime() - 30 * 60_000) });
     expect(filter.createdAt).toBeUndefined();
   });
 });

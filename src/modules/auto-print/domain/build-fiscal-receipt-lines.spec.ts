@@ -465,4 +465,92 @@ describe('buildFiscalReceiptLines (pedido explícito do usuário, 16/11/2026)', 
 
     expect(texts).not.toContain('-- BsDelivery --');
   });
+
+  // Pedido explícito do usuário (17/11/2026) — achado real: o cupom fiscal de mesa/balcão não
+  // mostrava taxa de serviço/couvert/ajuste, então o TOTAL não batia com a soma dos itens impressos.
+  describe('taxa de serviço, couvert e ajuste de mesa/balcão (17/11/2026)', () => {
+    function buildTableOrder(overrides: Partial<IOrder> = {}): IOrder {
+      return buildOrder({
+        orderType: 'table',
+        subtotal: 100,
+        deliveryFee: 0,
+        total: 110,
+        ...overrides,
+      });
+    }
+
+    it('imprime a taxa de serviço quando maior que zero, em duas colunas', () => {
+      const lines = buildTableOrder({ serviceChargeAmount: 10 });
+      const resultLines = buildFiscalReceiptLines(lines, buildRestaurant(), null);
+      const texts = resultLines.map((line) => line.text);
+
+      expect(texts.some((text) => /^# Taxa de servico\s+R\$10,00$/.test(text))).toBe(true);
+    });
+
+    it('não imprime a taxa de serviço quando ausente ou zero', () => {
+      const semServiceCharge = buildFiscalReceiptLines(buildTableOrder(), buildRestaurant(), null);
+      const comServiceChargeZero = buildFiscalReceiptLines(buildTableOrder({ serviceChargeAmount: 0 }), buildRestaurant(), null);
+
+      for (const lines of [semServiceCharge, comServiceChargeZero]) {
+        expect(lines.some((line) => line.text.startsWith('# Taxa de servico'))).toBe(false);
+      }
+    });
+
+    it('imprime o couvert quando maior que zero, em duas colunas', () => {
+      const lines = buildFiscalReceiptLines(buildTableOrder({ coverCharge: 15 }), buildRestaurant(), null);
+      const texts = lines.map((line) => line.text);
+
+      expect(texts.some((text) => /^# Couvert\s+R\$15,00$/.test(text))).toBe(true);
+    });
+
+    it('não imprime o couvert quando ausente ou zero', () => {
+      const semCouvert = buildFiscalReceiptLines(buildTableOrder(), buildRestaurant(), null);
+      const comCouvertZero = buildFiscalReceiptLines(buildTableOrder({ coverCharge: 0 }), buildRestaurant(), null);
+
+      for (const lines of [semCouvert, comCouvertZero]) {
+        expect(lines.some((line) => line.text.startsWith('# Couvert'))).toBe(false);
+      }
+    });
+
+    it('imprime o ajuste manual (desconto fixo) com a descrição entre parênteses', () => {
+      const lines = buildFiscalReceiptLines(
+        buildTableOrder({ tableAdjustment: { type: 'discount', mode: 'fixed', value: 5, description: 'cortesia' } }),
+        buildRestaurant(),
+        null,
+      );
+      const texts = lines.map((line) => line.text);
+
+      expect(texts.some((text) => /^# Desconto \(cortesia\)\s+R\$5,00$/.test(text))).toBe(true);
+    });
+
+    it('imprime o ajuste manual (acréscimo percentual) calculado sobre subtotal + serviço + couvert', () => {
+      const lines = buildFiscalReceiptLines(
+        buildTableOrder({
+          serviceChargeAmount: 10,
+          coverCharge: 10,
+          tableAdjustment: { type: 'surcharge', mode: 'percent', value: 10 },
+        }),
+        buildRestaurant(),
+        null,
+      );
+      const texts = lines.map((line) => line.text);
+
+      // base = 100 (subtotal) + 10 (serviço) + 10 (couvert) = 120; 10% = 12
+      expect(texts.some((text) => /^# Acrescimo\s+R\$12,00$/.test(text))).toBe(true);
+    });
+
+    it('não imprime linha de ajuste quando o pedido não tem tableAdjustment', () => {
+      const lines = buildFiscalReceiptLines(buildTableOrder(), buildRestaurant(), null);
+      const texts = lines.map((line) => line.text);
+
+      expect(texts.some((text) => text.startsWith('# Desconto') || text.startsWith('# Acrescimo'))).toBe(false);
+    });
+
+    it('pedido de delivery nunca imprime essas linhas (campos de mesa inexistentes)', () => {
+      const lines = buildFiscalReceiptLines(buildOrder(), buildRestaurant(), null);
+      const texts = lines.map((line) => line.text);
+
+      expect(texts.some((text) => text.startsWith('# Taxa de servico') || text.startsWith('# Couvert') || text.startsWith('# Desconto') || text.startsWith('# Acrescimo'))).toBe(false);
+    });
+  });
 });
