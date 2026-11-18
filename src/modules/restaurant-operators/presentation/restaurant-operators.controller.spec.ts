@@ -62,7 +62,6 @@ describe('RestaurantOperatorsController', () => {
       deactivate: jest.fn().mockResolvedValue(undefined),
       updateRole: jest.fn().mockResolvedValue(undefined),
       updateFullAccess: jest.fn().mockResolvedValue(undefined),
-      updateIntegrationsAccess: jest.fn().mockResolvedValue(undefined),
       updateProfile: jest.fn().mockResolvedValue(undefined),
       updateLastLocation: jest.fn().mockResolvedValue(undefined),
       ...repositoryOverrides,
@@ -531,55 +530,6 @@ describe('RestaurantOperatorsController', () => {
       ),
     ).rejects.toMatchObject({ statusCode: 403 });
     expect(repository.updateFullAccess).not.toHaveBeenCalled();
-  });
-
-  // Pedido explícito do usuário (18/11/2026) — mesmo padrão de "acesso total" acima, pro grant
-  // específico do grupo "Integrações".
-  it('o dono concede acesso a integrações somente a um gerente', async () => {
-    const { repository, routes } = setup({
-      findById: jest.fn().mockResolvedValue(buildOperator({ id: 'op-2', role: 'gerente' })),
-    });
-    const json = jest.fn();
-
-    await runChain(
-      routes['PATCH /restaurants/me/operators/:id/integrations-access'],
-      { params: { id: 'op-2' }, body: { hasIntegrationsAccess: true } },
-      { json, send: jest.fn() },
-    );
-
-    expect(repository.updateIntegrationsAccess).toHaveBeenCalledWith('op-2', true);
-    expect(json).toHaveBeenCalledWith(200, expect.anything());
-  });
-
-  it('gerente com acesso total não pode alterar o próprio atributo de acesso a integrações', async () => {
-    const { repository, routes } = setup(
-      { findById: jest.fn().mockResolvedValue(buildOperator({ id: 'op-2', role: 'gerente' })) },
-      buildPassthroughOperatorMiddleware('gerente', 'op-2', true),
-    );
-
-    await expect(
-      runChain(
-        routes['PATCH /restaurants/me/operators/:id/integrations-access'],
-        { params: { id: 'op-2' }, body: { hasIntegrationsAccess: false } },
-        { json: jest.fn(), send: jest.fn() },
-      ),
-    ).rejects.toMatchObject({ statusCode: 403 });
-    expect(repository.updateIntegrationsAccess).not.toHaveBeenCalled();
-  });
-
-  it('acesso a integrações só pode ser concedido a um gerente, nunca a outro papel', async () => {
-    const { repository, routes } = setup({
-      findById: jest.fn().mockResolvedValue(buildOperator({ id: 'op-2', role: 'financeiro' })),
-    });
-
-    await expect(
-      runChain(
-        routes['PATCH /restaurants/me/operators/:id/integrations-access'],
-        { params: { id: 'op-2' }, body: { hasIntegrationsAccess: true } },
-        { json: jest.fn(), send: jest.fn() },
-      ),
-    ).rejects.toMatchObject({ statusCode: 400 });
-    expect(repository.updateIntegrationsAccess).not.toHaveBeenCalled();
   });
 
   // specs/0021-papeis-operador REQ-9/AC-6/T019 — nunca pode restar um restaurante sem `dono`.

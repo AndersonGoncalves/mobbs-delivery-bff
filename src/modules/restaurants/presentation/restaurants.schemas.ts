@@ -277,8 +277,6 @@ export const addOperatorSchema = z.object({
 // specs/0021-papeis-operador REQ-8 — troca do papel de um operador já cadastrado.
 export const updateOperatorRoleSchema = z.object({ role: operatorRoleSchema });
 export const updateOperatorFullAccessSchema = z.object({ hasFullAccess: z.boolean() });
-// Pedido explícito do usuário (18/11/2026) — grant específico pro grupo "Integrações".
-export const updateOperatorIntegrationsAccessSchema = z.object({ hasIntegrationsAccess: z.boolean() });
 
 // (ajuste, pedido explícito do usuário) — editar nome/WhatsApp/foto de um operador já cadastrado
 // (ex. um operador criado antes do nome virar obrigatório, specs/0161). Nunca inclui `email`

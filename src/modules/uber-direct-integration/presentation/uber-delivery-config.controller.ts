@@ -4,7 +4,7 @@ import { environment } from '../../../shared/config/environment';
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
-import { requireIntegrationsAccess, requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
+import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { IUberDeliveryConfigRepository } from '../domain/repositories/uber-delivery-config.repository.interface';
 import { saveUberDeliveryConfigSchema } from './uber-delivery-config.schemas';
 
@@ -46,10 +46,10 @@ export class UberDeliveryConfigController extends BaseRouter {
 
   initializeRoutes(application: Server): void {
     // Pedido explícito do usuário (18/11/2026) — mesma divisão de `FiscalConfigController`: só a
-    // CONFIGURAÇÃO fica restrita a quem tem acesso a Integrações; a LEITURA (`GET`) continua
-    // liberada a qualquer dono/gerente — consumida também por `OrderCard.tsx`/
-    // `OrdersKanbanBoard.tsx` pra decidir se mostram "Despachar Uber", sem relação com a página
-    // de configuração.
+    // CONFIGURAÇÃO é `dono`-only (gerente com acesso total também passa, via
+    // `requireOperatorRole`); a LEITURA (`GET`) continua liberada a qualquer dono/gerente —
+    // consumida também por `OrderCard.tsx`/`OrdersKanbanBoard.tsx` pra decidir se mostram
+    // "Despachar Uber", sem relação com a página de configuração.
     const operatorAuthenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,
@@ -58,7 +58,7 @@ export class UberDeliveryConfigController extends BaseRouter {
     const configAuthenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,
-      requireIntegrationsAccess(),
+      requireOperatorRole('dono'),
     ];
 
     application.get('/restaurants/me/uber-delivery-config', ...operatorAuthenticated, async (req: Request, res: Response) => {

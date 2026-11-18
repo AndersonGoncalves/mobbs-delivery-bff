@@ -1,13 +1,12 @@
 import type { Request } from 'restify';
 
-import { requireIntegrationsAccess, requireOperatorRole, requireOwnerRole } from './require-operator-role.middleware';
+import { requireOperatorRole, requireOwnerRole } from './require-operator-role.middleware';
 
 function buildRequest(
   operatorRole?: 'dono' | 'gerente' | 'financeiro',
   hasFullAccess = false,
-  hasIntegrationsAccess = false,
 ): Request {
-  return { operatorRole, hasFullAccess, hasIntegrationsAccess } as unknown as Request;
+  return { operatorRole, hasFullAccess } as unknown as Request;
 }
 
 /**
@@ -86,30 +85,5 @@ describe('requireOperatorRole (specs/0021-papeis-operador REQ-2..REQ-6)', () => 
   it('acesso total não concede ações exclusivas do dono', async () => {
     await expect(requireOwnerRole()(buildRequest('gerente', true))).rejects.toMatchObject({ statusCode: 403 });
     await expect(requireOwnerRole()(buildRequest('dono'))).resolves.toBeUndefined();
-  });
-});
-
-// Pedido explícito do usuário (18/11/2026) — grupo "Integrações" é `dono`-only por padrão;
-// `gerente` só entra com `hasIntegrationsAccess` (grant específico) ou `hasFullAccess` (bypass
-// geral, mesmo critério de `requireOperatorRole`). `financeiro` nunca entra, com ou sem flags.
-describe('requireIntegrationsAccess (grupo "Integrações")', () => {
-  it('`dono` nunca é bloqueado', async () => {
-    await expect(requireIntegrationsAccess()(buildRequest('dono'))).resolves.toBeUndefined();
-  });
-
-  it('`gerente` sem nenhum grant é bloqueado (403)', async () => {
-    await expect(requireIntegrationsAccess()(buildRequest('gerente'))).rejects.toMatchObject({ statusCode: 403 });
-  });
-
-  it('`gerente` com hasIntegrationsAccess passa', async () => {
-    await expect(requireIntegrationsAccess()(buildRequest('gerente', false, true))).resolves.toBeUndefined();
-  });
-
-  it('`gerente` com hasFullAccess passa, mesmo sem hasIntegrationsAccess', async () => {
-    await expect(requireIntegrationsAccess()(buildRequest('gerente', true, false))).resolves.toBeUndefined();
-  });
-
-  it('`financeiro` é bloqueado (403), mesmo com as flags (nunca fazem sentido fora de gerente)', async () => {
-    await expect(requireIntegrationsAccess()(buildRequest('financeiro'))).rejects.toMatchObject({ statusCode: 403 });
   });
 });

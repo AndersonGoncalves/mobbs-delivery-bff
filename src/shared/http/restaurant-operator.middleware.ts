@@ -15,10 +15,6 @@ declare module 'restify' {
     /** specs/0021-papeis-operador REQ-9 — id do próprio operador logado (auto-rebaixamento). */
     operatorId?: string;
     hasFullAccess?: boolean;
-    /** Pedido explícito do usuário (18/11/2026) — diferente de `hasFullAccess` (bypass geral),
-     * este é um grant específico pro grupo "Integrações" (iFood/99Food/Asaas/Mercado Pago/Fiscal/
-     * Uber Entregas) — concedido pelo dono por operador `gerente`, ver `requireIntegrationsAccess`. */
-    hasIntegrationsAccess?: boolean;
   }
 }
 
@@ -59,6 +55,5 @@ export function buildRestaurantOperatorMiddleware(
     req.operatorRole = operator.role;
     req.operatorId = operator.id;
     req.hasFullAccess = operator.role === 'gerente' && operator.hasFullAccess === true;
-    req.hasIntegrationsAccess = operator.role === 'gerente' && operator.hasIntegrationsAccess === true;
   };
 }

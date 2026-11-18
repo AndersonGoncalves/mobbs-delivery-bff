@@ -11,7 +11,6 @@ interface RestaurantOperatorLeanDocument {
   photoUrl?: string;
   role?: OperatorRole;
   hasFullAccess?: boolean;
-  hasIntegrationsAccess?: boolean;
   isActive: boolean;
   createdAt: Date;
   lastLocation?: { lat: number; lng: number; updatedAt: Date };
@@ -31,7 +30,6 @@ function toEntity(doc: RestaurantOperatorLeanDocument): IRestaurantOperator {
     // não passa por ela) ainda cai em `dono`, nunca em `undefined`.
     role: doc.role ?? 'dono',
     hasFullAccess: doc.hasFullAccess ?? false,
-    hasIntegrationsAccess: doc.hasIntegrationsAccess ?? false,
     isActive: doc.isActive,
     createdAt: doc.createdAt,
     lastLocation: doc.lastLocation,
@@ -102,16 +100,12 @@ export class RestaurantOperatorMongooseRepository implements IRestaurantOperator
 
   async updateRole(id: string, role: OperatorRole): Promise<void> {
     await RestaurantOperatorModel.findByIdAndUpdate(id, {
-      $set: { role, ...(role === 'gerente' ? {} : { hasFullAccess: false, hasIntegrationsAccess: false }) },
+      $set: { role, ...(role === 'gerente' ? {} : { hasFullAccess: false }) },
     });
   }
 
   async updateFullAccess(id: string, hasFullAccess: boolean): Promise<void> {
     await RestaurantOperatorModel.findByIdAndUpdate(id, { $set: { hasFullAccess } });
-  }
-
-  async updateIntegrationsAccess(id: string, hasIntegrationsAccess: boolean): Promise<void> {
-    await RestaurantOperatorModel.findByIdAndUpdate(id, { $set: { hasIntegrationsAccess } });
   }
 
   async updateProfile(id: string, profile: { name: string; whatsapp?: string; photoUrl?: string | null }): Promise<void> {

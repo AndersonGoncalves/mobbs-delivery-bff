@@ -10,7 +10,6 @@ import { IRestaurantOperatorRepository } from '../domain/repositories/restaurant
 import {
   addOperatorSchema,
   updateOperatorFullAccessSchema,
-  updateOperatorIntegrationsAccessSchema,
   updateOperatorLocationSchema,
   updateOperatorProfileSchema,
   updateOperatorRoleSchema,
@@ -250,27 +249,6 @@ export class RestaurantOperatorsController extends BaseRouter {
           throw new BadRequestError('Acesso total só pode ser concedido a um gerente');
         }
         await this.operatorRepository.updateFullAccess(target.id, hasFullAccess);
-        const updated = await this.operatorRepository.findById(target.id);
-        res.json(200, this.render(updated));
-      },
-    );
-
-    // Pedido explícito do usuário (18/11/2026) — grupo "Integrações" é `dono`-only por padrão;
-    // este grant concede acesso a um `gerente` específico (`requireIntegrationsAccess`, ver
-    // `require-operator-role.middleware.ts`). Mesma proteção/padrão de `/full-access` acima.
-    application.patch(
-      '/restaurants/me/operators/:id/integrations-access',
-      ...ownerAuthenticated,
-      async (req: Request, res: Response) => {
-        const { hasIntegrationsAccess } = parseBody(updateOperatorIntegrationsAccessSchema, req.body);
-        const target = await this.operatorRepository.findById(req.params.id);
-        if (!target || target.restaurantId !== req.restaurantId) {
-          throw new NotFoundError('Operador não encontrado');
-        }
-        if (target.role !== 'gerente') {
-          throw new BadRequestError('Acesso a integrações só pode ser concedido a um gerente');
-        }
-        await this.operatorRepository.updateIntegrationsAccess(target.id, hasIntegrationsAccess);
         const updated = await this.operatorRepository.findById(target.id);
         res.json(200, this.render(updated));
       },

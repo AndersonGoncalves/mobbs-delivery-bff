@@ -23,7 +23,6 @@ const restaurantOperatorSchema = new Schema(
     // specs/0187-kds-cozinha REQ-7/REQ-19 — `cozinha` adicionado ao mesmo enum.
     role: { type: String, enum: ['dono', 'gerente', 'financeiro', 'garcom', 'motoboy', 'cozinha'], required: true, default: 'dono' },
     hasFullAccess: { type: Boolean, required: true, default: false },
-    hasIntegrationsAccess: { type: Boolean, required: true, default: false },
     isActive: { type: Boolean, required: true, default: true },
     // specs/0198-rastreamento-motoboy-tempo-real REQ-2 — última posição conhecida, sem índice
     // geoespacial (sem busca por proximidade nesta spec, só leitura direta por operador) e sem

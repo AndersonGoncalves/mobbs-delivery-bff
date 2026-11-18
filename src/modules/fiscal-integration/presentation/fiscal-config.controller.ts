@@ -3,7 +3,7 @@ import type { Request, Response, Server } from 'restify';
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
-import { requireIntegrationsAccess, requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
+import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { IFiscalConfigRepository } from '../domain/repositories/fiscal-config.repository.interface';
 import { saveFiscalConfigSchema, setFiscalAutoEmitEnabledSchema, setFiscalProductionEnabledSchema } from './fiscal-config.schemas';
 
@@ -48,12 +48,12 @@ export class FiscalConfigController extends BaseRouter {
 
   initializeRoutes(application: Server): void {
     // Pedido explícito do usuário (18/11/2026) — só a CONFIGURAÇÃO (conectar/trocar token/
-    // produção/emissão automática/desconectar) fica restrita a quem tem acesso a Integrações; a
-    // LEITURA (`GET`) continua liberada a qualquer dono/gerente — é consumida também por telas
-    // operacionais que não têm nada a ver com a página de configuração (ex. `ClosedOrdersPanel`/
-    // `OrdersKanbanBoard` decidindo se mostram "Reemitir nota fiscal", `AppShell` decidindo se
-    // mostra o relatório "Notas Fiscais") — restringir o GET quebraria essas telas pra qualquer
-    // gerente sem o grant, não só a página de configuração.
+    // produção/emissão automática/desconectar) é `dono`-only (gerente com acesso total também
+    // passa, via `requireOperatorRole`); a LEITURA (`GET`) continua liberada a qualquer dono/
+    // gerente — é consumida também por telas operacionais que não têm nada a ver com a página de
+    // configuração (ex. `ClosedOrdersPanel`/`OrdersKanbanBoard` decidindo se mostram "Reemitir
+    // nota fiscal", `AppShell` decidindo se mostra o relatório "Notas Fiscais") — restringir o
+    // GET quebraria essas telas pra qualquer gerente, não só a página de configuração.
     const operatorAuthenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,
@@ -62,7 +62,7 @@ export class FiscalConfigController extends BaseRouter {
     const configAuthenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,
-      requireIntegrationsAccess(),
+      requireOperatorRole('dono'),
     ];
 
     application.get('/restaurants/me/fiscal-config', ...operatorAuthenticated, async (req: Request, res: Response) => {

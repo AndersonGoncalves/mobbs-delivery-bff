@@ -3,7 +3,7 @@ import { BadRequestError } from 'restify-errors';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
-import { requireIntegrationsAccess } from '../../../shared/http/require-operator-role.middleware';
+import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { NinetyNineFoodAuthService } from '../infra/ninety-nine-food-auth.service';
 
@@ -31,7 +31,7 @@ export class NinetyNineFoodOnboardingController extends BaseRouter {
     const operatorAuthenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,
-      requireIntegrationsAccess(),
+      requireOperatorRole('dono'),
     ];
 
     application.post('/restaurants/me/99food/authorize-link', ...operatorAuthenticated, async (req: Request, res: Response) => {

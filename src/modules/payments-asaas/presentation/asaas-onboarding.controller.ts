@@ -5,7 +5,7 @@ import { ForbiddenError } from 'restify-errors';
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
-import { requireIntegrationsAccess, requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
+import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { environment } from '../../../shared/config/environment';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import type { IPlatformConfigRepository } from '../../platform-config/domain/platform-config.repository.interface';
@@ -45,7 +45,7 @@ export class AsaasOnboardingController extends BaseRouter {
     const operatorAuthenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,
-      requireIntegrationsAccess(),
+      requireOperatorRole('dono'),
     ];
 
     application.post('/restaurants/me/asaas/subaccount', ...operatorAuthenticated, async (req: Request, res: Response) => {
