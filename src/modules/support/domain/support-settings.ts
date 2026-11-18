@@ -1,4 +1,6 @@
 export interface SupportSettings {
+  // Pedido explícito do usuário (18/11/2026) — só DDD + número, sem DDI: é sempre Brasil, "55" é
+  // completado na hora de montar o link `wa.me` (web, `supportWhatsAppUrl`), não digitado aqui.
   whatsapp: string;
   commercialWhatsapp: string;
   financialWhatsapp: string;
@@ -16,9 +18,9 @@ export interface SupportSettings {
 }
 
 export const DEFAULT_SUPPORT_SETTINGS: Readonly<SupportSettings> = {
-  whatsapp: '5585986404604',
-  commercialWhatsapp: '5585986404604',
-  financialWhatsapp: '5585986404604',
+  whatsapp: '85986404604',
+  commercialWhatsapp: '85986404604',
+  financialWhatsapp: '85986404604',
   email: 'anndersonn.gonncalves@gmail.com',
   commercialEmail: 'comercial@bsdelivery.com.br',
   financialEmail: 'financeiro@bsdelivery.com.br',

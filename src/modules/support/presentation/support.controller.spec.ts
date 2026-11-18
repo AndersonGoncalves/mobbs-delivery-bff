@@ -57,7 +57,7 @@ describe('SupportController - 0181', () => {
   it('salva contatos por setor, horario e oferta e usa os mesmos valores nas duas leituras', async () => {
     const { run, repository } = setup();
     const next = {
-      ...DEFAULT_SUPPORT_SETTINGS, commercialWhatsapp: '5511999999999', financialWhatsapp: '5521999999999',
+      ...DEFAULT_SUPPORT_SETTINGS, commercialWhatsapp: '11999999999', financialWhatsapp: '21999999999',
       businessHours: 'Segunda a sexta, 9h às 18h', trainingPriceCents: 6990,
       trainingUnlimitedItems: false, trainingIncludedItems: 70, trainingExtraItemPriceCents: 200,
     };
@@ -70,6 +70,8 @@ describe('SupportController - 0181', () => {
 
   it.each([
     { whatsapp: 'abc' }, { commercialWhatsapp: '' }, { financialWhatsapp: '+55 (85)' },
+    // Pedido explícito do usuário (18/11/2026) — DDI não é mais aceito aqui.
+    { whatsapp: '5585986404604' },
     { email: 'invalid' }, { email: '' }, { commercialEmail: 'invalid' }, { financialEmail: 'invalid' },
     { businessHours: ' ' }, { businessHours: 'a'.repeat(501) },
     { trainingPriceCents: -1 }, { trainingPriceCents: 49.9 },
