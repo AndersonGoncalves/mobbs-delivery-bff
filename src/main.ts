@@ -153,6 +153,9 @@ import { BillingSettingsMongooseRepository } from './modules/billing/infra/repos
 import { BillingController } from './modules/billing/presentation/billing.controller';
 import { BillingSettingsController } from './modules/billing/presentation/billing-settings.controller';
 import { PlatformController } from './modules/platform/presentation/platform.controller';
+import { PlatformRestaurantIntegrationsController } from './modules/platform/presentation/platform-restaurant-integrations.controller';
+import { PlatformRestaurantActionsController } from './modules/platform/presentation/platform-restaurant-actions.controller';
+import { PlatformRestaurantOperatorsController } from './modules/platform/presentation/platform-restaurant-operators.controller';
 import { buildPlatformAdminMiddleware, parsePlatformAdminEmails } from './shared/http/platform-admin.middleware';
 import { startPeriodicWorker } from './shared/utils/periodic-worker';
 import { ProspectsController } from './modules/prospects/presentation/prospects.controller';
@@ -610,6 +613,30 @@ server
       platformBillingCycleService,
       obligationIssuanceService,
       reconciliationService,
+    ),
+    // Pedido explícito do usuário (18/11/2026) — tela de suporte da plataforma: edita, de
+    // qualquer restaurante, as mesmas credenciais de integração que hoje só o dono edita
+    // (reaproveita os mesmos repositórios de `IFoodOnboardingController`/`FiscalConfigController`/
+    // `UberDeliveryConfigController`/etc., ver docstring do controller).
+    new PlatformRestaurantIntegrationsController(
+      restaurantRepository,
+      fiscalConfigRepository,
+      uberDeliveryConfigRepository,
+      buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
+    ),
+    // Pedido explícito do usuário (18/11/2026, 2ª leva) — mais 4 ações de suporte pontuais
+    // (reabrir caixa, abrir/fechar, resetar WhatsApp, editar slug), ver docstring do controller.
+    new PlatformRestaurantActionsController(
+      restaurantRepository,
+      cashRegisterRepository,
+      whatsAppConnectionService,
+      buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
+    ),
+    // Pedido explícito do usuário (18/11/2026, 2ª leva) — gestão de operadores de qualquer
+    // restaurante pela tela de suporte, ver docstring do controller.
+    new PlatformRestaurantOperatorsController(
+      restaurantOperatorRepository,
+      buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
     ),
     // specs/0175-cobranca-assinatura-asaas — API do lojista (planos, pagador, Pix, anual) e
     // webhook da assinatura (credencial/endpoint próprios, nunca os de pedido).

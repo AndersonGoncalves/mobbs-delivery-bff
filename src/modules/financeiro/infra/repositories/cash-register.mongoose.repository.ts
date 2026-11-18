@@ -286,6 +286,12 @@ export class CashRegisterMongooseRepository implements ICashRegisterRepository {
   }
 
   /** specs/0118-controle-caixa-automatico-redes-sociais REQ-10. */
+  async findLatestClosedSession(restaurantId: string): Promise<ICashRegisterSession | null> {
+    const doc = await CashRegisterSessionModel.findOne({ restaurantId, status: 'fechado' })
+      .sort({ closedAt: -1 }).lean<SessionLeanDocument>();
+    return doc ? toSessionEntity(doc) : null;
+  }
+
   async findClosedSessionsBetween(restaurantId: string, from: Date, to: Date): Promise<ICashRegisterSession[]> {
     const docs = await CashRegisterSessionModel.find({
       restaurantId,

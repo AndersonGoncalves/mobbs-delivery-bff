@@ -41,6 +41,10 @@ export interface ICashRegisterRepository {
    * no controller. Lança se a sessão não estiver `fechado` (corrida com outro fechamento/reabertura
    * concorrente). */
   reopen(sessionId: string, reopenedBy?: string, now?: Date): Promise<ICashRegisterSession>;
+  /** Pedido explícito do usuário (18/11/2026) — tela de suporte da plataforma: acha o caixa
+   * fechado mais recente do restaurante pra reabrir sem o admin precisar saber o `sessionId`
+   * (mesmo raciocínio de `findPendingSessions`, mas `status: 'fechado'`, mais recente primeiro). */
+  findLatestClosedSession(restaurantId: string): Promise<ICashRegisterSession | null>;
   /** specs/0118-controle-caixa-automatico-redes-sociais REQ-10 — fechamentos (`status: 'fechado'`)
    * cujo `closedAt` cai dentro de `[from, to]`, mais antigo primeiro. */
   findClosedSessionsBetween(restaurantId: string, from: Date, to: Date): Promise<ICashRegisterSession[]>;

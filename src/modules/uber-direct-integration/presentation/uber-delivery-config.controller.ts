@@ -20,7 +20,9 @@ type AsyncHandler = (req: Request, res: Response) => Promise<void>;
  * atualiza (nenhum webhook chega), testado documentado como pendência em
  * `docs/contas-de-integracao/uber-direct.md` §4 (agora corrigida).
  */
-function toPublicView(config: { restaurantId: string; customerId: string; clientId: string; originZipCode: string; webhookToken: string } | null) {
+// Exportado (18/11/2026) — reaproveitado por `PlatformRestaurantIntegrationsController` (mesma
+// mascara pra quando o suporte da plataforma lê a config de qualquer restaurante).
+export function toPublicView(config: { restaurantId: string; customerId: string; clientId: string; originZipCode: string; webhookToken: string } | null) {
   if (!config) return { connected: false };
   return {
     connected: true,

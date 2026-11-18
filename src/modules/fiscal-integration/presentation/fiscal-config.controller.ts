@@ -15,8 +15,10 @@ type AsyncHandler = (req: Request, res: Response) => Promise<void>;
  * `createdAt` adicionado em specs/0203-pendencias-fiscais-entregues-fechados REQ-1 — necessário
  * pro frontend não marcar como "pendência fiscal" um pedido entregue antes da integração
  * existir.
- * `autoEmitEnabled` adicionado em specs/0204-controle-emissao-fiscal-automatica REQ-5. */
-function toPublicView(
+ * `autoEmitEnabled` adicionado em specs/0204-controle-emissao-fiscal-automatica REQ-5.
+ * Exportado (18/11/2026) — reaproveitado por `PlatformRestaurantIntegrationsController` (mesma
+ * mascara pra quando o suporte da plataforma lê a config de qualquer restaurante). */
+export function toPublicView(
   config: { restaurantId: string; environment: string; documentType: string; productionEnabled: boolean; autoEmitEnabled: boolean; cnpj: string; taxRegime?: string; createdAt: string } | null,
 ) {
   if (!config) return { connected: false };

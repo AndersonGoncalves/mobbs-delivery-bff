@@ -50,4 +50,9 @@ export interface IRestaurantOperator {
   isActive: boolean;
   createdAt: Date;
   lastLocation?: IRestaurantOperatorLastLocation;
+  /** Pedido explícito do usuário (18/11/2026) — preenchido só por `recordAdminAction`, chamado
+   * pela tela de suporte da plataforma (`PlatformRestaurantOperatorsController`) depois de
+   * qualquer mudança feita por lá; nunca pelas rotas normais de `/restaurants/me/operators/*`. */
+  lastAdminActionByEmail?: string;
+  lastAdminActionAt?: Date;
 }
