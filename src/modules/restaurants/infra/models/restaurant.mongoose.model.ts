@@ -129,9 +129,12 @@ const restaurantSchema = new Schema(
     // Restaurantes que já salvaram um valor antigo (campo fora do schema) simplesmente o ignoram.
     // Pedido explícito do usuário (2º follow-up) — mesmo raciocínio de useWhiteBackground, pro
     // preenchimento dos campos de texto (`AppTextField`) e da caixa de busca da home
-    // (`AppSearchField`) do app cliente. Default `false` em ambos preserva o comportamento visual
-    // que cada um já tinha antes destes campos existirem (tema/cinza, respectivamente).
-    useWhiteTextFieldColor: { type: Boolean, required: true, default: false },
+    // (`AppSearchField`) do app cliente. Default `false` em `useWhiteSearchFieldColor` preserva o
+    // comportamento visual que já tinha antes deste campo existir (cinza).
+    // Pedido explícito do usuário (18/11/2026) — `useWhiteTextFieldColor` passa a nascer `true`
+    // (branco): restaurante novo (instalação padrão) já cadastra com essa opção selecionada;
+    // restaurantes existentes mantêm o valor que já salvaram, pois o default só vale na criação.
+    useWhiteTextFieldColor: { type: Boolean, required: true, default: true },
     useWhiteSearchFieldColor: { type: Boolean, required: true, default: false },
     // specs/0028-destaques-vendidos-banners REQ-1, REQ-4, REQ-5, REQ-10.
     showBestSellers: { type: Boolean, required: true, default: false },
