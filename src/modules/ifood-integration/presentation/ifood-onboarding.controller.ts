@@ -3,7 +3,7 @@ import type { Request, Response, Server } from 'restify';
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
-import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
+import { requireIntegrationsAccess } from '../../../shared/http/require-operator-role.middleware';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { saveIFoodCredentialsSchema } from './ifood-onboarding.schemas';
 
@@ -28,7 +28,7 @@ export class IFoodOnboardingController extends BaseRouter {
     const operatorAuthenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,
-      requireOperatorRole('dono', 'gerente'),
+      requireIntegrationsAccess(),
     ];
 
     application.post('/restaurants/me/ifood/credentials', ...operatorAuthenticated, async (req: Request, res: Response) => {

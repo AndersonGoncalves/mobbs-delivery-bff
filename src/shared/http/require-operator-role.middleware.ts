@@ -31,3 +31,18 @@ export function requireOwnerRole() {
     }
   };
 }
+
+/**
+ * Pedido explícito do usuário (18/11/2026) — grupo "Integrações" (iFood/99Food/Asaas/Mercado
+ * Pago/Fiscal/Uber Entregas) só é acessível ao `dono` por padrão; `gerente` só entra se o dono
+ * conceder (`hasIntegrationsAccess`, `PATCH /restaurants/me/operators/:id/integrations-access`)
+ * — ou já tiver `hasFullAccess` (bypass geral, mesmo critério de `requireOperatorRole`).
+ * `financeiro`/`garcom`/`motoboy`/`cozinha` nunca têm acesso, com ou sem flag.
+ */
+export function requireIntegrationsAccess() {
+  return async function integrationsAccessGuard(req: Request): Promise<void> {
+    if (req.operatorRole === 'dono') return;
+    if (req.operatorRole === 'gerente' && (req.hasFullAccess === true || req.hasIntegrationsAccess === true)) return;
+    throw new ForbiddenError('Papel do operador não tem acesso a integrações');
+  };
+}

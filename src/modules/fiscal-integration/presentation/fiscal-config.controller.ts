@@ -3,7 +3,7 @@ import type { Request, Response, Server } from 'restify';
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
-import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
+import { requireIntegrationsAccess, requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { IFiscalConfigRepository } from '../domain/repositories/fiscal-config.repository.interface';
 import { saveFiscalConfigSchema, setFiscalAutoEmitEnabledSchema, setFiscalProductionEnabledSchema } from './fiscal-config.schemas';
 
@@ -47,10 +47,22 @@ export class FiscalConfigController extends BaseRouter {
   }
 
   initializeRoutes(application: Server): void {
+    // Pedido explícito do usuário (18/11/2026) — só a CONFIGURAÇÃO (conectar/trocar token/
+    // produção/emissão automática/desconectar) fica restrita a quem tem acesso a Integrações; a
+    // LEITURA (`GET`) continua liberada a qualquer dono/gerente — é consumida também por telas
+    // operacionais que não têm nada a ver com a página de configuração (ex. `ClosedOrdersPanel`/
+    // `OrdersKanbanBoard` decidindo se mostram "Reemitir nota fiscal", `AppShell` decidindo se
+    // mostra o relatório "Notas Fiscais") — restringir o GET quebraria essas telas pra qualquer
+    // gerente sem o grant, não só a página de configuração.
     const operatorAuthenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,
       requireOperatorRole('dono', 'gerente'),
+    ];
+    const configAuthenticated: AsyncHandler[] = [
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireIntegrationsAccess(),
     ];
 
     application.get('/restaurants/me/fiscal-config', ...operatorAuthenticated, async (req: Request, res: Response) => {
@@ -58,7 +70,7 @@ export class FiscalConfigController extends BaseRouter {
       res.json(200, toPublicView(config));
     });
 
-    application.put('/restaurants/me/fiscal-config', ...operatorAuthenticated, async (req: Request, res: Response) => {
+    application.put('/restaurants/me/fiscal-config', ...configAuthenticated, async (req: Request, res: Response) => {
       const input = parseBody(saveFiscalConfigSchema, req.body);
       const config = await this.fiscalConfigRepository.upsert(req.restaurantId!, input);
       res.json(200, toPublicView(config));
@@ -66,7 +78,7 @@ export class FiscalConfigController extends BaseRouter {
 
     // "Botão de ativar produção" (`plan.md`) — ação deliberadamente separada do PUT geral acima,
     // nunca ligada de volta sozinha ao trocar token/ambiente.
-    application.put('/restaurants/me/fiscal-config/production', ...operatorAuthenticated, async (req: Request, res: Response) => {
+    application.put('/restaurants/me/fiscal-config/production', ...configAuthenticated, async (req: Request, res: Response) => {
       const { productionEnabled } = parseBody(setFiscalProductionEnabledSchema, req.body);
       const config = await this.fiscalConfigRepository.setProductionEnabled(req.restaurantId!, productionEnabled);
       res.json(200, toPublicView(config));
@@ -75,13 +87,13 @@ export class FiscalConfigController extends BaseRouter {
     // "Botão" irmão do de produção acima (specs/0204-controle-emissao-fiscal-automatica) —
     // desligado, `FiscalEmissionService.emitForOrder` vira no-op; reemissão manual continua
     // funcionando normalmente (nunca checa este campo).
-    application.put('/restaurants/me/fiscal-config/auto-emit', ...operatorAuthenticated, async (req: Request, res: Response) => {
+    application.put('/restaurants/me/fiscal-config/auto-emit', ...configAuthenticated, async (req: Request, res: Response) => {
       const { autoEmitEnabled } = parseBody(setFiscalAutoEmitEnabledSchema, req.body);
       const config = await this.fiscalConfigRepository.setAutoEmitEnabled(req.restaurantId!, autoEmitEnabled);
       res.json(200, toPublicView(config));
     });
 
-    application.del('/restaurants/me/fiscal-config', ...operatorAuthenticated, async (req: Request, res: Response) => {
+    application.del('/restaurants/me/fiscal-config', ...configAuthenticated, async (req: Request, res: Response) => {
       await this.fiscalConfigRepository.delete(req.restaurantId!);
       res.send(204);
     });

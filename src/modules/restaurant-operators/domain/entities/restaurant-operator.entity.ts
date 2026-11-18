@@ -47,6 +47,10 @@ export interface IRestaurantOperator {
   photoUrl?: string;
   role: OperatorRole;
   hasFullAccess?: boolean;
+  /** Pedido explícito do usuário (18/11/2026) — grant específico pro grupo "Integrações"
+   * (`requireIntegrationsAccess`), só relevante pra `role: 'gerente'` (o grupo é `dono`-only por
+   * padrão); `hasFullAccess` já concede isso também, sem precisar dos dois juntos. */
+  hasIntegrationsAccess?: boolean;
   isActive: boolean;
   createdAt: Date;
   lastLocation?: IRestaurantOperatorLastLocation;
