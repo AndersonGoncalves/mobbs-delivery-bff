@@ -70,7 +70,8 @@ describe('SupportController - 0181', () => {
 
   it.each([
     { whatsapp: 'abc' }, { commercialWhatsapp: '' }, { financialWhatsapp: '+55 (85)' },
-    { email: 'invalid' }, { email: '' }, { businessHours: ' ' }, { businessHours: 'a'.repeat(501) },
+    { email: 'invalid' }, { email: '' }, { commercialEmail: 'invalid' }, { financialEmail: 'invalid' },
+    { businessHours: ' ' }, { businessHours: 'a'.repeat(501) },
     { trainingPriceCents: -1 }, { trainingPriceCents: 49.9 },
     { trainingUnlimitedItems: 'false' }, { trainingIncludedItems: 1.5 },
     { trainingExtraItemPriceCents: -1 }, { trainingExtraItemPriceCents: Number.MAX_SAFE_INTEGER + 1 },

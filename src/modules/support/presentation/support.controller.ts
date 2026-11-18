@@ -14,6 +14,8 @@ const supportSettingsSchema = z.object({
   commercialWhatsapp: whatsappSchema,
   financialWhatsapp: whatsappSchema,
   email: z.string().trim().max(254).email(),
+  commercialEmail: z.string().trim().max(254).email(),
+  financialEmail: z.string().trim().max(254).email(),
   businessHours: z.string().trim().min(1).max(500),
   trainingPriceCents: centsSchema,
   trainingUnlimitedItems: z.boolean(),

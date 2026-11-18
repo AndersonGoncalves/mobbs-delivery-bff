@@ -10,6 +10,8 @@ export class SupportSettingsMongooseRepository implements ISupportSettingsReposi
       commercialWhatsapp: doc.commercialWhatsapp,
       financialWhatsapp: doc.financialWhatsapp,
       email: doc.email,
+      commercialEmail: doc.commercialEmail ?? DEFAULT_SUPPORT_SETTINGS.commercialEmail,
+      financialEmail: doc.financialEmail ?? DEFAULT_SUPPORT_SETTINGS.financialEmail,
       businessHours: doc.businessHours,
       trainingPriceCents: doc.trainingPriceCents,
       trainingUnlimitedItems: doc.trainingUnlimitedItems,
