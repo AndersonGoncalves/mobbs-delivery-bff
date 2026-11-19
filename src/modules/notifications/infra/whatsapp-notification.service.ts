@@ -91,6 +91,11 @@ export class WhatsAppNotificationService implements IWhatsAppNotificationService
       console.warn(`[whatsapp] pedido ${order.id}: mensagem não enviada — pedido de origem 99Food`);
       return true;
     }
+    // specs/0212-integracao-keeta REQ-7 — mesmo raciocínio do iFood/99Food acima.
+    if (order.source === 'keeta') {
+      console.warn(`[whatsapp] pedido ${order.id}: mensagem não enviada — pedido de origem Keeta`);
+      return true;
+    }
     if (!customer?.phone) {
       console.warn(`[whatsapp] pedido ${order.id}: mensagem não enviada — cliente sem telefone cadastrado`);
       return true;

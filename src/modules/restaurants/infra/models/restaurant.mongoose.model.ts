@@ -231,6 +231,15 @@ const restaurantSchema = new Schema(
     ninetyNineFoodAuthorizationPendingAt: { type: String },
     // specs/0130-integracao-99-entrega.
     ninetyNineFoodEntregaActivatedAt: { type: String },
+    // specs/0212-integracao-keeta — vínculo OAuth2 self-service (`appId`/`appSecret` de nível de
+    // app, fora do schema, em `environment.keeta`).
+    keetaShopId: { type: String },
+    keetaBrandId: { type: String },
+    keetaAccessToken: { type: String },
+    keetaRefreshToken: { type: String },
+    keetaTokenExpiresAt: { type: String },
+    keetaConnectedAt: { type: String },
+    keetaAuthorizationState: { type: String },
     // Pedido explícito do usuário — tempo médio de atendimento mostrado no app do cliente, por
     // modalidade; defaults vindos do exemplo mostrado (40-60min delivery, 20-40min balcão).
     deliveryTimeMinMinutes: { type: Number, required: true, default: 40 },

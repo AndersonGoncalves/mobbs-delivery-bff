@@ -16,6 +16,8 @@ const platformConfigSchema = new Schema(
     mercadoPagoIntegrationEnabled: { type: Boolean, default: false },
     ifoodIntegrationEnabled: { type: Boolean, default: false },
     ninetyNineFoodIntegrationEnabled: { type: Boolean, default: false },
+    // specs/0212-integracao-keeta — mesma mecânica do iFood/99Food acima.
+    keetaIntegrationEnabled: { type: Boolean, default: false },
     // (ajuste 10/11/2026, pedido explícito do usuário) — mesma mecânica/mesmo documento singleton
     // acima, um switch global por app: libera ou não o KDS, a Comanda e o Autoatendimento (totem)
     // na plataforma inteira. Fail-safe igual: ausência = `false`, o app nasce desligado até alguém
@@ -39,6 +41,7 @@ const platformConfigSchema = new Schema(
     mercadoPagoIntegrationEnabledAt: { type: Date },
     ifoodIntegrationEnabledAt: { type: Date },
     ninetyNineFoodIntegrationEnabledAt: { type: Date },
+    keetaIntegrationEnabledAt: { type: Date },
     kdsAppEnabledAt: { type: Date },
     comandaAppEnabledAt: { type: Date },
     totemAppEnabledAt: { type: Date },

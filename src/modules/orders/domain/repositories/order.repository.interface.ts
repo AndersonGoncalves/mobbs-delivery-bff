@@ -17,11 +17,13 @@ export interface NewOrderInput {
   /** specs/0155-app-totem-autoatendimento REQ-14 / specs/0174-pdv-extensao-chrome-lateral REQ-22
    * / specs/0090-integracao-ifood REQ-3 / specs/0122-integracao-99food REQ-4 — ver
    * `IOrder.source`. */
-  source?: 'totem' | 'operador-web' | 'operador-extensao' | 'ifood' | 'comanda' | '99food';
+  source?: 'totem' | 'operador-web' | 'operador-extensao' | 'ifood' | 'comanda' | '99food' | 'keeta';
   /** specs/0122-integracao-99food — ver `IOrder.ninetyNineFoodOrderId`. */
   ninetyNineFoodOrderId?: string;
   /** specs/0130-integracao-99-entrega — ver `IOrder.ninetyNineFoodDeliveryAddress`. */
   ninetyNineFoodDeliveryAddress?: INinetyNineFoodDeliveryAddress;
+  /** specs/0212-integracao-keeta — ver `IOrder.keetaOrderViewId`. */
+  keetaOrderViewId?: string;
   /** specs/0174-pdv-extensao-chrome-lateral REQ-22 — ver `IOrder.operatorId`. */
   operatorId?: string;
   deliveryAddress?: string;
@@ -261,4 +263,9 @@ export interface IOrderRepository {
    * ID) que o webhook `deliveryStatus` manda — diferente de `findByUberDeliveryId`, não precisa
    * do `restaurantId` antes porque `ninetyNineFoodOrderId` já é globalmente único. */
   findByNinetyNineFoodOrderId(orderId: string): Promise<IOrder | null>;
+
+  /** specs/0212-integracao-keeta — resolve o pedido a partir do `keetaOrderViewId`; usado pelo
+   * `KeetaWebhookController` pra deduplicar reentregas do evento `1001` (a Keeta reentrega até
+   * 3x se não receber ACK) antes de criar um `Order` novo. */
+  findByKeetaOrderViewId(orderViewId: string): Promise<IOrder | null>;
 }

@@ -48,6 +48,8 @@ export class PlatformConfigController extends BaseRouter {
         ifoodIntegrationIsNew: isNew(snapshot.ifoodIntegrationEnabled, snapshot.ifoodIntegrationEnabledAt),
         ninetyNineFoodIntegrationEnabled: snapshot.ninetyNineFoodIntegrationEnabled,
         ninetyNineFoodIntegrationIsNew: isNew(snapshot.ninetyNineFoodIntegrationEnabled, snapshot.ninetyNineFoodIntegrationEnabledAt),
+        keetaIntegrationEnabled: snapshot.keetaIntegrationEnabled,
+        keetaIntegrationIsNew: isNew(snapshot.keetaIntegrationEnabled, snapshot.keetaIntegrationEnabledAt),
         kdsAppEnabled: snapshot.kdsAppEnabled,
         kdsAppIsNew: isNew(snapshot.kdsAppEnabled, snapshot.kdsAppEnabledAt),
         comandaAppEnabled: snapshot.comandaAppEnabled,

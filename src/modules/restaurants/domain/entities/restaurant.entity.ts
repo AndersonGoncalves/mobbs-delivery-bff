@@ -431,6 +431,24 @@ export interface IRestaurant {
    * (mesmo `auth_token` acima, sem credencial nova). Habilita o despacho de 99 Entrega pros
    * pedidos de origem `99food` deste restaurante. */
   ninetyNineFoodEntregaActivatedAt?: string;
+  /**
+   * specs/0212-integracao-keeta — vínculo OAuth2 self-service com a API da Keeta. Diferente do
+   * 99Food: `appId`/`appSecret` são credenciais de NÍVEL DE APP (plataforma mobbs, configuradas
+   * uma única vez em `environment.keeta` — nunca por restaurante), e o fluxo é OAuth2 padrão
+   * (não o esquema próprio da 99Food). `keetaAccessToken`/`keetaRefreshToken` nunca devem
+   * aparecer numa resposta de API (ver `toOperatorRestaurant`), mesmo cuidado de
+   * `ninetyNineFoodAuthToken`. `keetaAuthorizationState` guarda o nonce assinado embutido no
+   * `state` do link de autorização gerado (`KeetaAuthService.buildAuthorizationUrl`) — usado pra
+   * casar o callback OAuth2 (`code`/`state`) com o restaurante certo de forma determinística
+   * (diferente do matching FIFO que o 99Food precisa usar), limpo ao conectar ou desconectar.
+   */
+  keetaShopId?: string;
+  keetaBrandId?: string;
+  keetaAccessToken?: string;
+  keetaRefreshToken?: string;
+  keetaTokenExpiresAt?: string;
+  keetaConnectedAt?: string;
+  keetaAuthorizationState?: string;
   /** Pedido explícito do usuário (follow-up) — vínculo OAuth (Facebook Login for Business) da
    * conta Instagram Business do restaurante, mesmo modelo do Mercado Pago acima.
    * `instagramAccessToken` nunca deve aparecer numa resposta de API (ver

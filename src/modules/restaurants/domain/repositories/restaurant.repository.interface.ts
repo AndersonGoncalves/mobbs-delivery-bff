@@ -301,4 +301,37 @@ export interface IRestaurantRepository {
   /** specs/0130-integracao-99-entrega REQ-1 — marca `ninetyNineFoodEntregaActivatedAt` após
    * `Activate Entrega Service` responder com sucesso. */
   activateNinetyNineFoodEntrega(id: string): Promise<IRestaurant>;
+
+  /** specs/0212-integracao-keeta — marca "link de autorização gerado, aguardando o dono
+   * autorizar no site da Keeta" (`KeetaOnboardingController`). `state` é o nonce assinado
+   * embutido na URL de autorização, usado por `findByKeetaAuthorizationState` pra casar o
+   * callback OAuth2 de forma determinística (diferente do FIFO do 99Food). Limpo por
+   * `saveKeetaBinding`/`disconnectKeeta`. */
+  markKeetaAuthorizationPending(id: string, state: string): Promise<IRestaurant>;
+
+  /** specs/0212-integracao-keeta — persiste o resultado da autorização OAuth2
+   * (`KeetaOAuthCallbackController`), ou uma renovação de token
+   * (`KeetaAuthService.ensureFreshAccessToken`). Marca `keetaConnectedAt` só na primeira vez
+   * (preserva a data original numa renovação) e sempre limpa `keetaAuthorizationState`. */
+  saveKeetaBinding(
+    id: string,
+    data: { shopId: string; brandId?: string; accessToken: string; refreshToken: string; tokenExpiresAt: string },
+  ): Promise<IRestaurant>;
+
+  /** specs/0212-integracao-keeta — desvincula a integração (apaga os campos locais; não chama
+   * nenhum endpoint de revogação na API — mesma simplicidade de `disconnectNinetyNineFood`). */
+  disconnectKeeta(id: string): Promise<IRestaurant>;
+
+  /** specs/0212-integracao-keeta — casa o callback OAuth2 (`code`/`state`) recebido com o
+   * restaurante que gerou o link de autorização. `null` se o `state` não corresponder a nenhuma
+   * autorização pendente (expirada, já usada, ou forjada). */
+  findByKeetaAuthorizationState(state: string): Promise<IRestaurant | null>;
+
+  /** specs/0212-integracao-keeta — resolve o restaurante de um webhook `1001` a partir do
+   * `shopId` recebido. `null` se a loja foi desvinculada nesse meio tempo. */
+  findByKeetaShopId(shopId: string): Promise<IRestaurant | null>;
+
+  /** specs/0212-integracao-keeta — webhook `1303` (revogação total da marca pelo lojista):
+   * desconecta todos os restaurantes vinculados a este `brandId`. */
+  disconnectAllByKeetaBrandId(brandId: string): Promise<void>;
 }

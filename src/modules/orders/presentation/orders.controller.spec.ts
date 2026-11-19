@@ -19,6 +19,8 @@ import { IFoodAuthService } from '../../ifood-integration/infra/ifood-auth.servi
 import { IFoodClient } from '../../ifood-integration/infra/ifood-client';
 import { NinetyNineFoodAuthService } from '../../ninety-nine-food-integration/infra/ninety-nine-food-auth.service';
 import { NinetyNineFoodClient } from '../../ninety-nine-food-integration/infra/ninety-nine-food-client';
+import { KeetaAuthService } from '../../keeta-integration/infra/keeta-auth.service';
+import { KeetaClient } from '../../keeta-integration/infra/keeta-client';
 import { CustomerBalanceService } from '../../customer-balance/domain/services/customer-balance.service';
 import { ICustomerBalanceRepository } from '../../customer-balance/domain/repositories/customer-balance.repository.interface';
 import type { IPlatformConfigRepository } from '../../platform-config/domain/platform-config.repository.interface';
@@ -41,6 +43,10 @@ jest.mock('../../ifood-integration/infra/ifood-client');
 // `tryCancelOrderVia99Food`.
 jest.mock('../../ninety-nine-food-integration/infra/ninety-nine-food-auth.service');
 jest.mock('../../ninety-nine-food-integration/infra/ninety-nine-food-client');
+// specs/0212-integracao-keeta — mesmo raciocínio acima, pra `tryConfirmOrderViaKeeta`/
+// `tryCancelOrderViaKeeta`/`tryMarkReadyViaKeeta`.
+jest.mock('../../keeta-integration/infra/keeta-auth.service');
+jest.mock('../../keeta-integration/infra/keeta-client');
 
 type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & {
   user?: { uid: string; email?: string };
@@ -132,6 +138,11 @@ function buildRestaurant(
     ninetyNineFoodAppShopId: string;
     ninetyNineFoodAuthToken: string;
     ninetyNineFoodTokenExpiresAt: string;
+    // specs/0212-integracao-keeta.
+    keetaShopId: string;
+    keetaAccessToken: string;
+    keetaRefreshToken: string;
+    keetaTokenExpiresAt: string;
   }> = {},
 ) {
   return {
@@ -1736,6 +1747,126 @@ describe('OrdersController', () => {
     });
   });
 
+  describe('specs/0212-integracao-keeta REQ-5/REQ-8 — confirmar/cancelar/marcar pronto propaga pra API da Keeta', () => {
+    const MockedKeetaAuthService = KeetaAuthService as jest.MockedClass<typeof KeetaAuthService>;
+    const MockedKeetaClient = KeetaClient as jest.MockedClass<typeof KeetaClient>;
+
+    beforeEach(() => {
+      MockedKeetaAuthService.mockClear();
+      MockedKeetaClient.mockClear();
+      MockedKeetaAuthService.prototype.ensureFreshAccessToken = jest.fn().mockResolvedValue({ accessToken: 'tok-1' });
+      MockedKeetaClient.prototype.confirmOrder = jest.fn().mockResolvedValue(undefined);
+      MockedKeetaClient.prototype.cancelOrder = jest.fn().mockResolvedValue(undefined);
+      MockedKeetaClient.prototype.markReadyForPickup = jest.fn().mockResolvedValue(undefined);
+    });
+
+    it('confirmar um pedido de origem Keeta chama KeetaClient.confirmOrder com keetaOrderViewId (nunca order.id)', async () => {
+      const { restaurantRepository, routes } = setup({
+        orderRepository: {
+          findById: jest.fn().mockResolvedValue(buildOrder({ source: 'keeta', keetaOrderViewId: '756823555555859' })),
+          updateStatus: jest.fn().mockResolvedValue(buildOrder({ source: 'keeta', keetaOrderViewId: '756823555555859', status: 'confirmado' })),
+        },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ keetaShopId: 'shop-1', keetaAccessToken: 'tok-0', keetaRefreshToken: 'ref-0' })) },
+      });
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/status'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'confirmado' } },
+        { json: jest.fn() },
+      );
+
+      expect(MockedKeetaClient.prototype.confirmOrder).toHaveBeenCalledWith('tok-1', 'shop-1', '756823555555859');
+      expect(restaurantRepository.findById).toHaveBeenCalled();
+    });
+
+    it('confirmar um pedido de origem própria (sem source) NÃO chama a Keeta', async () => {
+      const { routes } = setup({ orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ source: undefined })) } });
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/status'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'confirmado' } },
+        { json: jest.fn() },
+      );
+
+      expect(MockedKeetaClient.prototype.confirmOrder).not.toHaveBeenCalled();
+    });
+
+    it('cancelar um pedido de origem Keeta chama KeetaClient.cancelOrder com cancelCode 500000 e o motivo', async () => {
+      const { routes } = setup({
+        orderRepository: {
+          findById: jest.fn().mockResolvedValue(buildOrder({ source: 'keeta', keetaOrderViewId: '756823555555859', status: 'confirmado' })),
+          updateStatus: jest.fn().mockResolvedValue(buildOrder({ source: 'keeta', keetaOrderViewId: '756823555555859', status: 'cancelado' })),
+        },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ keetaShopId: 'shop-1', keetaAccessToken: 'tok-0', keetaRefreshToken: 'ref-0' })) },
+      });
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/cancel'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { reason: 'Produto em falta' } },
+        { json: jest.fn() },
+      );
+
+      expect(MockedKeetaClient.prototype.cancelOrder).toHaveBeenCalledWith('tok-1', 'shop-1', '756823555555859', '500000', 'Produto em falta');
+    });
+
+    it('AC-6: marcar "saiuParaEntrega" (pronto pra retirada) num pedido pickup de origem Keeta chama KeetaClient.markReadyForPickup', async () => {
+      const { routes } = setup({
+        orderRepository: {
+          findById: jest.fn().mockResolvedValue(buildOrder({ source: 'keeta', keetaOrderViewId: '756823555555859', orderType: 'pickup', status: 'emPreparo' })),
+          updateStatus: jest.fn().mockResolvedValue(buildOrder({ source: 'keeta', keetaOrderViewId: '756823555555859', orderType: 'pickup', status: 'saiuParaEntrega' })),
+        },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ keetaShopId: 'shop-1', keetaAccessToken: 'tok-0', keetaRefreshToken: 'ref-0' })) },
+      });
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/status'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'saiuParaEntrega' } },
+        { json: jest.fn() },
+      );
+
+      expect(MockedKeetaClient.prototype.markReadyForPickup).toHaveBeenCalledWith('tok-1', 'shop-1', '756823555555859');
+    });
+
+    it('marcar "saiuParaEntrega" num pedido delivery (não pickup) de origem Keeta NÃO chama markReadyForPickup', async () => {
+      const { routes } = setup({
+        orderRepository: {
+          findById: jest.fn().mockResolvedValue(buildOrder({ source: 'keeta', keetaOrderViewId: '756823555555859', orderType: 'delivery', status: 'emPreparo' })),
+          updateStatus: jest.fn().mockResolvedValue(buildOrder({ source: 'keeta', keetaOrderViewId: '756823555555859', orderType: 'delivery', status: 'saiuParaEntrega' })),
+        },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ keetaShopId: 'shop-1', keetaAccessToken: 'tok-0', keetaRefreshToken: 'ref-0' })) },
+      });
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/status'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'saiuParaEntrega' } },
+        { json: jest.fn() },
+      );
+
+      expect(MockedKeetaClient.prototype.markReadyForPickup).not.toHaveBeenCalled();
+    });
+
+    it('falha ao confirmar na Keeta não impede a confirmação local (erro só logado)', async () => {
+      MockedKeetaClient.prototype.confirmOrder = jest.fn().mockRejectedValue(new Error('Keeta fora do ar'));
+      const { orderRepository, routes } = setup({
+        orderRepository: {
+          findById: jest.fn().mockResolvedValue(buildOrder({ source: 'keeta', keetaOrderViewId: '756823555555859' })),
+          updateStatus: jest.fn().mockResolvedValue(buildOrder({ source: 'keeta', keetaOrderViewId: '756823555555859', status: 'confirmado' })),
+        },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ keetaShopId: 'shop-1', keetaAccessToken: 'tok-0', keetaRefreshToken: 'ref-0' })) },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/status'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'confirmado' } },
+        { json },
+      );
+
+      expect(orderRepository.updateStatus).toHaveBeenCalled();
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ status: 'confirmado' }));
+    });
+  });
+
   it('specs/0013 REQ-2: PATCH .../status dispara o aviso de mudança de status por WhatsApp', async () => {
     const { whatsAppNotificationService, routes } = setup();
 
@@ -2786,6 +2917,7 @@ describe('OrdersController', () => {
         isMercadoPagoIntegrationEnabled: jest.fn().mockResolvedValue(false),
         isIfoodIntegrationEnabled: jest.fn().mockResolvedValue(false),
         isNinetyNineFoodIntegrationEnabled: jest.fn().mockResolvedValue(false),
+      isKeetaIntegrationEnabled: jest.fn().mockResolvedValue(false),
         isKdsAppEnabled: jest.fn().mockResolvedValue(false),
         isComandaAppEnabled: jest.fn().mockResolvedValue(false),
         isTotemAppEnabled: jest.fn().mockResolvedValue(false),

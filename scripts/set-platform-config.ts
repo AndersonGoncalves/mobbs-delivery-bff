@@ -11,6 +11,7 @@
  *                                      um dos dois já é suficiente, não precisa dos dois)
  *   ifoodIntegrationEnabled            menu iFood na retaguarda (visual só, sem enforcement no BFF)
  *   ninetyNineFoodIntegrationEnabled   menu 99Food na retaguarda (visual só, sem enforcement no BFF)
+ *   keetaIntegrationEnabled            menu Keeta na retaguarda (visual só, sem enforcement no BFF)
  *   kdsAppEnabled                      app KDS (mobbs-delivery-kds)
  *   comandaAppEnabled                  app Comanda (mobbs-delivery-comanda)
  *   totemAppEnabled                    app Totem/Autoatendimento (mobbs-delivery-totem) —
@@ -27,6 +28,7 @@
  *   npm run activate:mercadopago-integration
  *   npm run activate:ifood-integration
  *   npm run activate:99food-integration
+ *   npm run activate:keeta-integration
  *   npm run activate:kds-app
  *   npm run activate:comanda-app
  *   npm run activate:totem-app
@@ -50,6 +52,7 @@ const VALID_KEYS = [
   'mercadoPagoIntegrationEnabled',
   'ifoodIntegrationEnabled',
   'ninetyNineFoodIntegrationEnabled',
+  'keetaIntegrationEnabled',
   'kdsAppEnabled',
   'comandaAppEnabled',
   'totemAppEnabled',
@@ -101,6 +104,7 @@ async function main(): Promise<void> {
       mercadoPagoIntegrationEnabled: doc?.mercadoPagoIntegrationEnabled ?? false,
       ifoodIntegrationEnabled: doc?.ifoodIntegrationEnabled ?? false,
       ninetyNineFoodIntegrationEnabled: doc?.ninetyNineFoodIntegrationEnabled ?? false,
+      keetaIntegrationEnabled: doc?.keetaIntegrationEnabled ?? false,
       kdsAppEnabled: doc?.kdsAppEnabled ?? false,
       comandaAppEnabled: doc?.comandaAppEnabled ?? false,
       totemAppEnabled: doc?.totemAppEnabled ?? false,

@@ -123,4 +123,17 @@ export const environment = {
     appId: process.env.NINETY_NINE_FOOD_APP_ID,
     appSecret: process.env.NINETY_NINE_FOOD_APP_SECRET,
   },
+  /** specs/0212-integracao-keeta — mesmo raciocínio do 99Food acima: `appId`/`appSecret` SÃO
+   * credenciais de nível de app (plataforma mobbs, cadastradas no processo de desenvolvedor da
+   * Keeta — `developers.mykeeta.com/#/signup`, NDA/SIT/UAT), nunca por restaurante — o que é por
+   * restaurante é o par `accessToken`/`refreshToken` OAuth2 (`Restaurant.keetaAccessToken`/
+   * `keetaRefreshToken`, obtidos depois da autorização self-service). `redirectUri` precisa ser
+   * registrado junto à Keeta durante o SIT. Ver `docs/KEETA.md`. */
+  keeta: {
+    baseUrl: process.env.KEETA_BASE_URL || 'https://open.mykeeta.com',
+    merchantAuthorizeUrl: process.env.KEETA_MERCHANT_AUTHORIZE_URL || 'https://merchant.mykeeta.com/m/web/openapi/authorize',
+    appId: process.env.KEETA_APP_ID,
+    appSecret: process.env.KEETA_APP_SECRET,
+    redirectUri: process.env.KEETA_REDIRECT_URI,
+  },
 };

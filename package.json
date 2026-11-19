@@ -34,6 +34,7 @@
     "activate:mercadopago-integration": "ts-node --transpile-only scripts/set-platform-config.ts -- --key=mercadoPagoIntegrationEnabled --value=true",
     "activate:ifood-integration": "ts-node --transpile-only scripts/set-platform-config.ts -- --key=ifoodIntegrationEnabled --value=true",
     "activate:99food-integration": "ts-node --transpile-only scripts/set-platform-config.ts -- --key=ninetyNineFoodIntegrationEnabled --value=true",
+    "activate:keeta-integration": "ts-node --transpile-only scripts/set-platform-config.ts -- --key=keetaIntegrationEnabled --value=true",
     "activate:kds-app": "ts-node --transpile-only scripts/set-platform-config.ts -- --key=kdsAppEnabled --value=true",
     "activate:comanda-app": "ts-node --transpile-only scripts/set-platform-config.ts -- --key=comandaAppEnabled --value=true",
     "activate:totem-app": "ts-node --transpile-only scripts/set-platform-config.ts -- --key=totemAppEnabled --value=true",

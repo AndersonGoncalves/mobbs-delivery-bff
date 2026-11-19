@@ -11,31 +11,34 @@ describe('PlatformConfigMongooseRepository (specs/0209-desacoplar-integracoes-cn
   afterEach(() => jest.restoreAllMocks());
 
   // ADR-4 — fail-safe: sem documento (ambiente novo, nunca configurado), o valor efetivo é `false`.
-  it('AC-6: sem documento, isAsaasIntegrationEnabled/isMercadoPagoIntegrationEnabled/isIfoodIntegrationEnabled/isNinetyNineFoodIntegrationEnabled devolvem false', async () => {
+  it('AC-6: sem documento, isAsaasIntegrationEnabled/isMercadoPagoIntegrationEnabled/isIfoodIntegrationEnabled/isNinetyNineFoodIntegrationEnabled/isKeetaIntegrationEnabled devolvem false', async () => {
     mockDoc(null);
     const repository = new PlatformConfigMongooseRepository();
     expect(await repository.isAsaasIntegrationEnabled()).toBe(false);
     expect(await repository.isMercadoPagoIntegrationEnabled()).toBe(false);
     expect(await repository.isIfoodIntegrationEnabled()).toBe(false);
     expect(await repository.isNinetyNineFoodIntegrationEnabled()).toBe(false);
+    expect(await repository.isKeetaIntegrationEnabled()).toBe(false);
   });
 
   it('cada switch de integração reflete só o próprio campo, independente dos outros', async () => {
-    mockDoc({ asaasIntegrationEnabled: true, mercadoPagoIntegrationEnabled: false, ifoodIntegrationEnabled: false, ninetyNineFoodIntegrationEnabled: false });
+    mockDoc({ asaasIntegrationEnabled: true, mercadoPagoIntegrationEnabled: false, ifoodIntegrationEnabled: false, ninetyNineFoodIntegrationEnabled: false, keetaIntegrationEnabled: false });
     const repository = new PlatformConfigMongooseRepository();
     expect(await repository.isAsaasIntegrationEnabled()).toBe(true);
     expect(await repository.isMercadoPagoIntegrationEnabled()).toBe(false);
     expect(await repository.isIfoodIntegrationEnabled()).toBe(false);
     expect(await repository.isNinetyNineFoodIntegrationEnabled()).toBe(false);
+    expect(await repository.isKeetaIntegrationEnabled()).toBe(false);
   });
 
-  it('isMercadoPagoIntegrationEnabled/isIfoodIntegrationEnabled/isNinetyNineFoodIntegrationEnabled também refletem o documento quando ligados', async () => {
-    mockDoc({ asaasIntegrationEnabled: false, mercadoPagoIntegrationEnabled: true, ifoodIntegrationEnabled: true, ninetyNineFoodIntegrationEnabled: true });
+  it('isMercadoPagoIntegrationEnabled/isIfoodIntegrationEnabled/isNinetyNineFoodIntegrationEnabled/isKeetaIntegrationEnabled também refletem o documento quando ligados', async () => {
+    mockDoc({ asaasIntegrationEnabled: false, mercadoPagoIntegrationEnabled: true, ifoodIntegrationEnabled: true, ninetyNineFoodIntegrationEnabled: true, keetaIntegrationEnabled: true });
     const repository = new PlatformConfigMongooseRepository();
     expect(await repository.isAsaasIntegrationEnabled()).toBe(false);
     expect(await repository.isMercadoPagoIntegrationEnabled()).toBe(true);
     expect(await repository.isIfoodIntegrationEnabled()).toBe(true);
     expect(await repository.isNinetyNineFoodIntegrationEnabled()).toBe(true);
+    expect(await repository.isKeetaIntegrationEnabled()).toBe(true);
   });
 
   // (ajuste 10/11/2026, pedido explícito do usuário) — mesmo fail-safe (ADR-4) e mesma
@@ -82,6 +85,8 @@ describe('PlatformConfigMongooseRepository (specs/0209-desacoplar-integracoes-cn
         ifoodIntegrationEnabledAt: undefined,
         ninetyNineFoodIntegrationEnabled: false,
         ninetyNineFoodIntegrationEnabledAt: undefined,
+        keetaIntegrationEnabled: false,
+        keetaIntegrationEnabledAt: undefined,
         kdsAppEnabled: false,
         kdsAppEnabledAt: undefined,
         comandaAppEnabled: false,
