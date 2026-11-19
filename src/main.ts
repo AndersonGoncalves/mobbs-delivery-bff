@@ -156,6 +156,9 @@ import { PlatformController } from './modules/platform/presentation/platform.con
 import { PlatformRestaurantIntegrationsController } from './modules/platform/presentation/platform-restaurant-integrations.controller';
 import { PlatformRestaurantActionsController } from './modules/platform/presentation/platform-restaurant-actions.controller';
 import { PlatformRestaurantOperatorsController } from './modules/platform/presentation/platform-restaurant-operators.controller';
+import { PlatformRestaurantProductsController } from './modules/platform/presentation/platform-restaurant-products.controller';
+import { PlatformRestaurantRawMaterialsController } from './modules/platform/presentation/platform-restaurant-raw-materials.controller';
+import { PlatformRestaurantAdditionalGroupTemplatesController } from './modules/platform/presentation/platform-restaurant-additional-group-templates.controller';
 import { buildPlatformAdminMiddleware, parsePlatformAdminEmails } from './shared/http/platform-admin.middleware';
 import { startPeriodicWorker } from './shared/utils/periodic-worker';
 import { ProspectsController } from './modules/prospects/presentation/prospects.controller';
@@ -636,6 +639,25 @@ server
     // restaurante pela tela de suporte, ver docstring do controller.
     new PlatformRestaurantOperatorsController(
       restaurantOperatorRepository,
+      buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
+    ),
+    // Pedido explícito do usuário (18/11/2026, 3ª leva) — "Produtos" no menu "⋮" de
+    // PlatformRestaurantsPage, ver docstring do controller.
+    new PlatformRestaurantProductsController(
+      new MenuCategoryMongooseRepository(promotionRepository),
+      productRepository,
+      buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
+    ),
+    // Pedido explícito do usuário (18/11/2026, 4ª leva) — "Matéria-prima"/"Grupo de Adicionais"
+    // no menu "⋮" de PlatformRestaurantsPage, ver docstring de cada controller.
+    new PlatformRestaurantRawMaterialsController(
+      rawMaterialRepository,
+      productRepository,
+      buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
+    ),
+    new PlatformRestaurantAdditionalGroupTemplatesController(
+      new AdditionalGroupTemplateMongooseRepository(),
+      productRepository,
       buildPlatformAdminMiddleware(parsePlatformAdminEmails(process.env.PLATFORM_ADMIN_EMAILS)),
     ),
     // specs/0175-cobranca-assinatura-asaas — API do lojista (planos, pagador, Pix, anual) e
