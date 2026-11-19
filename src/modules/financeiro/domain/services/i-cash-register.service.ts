@@ -85,6 +85,14 @@ export interface ICashRegisterService {
    */
   addAutomaticReversalEntry(input: AutomaticCashEntryInput): Promise<void>;
 
+  /**
+   * specs/0214-estorno-sobrepagamento-mesa REQ-2/REQ-8 — troco/estorno parcial de uma comanda de
+   * mesa/balcão (edição que deixou saldo sobre-pago, ou cancelamento com pagamento já recebido).
+   * DIFERENTE de `addAutomaticReversalEntry` acima: SEM dedup própria — pode acontecer mais de
+   * uma vez no mesmo pedido (cada evento é novo).
+   */
+  addPartialRefundEntry(input: AutomaticCashEntryInput): Promise<void>;
+
   /** Garante um movimento para cada pagamento já recebido na sessão aberta. */
   syncOpenSession(restaurantId: string, sessionId?: string): Promise<void>;
 

@@ -11,6 +11,7 @@ import { IRestaurantRepository } from '../../restaurants/domain/repositories/res
 import { IRestaurantOperatorRepository } from '../../restaurant-operators/domain/repositories/restaurant-operator.repository.interface';
 import { StockReservationService } from '../../orders/domain/services/stock-reservation.service';
 import { FiscalEmissionService } from '../../fiscal-integration/domain/services/fiscal-emission.service';
+import { ICashRegisterService } from '../../financeiro/domain/services/i-cash-register.service';
 import { TableServiceController } from './table-service.controller';
 
 type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & {
@@ -54,6 +55,7 @@ describe('TableServiceController', () => {
     restaurantRepository?: Partial<IRestaurantRepository>;
     restaurantOperatorRepository?: Partial<IRestaurantOperatorRepository>;
     fiscalEmissionService?: Partial<FiscalEmissionService>;
+    cashRegisterService?: Partial<ICashRegisterService>;
   } = {}) {
     const tableRepository: Partial<IRestaurantTableRepository> = {
       listByRestaurant: jest.fn().mockResolvedValue([]),
@@ -123,6 +125,16 @@ describe('TableServiceController', () => {
     const fiscalEmissionService: Partial<FiscalEmissionService> | undefined = overrides.fiscalEmissionService
       ? { emitForOrder: jest.fn().mockResolvedValue(undefined), ...overrides.fiscalEmissionService }
       : undefined;
+    // specs/0214-estorno-sobrepagamento-mesa — ausente por padrão (undefined), mesmo raciocínio
+    // já usado pro `fiscalEmissionService` acima: sem o serviço, nenhum estorno é tentado (os
+    // `try*` em `TableOrderService` checam `this.cashRegisterService` antes de chamar).
+    const cashRegisterService: Partial<ICashRegisterService> | undefined = overrides.cashRegisterService
+      ? {
+        addAutomaticEntry: jest.fn().mockResolvedValue(undefined),
+        addPartialRefundEntry: jest.fn().mockResolvedValue(undefined),
+        ...overrides.cashRegisterService,
+      }
+      : undefined;
     const middleware = jest.fn(async () => {});
     const { application, routes } = buildApp();
     new TableServiceController(
@@ -136,10 +148,10 @@ describe('TableServiceController', () => {
       new StockReservationService(productRepository as IProductRepository, rawMaterialRepository, stockMovementRepository as IStockMovementRepository),
       middleware,
       restaurantOperatorRepository as IRestaurantOperatorRepository,
-      undefined,
+      cashRegisterService as ICashRegisterService | undefined,
       fiscalEmissionService as FiscalEmissionService | undefined,
     ).initializeRoutes(application);
-    return { tableRepository, waiterRepository, layoutRepository, orderRepository, customerRepository, productRepository, stockMovementRepository, restaurantOperatorRepository, fiscalEmissionService, routes };
+    return { tableRepository, waiterRepository, layoutRepository, orderRepository, customerRepository, productRepository, stockMovementRepository, restaurantOperatorRepository, fiscalEmissionService, cashRegisterService, routes };
   }
 
   it('permite Caixa e Garçom no atendimento, mas restringe o cadastro de mesas a Dono e Gerente', async () => {
@@ -507,6 +519,213 @@ describe('TableServiceController', () => {
 
     expect(orderRepository.closeTableOrder).not.toHaveBeenCalled();
     expect(fiscalEmissionService!.emitForOrder).not.toHaveBeenCalled();
+  });
+
+  // specs/0214-estorno-sobrepagamento-mesa AC-1/AC-2/AC-4 — remover item que deixaria saldo
+  // sobre-pago exige confirmação; confirmado, aplica e estorna; sem excedente, segue normal.
+  describe('specs/0214-estorno-sobrepagamento-mesa — sobre-pagamento ao reduzir item/ajuste', () => {
+    function buildPaidOrder(overrides: Record<string, unknown> = {}) {
+      return {
+        id: 'o-table', restaurantId: 'r-1', orderType: 'table', tableId: 't-1', status: 'confirmado',
+        items: [{ id: 'i-1', productId: 'p-1', productName: 'Pizza', quantity: 1, unitPrice: 10 }],
+        subtotal: 10, deliveryFee: 0, discount: 0, total: 10, orderNumber: 72, paymentMethod: 'cash',
+        tablePayments: [{ id: 'pay-1', method: 'cash', amount: 10, paidAt: '2026-11-11T00:00:00.000Z', paidBy: 'op-1' }],
+        ...overrides,
+      };
+    }
+
+    it('AC-1: remover item que deixaria saldo pago maior que o novo total responde 409 sem aplicar', async () => {
+      const order = buildPaidOrder();
+      const { orderRepository, cashRegisterService, routes } = setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(order) },
+        cashRegisterService: {},
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/table-orders/:id/items/:itemId/quantity'],
+        { restaurantId: 'r-1', params: { id: 'o-table', itemId: 'i-1' }, body: { quantity: 0, operationId: 'op-remove-1' } },
+        { json, send: jest.fn() },
+      );
+
+      expect(json).toHaveBeenCalledWith(409, { requiresConfirmation: true, alreadyPaid: 10, newTotal: 0, excess: 10 });
+      expect(orderRepository.updateTableOrder).not.toHaveBeenCalled();
+      expect(cashRegisterService!.addPartialRefundEntry).not.toHaveBeenCalled();
+    });
+
+    it('AC-2: confirmado, remove o item e lança o estorno do excedente no caixa', async () => {
+      const order = buildPaidOrder();
+      const { orderRepository, cashRegisterService, routes } = setup({
+        orderRepository: {
+          findById: jest.fn().mockResolvedValue(order),
+          updateTableOrder: jest.fn().mockImplementation(async (_id, _restaurantId, patch) => ({ ...order, ...patch })),
+        },
+        cashRegisterService: {},
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/table-orders/:id/items/:itemId/quantity'],
+        { restaurantId: 'r-1', params: { id: 'o-table', itemId: 'i-1' }, body: { quantity: 0, operationId: 'op-remove-1', confirmed: true } },
+        { json, send: jest.fn() },
+      );
+
+      expect(orderRepository.updateTableOrder).toHaveBeenCalledWith('o-table', 'r-1', expect.objectContaining({ items: [], total: 0 }));
+      expect(cashRegisterService!.addPartialRefundEntry).toHaveBeenCalledWith(expect.objectContaining({
+        restaurantId: 'r-1', orderId: 'o-table', orderNumber: 72, amount: 10, paymentMethod: 'cash',
+      }));
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ total: 0 }));
+    });
+
+    it('AC-4: reduzir sem deixar excedente (saldo pago ainda cabe no novo total) segue normal, sem 409 nem estorno', async () => {
+      const order = buildPaidOrder({
+        items: [{ id: 'i-1', productId: 'p-1', productName: 'Pizza', quantity: 2, unitPrice: 10 }],
+        subtotal: 20, total: 20,
+        tablePayments: [{ id: 'pay-1', method: 'cash', amount: 5, paidAt: '2026-11-11T00:00:00.000Z', paidBy: 'op-1' }],
+      });
+      const { orderRepository, cashRegisterService, routes } = setup({
+        orderRepository: {
+          findById: jest.fn().mockResolvedValue(order),
+          updateTableOrder: jest.fn().mockImplementation(async (_id, _restaurantId, patch) => ({ ...order, ...patch })),
+        },
+        cashRegisterService: {},
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/table-orders/:id/items/:itemId/quantity'],
+        { restaurantId: 'r-1', params: { id: 'o-table', itemId: 'i-1' }, body: { quantity: 1, operationId: 'op-remove-1' } },
+        { json, send: jest.fn() },
+      );
+
+      expect(orderRepository.updateTableOrder).toHaveBeenCalledWith('o-table', 'r-1', expect.objectContaining({ total: 10 }));
+      expect(cashRegisterService!.addPartialRefundEntry).not.toHaveBeenCalled();
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ total: 10 }));
+    });
+
+    // AC-5 — mesmo comportamento do AC-1/AC-2, agora via `updateAdjustments` (desconto).
+    it('AC-5: aplicar desconto que deixaria saldo sobre-pago responde 409; confirmado, aplica e estorna', async () => {
+      const order = buildPaidOrder();
+      const { orderRepository, routes } = setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(order) },
+        cashRegisterService: {},
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/table-orders/:id/adjustments'],
+        { restaurantId: 'r-1', params: { id: 'o-table' }, body: { adjustment: { type: 'discount', mode: 'fixed', value: 5 } } },
+        { json, send: jest.fn() },
+      );
+
+      expect(json).toHaveBeenCalledWith(409, { requiresConfirmation: true, alreadyPaid: 10, newTotal: 5, excess: 5 });
+      expect(orderRepository.updateTableOrder).not.toHaveBeenCalled();
+
+      const json2 = jest.fn();
+      const orderRepository2 = {
+        findById: jest.fn().mockResolvedValue(order),
+        updateTableOrder: jest.fn().mockImplementation(async (_id, _restaurantId, patch) => ({ ...order, ...patch })),
+      };
+      const { cashRegisterService: cashRegisterService2, routes: routes2 } = setup({ orderRepository: orderRepository2, cashRegisterService: {} });
+      await runOperatorChain(
+        routes2['PATCH /restaurants/me/table-orders/:id/adjustments'],
+        { restaurantId: 'r-1', params: { id: 'o-table' }, body: { adjustment: { type: 'discount', mode: 'fixed', value: 5 }, confirmed: true } },
+        { json: json2, send: jest.fn() },
+      );
+
+      expect(orderRepository2.updateTableOrder).toHaveBeenCalledWith('o-table', 'r-1', expect.objectContaining({ total: 5 }));
+      expect(cashRegisterService2!.addPartialRefundEntry).toHaveBeenCalledWith(expect.objectContaining({ amount: 5, orderId: 'o-table' }));
+      expect(json2).toHaveBeenCalledWith(200, expect.objectContaining({ total: 5 }));
+    });
+  });
+
+  // specs/0214-estorno-sobrepagamento-mesa AC-6/AC-7/AC-8/AC-9 — cancelar atendimento de mesa.
+  describe('specs/0214-estorno-sobrepagamento-mesa — cancelar atendimento', () => {
+    it('AC-9: um papel diferente de dono/gerente (ex. garçom) recebe 403 ao tentar cancelar', async () => {
+      const { routes } = setup();
+      const response = { json: jest.fn(), send: jest.fn() };
+
+      await expect(
+        routes['PATCH /restaurants/me/table-orders/:id/cancel'][2]({ operatorRole: 'garcom' as const }, response),
+      ).rejects.toMatchObject({ statusCode: 403 });
+      await expect(
+        routes['PATCH /restaurants/me/table-orders/:id/cancel'][2]({ operatorRole: 'financeiro' as const }, response),
+      ).rejects.toMatchObject({ statusCode: 403 });
+    });
+
+    it('AC-7: cancela mesa sem pagamento — vira cancelado e libera a mesa', async () => {
+      const order = {
+        id: 'o-table', restaurantId: 'r-1', orderType: 'table', tableId: 't-1', status: 'confirmado',
+        items: [{ id: 'i-1', productId: 'p-1', productName: 'Pizza', quantity: 1, unitPrice: 10 }],
+        subtotal: 10, deliveryFee: 0, discount: 0, total: 10, orderNumber: 72, paymentMethod: 'cash', tablePayments: [],
+      };
+      const cancelledOrder = { ...order, status: 'cancelado' };
+      const { tableRepository, orderRepository, cashRegisterService, routes } = setup({
+        orderRepository: {
+          findById: jest.fn().mockResolvedValue(order),
+          updateStatus: jest.fn().mockResolvedValue(cancelledOrder),
+        },
+        cashRegisterService: {},
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/table-orders/:id/cancel'],
+        { restaurantId: 'r-1', user: { uid: 'op-dono' }, params: { id: 'o-table' }, body: { reason: 'Mesa esquecida aberta' } },
+        { json, send: jest.fn() },
+      );
+
+      expect(orderRepository.updateStatus).toHaveBeenCalledWith('o-table', 'cancelado', 'op-dono', 'Mesa esquecida aberta');
+      expect(tableRepository.releaseFromOrder).toHaveBeenCalledWith('t-1', 'r-1', 'o-table');
+      expect(cashRegisterService!.addPartialRefundEntry).not.toHaveBeenCalled();
+      expect(json).toHaveBeenCalledWith(200, cancelledOrder);
+    });
+
+    it('AC-8: cancela mesa com pagamento parcial em dinheiro já registrado — estorna no caixa', async () => {
+      const order = {
+        id: 'o-table', restaurantId: 'r-1', orderType: 'table', tableId: 't-1', status: 'confirmado',
+        items: [{ id: 'i-1', productId: 'p-1', productName: 'Pizza', quantity: 1, unitPrice: 20 }],
+        subtotal: 20, deliveryFee: 0, discount: 0, total: 20, orderNumber: 72, paymentMethod: 'cash',
+        tablePayments: [{ id: 'pay-1', method: 'cash', amount: 15, paidAt: '2026-11-11T00:00:00.000Z', paidBy: 'op-1' }],
+      };
+      const cancelledOrder = { ...order, status: 'cancelado' };
+      const { cashRegisterService, routes } = setup({
+        orderRepository: {
+          findById: jest.fn().mockResolvedValue(order),
+          updateStatus: jest.fn().mockResolvedValue(cancelledOrder),
+        },
+        cashRegisterService: {},
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/table-orders/:id/cancel'],
+        { restaurantId: 'r-1', user: { uid: 'op-dono' }, params: { id: 'o-table' }, body: { reason: 'Cliente desistiu' } },
+        { json, send: jest.fn() },
+      );
+
+      expect(cashRegisterService!.addPartialRefundEntry).toHaveBeenCalledWith(expect.objectContaining({
+        restaurantId: 'r-1', orderId: 'o-table', orderNumber: 72, amount: 15, paymentMethod: 'cash', paymentId: 'pay-1',
+      }));
+      expect(json).toHaveBeenCalledWith(200, cancelledOrder);
+    });
+
+    it('rejeita (400) sem motivo', async () => {
+      const order = {
+        id: 'o-table', restaurantId: 'r-1', orderType: 'table', tableId: 't-1', status: 'confirmado',
+        items: [], subtotal: 0, deliveryFee: 0, discount: 0, total: 0, tablePayments: [],
+      };
+      const { orderRepository, routes } = setup({ orderRepository: { findById: jest.fn().mockResolvedValue(order) } });
+
+      await expect(
+        runOperatorChain(
+          routes['PATCH /restaurants/me/table-orders/:id/cancel'],
+          { restaurantId: 'r-1', user: { uid: 'op-dono' }, params: { id: 'o-table' }, body: {} },
+          { json: jest.fn(), send: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 400 });
+      expect(orderRepository.updateStatus).not.toHaveBeenCalled();
+    });
   });
 
   // specs/0202-emissao-fiscal-pedidos-mesa AC-4 — pedido de Balcão (orderType: 'table', sem

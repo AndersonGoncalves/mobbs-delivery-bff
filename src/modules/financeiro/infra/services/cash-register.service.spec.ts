@@ -241,6 +241,50 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
     });
   });
 
+  describe('addPartialRefundEntry (specs/0214-estorno-sobrepagamento-mesa REQ-2/REQ-8)', () => {
+    it('lança um movimento de saída (troco a devolver) vinculado ao pedido', async () => {
+      const { cashRegisterRepository, service } = setup();
+
+      await service.addPartialRefundEntry({ restaurantId: 'r-1', orderId: 'o-1', orderNumber: 72, amount: 9, paymentMethod: 'cash' });
+
+      expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-1', expect.objectContaining({
+        type: 'saida',
+        amount: 9,
+        orderId: 'o-1',
+        paymentMethod: 'cash',
+        description: 'Troco a devolver - Mesa/balcão #72 (Dinheiro)',
+      }));
+    });
+
+    it('DIFERENTE de addAutomaticReversalEntry — não tem dedup própria, pode estornar o mesmo pedido mais de uma vez', async () => {
+      const { cashRegisterRepository, service } = setup({
+        cashRegisterRepository: {
+          listMovements: jest.fn().mockResolvedValue([
+            { id: 'mv-1', cashRegisterSessionId: 'cr-1', type: 'saida', amount: 5, description: 'Troco a devolver - Mesa/balcão #1 (Dinheiro)', orderId: 'o-1', createdAt: '2026-09-09T09:00:00.000Z' },
+          ]),
+        },
+      });
+
+      await service.addPartialRefundEntry({ restaurantId: 'r-1', orderId: 'o-1', orderNumber: 1, amount: 3, paymentMethod: 'cash' });
+
+      expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-1', expect.objectContaining({ type: 'saida', amount: 3, orderId: 'o-1' }));
+    });
+
+    it('abre uma sessão nova (primeira venda do dia) se precisar', async () => {
+      const { cashRegisterRepository, service } = setup({
+        cashRegisterRepository: {
+          findOpenSessionByRestaurant: jest.fn().mockResolvedValue(null),
+          findSessionByDate: jest.fn().mockResolvedValue(null),
+          open: jest.fn().mockResolvedValue(buildSession({ id: 'cr-nova' })),
+        },
+      });
+
+      await service.addPartialRefundEntry({ restaurantId: 'r-1', orderId: 'o-1', orderNumber: 1, amount: 9, paymentMethod: 'cash' });
+
+      expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-nova', expect.objectContaining({ type: 'saida', orderId: 'o-1' }));
+    });
+  });
+
   describe('ensureAutomaticSchedule (specs/0118 REQ-3/REQ-4/REQ-6)', () => {
     const MONDAY_9AM_BRT = new Date('2026-10-12T12:00:00.000Z'); // segunda, 09:00 em Brasília (UTC-3)
     const MONDAY_11PM_BRT = new Date('2026-10-13T02:00:00.000Z'); // segunda, 23:00 em Brasília

@@ -360,6 +360,7 @@ describe('OrdersController', () => {
     const cashRegisterService: ICashRegisterService = {
       addAutomaticEntry: jest.fn().mockResolvedValue(undefined),
       addAutomaticReversalEntry: jest.fn().mockResolvedValue(undefined),
+      addPartialRefundEntry: jest.fn().mockResolvedValue(undefined),
       syncOpenSession: jest.fn().mockResolvedValue(undefined),
       ensureAutomaticSchedule: jest.fn().mockResolvedValue(undefined),
       getBalanceByPaymentMethod: jest.fn().mockResolvedValue({}),

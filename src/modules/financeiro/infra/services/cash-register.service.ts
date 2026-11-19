@@ -129,6 +129,46 @@ export class CashRegisterService implements ICashRegisterService {
     });
   }
 
+  /**
+   * specs/0214-estorno-sobrepagamento-mesa REQ-2/REQ-8 — troco/estorno parcial de uma comanda de
+   * mesa/balcão, DIFERENTE de `addAutomaticReversalEntry` acima: aquele é pro cancelamento
+   * INTEIRO de um pedido (dedup única por `orderId`, nunca repete); este pode acontecer mais de
+   * uma vez no mesmo pedido (cada edição que gera excedente, ou cada pagamento estornado num
+   * cancelamento com mais de um `tablePayment`, é um evento novo) — por isso SEM dedup, confiando
+   * em quem chama (`TableOrderService`) pra nunca chamar duas vezes pelo mesmo evento. Mesma
+   * busca/abertura de sessão de `addAutomaticEntry` (nunca fica sem caixa pra entrar, mesmo numa
+   * sessão já fechada — cai como lançamento tardio, igual qualquer outro).
+   */
+  async addPartialRefundEntry(input: AutomaticCashEntryInput): Promise<void> {
+    if (!(input.amount > 0)) return;
+    await this.ensureAutomaticSchedule(input.restaurantId);
+    const openSession = await this.cashRegisterRepository.findOpenSessionByRestaurant(input.restaurantId);
+    if (openSession) {
+      await this.recordPartialRefundEntry(openSession.id, input);
+      return;
+    }
+    const todaySession = await this.cashRegisterRepository.findSessionByDate(input.restaurantId, cashRegisterDate());
+    if (todaySession) {
+      await this.recordPartialRefundEntry(todaySession.id, input);
+      return;
+    }
+    const session = await this.openSessionForFirstSale(input.restaurantId);
+    if (!session) return;
+    await this.recordPartialRefundEntry(session.id, input);
+  }
+
+  private async recordPartialRefundEntry(sessionId: string, input: AutomaticCashEntryInput): Promise<void> {
+    const methodLabel = PAYMENT_LABEL[input.paymentMethod] ?? input.paymentMethod;
+    await this.cashRegisterRepository.addMovement(sessionId, {
+      type: 'saida',
+      amount: input.amount,
+      description: `Troco a devolver - Mesa/balcão #${input.orderNumber} (${methodLabel})`,
+      orderId: input.orderId,
+      paymentMethod: input.paymentMethod,
+      paymentId: input.paymentId,
+    });
+  }
+
   private async openSessionForFirstSale(restaurantId: string): Promise<{ id: string } | null> {
     try {
       return await this.cashRegisterRepository.open(restaurantId, 0, AUTOMATIC_ACTOR, true);
