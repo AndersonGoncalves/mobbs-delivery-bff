@@ -15,8 +15,10 @@ type AsyncHandler = (req: Request, res: Response) => Promise<void>;
  * `createdAt` adicionado em specs/0203-pendencias-fiscais-entregues-fechados REQ-1 — necessário
  * pro frontend não marcar como "pendência fiscal" um pedido entregue antes da integração
  * existir.
- * `autoEmitEnabled` adicionado em specs/0204-controle-emissao-fiscal-automatica REQ-5. */
-function toPublicView(
+ * `autoEmitEnabled` adicionado em specs/0204-controle-emissao-fiscal-automatica REQ-5.
+ * Exportado (18/11/2026) — reaproveitado por `PlatformRestaurantIntegrationsController` (mesma
+ * mascara pra quando o suporte da plataforma lê a config de qualquer restaurante). */
+export function toPublicView(
   config: { restaurantId: string; environment: string; documentType: string; productionEnabled: boolean; autoEmitEnabled: boolean; cnpj: string; taxRegime?: string; createdAt: string } | null,
 ) {
   if (!config) return { connected: false };
@@ -47,10 +49,22 @@ export class FiscalConfigController extends BaseRouter {
   }
 
   initializeRoutes(application: Server): void {
+    // Pedido explícito do usuário (18/11/2026) — só a CONFIGURAÇÃO (conectar/trocar token/
+    // produção/emissão automática/desconectar) é `dono`-only (gerente com acesso total também
+    // passa, via `requireOperatorRole`); a LEITURA (`GET`) continua liberada a qualquer dono/
+    // gerente — é consumida também por telas operacionais que não têm nada a ver com a página de
+    // configuração (ex. `ClosedOrdersPanel`/`OrdersKanbanBoard` decidindo se mostram "Reemitir
+    // nota fiscal", `AppShell` decidindo se mostra o relatório "Notas Fiscais") — restringir o
+    // GET quebraria essas telas pra qualquer gerente, não só a página de configuração.
     const operatorAuthenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,
       requireOperatorRole('dono', 'gerente'),
+    ];
+    const configAuthenticated: AsyncHandler[] = [
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('dono'),
     ];
 
     application.get('/restaurants/me/fiscal-config', ...operatorAuthenticated, async (req: Request, res: Response) => {
@@ -58,7 +72,7 @@ export class FiscalConfigController extends BaseRouter {
       res.json(200, toPublicView(config));
     });
 
-    application.put('/restaurants/me/fiscal-config', ...operatorAuthenticated, async (req: Request, res: Response) => {
+    application.put('/restaurants/me/fiscal-config', ...configAuthenticated, async (req: Request, res: Response) => {
       const input = parseBody(saveFiscalConfigSchema, req.body);
       const config = await this.fiscalConfigRepository.upsert(req.restaurantId!, input);
       res.json(200, toPublicView(config));
@@ -66,7 +80,7 @@ export class FiscalConfigController extends BaseRouter {
 
     // "Botão de ativar produção" (`plan.md`) — ação deliberadamente separada do PUT geral acima,
     // nunca ligada de volta sozinha ao trocar token/ambiente.
-    application.put('/restaurants/me/fiscal-config/production', ...operatorAuthenticated, async (req: Request, res: Response) => {
+    application.put('/restaurants/me/fiscal-config/production', ...configAuthenticated, async (req: Request, res: Response) => {
       const { productionEnabled } = parseBody(setFiscalProductionEnabledSchema, req.body);
       const config = await this.fiscalConfigRepository.setProductionEnabled(req.restaurantId!, productionEnabled);
       res.json(200, toPublicView(config));
@@ -75,13 +89,13 @@ export class FiscalConfigController extends BaseRouter {
     // "Botão" irmão do de produção acima (specs/0204-controle-emissao-fiscal-automatica) —
     // desligado, `FiscalEmissionService.emitForOrder` vira no-op; reemissão manual continua
     // funcionando normalmente (nunca checa este campo).
-    application.put('/restaurants/me/fiscal-config/auto-emit', ...operatorAuthenticated, async (req: Request, res: Response) => {
+    application.put('/restaurants/me/fiscal-config/auto-emit', ...configAuthenticated, async (req: Request, res: Response) => {
       const { autoEmitEnabled } = parseBody(setFiscalAutoEmitEnabledSchema, req.body);
       const config = await this.fiscalConfigRepository.setAutoEmitEnabled(req.restaurantId!, autoEmitEnabled);
       res.json(200, toPublicView(config));
     });
 
-    application.del('/restaurants/me/fiscal-config', ...operatorAuthenticated, async (req: Request, res: Response) => {
+    application.del('/restaurants/me/fiscal-config', ...configAuthenticated, async (req: Request, res: Response) => {
       await this.fiscalConfigRepository.delete(req.restaurantId!);
       res.send(204);
     });

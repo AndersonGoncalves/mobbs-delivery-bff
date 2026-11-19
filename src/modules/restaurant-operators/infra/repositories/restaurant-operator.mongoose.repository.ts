@@ -14,6 +14,8 @@ interface RestaurantOperatorLeanDocument {
   isActive: boolean;
   createdAt: Date;
   lastLocation?: { lat: number; lng: number; updatedAt: Date };
+  lastAdminActionByEmail?: string;
+  lastAdminActionAt?: Date;
 }
 
 function toEntity(doc: RestaurantOperatorLeanDocument): IRestaurantOperator {
@@ -33,6 +35,8 @@ function toEntity(doc: RestaurantOperatorLeanDocument): IRestaurantOperator {
     isActive: doc.isActive,
     createdAt: doc.createdAt,
     lastLocation: doc.lastLocation,
+    lastAdminActionByEmail: doc.lastAdminActionByEmail,
+    lastAdminActionAt: doc.lastAdminActionAt,
   };
 }
 
@@ -118,5 +122,9 @@ export class RestaurantOperatorMongooseRepository implements IRestaurantOperator
 
   async updateLastLocation(id: string, lat: number, lng: number): Promise<void> {
     await RestaurantOperatorModel.findByIdAndUpdate(id, { $set: { lastLocation: { lat, lng, updatedAt: new Date() } } });
+  }
+
+  async recordAdminAction(id: string, adminEmail: string): Promise<void> {
+    await RestaurantOperatorModel.findByIdAndUpdate(id, { $set: { lastAdminActionByEmail: adminEmail, lastAdminActionAt: new Date() } });
   }
 }

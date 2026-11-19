@@ -7,13 +7,17 @@ import { parseBody } from '../../../shared/http/validate';
 import type { ISupportSettingsRepository } from '../domain/support-settings';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
-const whatsappSchema = z.string().trim().regex(/^[1-9]\d{9,14}$/, 'Informe WhatsApp com DDI e DDD, somente números');
+// Pedido explícito do usuário (18/11/2026) — sem DDI (é sempre Brasil, "55" completado só na
+// hora de montar o link `wa.me` no web); aqui só DDD + número (10 ou 11 dígitos).
+const whatsappSchema = z.string().trim().regex(/^[1-9]\d{9,10}$/, 'Informe WhatsApp com DDD, somente números');
 const centsSchema = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const supportSettingsSchema = z.object({
   whatsapp: whatsappSchema,
   commercialWhatsapp: whatsappSchema,
   financialWhatsapp: whatsappSchema,
   email: z.string().trim().max(254).email(),
+  commercialEmail: z.string().trim().max(254).email(),
+  financialEmail: z.string().trim().max(254).email(),
   businessHours: z.string().trim().min(1).max(500),
   trainingPriceCents: centsSchema,
   trainingUnlimitedItems: z.boolean(),

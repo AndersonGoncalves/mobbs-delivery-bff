@@ -31,6 +31,12 @@ const restaurantOperatorSchema = new Schema(
       type: new Schema({ lat: { type: Number, required: true }, lng: { type: Number, required: true }, updatedAt: { type: Date, required: true } }, { _id: false }),
       required: false,
     },
+    // Pedido explícito do usuário (18/11/2026) — tela de suporte da plataforma: controla quem
+    // loga na retaguarda do cliente, então fica registrado quando uma mudança veio de lá (admin
+    // da plataforma), nunca das rotas normais do próprio restaurante (`restaurant-operators.
+    // controller.ts` nunca grava estes dois campos).
+    lastAdminActionByEmail: { type: String },
+    lastAdminActionAt: { type: Date },
   },
   { _id: false, timestamps: { createdAt: true, updatedAt: false } },
 );

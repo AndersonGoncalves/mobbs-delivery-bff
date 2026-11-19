@@ -31,7 +31,7 @@ export class NinetyNineFoodOnboardingController extends BaseRouter {
     const operatorAuthenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,
-      requireOperatorRole('dono', 'gerente'),
+      requireOperatorRole('dono'),
     ];
 
     application.post('/restaurants/me/99food/authorize-link', ...operatorAuthenticated, async (req: Request, res: Response) => {

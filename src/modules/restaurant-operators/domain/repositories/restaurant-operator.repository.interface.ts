@@ -46,4 +46,7 @@ export interface IRestaurantOperatorRepository {
   /** specs/0198-rastreamento-motoboy-tempo-real REQ-2 — sobrescreve `lastLocation` (sem
    * histórico); `updatedAt` é sempre o momento do `update`, nunca aceito de fora. */
   updateLastLocation(id: string, lat: number, lng: number): Promise<void>;
+  /** Pedido explícito do usuário (18/11/2026) — chamado pela tela de suporte da plataforma logo
+   * depois de criar/editar/remover um operador por lá, pra registrar quem mexeu. */
+  recordAdminAction(id: string, adminEmail: string): Promise<void>;
 }

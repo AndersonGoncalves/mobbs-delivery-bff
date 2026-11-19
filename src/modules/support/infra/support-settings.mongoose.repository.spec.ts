@@ -27,6 +27,17 @@ describe('SupportSettingsMongooseRepository - 0181', () => {
     expect(result).not.toHaveProperty('createdAt');
   });
 
+  it('documento antigo sem commercialEmail/financialEmail cai pro default (18/11/2026)', async () => {
+    const query = SupportSettingsModel.findById(SUPPORT_SETTINGS_SINGLETON_ID);
+    const { commercialEmail: _commercialEmail, financialEmail: _financialEmail, ...legacy } = DEFAULT_SUPPORT_SETTINGS;
+    const doc = new SupportSettingsModel({ _id: 'singleton', ...legacy });
+    jest.spyOn(query, 'lean').mockResolvedValue(doc.toObject());
+    jest.spyOn(SupportSettingsModel, 'findById').mockReturnValue(query);
+    const result = await new SupportSettingsMongooseRepository().get();
+    expect(result.commercialEmail).toBe(DEFAULT_SUPPORT_SETTINGS.commercialEmail);
+    expect(result.financialEmail).toBe(DEFAULT_SUPPORT_SETTINGS.financialEmail);
+  });
+
   it('faz upsert validado sempre no mesmo singleton', async () => {
     const update = jest.spyOn(SupportSettingsModel, 'findByIdAndUpdate').mockResolvedValue(null);
     const result = await new SupportSettingsMongooseRepository().update({ ...DEFAULT_SUPPORT_SETTINGS });

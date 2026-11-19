@@ -10,6 +10,11 @@ const supportSettingsSchema = new Schema<SupportSettings & { _id: string }>(
     commercialWhatsapp: { type: String, required: true },
     financialWhatsapp: { type: String, required: true },
     email: { type: String, required: true },
+    // Pedido explícito do usuário (18/11/2026) — `required: false` porque o documento singleton já
+    // existente em produção não tem estes dois campos ainda; `get()` no repositório cobre o
+    // fallback pro default até a próxima vez que alguém salvar o formulário.
+    commercialEmail: { type: String, required: false },
+    financialEmail: { type: String, required: false },
     businessHours: { type: String, required: true },
     trainingPriceCents: { type: Number, required: true, min: 0 },
     trainingUnlimitedItems: { type: Boolean, required: true },

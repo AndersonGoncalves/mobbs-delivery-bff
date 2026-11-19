@@ -197,6 +197,16 @@ export interface IRestaurantRepository {
     },
   ): Promise<IRestaurant>;
 
+  /** Pedido explícito do usuário (18/11/2026) — suporte da plataforma (`PlatformRestaurant
+   * IntegrationsController`) sobrescrevendo manualmente as credenciais técnicas de uma subconta
+   * Asaas já existente (ex. chave rotacionada direto no painel do Asaas), sem os dados
+   * comerciais de `saveAsaasSubaccount` (nome/CPF/endereço etc. — suporte não tem, nem precisa
+   * alterar, só o técnico). */
+  adminOverrideAsaasCredentials(
+    id: string,
+    data: { asaasAccountId: string; asaasWalletId: string; asaasApiKey: string; asaasWebhookToken: string },
+  ): Promise<IRestaurant>;
+
   /** Achado real (pedido explícito do usuário) — "desvincular" só pausa
    * (`onlinePaymentsEnabled: false`), NUNCA apaga `asaasAccountId`/`asaasApiKey`/etc. — a
    * subconta continua existindo no Asaas, e apagar essas credenciais impediria reconectar sem

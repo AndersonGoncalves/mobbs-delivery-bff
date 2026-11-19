@@ -20,7 +20,9 @@ type AsyncHandler = (req: Request, res: Response) => Promise<void>;
  * atualiza (nenhum webhook chega), testado documentado como pendência em
  * `docs/contas-de-integracao/uber-direct.md` §4 (agora corrigida).
  */
-function toPublicView(config: { restaurantId: string; customerId: string; clientId: string; originZipCode: string; webhookToken: string } | null) {
+// Exportado (18/11/2026) — reaproveitado por `PlatformRestaurantIntegrationsController` (mesma
+// mascara pra quando o suporte da plataforma lê a config de qualquer restaurante).
+export function toPublicView(config: { restaurantId: string; customerId: string; clientId: string; originZipCode: string; webhookToken: string } | null) {
   if (!config) return { connected: false };
   return {
     connected: true,
@@ -45,10 +47,20 @@ export class UberDeliveryConfigController extends BaseRouter {
   }
 
   initializeRoutes(application: Server): void {
+    // Pedido explícito do usuário (18/11/2026) — mesma divisão de `FiscalConfigController`: só a
+    // CONFIGURAÇÃO é `dono`-only (gerente com acesso total também passa, via
+    // `requireOperatorRole`); a LEITURA (`GET`) continua liberada a qualquer dono/gerente —
+    // consumida também por `OrderCard.tsx`/`OrdersKanbanBoard.tsx` pra decidir se mostram
+    // "Despachar Uber", sem relação com a página de configuração.
     const operatorAuthenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,
       requireOperatorRole('dono', 'gerente'),
+    ];
+    const configAuthenticated: AsyncHandler[] = [
+      firebaseAuthMiddleware,
+      this.restaurantOperatorMiddleware,
+      requireOperatorRole('dono'),
     ];
 
     application.get('/restaurants/me/uber-delivery-config', ...operatorAuthenticated, async (req: Request, res: Response) => {
@@ -56,13 +68,13 @@ export class UberDeliveryConfigController extends BaseRouter {
       res.json(200, toPublicView(config));
     });
 
-    application.put('/restaurants/me/uber-delivery-config', ...operatorAuthenticated, async (req: Request, res: Response) => {
+    application.put('/restaurants/me/uber-delivery-config', ...configAuthenticated, async (req: Request, res: Response) => {
       const input = parseBody(saveUberDeliveryConfigSchema, req.body);
       const config = await this.uberDeliveryConfigRepository.upsert(req.restaurantId!, input);
       res.json(200, toPublicView(config));
     });
 
-    application.del('/restaurants/me/uber-delivery-config', ...operatorAuthenticated, async (req: Request, res: Response) => {
+    application.del('/restaurants/me/uber-delivery-config', ...configAuthenticated, async (req: Request, res: Response) => {
       await this.uberDeliveryConfigRepository.delete(req.restaurantId!);
       res.send(204);
     });

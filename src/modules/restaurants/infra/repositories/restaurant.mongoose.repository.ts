@@ -442,6 +442,20 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
     return toEntity(doc as RestaurantLeanDocument);
   }
 
+  // Pedido explícito do usuário (18/11/2026) — override de suporte (plataforma), só os campos
+  // técnicos, sem mexer em `asaasSubaccountData` (ver interface).
+  async adminOverrideAsaasCredentials(
+    id: string,
+    data: { asaasAccountId: string; asaasWalletId: string; asaasApiKey: string; asaasWebhookToken: string },
+  ): Promise<IRestaurant> {
+    const doc = await RestaurantModel.findByIdAndUpdate(
+      id,
+      { $set: { ...data, onlinePaymentsEnabled: true } },
+      { new: true },
+    ).lean<RestaurantLeanDocument>();
+    return toEntity(doc as RestaurantLeanDocument);
+  }
+
   // Achado real (pedido explícito do usuário) — reconecta uma subconta que já existe (tem
   // `asaasAccountId` salvo) sem chamar o Asaas de novo — usado quando o operador "ativa" de novo
   // depois de ter "desvinculado" antes, mesmo CPF/e-mail de sempre. Salva `subaccountData`

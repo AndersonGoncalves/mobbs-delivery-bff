@@ -36,7 +36,7 @@ export class MercadoPagoOAuthController extends BaseRouter {
     const operatorAuthenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,
-      requireOperatorRole('dono', 'gerente'),
+      requireOperatorRole('dono'),
     ];
 
     application.get('/restaurants/me/mercadopago/config', ...operatorAuthenticated, async (_req: Request, res: Response) => {

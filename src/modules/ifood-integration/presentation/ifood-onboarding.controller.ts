@@ -28,7 +28,7 @@ export class IFoodOnboardingController extends BaseRouter {
     const operatorAuthenticated: AsyncHandler[] = [
       firebaseAuthMiddleware,
       this.restaurantOperatorMiddleware,
-      requireOperatorRole('dono', 'gerente'),
+      requireOperatorRole('dono'),
     ];
 
     application.post('/restaurants/me/ifood/credentials', ...operatorAuthenticated, async (req: Request, res: Response) => {
