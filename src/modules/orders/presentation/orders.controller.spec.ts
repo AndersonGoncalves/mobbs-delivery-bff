@@ -359,6 +359,7 @@ describe('OrdersController', () => {
     };
     const cashRegisterService: ICashRegisterService = {
       addAutomaticEntry: jest.fn().mockResolvedValue(undefined),
+      addAutomaticReversalEntry: jest.fn().mockResolvedValue(undefined),
       syncOpenSession: jest.fn().mockResolvedValue(undefined),
       ensureAutomaticSchedule: jest.fn().mockResolvedValue(undefined),
       getBalanceByPaymentMethod: jest.fn().mockResolvedValue({}),
@@ -1882,11 +1883,11 @@ describe('OrdersController', () => {
     );
   });
 
-  it('specs/0014-financeiro REQ-5: PATCH .../status pra "entregue" chama CashRegisterService com os dados do pedido', async () => {
+  it('specs/0014-financeiro REQ-5: PATCH .../status pra "entregue" chama CashRegisterService com os dados do pedido (forma de pagamento diferente de Pix)', async () => {
     const { cashRegisterService, routes } = setup({
       orderRepository: {
-        findById: jest.fn().mockResolvedValue(buildOrder({ status: 'saiuParaEntrega', paymentMethod: 'pix' })),
-        updateStatus: jest.fn().mockResolvedValue(buildOrder({ status: 'entregue', paymentMethod: 'pix' })),
+        findById: jest.fn().mockResolvedValue(buildOrder({ status: 'saiuParaEntrega', paymentMethod: 'cash' })),
+        updateStatus: jest.fn().mockResolvedValue(buildOrder({ status: 'entregue', paymentMethod: 'cash' })),
       },
     });
 
@@ -1901,16 +1902,59 @@ describe('OrdersController', () => {
       orderId: 'o-1',
       orderNumber: 1,
       amount: 30,
-      paymentMethod: 'pix',
+      paymentMethod: 'cash',
     });
   });
 
-  it('specs/0014-financeiro REQ-5: PATCH .../status pra um status que não é "entregue" nunca chama CashRegisterService', async () => {
+  it('specs/0014-financeiro REQ-5: PATCH .../status pra um status que não é "entregue" nunca chama CashRegisterService (forma não-Pix)', async () => {
     const { cashRegisterService, routes } = setup();
 
     await runOperatorChain(
       routes['PATCH /restaurants/me/orders/:id/status'],
       { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'confirmado' } },
+      { json: jest.fn() },
+    );
+
+    expect(cashRegisterService.addAutomaticEntry).not.toHaveBeenCalled();
+  });
+
+  // specs/0213-caixa-pix-na-confirmacao REQ-1/REQ-2 — AC-1/AC-2: Pix lança no caixa em
+  // "confirmado" (o dinheiro já está na conta do restaurante desde a confirmação), não mais em
+  // "entregue"; chegar em "entregue" depois não lança de novo.
+  it('specs/0213 AC-1: PATCH .../status pra "confirmado" com Pix chama CashRegisterService com os dados do pedido', async () => {
+    const { cashRegisterService, routes } = setup({
+      orderRepository: {
+        findById: jest.fn().mockResolvedValue(buildOrder({ status: 'aguardandoConfirmacao', paymentMethod: 'pix' })),
+        updateStatus: jest.fn().mockResolvedValue(buildOrder({ status: 'confirmado', paymentMethod: 'pix' })),
+      },
+    });
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/status'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'confirmado' } },
+      { json: jest.fn() },
+    );
+
+    expect(cashRegisterService.addAutomaticEntry).toHaveBeenCalledWith({
+      restaurantId: 'r-1',
+      orderId: 'o-1',
+      orderNumber: 1,
+      amount: 30,
+      paymentMethod: 'pix',
+    });
+  });
+
+  it('specs/0213 AC-2: PATCH .../status pra "entregue" com Pix NÃO chama CashRegisterService de novo (já lançou em "confirmado")', async () => {
+    const { cashRegisterService, routes } = setup({
+      orderRepository: {
+        findById: jest.fn().mockResolvedValue(buildOrder({ status: 'saiuParaEntrega', paymentMethod: 'pix' })),
+        updateStatus: jest.fn().mockResolvedValue(buildOrder({ status: 'entregue', paymentMethod: 'pix' })),
+      },
+    });
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/status'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'entregue' } },
       { json: jest.fn() },
     );
 
@@ -2070,6 +2114,83 @@ describe('OrdersController', () => {
       { json: jest.fn() },
     );
     expect(orderRepository.updateStatus).toHaveBeenCalledWith('o-1', 'cancelado', 'r-1', 'Cliente desistiu');
+  });
+
+  // specs/0213-caixa-pix-na-confirmacao REQ-3/REQ-4/REQ-5 — AC-3/AC-4/AC-5: estorna o movimento
+  // automático de caixa só quando o pedido Pix já tinha passado por "confirmado" (onde já tem um
+  // lançamento de entrada); cancelar ainda "aguardandoConfirmacao" ou com outra forma de
+  // pagamento nunca estorna, porque nunca existiu lançamento nenhum nesses dois casos.
+  it.each(['confirmado', 'emPreparo', 'saiuParaEntrega'] as const)(
+    'specs/0213 AC-3: cancelar pedido Pix em "%s" lança o estorno do caixa',
+    async (status) => {
+      const { cashRegisterService, routes } = setup({
+        orderRepository: {
+          findById: jest.fn().mockResolvedValue(buildOrder({ status, paymentMethod: 'pix' })),
+        },
+      });
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/cancel'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { reason: 'Cliente desistiu' } },
+        { json: jest.fn() },
+      );
+
+      expect(cashRegisterService.addAutomaticReversalEntry).toHaveBeenCalledWith({
+        restaurantId: 'r-1',
+        orderId: 'o-1',
+        orderNumber: 1,
+        amount: 30,
+        paymentMethod: 'pix',
+      });
+    },
+  );
+
+  it('specs/0213 AC-4: cancelar pedido Pix ainda "aguardandoConfirmacao" NÃO lança estorno (nunca existiu lançamento)', async () => {
+    const { cashRegisterService, routes } = setup({
+      orderRepository: {
+        findById: jest.fn().mockResolvedValue(buildOrder({ status: 'aguardandoConfirmacao', paymentMethod: 'pix' })),
+      },
+    });
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/cancel'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { reason: 'Cliente desistiu' } },
+      { json: jest.fn() },
+    );
+
+    expect(cashRegisterService.addAutomaticReversalEntry).not.toHaveBeenCalled();
+  });
+
+  it('specs/0213 AC-5: cancelar pedido confirmado com forma de pagamento diferente de Pix NÃO lança estorno', async () => {
+    const { cashRegisterService, routes } = setup({
+      orderRepository: {
+        findById: jest.fn().mockResolvedValue(buildOrder({ status: 'confirmado', paymentMethod: 'cash' })),
+      },
+    });
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/cancel'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { reason: 'Cliente desistiu' } },
+      { json: jest.fn() },
+    );
+
+    expect(cashRegisterService.addAutomaticReversalEntry).not.toHaveBeenCalled();
+  });
+
+  it('specs/0213 REQ-3: cancelar pedido de mesa com Pix confirmado NÃO lança estorno (mesa lança por pagamento, fora de escopo)', async () => {
+    const { cashRegisterService, routes } = setup({
+      orderRepository: {
+        findById: jest.fn().mockResolvedValue(buildOrder({ status: 'confirmado', paymentMethod: 'pix', orderType: 'table' })),
+      },
+    });
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/cancel'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { reason: 'Cliente desistiu' } },
+      { json: jest.fn() },
+    );
+
+    expect(cashRegisterService.addAutomaticReversalEntry).not.toHaveBeenCalled();
   });
 
   it('Pedido explícito do usuário (16/11/2026): cancelar pedido com nota emitida há menos de 30min também cancela a nota fiscal', async () => {

@@ -77,6 +77,14 @@ export interface CashClosingSummary {
 export interface ICashRegisterService {
   addAutomaticEntry(input: AutomaticCashEntryInput): Promise<void>;
 
+  /**
+   * specs/0213-caixa-pix-na-confirmacao REQ-3/REQ-4 — estorno (saída) do lançamento automático
+   * de um pedido Pix cancelado depois de já ter passado por `'confirmado'` (onde
+   * `addAutomaticEntry` acima já lançou a entrada). Mesmo input, dedup própria (nunca estornar o
+   * mesmo `orderId` duas vezes).
+   */
+  addAutomaticReversalEntry(input: AutomaticCashEntryInput): Promise<void>;
+
   /** Garante um movimento para cada pagamento já recebido na sessão aberta. */
   syncOpenSession(restaurantId: string, sessionId?: string): Promise<void>;
 

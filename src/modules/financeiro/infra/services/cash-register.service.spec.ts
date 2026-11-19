@@ -68,6 +68,7 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
     };
     const orderRepository: Partial<IOrderRepository> = {
       findReceivedSalesBetween: jest.fn().mockResolvedValue([]),
+      findConfirmedPixSalesBetween: jest.fn().mockResolvedValue([]),
       ...overrides.orderRepository,
     };
     const service = new CashRegisterService(
@@ -192,6 +193,51 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
 
       expect(cashRegisterRepository.open).not.toHaveBeenCalled();
       expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-hoje', expect.objectContaining({ orderId: 'o-1', amount: 10 }));
+    });
+  });
+
+  describe('addAutomaticReversalEntry (specs/0213-caixa-pix-na-confirmacao REQ-3/REQ-4)', () => {
+    it('lança um movimento de saída (estorno) vinculado ao pedido', async () => {
+      const { cashRegisterRepository, service } = setup();
+
+      await service.addAutomaticReversalEntry({ restaurantId: 'r-1', orderId: 'o-1', orderNumber: 42, amount: 50, paymentMethod: 'pix' });
+
+      expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-1', expect.objectContaining({
+        type: 'saida',
+        amount: 50,
+        orderId: 'o-1',
+        paymentMethod: 'pix',
+        description: 'Estorno - Venda #42 (Pix)',
+      }));
+    });
+
+    it('nunca estorna duas vezes o mesmo pedido', async () => {
+      const { cashRegisterRepository, service } = setup({
+        cashRegisterRepository: {
+          listMovements: jest.fn().mockResolvedValue([
+            { id: 'mv-entrada', cashRegisterSessionId: 'cr-1', type: 'entrada', amount: 50, description: 'Venda #1 (Pix)', orderId: 'o-1', createdAt: '2026-09-09T09:00:00.000Z' },
+            { id: 'mv-estorno', cashRegisterSessionId: 'cr-1', type: 'saida', amount: 50, description: 'Estorno - Venda #1 (Pix)', orderId: 'o-1', createdAt: '2026-09-09T10:00:00.000Z' },
+          ]),
+        },
+      });
+
+      await service.addAutomaticReversalEntry({ restaurantId: 'r-1', orderId: 'o-1', orderNumber: 1, amount: 50, paymentMethod: 'pix' });
+
+      expect(cashRegisterRepository.addMovement).not.toHaveBeenCalled();
+    });
+
+    it('abre uma sessão nova (primeira venda do dia) se precisar, mesmo pra estornar', async () => {
+      const { cashRegisterRepository, service } = setup({
+        cashRegisterRepository: {
+          findOpenSessionByRestaurant: jest.fn().mockResolvedValue(null),
+          findSessionByDate: jest.fn().mockResolvedValue(null),
+          open: jest.fn().mockResolvedValue(buildSession({ id: 'cr-nova' })),
+        },
+      });
+
+      await service.addAutomaticReversalEntry({ restaurantId: 'r-1', orderId: 'o-1', orderNumber: 1, amount: 10, paymentMethod: 'pix' });
+
+      expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-nova', expect.objectContaining({ type: 'saida', orderId: 'o-1' }));
     });
   });
 
@@ -342,9 +388,13 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
       const { service } = setup({
         orderRepository: {
           findReceivedSalesBetween: jest.fn().mockResolvedValue([
+            buildDeliveredOrder({ id: 'o-3', paymentMethod: 'cash', total: 30 }),
+          ]),
+          // specs/0213-caixa-pix-na-confirmacao — Pix conta por `findConfirmedPixSalesBetween`
+          // (gatilho "confirmado"), não por `findReceivedSalesBetween` ("entregue").
+          findConfirmedPixSalesBetween: jest.fn().mockResolvedValue([
             buildDeliveredOrder({ id: 'o-1', paymentMethod: 'pix', total: 50 }),
             buildDeliveredOrder({ id: 'o-2', paymentMethod: 'pix', total: 50 }),
-            buildDeliveredOrder({ id: 'o-3', paymentMethod: 'cash', total: 30 }),
           ]),
         },
       });
@@ -444,7 +494,9 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
     it('movimento manual (sangria) sem orderId reduz a forma "dinheiro", sem duplicar venda automática de Pix', async () => {
       const { service } = setup({
         orderRepository: {
-          findReceivedSalesBetween: jest.fn().mockResolvedValue([buildDeliveredOrder({ id: 'o-1', paymentMethod: 'pix', total: 50 })]),
+          // specs/0213-caixa-pix-na-confirmacao — Pix agora conta por `findConfirmedPixSalesBetween`
+          // (gatilho "confirmado"), não por `findReceivedSalesBetween` ("entregue").
+          findConfirmedPixSalesBetween: jest.fn().mockResolvedValue([buildDeliveredOrder({ id: 'o-1', paymentMethod: 'pix', total: 50 })]),
         },
         cashRegisterRepository: {
           listMovements: jest.fn().mockResolvedValue([
@@ -466,12 +518,16 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
       const { service } = setup({
         orderRepository: {
           findReceivedSalesBetween: jest.fn().mockResolvedValue([
-            buildDeliveredOrder({ id: 'o-delivery-1', orderType: 'delivery', paymentMethod: 'pix', total: 50 }),
             buildDeliveredOrder({ id: 'o-delivery-2', orderType: 'pickup', paymentMethod: 'cash', total: 20 }),
             buildDeliveredOrder({
               id: 'o-mesa', orderType: 'table', status: 'confirmado', paymentMethod: 'pix', total: 16,
               tablePayments: [{ id: 'pay-1', method: 'cash', amount: 16, paidAt: '2026-09-09T10:00:00.000Z' }],
             }),
+          ]),
+          // specs/0213-caixa-pix-na-confirmacao — Pix conta por `findConfirmedPixSalesBetween`
+          // (gatilho "confirmado"), não por `findReceivedSalesBetween` ("entregue").
+          findConfirmedPixSalesBetween: jest.fn().mockResolvedValue([
+            buildDeliveredOrder({ id: 'o-delivery-1', orderType: 'delivery', paymentMethod: 'pix', total: 50 }),
           ]),
         },
       });
@@ -550,6 +606,66 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
       const summary = await service.getClosingSummary('cr-1');
 
       expect(summary.lateMovements).toEqual([]);
+    });
+
+    // specs/0213-caixa-pix-na-confirmacao REQ-6/AC-6 — pedido Pix confirmado dentro do período
+    // mas ainda não entregue (nem cancelado) soma normalmente, mesmo nunca aparecendo em
+    // `findReceivedSalesBetween` (que só traz pedidos já "entregue").
+    it('specs/0213 AC-6: pedido Pix confirmado mas ainda não entregue entra em totalSales/salesByPaymentMethod.pix/deliverySales', async () => {
+      const { service } = setup({
+        orderRepository: {
+          findConfirmedPixSalesBetween: jest.fn().mockResolvedValue([
+            buildDeliveredOrder({ id: 'o-1', status: 'emPreparo', paymentMethod: 'pix', total: 50 }),
+          ]),
+        },
+      });
+
+      const summary = await service.getClosingSummary('cr-1');
+
+      expect(summary.totalSales).toBe(50);
+      expect(summary.deliverySales).toBe(50);
+      expect(summary.balanceByPaymentMethod.pix).toBe(50);
+    });
+
+    // specs/0213 REQ-6 — pedido Pix confirmado e depois cancelado some do resumo: no ledger real
+    // a entrada e o estorno têm `orderId`, então nenhum dos dois é somado pelo loop de movimentos
+    // manuais; não somar aqui (nem a entrada, nem o estorno) mantém o total batendo com zero
+    // líquido.
+    it('specs/0213 REQ-6: pedido Pix confirmado e cancelado depois soma zero no resumo', async () => {
+      const { service } = setup({
+        orderRepository: {
+          findConfirmedPixSalesBetween: jest.fn().mockResolvedValue([
+            buildDeliveredOrder({ id: 'o-1', status: 'cancelado', paymentMethod: 'pix', total: 50 }),
+          ]),
+        },
+      });
+
+      const summary = await service.getClosingSummary('cr-1');
+
+      expect(summary.totalSales).toBe(0);
+      expect(summary.deliverySales).toBe(0);
+      expect(summary.balanceByPaymentMethod.pix).toBe(0);
+    });
+
+    // specs/0213 REQ-6 — um pedido Pix que JÁ chegou em "entregue" aparece nas duas buscas
+    // (`findReceivedSalesBetween` por status "entregue", `findConfirmedPixSalesBetween` por
+    // "confirmado" no período); precisa contar só uma vez.
+    it('specs/0213 REQ-6: pedido Pix entregue não conta duas vezes mesmo aparecendo nas duas buscas', async () => {
+      const { service } = setup({
+        orderRepository: {
+          findReceivedSalesBetween: jest.fn().mockResolvedValue([
+            buildDeliveredOrder({ id: 'o-1', status: 'entregue', paymentMethod: 'pix', total: 50 }),
+          ]),
+          findConfirmedPixSalesBetween: jest.fn().mockResolvedValue([
+            buildDeliveredOrder({ id: 'o-1', status: 'entregue', paymentMethod: 'pix', total: 50 }),
+          ]),
+        },
+      });
+
+      const summary = await service.getClosingSummary('cr-1');
+
+      expect(summary.totalSales).toBe(50);
+      expect(summary.balanceByPaymentMethod.pix).toBe(50);
     });
   });
 });

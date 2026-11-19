@@ -155,6 +155,13 @@ export interface IOrderRepository {
   findReceivedSalesBetween(restaurantId: string, from: Date, to: Date): Promise<IOrder[]>;
 
   /**
+   * specs/0213-caixa-pix-na-confirmacao REQ-6/REQ-7 — pedidos delivery/retirada em Pix cujo
+   * `statusHistory` passou por `'confirmado'` no período (status atual pode ser qualquer um —
+   * ainda em andamento, entregue, ou cancelado depois de confirmado).
+   */
+  findConfirmedPixSalesBetween(restaurantId: string, from: Date, to: Date): Promise<IOrder[]>;
+
+  /**
    * specs/0016-clientes-retaguarda REQ-3 — histórico de pedidos de um cliente **só neste
    * restaurante** (nunca cruza com pedidos do mesmo `Customer` em outro restaurante, já que
    * `Customer` é global — `docs/architecture/data-model.md`); mais recente primeiro, mesmo

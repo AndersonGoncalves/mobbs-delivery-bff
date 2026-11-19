@@ -556,6 +556,23 @@ export class OrderMongooseRepository implements IOrderRepository {
     return docs.map(toEntity);
   }
 
+  /**
+   * specs/0213-caixa-pix-na-confirmacao REQ-6/REQ-7 — mesmo padrão de `findReceivedSalesBetween`,
+   * mas pro gatilho de caixa do Pix, que agora é "confirmado" (não "entregue"). NÃO exige que o
+   * status atual seja `'confirmado'` — o pedido pode já ter avançado (`emPreparo`/
+   * `saiuParaEntrega`/`entregue`) ou sido cancelado depois; quem consome decide o que fazer com
+   * cada caso a partir do `status` atual devolvido.
+   */
+  async findConfirmedPixSalesBetween(restaurantId: string, from: Date, to: Date): Promise<IOrder[]> {
+    const docs = await OrderModel.find({
+      restaurantId,
+      orderType: { $ne: 'table' },
+      paymentMethod: 'pix',
+      statusHistory: { $elemMatch: { status: 'confirmado', changedAt: { $gte: from, $lt: to } } },
+    }).lean<OrderLeanDocument[]>();
+    return docs.map(toEntity);
+  }
+
   /** specs/0022-cupons-desconto REQ-6. */
   async countByCustomerAndCoupon(restaurantId: string, customerId: string, couponCode: string): Promise<number> {
     return OrderModel.countDocuments({ restaurantId, customerId, couponCode });

@@ -90,6 +90,45 @@ export class CashRegisterService implements ICashRegisterService {
     await this.recordAutomaticEntry(session.id, input);
   }
 
+  /**
+   * specs/0213-caixa-pix-na-confirmacao REQ-3/REQ-4 — mesma busca/abertura de sessão de
+   * `addAutomaticEntry` acima (mesmo raciocínio: o estorno nunca pode ficar sem caixa pra
+   * entrar, mesmo que a sessão que lançou a entrada original já tenha fechado — cai como
+   * lançamento tardio, igual qualquer outro movimento depois do fechamento).
+   */
+  async addAutomaticReversalEntry(input: AutomaticCashEntryInput): Promise<void> {
+    if (!(input.amount > 0)) return;
+    await this.ensureAutomaticSchedule(input.restaurantId);
+    const openSession = await this.cashRegisterRepository.findOpenSessionByRestaurant(input.restaurantId);
+    if (openSession) {
+      await this.recordAutomaticReversalEntry(openSession.id, input);
+      return;
+    }
+    const todaySession = await this.cashRegisterRepository.findSessionByDate(input.restaurantId, cashRegisterDate());
+    if (todaySession) {
+      await this.recordAutomaticReversalEntry(todaySession.id, input);
+      return;
+    }
+    const session = await this.openSessionForFirstSale(input.restaurantId);
+    if (!session) return;
+    await this.recordAutomaticReversalEntry(session.id, input);
+  }
+
+  private async recordAutomaticReversalEntry(sessionId: string, input: AutomaticCashEntryInput): Promise<void> {
+    const movements = await this.cashRegisterRepository.listMovements(sessionId);
+    const alreadyReversed = movements.some((movement) => movement.orderId === input.orderId && movement.type === 'saida');
+    if (alreadyReversed) return;
+
+    const methodLabel = PAYMENT_LABEL[input.paymentMethod] ?? input.paymentMethod;
+    await this.cashRegisterRepository.addMovement(sessionId, {
+      type: 'saida',
+      amount: input.amount,
+      description: `Estorno - Venda #${input.orderNumber} (${methodLabel})`,
+      orderId: input.orderId,
+      paymentMethod: input.paymentMethod,
+    });
+  }
+
   private async openSessionForFirstSale(restaurantId: string): Promise<{ id: string } | null> {
     try {
       return await this.cashRegisterRepository.open(restaurantId, 0, AUTOMATIC_ACTOR, true);
@@ -146,7 +185,26 @@ export class CashRegisterService implements ICashRegisterService {
         }
         continue;
       }
-      if (order.status !== 'entregue') continue;
+      // specs/0213-caixa-pix-na-confirmacao REQ-7 — Pix não entra mais aqui (gatilho é
+      // "confirmado", tratado no loop abaixo); as demais formas continuam por "entregue".
+      if (order.status !== 'entregue' || order.paymentMethod === 'pix') continue;
+      await this.recordAutomaticEntry(session.id, {
+        restaurantId,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        amount: order.total,
+        paymentMethod: order.paymentMethod,
+      });
+    }
+
+    // specs/0213-caixa-pix-na-confirmacao REQ-7 — recria a entrada automática de pedidos Pix que
+    // passaram por "confirmado" dentro do período desta sessão. Pedido já cancelado depois de
+    // confirmado fica de fora por simplicidade (limitação conhecida, documentada em `plan.md`):
+    // o par entrada+estorno já deveria existir de quando o cancelamento aconteceu ao vivo; esta
+    // reconstrução cobre só a entrada "solta" de um pedido ainda em andamento ou já entregue.
+    const confirmedPixOrders = await this.orderRepository.findConfirmedPixSalesBetween(restaurantId, from, to);
+    for (const order of confirmedPixOrders) {
+      if (order.status === 'cancelado') continue;
       await this.recordAutomaticEntry(session.id, {
         restaurantId,
         orderId: order.id,
@@ -234,8 +292,28 @@ export class CashRegisterService implements ICashRegisterService {
         }
         continue;
       }
-      if (order.status !== 'entregue') continue;
+      // specs/0213-caixa-pix-na-confirmacao REQ-6 — Pix some daqui (fica por conta do loop
+      // abaixo, que conta pelo momento de "confirmado", não de "entregue").
+      if (order.status !== 'entregue' || order.paymentMethod === 'pix') continue;
       salesByPaymentMethod[order.paymentMethod] += order.total;
+      totalSales += order.total;
+      deliverySales += order.total;
+    }
+
+    // specs/0213-caixa-pix-na-confirmacao REQ-6 — pedidos Pix contam pelo momento em que
+    // passaram por "confirmado" dentro do período (onde o lançamento automático de REQ-1
+    // acontece), independente do status atual. Cancelado depois de confirmado soma zero (entrada
+    // + estorno se cancelam no ledger real — ambos os movimentos têm `orderId`, então nenhum dos
+    // dois é somado de novo no loop de movimentos manuais logo abaixo; não somar aqui mantém o
+    // total batendo com o ledger).
+    const confirmedPixOrders = await this.orderRepository.findConfirmedPixSalesBetween(
+      session.restaurantId,
+      new Date(session.openedAt),
+      periodEnd,
+    );
+    for (const order of confirmedPixOrders) {
+      if (order.status === 'cancelado') continue;
+      salesByPaymentMethod.pix += order.total;
       totalSales += order.total;
       deliverySales += order.total;
     }

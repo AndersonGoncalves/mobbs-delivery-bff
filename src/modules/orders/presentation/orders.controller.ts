@@ -678,6 +678,10 @@ export class OrdersController extends BaseRouter {
         await this.tryRefundOrderPixViaAsaas(order);
         await this.tryRefundOrderCardOnlineViaMercadoPago(order);
         await this.tryRefundOrderCardOnlineViaAsaas(order);
+        // specs/0213-caixa-pix-na-confirmacao REQ-3/REQ-4 — estorna o movimento automático de
+        // caixa (ledger interno, diferente do estorno de dinheiro real acima) se o pedido Pix já
+        // tinha passado por "confirmado" antes de ser cancelado.
+        await this.tryReverseAutomaticCashEntry(order);
         await this.refundCashbackIfUsed(order);
         // specs/0090-integracao-ifood REQ-6 — cancelar na retaguarda um pedido de origem iFood
         // também solicita o cancelamento na API deles.
@@ -928,18 +932,15 @@ export class OrdersController extends BaseRouter {
         console.error(`[billing] falha ao recalcular faturamento do restaurante ${updated.restaurantId}:`, error);
       });
     }
-    if (status === 'entregue' && updated.orderType !== 'table') {
-      try {
-        await this.cashRegisterService.addAutomaticEntry({
-          restaurantId: updated.restaurantId,
-          orderId: updated.id,
-          orderNumber: updated.orderNumber,
-          amount: updated.total,
-          paymentMethod: updated.paymentMethod,
-        });
-      } catch (error) {
-        console.error(`[financeiro] erro inesperado lançando movimento automático de caixa do pedido ${updated.id}:`, error);
-      }
+    // specs/0213-caixa-pix-na-confirmacao REQ-1/REQ-2 — Pix já está pago antes da entrega (o
+    // dinheiro já caiu na conta do restaurante na confirmação), então lança no caixa em
+    // "confirmado" em vez de "entregue"; as demais formas (dinheiro/cartão/cartão online)
+    // continuam lançando só na entrega, como sempre, já que só existem fisicamente ali.
+    if (status === 'entregue' && updated.orderType !== 'table' && updated.paymentMethod !== 'pix') {
+      await this.recordDeliverySaleInCashRegister(updated);
+    }
+    if (status === 'confirmado' && updated.orderType !== 'table' && updated.paymentMethod === 'pix') {
+      await this.recordDeliverySaleInCashRegister(updated);
     }
     // specs/0131-cashback-app REQ-2 / specs/0132-programa-fidelidade-app REQ-2/REQ-3 — mesmo
     // corte de `orderType !== 'table'` e mesmo try/catch não-bloqueante do caixa automático
@@ -1008,6 +1009,50 @@ export class OrdersController extends BaseRouter {
           resolve();
         });
       });
+    }
+  }
+
+  /**
+   * specs/0213-caixa-pix-na-confirmacao REQ-1/REQ-2 — corpo comum extraído de
+   * `handleStatusChangeSideEffects` (chamado em "confirmado" pra Pix, em "entregue" pras demais
+   * formas). Sem sessão aberta o serviço não grava nada. Protegido por try/catch: falha na
+   * contabilização nunca reverte o status, que já avançou.
+   */
+  private async recordDeliverySaleInCashRegister(order: IOrder): Promise<void> {
+    try {
+      await this.cashRegisterService.addAutomaticEntry({
+        restaurantId: order.restaurantId,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        amount: order.total,
+        paymentMethod: order.paymentMethod,
+      });
+    } catch (error) {
+      console.error(`[financeiro] erro inesperado lançando movimento automático de caixa do pedido ${order.id}:`, error);
+    }
+  }
+
+  /**
+   * specs/0213-caixa-pix-na-confirmacao REQ-3/REQ-4/REQ-5 — chamado no cancelamento pelo
+   * operador com o `order` lido ANTES do cancelamento (status original). Só Pix lança o
+   * movimento automático antes da entrega (`recordDeliverySaleInCashRegister` acima); se o
+   * pedido ainda estava em `aguardandoConfirmacao`, nunca existiu lançamento nenhum pra
+   * estornar. Protegido por try/catch: falha no estorno nunca desfaz o cancelamento, que já
+   * aconteceu.
+   */
+  private async tryReverseAutomaticCashEntry(order: IOrder): Promise<void> {
+    if (order.orderType === 'table' || order.paymentMethod !== 'pix') return;
+    if (order.status === 'aguardandoConfirmacao') return;
+    try {
+      await this.cashRegisterService.addAutomaticReversalEntry({
+        restaurantId: order.restaurantId,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        amount: order.total,
+        paymentMethod: order.paymentMethod,
+      });
+    } catch (error) {
+      console.error(`[financeiro] erro inesperado estornando movimento automático de caixa do pedido ${order.id}:`, error);
     }
   }
 
