@@ -44,6 +44,14 @@ export class PlatformRestaurantActionsController extends BaseRouter {
       return restaurant;
     }
 
+    // Pedido explícito do usuário (19/11/2026) — identificação do restaurante no topo das páginas
+    // de suporte (Produtos/Matéria-prima/Grupo de Adicionais), pra deixar claro qual restaurante
+    // está sendo editado pelo admin. Só nome/slug — nada sensível.
+    application.get('/platform/restaurants/:id', ...adminAuthenticated, async (req: Request, res: Response) => {
+      const restaurant = await requireRestaurant(this.restaurantRepository, req.params.id);
+      res.json(200, { id: restaurant.id, name: restaurant.name, slug: restaurant.slug });
+    });
+
     application.get('/platform/restaurants/:id/active', ...adminAuthenticated, async (req: Request, res: Response) => {
       const restaurant = await requireRestaurant(this.restaurantRepository, req.params.id);
       res.json(200, { isActive: restaurant.isActive });

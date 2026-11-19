@@ -1,5 +1,5 @@
 import type { Request, Response, Server } from 'restify';
-import { ConflictError, ForbiddenError, NotFoundError } from 'restify-errors';
+import { ForbiddenError, NotFoundError } from 'restify-errors';
 
 import { IRawMaterialRepository } from '../../raw-materials/domain/repositories/raw-material.repository.interface';
 import { IProductRepository } from '../../catalog/domain/repositories/product.repository.interface';
@@ -140,41 +140,10 @@ describe('PlatformRestaurantRawMaterialsController (tela de suporte, pedido expl
     expect(rawMaterialRepository.setActive).not.toHaveBeenCalled();
   });
 
-  it('DELETE remove um item sem uso', async () => {
-    const { routes, rawMaterialRepository } = setup();
-    const send = jest.fn();
-    await runAdminChain(
-      routes['DELETE /platform/restaurants/:id/raw-materials/:materialId'],
-      adminReq({ params: { id: 'r-1', materialId: 'rm-1' } }),
-      { json: jest.fn(), send },
-    );
-    expect(rawMaterialRepository.remove).toHaveBeenCalledWith('rm-1');
-    expect(send).toHaveBeenCalledWith(204);
-  });
-
-  it('DELETE rejeita (409) item já usado em algum produto', async () => {
-    const { routes, rawMaterialRepository, productRepository } = setup({
-      productRepository: { countAnyByRawMaterialId: jest.fn().mockResolvedValue(1) },
-    });
-    await expect(
-      runAdminChain(
-        routes['DELETE /platform/restaurants/:id/raw-materials/:materialId'],
-        adminReq({ params: { id: 'r-1', materialId: 'rm-1' } }),
-        { json: jest.fn(), send: jest.fn() },
-      ),
-    ).rejects.toBeInstanceOf(ConflictError);
-    expect(rawMaterialRepository.remove).not.toHaveBeenCalled();
-  });
-
-  it('DELETE rejeita (404) item de outro restaurante', async () => {
-    const { routes, rawMaterialRepository } = setup({ rawMaterialRepository: { findById: jest.fn().mockResolvedValue(buildMaterial({ restaurantId: 'r-2' })) } });
-    await expect(
-      runAdminChain(
-        routes['DELETE /platform/restaurants/:id/raw-materials/:materialId'],
-        adminReq({ params: { id: 'r-1', materialId: 'rm-1' } }),
-        { json: jest.fn(), send: jest.fn() },
-      ),
-    ).rejects.toBeInstanceOf(NotFoundError);
-    expect(rawMaterialRepository.remove).not.toHaveBeenCalled();
+  // Pedido explícito do usuário (19/11/2026) — exclusão real removida desta tela de suporte
+  // (controller não registra mais `DELETE /platform/restaurants/:id/raw-materials/:materialId`).
+  it('não registra rota de exclusão', async () => {
+    const { routes } = setup();
+    expect(routes['DELETE /platform/restaurants/:id/raw-materials/:materialId']).toBeUndefined();
   });
 });

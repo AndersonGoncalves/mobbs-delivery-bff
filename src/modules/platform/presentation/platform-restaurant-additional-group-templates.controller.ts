@@ -1,5 +1,5 @@
 import type { Request, Response, Server } from 'restify';
-import { ConflictError, NotFoundError } from 'restify-errors';
+import { NotFoundError } from 'restify-errors';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
@@ -21,8 +21,10 @@ type AsyncHandler = (req: Request, res: Response) => Promise<void>;
  * reaproveita o MESMO repositório/regras de `AdditionalGroupTemplatesController`, só muda de onde
  * vem o `restaurantId` (`:id` da URL, não a sessão) e quem pode chamar.
  *
- * Exclusão real reaproveitada por inteiro (mesma checagem simples de uso — `countAnyByTemplateId`
- * — que o dono já usa), mesmo raciocínio de Matéria-prima.
+ * Pedido explícito do usuário (19/11/2026) — exclusão real removida: tinha sido reaproveitada por
+ * inteiro na 4ª leva (mesma checagem de uso, `countAnyByTemplateId`, que o dono já usa), mas o
+ * usuário decidiu não permitir excluir grupo de adicionais por esta tela de suporte — só
+ * criar/editar/ativar-desativar, mesmo raciocínio de Matéria-prima.
  */
 export class PlatformRestaurantAdditionalGroupTemplatesController extends BaseRouter {
   constructor(
@@ -87,20 +89,6 @@ export class PlatformRestaurantAdditionalGroupTemplatesController extends BaseRo
 
         const updated = await this.templateRepository.setActive(req.params.templateId, isActive);
         res.json(200, updated);
-      },
-    );
-
-    application.del(
-      '/platform/restaurants/:id/additional-group-templates/:templateId',
-      ...adminAuthenticated,
-      async (req: Request, res: Response) => {
-        const template = await this.findOwnedTemplate(req.params.templateId, req.params.id);
-        const usageCount = await this.productRepository.countAnyByTemplateId(req.params.id, template.id);
-        if (usageCount > 0) {
-          throw new ConflictError('Grupo de adicionais já foi usado em algum produto e não pode ser excluído');
-        }
-        await this.templateRepository.remove(template.id);
-        res.send(204);
       },
     );
   }

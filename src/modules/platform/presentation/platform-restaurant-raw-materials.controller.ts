@@ -1,5 +1,5 @@
 import type { Request, Response, Server } from 'restify';
-import { ConflictError, NotFoundError } from 'restify-errors';
+import { NotFoundError } from 'restify-errors';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
@@ -22,12 +22,12 @@ type AsyncHandler = (req: Request, res: Response) => Promise<void>;
  * validação/regra de negócio), só muda de onde vem o `restaurantId` (`:id` da URL, não a sessão)
  * e quem pode chamar.
  *
- * Diferente de Produtos, a exclusão real AQUI é simples de reaproveitar (uma única checagem de
- * uso — `countAnyByRawMaterialId` — sem as buscas adicionais de pedidos/templates que o delete de
- * produto tem) — por isso o admin ganha `DELETE` de verdade, mesma regra do dono (bloqueado se já
- * usada em algum produto). Sem rota de ajuste de estoque/histórico de movimentações — fora do
- * pedido ("cadastro de matéria-prima"), mesmo corte de escopo de Produtos com "cadastro de
- * produtos" (sem adicionais).
+ * Pedido explícito do usuário (19/11/2026) — exclusão real removida: tinha sido adicionada na 4ª
+ * leva (checagem simples de uso, `countAnyByRawMaterialId`, mesma regra do dono), mas o usuário
+ * decidiu não permitir excluir matéria-prima por esta tela de suporte — só criar/editar/ativar-
+ * desativar. Sem rota de ajuste de estoque/histórico de movimentações — fora do pedido ("cadastro
+ * de matéria-prima"), mesmo corte de escopo de Produtos com "cadastro de produtos" (sem
+ * adicionais).
  */
 export class PlatformRestaurantRawMaterialsController extends BaseRouter {
   constructor(
@@ -86,16 +86,6 @@ export class PlatformRestaurantRawMaterialsController extends BaseRouter {
         res.json(200, updated);
       },
     );
-
-    application.del('/platform/restaurants/:id/raw-materials/:materialId', ...adminAuthenticated, async (req: Request, res: Response) => {
-      const material = await this.findOwnedRawMaterial(req.params.materialId, req.params.id);
-      const usageCount = await this.productRepository.countAnyByRawMaterialId(req.params.id, material.id);
-      if (usageCount > 0) {
-        throw new ConflictError('Matéria-prima já foi usada em algum produto e não pode ser excluída');
-      }
-      await this.rawMaterialRepository.remove(material.id);
-      res.send(204);
-    });
   }
 
   private async findOwnedRawMaterial(id: string, restaurantId: string): Promise<IRawMaterial> {

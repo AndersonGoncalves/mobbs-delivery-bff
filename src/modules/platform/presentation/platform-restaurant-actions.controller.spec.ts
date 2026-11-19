@@ -81,6 +81,15 @@ describe('PlatformRestaurantActionsController (tela de suporte, pedido explícit
     ).rejects.toBeInstanceOf(ForbiddenError);
   });
 
+  it('GET /:id devolve nome/slug do restaurante (19/11/2026 — cabeçalho das telas de suporte)', async () => {
+    const { routes } = setup({ restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ name: 'Pizzaria do João', slug: 'pizzaria-do-joao' })) } });
+    const json = jest.fn();
+
+    await runAdminChain(routes['GET /platform/restaurants/:id'], adminReq(), { json, send: jest.fn() });
+
+    expect(json).toHaveBeenCalledWith(200, { id: 'r-1', name: 'Pizzaria do João', slug: 'pizzaria-do-joao' });
+  });
+
   it('GET active devolve o estado atual do restaurante informado', async () => {
     const { routes } = setup({ restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ isActive: true })) } });
     const json = jest.fn();

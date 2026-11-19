@@ -1,5 +1,5 @@
 import type { Request, Response, Server } from 'restify';
-import { ConflictError, ForbiddenError, NotFoundError } from 'restify-errors';
+import { ForbiddenError, NotFoundError } from 'restify-errors';
 
 import { IAdditionalGroupTemplateRepository } from '../../additional-group-templates/domain/repositories/additional-group-template.repository.interface';
 import { IProductRepository } from '../../catalog/domain/repositories/product.repository.interface';
@@ -146,41 +146,10 @@ describe('PlatformRestaurantAdditionalGroupTemplatesController (tela de suporte,
     expect(templateRepository.setActive).not.toHaveBeenCalled();
   });
 
-  it('DELETE remove um grupo sem uso', async () => {
-    const { routes, templateRepository } = setup();
-    const send = jest.fn();
-    await runAdminChain(
-      routes['DELETE /platform/restaurants/:id/additional-group-templates/:templateId'],
-      adminReq({ params: { id: 'r-1', templateId: 't-1' } }),
-      { json: jest.fn(), send },
-    );
-    expect(templateRepository.remove).toHaveBeenCalledWith('t-1');
-    expect(send).toHaveBeenCalledWith(204);
-  });
-
-  it('DELETE rejeita (409) grupo já usado em algum produto', async () => {
-    const { routes, templateRepository } = setup({
-      productRepository: { countAnyByTemplateId: jest.fn().mockResolvedValue(1) },
-    });
-    await expect(
-      runAdminChain(
-        routes['DELETE /platform/restaurants/:id/additional-group-templates/:templateId'],
-        adminReq({ params: { id: 'r-1', templateId: 't-1' } }),
-        { json: jest.fn(), send: jest.fn() },
-      ),
-    ).rejects.toBeInstanceOf(ConflictError);
-    expect(templateRepository.remove).not.toHaveBeenCalled();
-  });
-
-  it('DELETE rejeita (404) grupo de outro restaurante', async () => {
-    const { routes, templateRepository } = setup({ templateRepository: { findById: jest.fn().mockResolvedValue(buildTemplate({ restaurantId: 'r-2' })) } });
-    await expect(
-      runAdminChain(
-        routes['DELETE /platform/restaurants/:id/additional-group-templates/:templateId'],
-        adminReq({ params: { id: 'r-1', templateId: 't-1' } }),
-        { json: jest.fn(), send: jest.fn() },
-      ),
-    ).rejects.toBeInstanceOf(NotFoundError);
-    expect(templateRepository.remove).not.toHaveBeenCalled();
+  // Pedido explícito do usuário (19/11/2026) — exclusão real removida desta tela de suporte
+  // (controller não registra mais `DELETE /platform/restaurants/:id/additional-group-templates/:templateId`).
+  it('não registra rota de exclusão', async () => {
+    const { routes } = setup();
+    expect(routes['DELETE /platform/restaurants/:id/additional-group-templates/:templateId']).toBeUndefined();
   });
 });
