@@ -17,12 +17,13 @@ import { IRestaurantRepository } from '../../restaurants/domain/repositories/res
 import { IRestaurantOperatorRepository } from '../../restaurant-operators/domain/repositories/restaurant-operator.repository.interface';
 import { ICashRegisterService } from '../../financeiro/domain/services/i-cash-register.service';
 import { FiscalEmissionService } from '../../fiscal-integration/domain/services/fiscal-emission.service';
-import { TableOrderService } from '../domain/services/table-order.service';
+import { OverpaymentRequiresConfirmationError, TableOrderService } from '../domain/services/table-order.service';
 import { isFiscalPrintMissed } from '../../orders/domain/is-fiscal-print-missed';
 import { isAutoPrintMissed } from '../../orders/domain/is-auto-print-missed';
 import {
   addTableOrderItemSchema,
   addTablePaymentSchema,
+  cancelTableOrderSchema,
   closeTableOrderSchema,
   createTableRangeSchema,
   openTableOrderSchema,
@@ -126,9 +127,21 @@ export class TableServiceController extends BaseRouter {
       res.json(200, await this.tableOrders.addItem(req.restaurantId!, req.params.id, input));
     });
 
+    // specs/0214-estorno-sobrepagamento-mesa REQ-1/REQ-2 — `OverpaymentRequiresConfirmationError`
+    // (lançada dentro de `TableOrderService`, onde a checagem de totais já acontece) vira
+    // `409 { requiresConfirmation: true, ... }`, mesmo contrato já usado em
+    // `raw-materials`/`additional-group-templates` pro operador decidir confirmar ou não.
     application.patch('/restaurants/me/table-orders/:id/items/:itemId/quantity', ...authenticated, async (req: Request, res: Response) => {
-      const { quantity, operationId } = parseBody(updateTableOrderItemQuantitySchema, req.body);
-      res.json(200, await this.tableOrders.setItemQuantity(req.restaurantId!, req.params.id, req.params.itemId, quantity, operationId));
+      const { quantity, operationId, confirmed } = parseBody(updateTableOrderItemQuantitySchema, req.body);
+      try {
+        res.json(200, await this.tableOrders.setItemQuantity(req.restaurantId!, req.params.id, req.params.itemId, quantity, operationId, confirmed));
+      } catch (error) {
+        if (error instanceof OverpaymentRequiresConfirmationError) {
+          res.json(409, { requiresConfirmation: true, alreadyPaid: error.alreadyPaid, newTotal: error.newTotal, excess: error.excess });
+          return;
+        }
+        throw error;
+      }
     });
 
     application.post('/restaurants/me/table-orders/:id/items/group', ...authenticated, async (req: Request, res: Response) => {
@@ -137,7 +150,15 @@ export class TableServiceController extends BaseRouter {
 
     application.patch('/restaurants/me/table-orders/:id/adjustments', ...authenticated, async (req: Request, res: Response) => {
       const input = parseBody(tableOrderAdjustmentsSchema, req.body);
-      res.json(200, await this.tableOrders.updateAdjustments(req.restaurantId!, req.params.id, input));
+      try {
+        res.json(200, await this.tableOrders.updateAdjustments(req.restaurantId!, req.params.id, input));
+      } catch (error) {
+        if (error instanceof OverpaymentRequiresConfirmationError) {
+          res.json(409, { requiresConfirmation: true, alreadyPaid: error.alreadyPaid, newTotal: error.newTotal, excess: error.excess });
+          return;
+        }
+        throw error;
+      }
     });
 
     application.post('/restaurants/me/table-orders/:id/payments', ...authenticated, async (req: Request, res: Response) => {
@@ -158,6 +179,15 @@ export class TableServiceController extends BaseRouter {
     application.post('/restaurants/me/table-orders/:id/merge', ...authenticated, async (req: Request, res: Response) => {
       const { orderId } = parseBody(tableOrderIdSchema, req.body);
       res.json(200, await this.tableOrders.mergeOrders(req.restaurantId!, req.params.id, orderId));
+    });
+
+    // specs/0214-estorno-sobrepagamento-mesa REQ-6/REQ-9 — restrito a dono/gerente (mesma
+    // restrição de `tableManagementAuthenticated`, reaproveitada — não é cadastro de mesa, mas é
+    // o mesmo par de papéis exigido), diferente de `authenticated` (que também libera
+    // financeiro/garçom pro resto do atendimento).
+    application.patch('/restaurants/me/table-orders/:id/cancel', ...tableManagementAuthenticated, async (req: Request, res: Response) => {
+      const { reason } = parseBody(cancelTableOrderSchema, req.body);
+      res.json(200, await this.tableOrders.cancelOrder(req.restaurantId!, req.params.id, reason, req.user!.uid));
     });
 
     application.get('/restaurants/me/tables', ...tableManagementAuthenticated, async (req: Request, res: Response) => {

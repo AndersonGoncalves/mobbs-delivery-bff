@@ -64,7 +64,7 @@ export interface DefaultCatalog {
 }
 
 // specs/0049-catalogo-padrao-bebidas-reais REQ-17 — 12 produtos de bebida reais, validados
-// manualmente pelo usuário em produção ("Meu Restaurante") e replicados aqui: substituem as
+// manualmente pelo usuário em produção ("Bs Delivery") e replicados aqui: substituem as
 // opções em texto puro sem vínculo de REFRIGERANTES_TEMPLATE/BEBIDAS_TEMPLATE (ver
 // `linkedProductName` nelas, REQ-18) por produtos de verdade, vinculáveis em qualquer grupo de
 // adicionais do restaurante (`availableAsAdditional: true`), do mesmo jeito que o usuário fez.

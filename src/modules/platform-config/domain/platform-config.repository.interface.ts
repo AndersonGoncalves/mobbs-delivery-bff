@@ -18,6 +18,7 @@ export interface IPlatformConfigRepository {
   isMercadoPagoIntegrationEnabled(): Promise<boolean>;
   isIfoodIntegrationEnabled(): Promise<boolean>;
   isNinetyNineFoodIntegrationEnabled(): Promise<boolean>;
+  isKeetaIntegrationEnabled(): Promise<boolean>;
   isKdsAppEnabled(): Promise<boolean>;
   isComandaAppEnabled(): Promise<boolean>;
   isTotemAppEnabled(): Promise<boolean>;
@@ -38,6 +39,8 @@ export interface PlatformConfigSnapshot {
   ifoodIntegrationEnabledAt?: Date;
   ninetyNineFoodIntegrationEnabled: boolean;
   ninetyNineFoodIntegrationEnabledAt?: Date;
+  keetaIntegrationEnabled: boolean;
+  keetaIntegrationEnabledAt?: Date;
   kdsAppEnabled: boolean;
   kdsAppEnabledAt?: Date;
   comandaAppEnabled: boolean;

@@ -64,10 +64,12 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
     };
     const restaurantRepository: Partial<IRestaurantRepository> = {
       findById: jest.fn().mockResolvedValue(buildRestaurant()),
+      listAll: jest.fn().mockResolvedValue([]),
       ...overrides.restaurantRepository,
     };
     const orderRepository: Partial<IOrderRepository> = {
       findReceivedSalesBetween: jest.fn().mockResolvedValue([]),
+      findConfirmedPixSalesBetween: jest.fn().mockResolvedValue([]),
       ...overrides.orderRepository,
     };
     const service = new CashRegisterService(
@@ -192,6 +194,95 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
 
       expect(cashRegisterRepository.open).not.toHaveBeenCalled();
       expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-hoje', expect.objectContaining({ orderId: 'o-1', amount: 10 }));
+    });
+  });
+
+  describe('addAutomaticReversalEntry (specs/0213-caixa-pix-na-confirmacao REQ-3/REQ-4)', () => {
+    it('lança um movimento de saída (estorno) vinculado ao pedido', async () => {
+      const { cashRegisterRepository, service } = setup();
+
+      await service.addAutomaticReversalEntry({ restaurantId: 'r-1', orderId: 'o-1', orderNumber: 42, amount: 50, paymentMethod: 'pix' });
+
+      expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-1', expect.objectContaining({
+        type: 'saida',
+        amount: 50,
+        orderId: 'o-1',
+        paymentMethod: 'pix',
+        description: 'Estorno - Venda #42 (Pix)',
+      }));
+    });
+
+    it('nunca estorna duas vezes o mesmo pedido', async () => {
+      const { cashRegisterRepository, service } = setup({
+        cashRegisterRepository: {
+          listMovements: jest.fn().mockResolvedValue([
+            { id: 'mv-entrada', cashRegisterSessionId: 'cr-1', type: 'entrada', amount: 50, description: 'Venda #1 (Pix)', orderId: 'o-1', createdAt: '2026-09-09T09:00:00.000Z' },
+            { id: 'mv-estorno', cashRegisterSessionId: 'cr-1', type: 'saida', amount: 50, description: 'Estorno - Venda #1 (Pix)', orderId: 'o-1', createdAt: '2026-09-09T10:00:00.000Z' },
+          ]),
+        },
+      });
+
+      await service.addAutomaticReversalEntry({ restaurantId: 'r-1', orderId: 'o-1', orderNumber: 1, amount: 50, paymentMethod: 'pix' });
+
+      expect(cashRegisterRepository.addMovement).not.toHaveBeenCalled();
+    });
+
+    it('abre uma sessão nova (primeira venda do dia) se precisar, mesmo pra estornar', async () => {
+      const { cashRegisterRepository, service } = setup({
+        cashRegisterRepository: {
+          findOpenSessionByRestaurant: jest.fn().mockResolvedValue(null),
+          findSessionByDate: jest.fn().mockResolvedValue(null),
+          open: jest.fn().mockResolvedValue(buildSession({ id: 'cr-nova' })),
+        },
+      });
+
+      await service.addAutomaticReversalEntry({ restaurantId: 'r-1', orderId: 'o-1', orderNumber: 1, amount: 10, paymentMethod: 'pix' });
+
+      expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-nova', expect.objectContaining({ type: 'saida', orderId: 'o-1' }));
+    });
+  });
+
+  describe('addPartialRefundEntry (specs/0214-estorno-sobrepagamento-mesa REQ-2/REQ-8)', () => {
+    it('lança um movimento de saída (troco a devolver) vinculado ao pedido', async () => {
+      const { cashRegisterRepository, service } = setup();
+
+      await service.addPartialRefundEntry({ restaurantId: 'r-1', orderId: 'o-1', orderNumber: 72, amount: 9, paymentMethod: 'cash' });
+
+      expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-1', expect.objectContaining({
+        type: 'saida',
+        amount: 9,
+        orderId: 'o-1',
+        paymentMethod: 'cash',
+        description: 'Troco a devolver - Mesa/balcão #72 (Dinheiro)',
+      }));
+    });
+
+    it('DIFERENTE de addAutomaticReversalEntry — não tem dedup própria, pode estornar o mesmo pedido mais de uma vez', async () => {
+      const { cashRegisterRepository, service } = setup({
+        cashRegisterRepository: {
+          listMovements: jest.fn().mockResolvedValue([
+            { id: 'mv-1', cashRegisterSessionId: 'cr-1', type: 'saida', amount: 5, description: 'Troco a devolver - Mesa/balcão #1 (Dinheiro)', orderId: 'o-1', createdAt: '2026-09-09T09:00:00.000Z' },
+          ]),
+        },
+      });
+
+      await service.addPartialRefundEntry({ restaurantId: 'r-1', orderId: 'o-1', orderNumber: 1, amount: 3, paymentMethod: 'cash' });
+
+      expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-1', expect.objectContaining({ type: 'saida', amount: 3, orderId: 'o-1' }));
+    });
+
+    it('abre uma sessão nova (primeira venda do dia) se precisar', async () => {
+      const { cashRegisterRepository, service } = setup({
+        cashRegisterRepository: {
+          findOpenSessionByRestaurant: jest.fn().mockResolvedValue(null),
+          findSessionByDate: jest.fn().mockResolvedValue(null),
+          open: jest.fn().mockResolvedValue(buildSession({ id: 'cr-nova' })),
+        },
+      });
+
+      await service.addPartialRefundEntry({ restaurantId: 'r-1', orderId: 'o-1', orderNumber: 1, amount: 9, paymentMethod: 'cash' });
+
+      expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-nova', expect.objectContaining({ type: 'saida', orderId: 'o-1' }));
     });
   });
 
@@ -337,14 +428,118 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
     });
   });
 
+  describe('closeDueAutomaticSessions (specs/0216-fechamento-automatico-caixa AC-2/AC-3/AC-4/AC-5)', () => {
+    const MONDAY_11PM_BRT = new Date('2026-10-13T02:00:00.000Z'); // segunda, 23:00 em Brasília
+    const MONDAY_9AM_BRT = new Date('2026-10-12T12:00:00.000Z'); // segunda, 09:00 em Brasília
+
+    it('AC-2: fecha a sessão aberta de um restaurante elegível cujo horário já passou, com o saldo calculado', async () => {
+      const { service, cashRegisterRepository } = setup({
+        restaurantRepository: {
+          listAll: jest.fn().mockResolvedValue([
+            buildRestaurant({ cashRegisterAutoCloseMode: 'automatic', cashRegisterAutoCloseTime: '23:00' }),
+          ]),
+        },
+        cashRegisterRepository: { getCalculatedBalance: jest.fn().mockResolvedValue(123.45) },
+      });
+
+      await service.closeDueAutomaticSessions(MONDAY_11PM_BRT);
+
+      expect(cashRegisterRepository.close).toHaveBeenCalledWith('cr-1', 123.45, 'automatico', true);
+    });
+
+    it('AC-3: restaurante elegível sem sessão aberta não faz nada, sem erro', async () => {
+      const { service, cashRegisterRepository } = setup({
+        restaurantRepository: {
+          listAll: jest.fn().mockResolvedValue([
+            buildRestaurant({ cashRegisterAutoCloseMode: 'automatic', cashRegisterAutoCloseTime: '23:00' }),
+          ]),
+        },
+        cashRegisterRepository: { findOpenSessionByRestaurant: jest.fn().mockResolvedValue(null) },
+      });
+
+      await expect(service.closeDueAutomaticSessions(MONDAY_11PM_BRT)).resolves.toBeUndefined();
+
+      expect(cashRegisterRepository.close).not.toHaveBeenCalled();
+    });
+
+    it('não fecha antes do horário configurado chegar', async () => {
+      const { service, cashRegisterRepository } = setup({
+        restaurantRepository: {
+          listAll: jest.fn().mockResolvedValue([
+            buildRestaurant({ cashRegisterAutoCloseMode: 'automatic', cashRegisterAutoCloseTime: '23:00' }),
+          ]),
+        },
+      });
+
+      await service.closeDueAutomaticSessions(MONDAY_9AM_BRT);
+
+      expect(cashRegisterRepository.close).not.toHaveBeenCalled();
+    });
+
+    it('AC-5: restaurante com fechamento automático desligado (modo manual) nunca fecha sozinho', async () => {
+      const { service, cashRegisterRepository } = setup({
+        restaurantRepository: {
+          listAll: jest.fn().mockResolvedValue([
+            buildRestaurant({ cashRegisterAutoCloseMode: 'manual', cashRegisterAutoCloseTime: '23:00' }),
+          ]),
+        },
+      });
+
+      await service.closeDueAutomaticSessions(MONDAY_11PM_BRT);
+
+      expect(cashRegisterRepository.close).not.toHaveBeenCalled();
+    });
+
+    it('AC-4: sessão reaberta manualmente pelo dono não é fechada de novo automaticamente', async () => {
+      const { service, cashRegisterRepository } = setup({
+        restaurantRepository: {
+          listAll: jest.fn().mockResolvedValue([
+            buildRestaurant({ cashRegisterAutoCloseMode: 'automatic', cashRegisterAutoCloseTime: '23:00' }),
+          ]),
+        },
+        cashRegisterRepository: {
+          findOpenSessionByRestaurant: jest.fn().mockResolvedValue(buildSession({ reopenedAt: '2026-10-12T15:00:00.000Z', reopenedBy: 'dono-1' })),
+        },
+      });
+
+      await service.closeDueAutomaticSessions(MONDAY_11PM_BRT);
+
+      expect(cashRegisterRepository.close).not.toHaveBeenCalled();
+    });
+
+    it('um restaurante com erro não impede o fechamento dos demais', async () => {
+      const { service, cashRegisterRepository } = setup({
+        restaurantRepository: {
+          listAll: jest.fn().mockResolvedValue([
+            buildRestaurant({ id: 'r-1', cashRegisterAutoCloseMode: 'automatic', cashRegisterAutoCloseTime: '23:00' }),
+            buildRestaurant({ id: 'r-2', cashRegisterAutoCloseMode: 'automatic', cashRegisterAutoCloseTime: '23:00' }),
+          ]),
+        },
+        cashRegisterRepository: {
+          findOpenSessionByRestaurant: jest.fn()
+            .mockRejectedValueOnce(new Error('falha inesperada'))
+            .mockResolvedValueOnce(buildSession({ id: 'cr-2', restaurantId: 'r-2' })),
+        },
+      });
+
+      await expect(service.closeDueAutomaticSessions(MONDAY_11PM_BRT)).resolves.toBeUndefined();
+
+      expect(cashRegisterRepository.close).toHaveBeenCalledWith('cr-2', 100, 'automatico', true);
+    });
+  });
+
   describe('getBalanceByPaymentMethod (AC-6)', () => {
     it('AC-6: 2 vendas Pix (R$ 50 cada) e 1 venda dinheiro (R$ 30) aparecem separadas por forma de pagamento', async () => {
       const { service } = setup({
         orderRepository: {
           findReceivedSalesBetween: jest.fn().mockResolvedValue([
+            buildDeliveredOrder({ id: 'o-3', paymentMethod: 'cash', total: 30 }),
+          ]),
+          // specs/0213-caixa-pix-na-confirmacao — Pix conta por `findConfirmedPixSalesBetween`
+          // (gatilho "confirmado"), não por `findReceivedSalesBetween` ("entregue").
+          findConfirmedPixSalesBetween: jest.fn().mockResolvedValue([
             buildDeliveredOrder({ id: 'o-1', paymentMethod: 'pix', total: 50 }),
             buildDeliveredOrder({ id: 'o-2', paymentMethod: 'pix', total: 50 }),
-            buildDeliveredOrder({ id: 'o-3', paymentMethod: 'cash', total: 30 }),
           ]),
         },
       });
@@ -444,7 +639,9 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
     it('movimento manual (sangria) sem orderId reduz a forma "dinheiro", sem duplicar venda automática de Pix', async () => {
       const { service } = setup({
         orderRepository: {
-          findReceivedSalesBetween: jest.fn().mockResolvedValue([buildDeliveredOrder({ id: 'o-1', paymentMethod: 'pix', total: 50 })]),
+          // specs/0213-caixa-pix-na-confirmacao — Pix agora conta por `findConfirmedPixSalesBetween`
+          // (gatilho "confirmado"), não por `findReceivedSalesBetween` ("entregue").
+          findConfirmedPixSalesBetween: jest.fn().mockResolvedValue([buildDeliveredOrder({ id: 'o-1', paymentMethod: 'pix', total: 50 })]),
         },
         cashRegisterRepository: {
           listMovements: jest.fn().mockResolvedValue([
@@ -466,12 +663,16 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
       const { service } = setup({
         orderRepository: {
           findReceivedSalesBetween: jest.fn().mockResolvedValue([
-            buildDeliveredOrder({ id: 'o-delivery-1', orderType: 'delivery', paymentMethod: 'pix', total: 50 }),
             buildDeliveredOrder({ id: 'o-delivery-2', orderType: 'pickup', paymentMethod: 'cash', total: 20 }),
             buildDeliveredOrder({
               id: 'o-mesa', orderType: 'table', status: 'confirmado', paymentMethod: 'pix', total: 16,
               tablePayments: [{ id: 'pay-1', method: 'cash', amount: 16, paidAt: '2026-09-09T10:00:00.000Z' }],
             }),
+          ]),
+          // specs/0213-caixa-pix-na-confirmacao — Pix conta por `findConfirmedPixSalesBetween`
+          // (gatilho "confirmado"), não por `findReceivedSalesBetween` ("entregue").
+          findConfirmedPixSalesBetween: jest.fn().mockResolvedValue([
+            buildDeliveredOrder({ id: 'o-delivery-1', orderType: 'delivery', paymentMethod: 'pix', total: 50 }),
           ]),
         },
       });
@@ -550,6 +751,66 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
       const summary = await service.getClosingSummary('cr-1');
 
       expect(summary.lateMovements).toEqual([]);
+    });
+
+    // specs/0213-caixa-pix-na-confirmacao REQ-6/AC-6 — pedido Pix confirmado dentro do período
+    // mas ainda não entregue (nem cancelado) soma normalmente, mesmo nunca aparecendo em
+    // `findReceivedSalesBetween` (que só traz pedidos já "entregue").
+    it('specs/0213 AC-6: pedido Pix confirmado mas ainda não entregue entra em totalSales/salesByPaymentMethod.pix/deliverySales', async () => {
+      const { service } = setup({
+        orderRepository: {
+          findConfirmedPixSalesBetween: jest.fn().mockResolvedValue([
+            buildDeliveredOrder({ id: 'o-1', status: 'emPreparo', paymentMethod: 'pix', total: 50 }),
+          ]),
+        },
+      });
+
+      const summary = await service.getClosingSummary('cr-1');
+
+      expect(summary.totalSales).toBe(50);
+      expect(summary.deliverySales).toBe(50);
+      expect(summary.balanceByPaymentMethod.pix).toBe(50);
+    });
+
+    // specs/0213 REQ-6 — pedido Pix confirmado e depois cancelado some do resumo: no ledger real
+    // a entrada e o estorno têm `orderId`, então nenhum dos dois é somado pelo loop de movimentos
+    // manuais; não somar aqui (nem a entrada, nem o estorno) mantém o total batendo com zero
+    // líquido.
+    it('specs/0213 REQ-6: pedido Pix confirmado e cancelado depois soma zero no resumo', async () => {
+      const { service } = setup({
+        orderRepository: {
+          findConfirmedPixSalesBetween: jest.fn().mockResolvedValue([
+            buildDeliveredOrder({ id: 'o-1', status: 'cancelado', paymentMethod: 'pix', total: 50 }),
+          ]),
+        },
+      });
+
+      const summary = await service.getClosingSummary('cr-1');
+
+      expect(summary.totalSales).toBe(0);
+      expect(summary.deliverySales).toBe(0);
+      expect(summary.balanceByPaymentMethod.pix).toBe(0);
+    });
+
+    // specs/0213 REQ-6 — um pedido Pix que JÁ chegou em "entregue" aparece nas duas buscas
+    // (`findReceivedSalesBetween` por status "entregue", `findConfirmedPixSalesBetween` por
+    // "confirmado" no período); precisa contar só uma vez.
+    it('specs/0213 REQ-6: pedido Pix entregue não conta duas vezes mesmo aparecendo nas duas buscas', async () => {
+      const { service } = setup({
+        orderRepository: {
+          findReceivedSalesBetween: jest.fn().mockResolvedValue([
+            buildDeliveredOrder({ id: 'o-1', status: 'entregue', paymentMethod: 'pix', total: 50 }),
+          ]),
+          findConfirmedPixSalesBetween: jest.fn().mockResolvedValue([
+            buildDeliveredOrder({ id: 'o-1', status: 'entregue', paymentMethod: 'pix', total: 50 }),
+          ]),
+        },
+      });
+
+      const summary = await service.getClosingSummary('cr-1');
+
+      expect(summary.totalSales).toBe(50);
+      expect(summary.balanceByPaymentMethod.pix).toBe(50);
     });
   });
 });

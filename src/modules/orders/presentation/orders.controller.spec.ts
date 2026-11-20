@@ -19,6 +19,8 @@ import { IFoodAuthService } from '../../ifood-integration/infra/ifood-auth.servi
 import { IFoodClient } from '../../ifood-integration/infra/ifood-client';
 import { NinetyNineFoodAuthService } from '../../ninety-nine-food-integration/infra/ninety-nine-food-auth.service';
 import { NinetyNineFoodClient } from '../../ninety-nine-food-integration/infra/ninety-nine-food-client';
+import { KeetaAuthService } from '../../keeta-integration/infra/keeta-auth.service';
+import { KeetaClient } from '../../keeta-integration/infra/keeta-client';
 import { CustomerBalanceService } from '../../customer-balance/domain/services/customer-balance.service';
 import { ICustomerBalanceRepository } from '../../customer-balance/domain/repositories/customer-balance.repository.interface';
 import type { IPlatformConfigRepository } from '../../platform-config/domain/platform-config.repository.interface';
@@ -41,6 +43,10 @@ jest.mock('../../ifood-integration/infra/ifood-client');
 // `tryCancelOrderVia99Food`.
 jest.mock('../../ninety-nine-food-integration/infra/ninety-nine-food-auth.service');
 jest.mock('../../ninety-nine-food-integration/infra/ninety-nine-food-client');
+// specs/0212-integracao-keeta — mesmo raciocínio acima, pra `tryConfirmOrderViaKeeta`/
+// `tryCancelOrderViaKeeta`/`tryMarkReadyViaKeeta`.
+jest.mock('../../keeta-integration/infra/keeta-auth.service');
+jest.mock('../../keeta-integration/infra/keeta-client');
 
 type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & {
   user?: { uid: string; email?: string };
@@ -132,6 +138,11 @@ function buildRestaurant(
     ninetyNineFoodAppShopId: string;
     ninetyNineFoodAuthToken: string;
     ninetyNineFoodTokenExpiresAt: string;
+    // specs/0212-integracao-keeta.
+    keetaShopId: string;
+    keetaAccessToken: string;
+    keetaRefreshToken: string;
+    keetaTokenExpiresAt: string;
   }> = {},
 ) {
   return {
@@ -348,8 +359,11 @@ describe('OrdersController', () => {
     };
     const cashRegisterService: ICashRegisterService = {
       addAutomaticEntry: jest.fn().mockResolvedValue(undefined),
+      addAutomaticReversalEntry: jest.fn().mockResolvedValue(undefined),
+      addPartialRefundEntry: jest.fn().mockResolvedValue(undefined),
       syncOpenSession: jest.fn().mockResolvedValue(undefined),
       ensureAutomaticSchedule: jest.fn().mockResolvedValue(undefined),
+      closeDueAutomaticSessions: jest.fn().mockResolvedValue(undefined),
       getBalanceByPaymentMethod: jest.fn().mockResolvedValue({}),
       getClosingSummary: jest.fn(),
     };
@@ -1736,6 +1750,126 @@ describe('OrdersController', () => {
     });
   });
 
+  describe('specs/0212-integracao-keeta REQ-5/REQ-8 — confirmar/cancelar/marcar pronto propaga pra API da Keeta', () => {
+    const MockedKeetaAuthService = KeetaAuthService as jest.MockedClass<typeof KeetaAuthService>;
+    const MockedKeetaClient = KeetaClient as jest.MockedClass<typeof KeetaClient>;
+
+    beforeEach(() => {
+      MockedKeetaAuthService.mockClear();
+      MockedKeetaClient.mockClear();
+      MockedKeetaAuthService.prototype.ensureFreshAccessToken = jest.fn().mockResolvedValue({ accessToken: 'tok-1' });
+      MockedKeetaClient.prototype.confirmOrder = jest.fn().mockResolvedValue(undefined);
+      MockedKeetaClient.prototype.cancelOrder = jest.fn().mockResolvedValue(undefined);
+      MockedKeetaClient.prototype.markReadyForPickup = jest.fn().mockResolvedValue(undefined);
+    });
+
+    it('confirmar um pedido de origem Keeta chama KeetaClient.confirmOrder com keetaOrderViewId (nunca order.id)', async () => {
+      const { restaurantRepository, routes } = setup({
+        orderRepository: {
+          findById: jest.fn().mockResolvedValue(buildOrder({ source: 'keeta', keetaOrderViewId: '756823555555859' })),
+          updateStatus: jest.fn().mockResolvedValue(buildOrder({ source: 'keeta', keetaOrderViewId: '756823555555859', status: 'confirmado' })),
+        },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ keetaShopId: 'shop-1', keetaAccessToken: 'tok-0', keetaRefreshToken: 'ref-0' })) },
+      });
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/status'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'confirmado' } },
+        { json: jest.fn() },
+      );
+
+      expect(MockedKeetaClient.prototype.confirmOrder).toHaveBeenCalledWith('tok-1', 'shop-1', '756823555555859');
+      expect(restaurantRepository.findById).toHaveBeenCalled();
+    });
+
+    it('confirmar um pedido de origem própria (sem source) NÃO chama a Keeta', async () => {
+      const { routes } = setup({ orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ source: undefined })) } });
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/status'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'confirmado' } },
+        { json: jest.fn() },
+      );
+
+      expect(MockedKeetaClient.prototype.confirmOrder).not.toHaveBeenCalled();
+    });
+
+    it('cancelar um pedido de origem Keeta chama KeetaClient.cancelOrder com cancelCode 500000 e o motivo', async () => {
+      const { routes } = setup({
+        orderRepository: {
+          findById: jest.fn().mockResolvedValue(buildOrder({ source: 'keeta', keetaOrderViewId: '756823555555859', status: 'confirmado' })),
+          updateStatus: jest.fn().mockResolvedValue(buildOrder({ source: 'keeta', keetaOrderViewId: '756823555555859', status: 'cancelado' })),
+        },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ keetaShopId: 'shop-1', keetaAccessToken: 'tok-0', keetaRefreshToken: 'ref-0' })) },
+      });
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/cancel'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { reason: 'Produto em falta' } },
+        { json: jest.fn() },
+      );
+
+      expect(MockedKeetaClient.prototype.cancelOrder).toHaveBeenCalledWith('tok-1', 'shop-1', '756823555555859', '500000', 'Produto em falta');
+    });
+
+    it('AC-6: marcar "saiuParaEntrega" (pronto pra retirada) num pedido pickup de origem Keeta chama KeetaClient.markReadyForPickup', async () => {
+      const { routes } = setup({
+        orderRepository: {
+          findById: jest.fn().mockResolvedValue(buildOrder({ source: 'keeta', keetaOrderViewId: '756823555555859', orderType: 'pickup', status: 'emPreparo' })),
+          updateStatus: jest.fn().mockResolvedValue(buildOrder({ source: 'keeta', keetaOrderViewId: '756823555555859', orderType: 'pickup', status: 'saiuParaEntrega' })),
+        },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ keetaShopId: 'shop-1', keetaAccessToken: 'tok-0', keetaRefreshToken: 'ref-0' })) },
+      });
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/status'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'saiuParaEntrega' } },
+        { json: jest.fn() },
+      );
+
+      expect(MockedKeetaClient.prototype.markReadyForPickup).toHaveBeenCalledWith('tok-1', 'shop-1', '756823555555859');
+    });
+
+    it('marcar "saiuParaEntrega" num pedido delivery (não pickup) de origem Keeta NÃO chama markReadyForPickup', async () => {
+      const { routes } = setup({
+        orderRepository: {
+          findById: jest.fn().mockResolvedValue(buildOrder({ source: 'keeta', keetaOrderViewId: '756823555555859', orderType: 'delivery', status: 'emPreparo' })),
+          updateStatus: jest.fn().mockResolvedValue(buildOrder({ source: 'keeta', keetaOrderViewId: '756823555555859', orderType: 'delivery', status: 'saiuParaEntrega' })),
+        },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ keetaShopId: 'shop-1', keetaAccessToken: 'tok-0', keetaRefreshToken: 'ref-0' })) },
+      });
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/status'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'saiuParaEntrega' } },
+        { json: jest.fn() },
+      );
+
+      expect(MockedKeetaClient.prototype.markReadyForPickup).not.toHaveBeenCalled();
+    });
+
+    it('falha ao confirmar na Keeta não impede a confirmação local (erro só logado)', async () => {
+      MockedKeetaClient.prototype.confirmOrder = jest.fn().mockRejectedValue(new Error('Keeta fora do ar'));
+      const { orderRepository, routes } = setup({
+        orderRepository: {
+          findById: jest.fn().mockResolvedValue(buildOrder({ source: 'keeta', keetaOrderViewId: '756823555555859' })),
+          updateStatus: jest.fn().mockResolvedValue(buildOrder({ source: 'keeta', keetaOrderViewId: '756823555555859', status: 'confirmado' })),
+        },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ keetaShopId: 'shop-1', keetaAccessToken: 'tok-0', keetaRefreshToken: 'ref-0' })) },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/status'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'confirmado' } },
+        { json },
+      );
+
+      expect(orderRepository.updateStatus).toHaveBeenCalled();
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ status: 'confirmado' }));
+    });
+  });
+
   it('specs/0013 REQ-2: PATCH .../status dispara o aviso de mudança de status por WhatsApp', async () => {
     const { whatsAppNotificationService, routes } = setup();
 
@@ -1751,11 +1885,11 @@ describe('OrdersController', () => {
     );
   });
 
-  it('specs/0014-financeiro REQ-5: PATCH .../status pra "entregue" chama CashRegisterService com os dados do pedido', async () => {
+  it('specs/0014-financeiro REQ-5: PATCH .../status pra "entregue" chama CashRegisterService com os dados do pedido (forma de pagamento diferente de Pix)', async () => {
     const { cashRegisterService, routes } = setup({
       orderRepository: {
-        findById: jest.fn().mockResolvedValue(buildOrder({ status: 'saiuParaEntrega', paymentMethod: 'pix' })),
-        updateStatus: jest.fn().mockResolvedValue(buildOrder({ status: 'entregue', paymentMethod: 'pix' })),
+        findById: jest.fn().mockResolvedValue(buildOrder({ status: 'saiuParaEntrega', paymentMethod: 'cash' })),
+        updateStatus: jest.fn().mockResolvedValue(buildOrder({ status: 'entregue', paymentMethod: 'cash' })),
       },
     });
 
@@ -1770,16 +1904,59 @@ describe('OrdersController', () => {
       orderId: 'o-1',
       orderNumber: 1,
       amount: 30,
-      paymentMethod: 'pix',
+      paymentMethod: 'cash',
     });
   });
 
-  it('specs/0014-financeiro REQ-5: PATCH .../status pra um status que não é "entregue" nunca chama CashRegisterService', async () => {
+  it('specs/0014-financeiro REQ-5: PATCH .../status pra um status que não é "entregue" nunca chama CashRegisterService (forma não-Pix)', async () => {
     const { cashRegisterService, routes } = setup();
 
     await runOperatorChain(
       routes['PATCH /restaurants/me/orders/:id/status'],
       { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'confirmado' } },
+      { json: jest.fn() },
+    );
+
+    expect(cashRegisterService.addAutomaticEntry).not.toHaveBeenCalled();
+  });
+
+  // specs/0213-caixa-pix-na-confirmacao REQ-1/REQ-2 — AC-1/AC-2: Pix lança no caixa em
+  // "confirmado" (o dinheiro já está na conta do restaurante desde a confirmação), não mais em
+  // "entregue"; chegar em "entregue" depois não lança de novo.
+  it('specs/0213 AC-1: PATCH .../status pra "confirmado" com Pix chama CashRegisterService com os dados do pedido', async () => {
+    const { cashRegisterService, routes } = setup({
+      orderRepository: {
+        findById: jest.fn().mockResolvedValue(buildOrder({ status: 'aguardandoConfirmacao', paymentMethod: 'pix' })),
+        updateStatus: jest.fn().mockResolvedValue(buildOrder({ status: 'confirmado', paymentMethod: 'pix' })),
+      },
+    });
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/status'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'confirmado' } },
+      { json: jest.fn() },
+    );
+
+    expect(cashRegisterService.addAutomaticEntry).toHaveBeenCalledWith({
+      restaurantId: 'r-1',
+      orderId: 'o-1',
+      orderNumber: 1,
+      amount: 30,
+      paymentMethod: 'pix',
+    });
+  });
+
+  it('specs/0213 AC-2: PATCH .../status pra "entregue" com Pix NÃO chama CashRegisterService de novo (já lançou em "confirmado")', async () => {
+    const { cashRegisterService, routes } = setup({
+      orderRepository: {
+        findById: jest.fn().mockResolvedValue(buildOrder({ status: 'saiuParaEntrega', paymentMethod: 'pix' })),
+        updateStatus: jest.fn().mockResolvedValue(buildOrder({ status: 'entregue', paymentMethod: 'pix' })),
+      },
+    });
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/status'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'entregue' } },
       { json: jest.fn() },
     );
 
@@ -1939,6 +2116,83 @@ describe('OrdersController', () => {
       { json: jest.fn() },
     );
     expect(orderRepository.updateStatus).toHaveBeenCalledWith('o-1', 'cancelado', 'r-1', 'Cliente desistiu');
+  });
+
+  // specs/0213-caixa-pix-na-confirmacao REQ-3/REQ-4/REQ-5 — AC-3/AC-4/AC-5: estorna o movimento
+  // automático de caixa só quando o pedido Pix já tinha passado por "confirmado" (onde já tem um
+  // lançamento de entrada); cancelar ainda "aguardandoConfirmacao" ou com outra forma de
+  // pagamento nunca estorna, porque nunca existiu lançamento nenhum nesses dois casos.
+  it.each(['confirmado', 'emPreparo', 'saiuParaEntrega'] as const)(
+    'specs/0213 AC-3: cancelar pedido Pix em "%s" lança o estorno do caixa',
+    async (status) => {
+      const { cashRegisterService, routes } = setup({
+        orderRepository: {
+          findById: jest.fn().mockResolvedValue(buildOrder({ status, paymentMethod: 'pix' })),
+        },
+      });
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/cancel'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { reason: 'Cliente desistiu' } },
+        { json: jest.fn() },
+      );
+
+      expect(cashRegisterService.addAutomaticReversalEntry).toHaveBeenCalledWith({
+        restaurantId: 'r-1',
+        orderId: 'o-1',
+        orderNumber: 1,
+        amount: 30,
+        paymentMethod: 'pix',
+      });
+    },
+  );
+
+  it('specs/0213 AC-4: cancelar pedido Pix ainda "aguardandoConfirmacao" NÃO lança estorno (nunca existiu lançamento)', async () => {
+    const { cashRegisterService, routes } = setup({
+      orderRepository: {
+        findById: jest.fn().mockResolvedValue(buildOrder({ status: 'aguardandoConfirmacao', paymentMethod: 'pix' })),
+      },
+    });
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/cancel'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { reason: 'Cliente desistiu' } },
+      { json: jest.fn() },
+    );
+
+    expect(cashRegisterService.addAutomaticReversalEntry).not.toHaveBeenCalled();
+  });
+
+  it('specs/0213 AC-5: cancelar pedido confirmado com forma de pagamento diferente de Pix NÃO lança estorno', async () => {
+    const { cashRegisterService, routes } = setup({
+      orderRepository: {
+        findById: jest.fn().mockResolvedValue(buildOrder({ status: 'confirmado', paymentMethod: 'cash' })),
+      },
+    });
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/cancel'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { reason: 'Cliente desistiu' } },
+      { json: jest.fn() },
+    );
+
+    expect(cashRegisterService.addAutomaticReversalEntry).not.toHaveBeenCalled();
+  });
+
+  it('specs/0213 REQ-3: cancelar pedido de mesa com Pix confirmado NÃO lança estorno (mesa lança por pagamento, fora de escopo)', async () => {
+    const { cashRegisterService, routes } = setup({
+      orderRepository: {
+        findById: jest.fn().mockResolvedValue(buildOrder({ status: 'confirmado', paymentMethod: 'pix', orderType: 'table' })),
+      },
+    });
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/cancel'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { reason: 'Cliente desistiu' } },
+      { json: jest.fn() },
+    );
+
+    expect(cashRegisterService.addAutomaticReversalEntry).not.toHaveBeenCalled();
   });
 
   it('Pedido explícito do usuário (16/11/2026): cancelar pedido com nota emitida há menos de 30min também cancela a nota fiscal', async () => {
@@ -2786,6 +3040,7 @@ describe('OrdersController', () => {
         isMercadoPagoIntegrationEnabled: jest.fn().mockResolvedValue(false),
         isIfoodIntegrationEnabled: jest.fn().mockResolvedValue(false),
         isNinetyNineFoodIntegrationEnabled: jest.fn().mockResolvedValue(false),
+      isKeetaIntegrationEnabled: jest.fn().mockResolvedValue(false),
         isKdsAppEnabled: jest.fn().mockResolvedValue(false),
         isComandaAppEnabled: jest.fn().mockResolvedValue(false),
         isTotemAppEnabled: jest.fn().mockResolvedValue(false),

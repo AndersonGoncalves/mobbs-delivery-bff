@@ -173,6 +173,11 @@ const restaurantSchema = new Schema(
     // já existia manteve o que já tinha configurado (este default só vale na criação do
     // documento, nunca sobrescreve um restaurante já existente).
     cashRegisterMode: { type: String, enum: ['manual', 'automatic'], required: true, default: 'automatic' },
+    // specs/0216-fechamento-automatico-caixa — default 'manual' (preserva o comportamento atual
+    // pra todo restaurante, novo ou existente; diferente de `cashRegisterMode` acima, que já
+    // nasce 'automatic' pra restaurante novo).
+    cashRegisterAutoCloseMode: { type: String, enum: ['manual', 'automatic'], required: true, default: 'manual' },
+    cashRegisterAutoCloseTime: { type: String, required: true, default: '04:00' },
     // Pedido explícito do usuário — default desligado preserva o comportamento atual (sem
     // nenhuma restrição) de todo restaurante já existente.
     customerBlockingEnabled: { type: Boolean, required: true, default: false },
@@ -231,6 +236,15 @@ const restaurantSchema = new Schema(
     ninetyNineFoodAuthorizationPendingAt: { type: String },
     // specs/0130-integracao-99-entrega.
     ninetyNineFoodEntregaActivatedAt: { type: String },
+    // specs/0212-integracao-keeta — vínculo OAuth2 self-service (`appId`/`appSecret` de nível de
+    // app, fora do schema, em `environment.keeta`).
+    keetaShopId: { type: String },
+    keetaBrandId: { type: String },
+    keetaAccessToken: { type: String },
+    keetaRefreshToken: { type: String },
+    keetaTokenExpiresAt: { type: String },
+    keetaConnectedAt: { type: String },
+    keetaAuthorizationState: { type: String },
     // Pedido explícito do usuário — tempo médio de atendimento mostrado no app do cliente, por
     // modalidade; defaults vindos do exemplo mostrado (40-60min delivery, 20-40min balcão).
     deliveryTimeMinMinutes: { type: Number, required: true, default: 40 },

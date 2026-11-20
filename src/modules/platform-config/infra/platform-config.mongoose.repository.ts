@@ -22,6 +22,11 @@ export class PlatformConfigMongooseRepository implements IPlatformConfigReposito
     return doc?.ninetyNineFoodIntegrationEnabled ?? false;
   }
 
+  async isKeetaIntegrationEnabled(): Promise<boolean> {
+    const doc = await PlatformConfigModel.findById(PLATFORM_CONFIG_SINGLETON_ID).lean();
+    return doc?.keetaIntegrationEnabled ?? false;
+  }
+
   async isKdsAppEnabled(): Promise<boolean> {
     const doc = await PlatformConfigModel.findById(PLATFORM_CONFIG_SINGLETON_ID).lean();
     return doc?.kdsAppEnabled ?? false;
@@ -53,6 +58,8 @@ export class PlatformConfigMongooseRepository implements IPlatformConfigReposito
       ifoodIntegrationEnabledAt: doc?.ifoodIntegrationEnabledAt,
       ninetyNineFoodIntegrationEnabled: doc?.ninetyNineFoodIntegrationEnabled ?? false,
       ninetyNineFoodIntegrationEnabledAt: doc?.ninetyNineFoodIntegrationEnabledAt,
+      keetaIntegrationEnabled: doc?.keetaIntegrationEnabled ?? false,
+      keetaIntegrationEnabledAt: doc?.keetaIntegrationEnabledAt,
       kdsAppEnabled: doc?.kdsAppEnabled ?? false,
       kdsAppEnabledAt: doc?.kdsAppEnabledAt,
       comandaAppEnabled: doc?.comandaAppEnabled ?? false,

@@ -30,6 +30,8 @@ import { IFoodAuthService } from '../../ifood-integration/infra/ifood-auth.servi
 import { IFoodClient } from '../../ifood-integration/infra/ifood-client';
 import { NinetyNineFoodAuthService } from '../../ninety-nine-food-integration/infra/ninety-nine-food-auth.service';
 import { NinetyNineFoodClient } from '../../ninety-nine-food-integration/infra/ninety-nine-food-client';
+import { KeetaAuthService } from '../../keeta-integration/infra/keeta-auth.service';
+import { KeetaClient } from '../../keeta-integration/infra/keeta-client';
 import { FiscalEmissionService } from '../../fiscal-integration/domain/services/fiscal-emission.service';
 import { IFiscalConfigRepository } from '../../fiscal-integration/domain/repositories/fiscal-config.repository.interface';
 import { ConfirmOnlinePaymentService } from '../domain/services/confirm-online-payment.service';
@@ -82,6 +84,16 @@ export class OrdersController extends BaseRouter {
     this.ninetyNineFoodClient,
     environment.ninetyNineFood.appId ?? '',
     environment.ninetyNineFood.appSecret ?? '',
+  );
+  // specs/0212-integracao-keeta — mesmo raciocínio acima; `keetaAuthService` guarda só
+  // `appId`/`redirectUri` (nível de app), a renovação de token em si olha pro
+  // `accessToken`/`refreshToken` persistidos no `Restaurant` passado em cada chamada.
+  private readonly keetaClient = new KeetaClient(environment.keeta.baseUrl, environment.keeta.appSecret ?? '');
+  private readonly keetaAuthService = new KeetaAuthService(
+    this.keetaClient,
+    environment.keeta.appId ?? '',
+    environment.keeta.merchantAuthorizeUrl,
+    environment.keeta.redirectUri ?? '',
   );
 
   constructor(
@@ -601,6 +613,8 @@ export class OrdersController extends BaseRouter {
           await this.tryConfirmOrderViaIFood(updated);
           // specs/0122-integracao-99food REQ-5 — mesmo raciocínio, API diferente.
           await this.tryConfirmOrderVia99Food(updated);
+          // specs/0212-integracao-keeta REQ-5 — mesmo raciocínio, API diferente.
+          await this.tryConfirmOrderViaKeeta(updated);
         }
 
         await this.handleStatusChangeSideEffects(updated, status);
@@ -664,12 +678,18 @@ export class OrdersController extends BaseRouter {
         await this.tryRefundOrderPixViaAsaas(order);
         await this.tryRefundOrderCardOnlineViaMercadoPago(order);
         await this.tryRefundOrderCardOnlineViaAsaas(order);
+        // specs/0213-caixa-pix-na-confirmacao REQ-3/REQ-4 — estorna o movimento automático de
+        // caixa (ledger interno, diferente do estorno de dinheiro real acima) se o pedido Pix já
+        // tinha passado por "confirmado" antes de ser cancelado.
+        await this.tryReverseAutomaticCashEntry(order);
         await this.refundCashbackIfUsed(order);
         // specs/0090-integracao-ifood REQ-6 — cancelar na retaguarda um pedido de origem iFood
         // também solicita o cancelamento na API deles.
         await this.tryCancelOrderViaIFood(updated, reason);
         // specs/0122-integracao-99food REQ-5 — mesmo raciocínio, API diferente.
         await this.tryCancelOrderVia99Food(updated, reason);
+        // specs/0212-integracao-keeta REQ-5 — mesmo raciocínio, API diferente.
+        await this.tryCancelOrderViaKeeta(updated, reason);
         // Pedido explícito do usuário (16/11/2026) — achado da revisão da mudança de gatilho
         // fiscal pra "saiuParaEntrega" (ver docstring de `fiscalConfigRepository` no construtor):
         // cancelar aqui um pedido com nota já emitida não pode deixá-la esquecida como "emitido".
@@ -912,18 +932,15 @@ export class OrdersController extends BaseRouter {
         console.error(`[billing] falha ao recalcular faturamento do restaurante ${updated.restaurantId}:`, error);
       });
     }
-    if (status === 'entregue' && updated.orderType !== 'table') {
-      try {
-        await this.cashRegisterService.addAutomaticEntry({
-          restaurantId: updated.restaurantId,
-          orderId: updated.id,
-          orderNumber: updated.orderNumber,
-          amount: updated.total,
-          paymentMethod: updated.paymentMethod,
-        });
-      } catch (error) {
-        console.error(`[financeiro] erro inesperado lançando movimento automático de caixa do pedido ${updated.id}:`, error);
-      }
+    // specs/0213-caixa-pix-na-confirmacao REQ-1/REQ-2 — Pix já está pago antes da entrega (o
+    // dinheiro já caiu na conta do restaurante na confirmação), então lança no caixa em
+    // "confirmado" em vez de "entregue"; as demais formas (dinheiro/cartão/cartão online)
+    // continuam lançando só na entrega, como sempre, já que só existem fisicamente ali.
+    if (status === 'entregue' && updated.orderType !== 'table' && updated.paymentMethod !== 'pix') {
+      await this.recordDeliverySaleInCashRegister(updated);
+    }
+    if (status === 'confirmado' && updated.orderType !== 'table' && updated.paymentMethod === 'pix') {
+      await this.recordDeliverySaleInCashRegister(updated);
     }
     // specs/0131-cashback-app REQ-2 / specs/0132-programa-fidelidade-app REQ-2/REQ-3 — mesmo
     // corte de `orderType !== 'table'` e mesmo try/catch não-bloqueante do caixa automático
@@ -971,6 +988,13 @@ export class OrdersController extends BaseRouter {
     // pedido avançar sem nota; depois do teto, libera mesmo assim (o serviço nunca lança — ver
     // `FiscalEmissionService` — a emissão continua rodando em background e, se terminar depois,
     // o cupom ainda entra na fila de impressão fiscal normalmente).
+    // specs/0212-integracao-keeta REQ-8 — "saiuParaEntrega" de um pedido `pickup` é "pronto pra
+    // retirada" (mesmo significado documentado em `order-status-transitions.ts`); só esse canal
+    // exige avisar a API externa desse passo intermediário (iFood/99Food não têm essa chamada).
+    if (status === 'saiuParaEntrega') {
+      await this.tryMarkReadyViaKeeta(updated);
+    }
+
     if (status === 'saiuParaEntrega' && this.fiscalEmissionService) {
       const emission = this.fiscalEmissionService.emitForOrder(updated).catch((error) => {
         console.error(`[fiscal-integration] erro inesperado emitindo documento fiscal do pedido ${updated.id}:`, error);
@@ -985,6 +1009,50 @@ export class OrdersController extends BaseRouter {
           resolve();
         });
       });
+    }
+  }
+
+  /**
+   * specs/0213-caixa-pix-na-confirmacao REQ-1/REQ-2 — corpo comum extraído de
+   * `handleStatusChangeSideEffects` (chamado em "confirmado" pra Pix, em "entregue" pras demais
+   * formas). Sem sessão aberta o serviço não grava nada. Protegido por try/catch: falha na
+   * contabilização nunca reverte o status, que já avançou.
+   */
+  private async recordDeliverySaleInCashRegister(order: IOrder): Promise<void> {
+    try {
+      await this.cashRegisterService.addAutomaticEntry({
+        restaurantId: order.restaurantId,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        amount: order.total,
+        paymentMethod: order.paymentMethod,
+      });
+    } catch (error) {
+      console.error(`[financeiro] erro inesperado lançando movimento automático de caixa do pedido ${order.id}:`, error);
+    }
+  }
+
+  /**
+   * specs/0213-caixa-pix-na-confirmacao REQ-3/REQ-4/REQ-5 — chamado no cancelamento pelo
+   * operador com o `order` lido ANTES do cancelamento (status original). Só Pix lança o
+   * movimento automático antes da entrega (`recordDeliverySaleInCashRegister` acima); se o
+   * pedido ainda estava em `aguardandoConfirmacao`, nunca existiu lançamento nenhum pra
+   * estornar. Protegido por try/catch: falha no estorno nunca desfaz o cancelamento, que já
+   * aconteceu.
+   */
+  private async tryReverseAutomaticCashEntry(order: IOrder): Promise<void> {
+    if (order.orderType === 'table' || order.paymentMethod !== 'pix') return;
+    if (order.status === 'aguardandoConfirmacao') return;
+    try {
+      await this.cashRegisterService.addAutomaticReversalEntry({
+        restaurantId: order.restaurantId,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        amount: order.total,
+        paymentMethod: order.paymentMethod,
+      });
+    } catch (error) {
+      console.error(`[financeiro] erro inesperado estornando movimento automático de caixa do pedido ${order.id}:`, error);
     }
   }
 
@@ -1167,6 +1235,74 @@ export class OrdersController extends BaseRouter {
       });
     }
     return authToken;
+  }
+
+  /** specs/0212-integracao-keeta REQ-5 — mesmo raciocínio de `tryConfirmOrderViaIFood`/
+   * `tryConfirmOrderVia99Food` (nunca bloqueia a confirmação local), usa
+   * `order.keetaOrderViewId` — NUNCA `order.id` (mesmo cuidado documentado pro 99Food). */
+  private async tryConfirmOrderViaKeeta(order: IOrder): Promise<void> {
+    if (order.source !== 'keeta' || !order.keetaOrderViewId) return;
+    const restaurant = await this.restaurantRepository.findById(order.restaurantId);
+    if (!restaurant?.keetaShopId || !restaurant.keetaAccessToken || !restaurant.keetaRefreshToken) return;
+
+    try {
+      const accessToken = await this.ensureFreshKeetaAccessToken(restaurant);
+      await this.keetaClient.confirmOrder(accessToken, restaurant.keetaShopId, order.keetaOrderViewId);
+    } catch (error) {
+      console.error(`[keeta-integration] erro inesperado confirmando o pedido ${order.keetaOrderViewId} na Keeta:`, error);
+    }
+  }
+
+  /** specs/0212-integracao-keeta REQ-5 — mesmo raciocínio de `tryCancelOrderVia99Food`.
+   * `cancelCode` sempre `"500000"` (único com `cancelReason` livre documentado, `plan.md`) com o
+   * texto do operador — os outros 3 códigos fixos não têm texto confirmado publicamente ainda
+   * (ver "Ambiguidades em aberto"). */
+  private async tryCancelOrderViaKeeta(order: IOrder, reason: string): Promise<void> {
+    if (order.source !== 'keeta' || !order.keetaOrderViewId) return;
+    const restaurant = await this.restaurantRepository.findById(order.restaurantId);
+    if (!restaurant?.keetaShopId || !restaurant.keetaAccessToken || !restaurant.keetaRefreshToken) return;
+
+    try {
+      const accessToken = await this.ensureFreshKeetaAccessToken(restaurant);
+      await this.keetaClient.cancelOrder(accessToken, restaurant.keetaShopId, order.keetaOrderViewId, '500000', reason);
+    } catch (error) {
+      console.error(`[keeta-integration] erro inesperado cancelando o pedido ${order.keetaOrderViewId} na Keeta:`, error);
+    }
+  }
+
+  /** specs/0212-integracao-keeta REQ-8 — sem equivalente em iFood/99Food: a Keeta exige avisar
+   * explicitamente quando um pedido de retirada está pronto, antes de `/order/collect`. */
+  private async tryMarkReadyViaKeeta(order: IOrder): Promise<void> {
+    if (order.source !== 'keeta' || order.orderType !== 'pickup' || !order.keetaOrderViewId) return;
+    const restaurant = await this.restaurantRepository.findById(order.restaurantId);
+    if (!restaurant?.keetaShopId || !restaurant.keetaAccessToken || !restaurant.keetaRefreshToken) return;
+
+    try {
+      const accessToken = await this.ensureFreshKeetaAccessToken(restaurant);
+      await this.keetaClient.markReadyForPickup(accessToken, restaurant.keetaShopId, order.keetaOrderViewId);
+    } catch (error) {
+      console.error(`[keeta-integration] erro inesperado marcando pronto o pedido ${order.keetaOrderViewId} na Keeta:`, error);
+    }
+  }
+
+  /** Renova o `accessToken` da loja se estiver perto de expirar, persistindo o resultado — ver
+   * `KeetaAuthService.ensureFreshAccessToken`. */
+  private async ensureFreshKeetaAccessToken(restaurant: IRestaurant): Promise<string> {
+    const { accessToken, refreshed } = await this.keetaAuthService.ensureFreshAccessToken({
+      accessToken: restaurant.keetaAccessToken!,
+      refreshToken: restaurant.keetaRefreshToken!,
+      tokenExpiresAt: restaurant.keetaTokenExpiresAt,
+    });
+    if (refreshed) {
+      await this.restaurantRepository.saveKeetaBinding(restaurant.id, {
+        shopId: restaurant.keetaShopId!,
+        brandId: restaurant.keetaBrandId,
+        accessToken: refreshed.accessToken,
+        refreshToken: refreshed.refreshToken,
+        tokenExpiresAt: refreshed.tokenExpiresAt,
+      });
+    }
+    return accessToken;
   }
 
   /** specs/0170-integracao-mercado-pago (REQ-2) — cria a preferência de Checkout Pro em nome do

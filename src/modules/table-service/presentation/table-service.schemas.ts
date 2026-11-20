@@ -67,7 +67,14 @@ export const openTableOrderSchema = z.object({
 // ausente (`table-service.controller.ts`), o que anula a própria deduplicação — um retry que
 // não manda a MESMA chave nunca é reconhecido como repetição. Agora obrigatória nos dois
 // schemas; o app (mobbs-delivery-comanda) já gera e reaproveita a sua.
-export const updateTableOrderItemQuantitySchema = z.object({ quantity: z.number().int().min(0).max(99), operationId: z.string().min(1) });
+// specs/0214-estorno-sobrepagamento-mesa REQ-1/REQ-2 — `confirmed` opcional: ausente/`false`,
+// uma redução que deixaria o pedido sobre-pago responde 409 sem aplicar; `true` aplica mesmo
+// assim e lança o estorno do excedente.
+export const updateTableOrderItemQuantitySchema = z.object({
+  quantity: z.number().int().min(0).max(99),
+  operationId: z.string().min(1),
+  confirmed: z.boolean().optional(),
+});
 export const transferTableOrderSchema = z.object({ tableId: z.string().min(1) });
 
 export const addTableOrderItemSchema = z.object({
@@ -88,6 +95,16 @@ export const tableOrderAdjustmentsSchema = z.object({
     description: z.string().trim().max(200).optional(),
   }).nullable().optional(),
   peopleCount: z.number().int().positive().nullable().optional(),
+  // specs/0214-estorno-sobrepagamento-mesa REQ-1/REQ-2 — mesmo raciocínio de `confirmed` em
+  // `updateTableOrderItemQuantitySchema`.
+  confirmed: z.boolean().optional(),
+});
+
+// specs/0214-estorno-sobrepagamento-mesa REQ-6/REQ-7 — motivo obrigatório (mesmo padrão de
+// `cancelOrderWithReasonSchema`, `orders.schemas.ts`; cópia local pra não criar import entre
+// módulos de presentation).
+export const cancelTableOrderSchema = z.object({
+  reason: z.string().min(1, 'Motivo do cancelamento é obrigatório'),
 });
 
 const tablePaymentSchema = z.object({

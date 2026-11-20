@@ -15,9 +15,10 @@ interface OrderLeanDocument {
   restaurantId: string;
   items: IOrderItem[];
   orderType: OrderType;
-  source?: 'totem' | 'operador-web' | 'operador-extensao' | 'ifood' | 'comanda' | '99food';
+  source?: 'totem' | 'operador-web' | 'operador-extensao' | 'ifood' | 'comanda' | '99food' | 'keeta';
   ninetyNineFoodOrderId?: string;
   ninetyNineFoodDeliveryAddress?: INinetyNineFoodDeliveryAddress;
+  keetaOrderViewId?: string;
   operatorId?: string;
   deliveryAddress?: string;
   deliveryMotoboy?: { id: string; name: string };
@@ -65,6 +66,7 @@ function toEntity(doc: OrderLeanDocument): IOrder {
     source: doc.source,
     ninetyNineFoodOrderId: doc.ninetyNineFoodOrderId,
     ninetyNineFoodDeliveryAddress: doc.ninetyNineFoodDeliveryAddress,
+    keetaOrderViewId: doc.keetaOrderViewId,
     operatorId: doc.operatorId,
     deliveryAddress: doc.deliveryAddress,
     deliveryMotoboy: doc.deliveryMotoboy,
@@ -123,6 +125,7 @@ export class OrderMongooseRepository implements IOrderRepository {
       source: input.source,
       ninetyNineFoodOrderId: input.ninetyNineFoodOrderId,
       ninetyNineFoodDeliveryAddress: input.ninetyNineFoodDeliveryAddress,
+      keetaOrderViewId: input.keetaOrderViewId,
       operatorId: input.operatorId,
       deliveryAddress: input.deliveryAddress,
       notes: input.notes,
@@ -243,6 +246,12 @@ export class OrderMongooseRepository implements IOrderRepository {
 
   async findByNinetyNineFoodOrderId(orderId: string): Promise<IOrder | null> {
     const doc = await OrderModel.findOne({ ninetyNineFoodOrderId: orderId }).lean<OrderLeanDocument>();
+    return doc ? toEntity(doc) : null;
+  }
+
+  // specs/0212-integracao-keeta — mesmo molde de `findByNinetyNineFoodOrderId` acima.
+  async findByKeetaOrderViewId(orderViewId: string): Promise<IOrder | null> {
+    const doc = await OrderModel.findOne({ keetaOrderViewId: orderViewId }).lean<OrderLeanDocument>();
     return doc ? toEntity(doc) : null;
   }
 
@@ -543,6 +552,23 @@ export class OrderMongooseRepository implements IOrderRepository {
           'tablePayments.paidAt': { $gte: fromIso, $lt: toIso },
         },
       ],
+    }).lean<OrderLeanDocument[]>();
+    return docs.map(toEntity);
+  }
+
+  /**
+   * specs/0213-caixa-pix-na-confirmacao REQ-6/REQ-7 — mesmo padrão de `findReceivedSalesBetween`,
+   * mas pro gatilho de caixa do Pix, que agora é "confirmado" (não "entregue"). NÃO exige que o
+   * status atual seja `'confirmado'` — o pedido pode já ter avançado (`emPreparo`/
+   * `saiuParaEntrega`/`entregue`) ou sido cancelado depois; quem consome decide o que fazer com
+   * cada caso a partir do `status` atual devolvido.
+   */
+  async findConfirmedPixSalesBetween(restaurantId: string, from: Date, to: Date): Promise<IOrder[]> {
+    const docs = await OrderModel.find({
+      restaurantId,
+      orderType: { $ne: 'table' },
+      paymentMethod: 'pix',
+      statusHistory: { $elemMatch: { status: 'confirmado', changedAt: { $gte: from, $lt: to } } },
     }).lean<OrderLeanDocument[]>();
     return docs.map(toEntity);
   }

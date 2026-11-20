@@ -54,6 +54,11 @@ import { NinetyNineFoodOnboardingController } from './modules/ninety-nine-food-i
 import { NinetyNineFoodWebhookController } from './modules/ninety-nine-food-integration/presentation/ninety-nine-food-webhook.controller';
 import { NinetyNineFoodEntregaController } from './modules/ninety-nine-food-integration/presentation/ninety-nine-food-entrega.controller';
 import { NinetyNineFoodEntregaDispatchService } from './modules/ninety-nine-food-integration/domain/services/ninety-nine-food-entrega-dispatch.service';
+import { KeetaClient } from './modules/keeta-integration/infra/keeta-client';
+import { KeetaAuthService } from './modules/keeta-integration/infra/keeta-auth.service';
+import { KeetaOnboardingController } from './modules/keeta-integration/presentation/keeta-onboarding.controller';
+import { KeetaOAuthCallbackController } from './modules/keeta-integration/presentation/keeta-oauth-callback.controller';
+import { KeetaWebhookController } from './modules/keeta-integration/presentation/keeta-webhook.controller';
 import { FiscalConfigMongooseRepository } from './modules/fiscal-integration/infra/repositories/fiscal-config.mongoose.repository';
 import { FiscalEmissionService } from './modules/fiscal-integration/domain/services/fiscal-emission.service';
 import { FiscalConfigController } from './modules/fiscal-integration/presentation/fiscal-config.controller';
@@ -110,6 +115,7 @@ import { AccountPayableMongooseRepository } from './modules/financeiro/infra/rep
 import { AccountReceivableMongooseRepository } from './modules/financeiro/infra/repositories/account-receivable.mongoose.repository';
 import { CashRegisterMongooseRepository } from './modules/financeiro/infra/repositories/cash-register.mongoose.repository';
 import { CashRegisterService } from './modules/financeiro/infra/services/cash-register.service';
+import { CashRegisterAutoCloseWorker } from './modules/financeiro/infra/cash-register-auto-close-worker';
 import { AccountsPayableController } from './modules/financeiro/presentation/accounts-payable.controller';
 import { AccountsReceivableController } from './modules/financeiro/presentation/accounts-receivable.controller';
 import { CashRegisterController } from './modules/financeiro/presentation/cash-register.controller';
@@ -282,6 +288,9 @@ const orderRepository = new OrderMongooseRepository();
 // specs/0118-controle-caixa-automatico-redes-sociais — ver comentário acima de
 // `cashRegisterRepository`: só pode ser montado aqui, depois de `orderRepository` existir.
 const cashRegisterService = new CashRegisterService(cashRegisterRepository, restaurantRepository, orderRepository);
+// specs/0216-fechamento-automatico-caixa — worker periódico, registrado junto com os outros 3
+// mais abaixo (billing/Instagram/iFood).
+const cashRegisterAutoCloseWorker = new CashRegisterAutoCloseWorker(cashRegisterService);
 
 // specs/0131-cashback-app + specs/0132-programa-fidelidade-app — mesma instância compartilhada
 // entre `OrdersController` (resgate/devolução/crédito), `CustomerBalanceController` (leitura do
@@ -411,6 +420,19 @@ const ninetyNineFoodEntregaDispatchService = new NinetyNineFoodEntregaDispatchSe
   orderRepository,
   customerRepository,
   ninetyNineFoodClient,
+);
+// specs/0212-integracao-keeta — mesmo raciocínio do 99Food acima: webhook (não polling), por
+// isso sem worker aqui, só o cliente/serviço de auth compartilhados entre os 3 controllers
+// (`KeetaOnboardingController` gera o link; `KeetaOAuthCallbackController` recebe o
+// `code`/`state`; `KeetaWebhookController` recebe o evento `1001`). `OrdersController`
+// instancia seu próprio par internamente (mesmo padrão do `ninetyNineFoodClient` dele) pra
+// confirmar/cancelar/marcar pronto pra retirada.
+const keetaClient = new KeetaClient(environment.keeta.baseUrl, environment.keeta.appSecret ?? '');
+const keetaAuthService = new KeetaAuthService(
+  keetaClient,
+  environment.keeta.appId ?? '',
+  environment.keeta.merchantAuthorizeUrl,
+  environment.keeta.redirectUri ?? '',
 );
 // specs/0091-integracao-fiscal-focusnfe — diferente de `ifood`/`asaas`/`mercadoPago` acima: sem
 // nenhuma variável de ambiente nova (`FiscalEmissionService` resolve a URL base a partir de
@@ -784,6 +806,21 @@ server
       ninetyNineFoodClient,
       restaurantOperatorMiddleware,
     ),
+    // specs/0212-integracao-keeta REQ-1/REQ-2.
+    new KeetaOnboardingController(
+      restaurantRepository,
+      keetaAuthService,
+      restaurantOperatorMiddleware,
+      Boolean(environment.keeta.appId && environment.keeta.appSecret && environment.keeta.redirectUri),
+    ),
+    new KeetaOAuthCallbackController(restaurantRepository, keetaAuthService, environment.publicApp.baseUrl),
+    new KeetaWebhookController(
+      restaurantRepository,
+      customerRepository,
+      orderRepository,
+      environment.keeta.appSecret ?? '',
+      `${environment.server.publicBaseUrl}/webhooks/keeta`,
+    ),
     // specs/0091-integracao-fiscal-focusnfe REQ-1/REQ-3/REQ-4/REQ-6.
     new FiscalConfigController(fiscalConfigRepository, restaurantOperatorMiddleware),
     new FiscalWebhookController(fiscalConfigRepository, orderRepository, fiscalEmissionService),
@@ -868,6 +905,14 @@ server
   // demora perceptível, sem sobrecarregar a API do iFood com polling agressivo.
   .then(() => {
     startPeriodicWorker('ifood-integration', 30_000, () => ifoodPollingWorker.run());
+  })
+  // specs/0216-fechamento-automatico-caixa REQ-3 — fechamento é tipicamente de madrugada
+  // (default 04:00), horário em que ninguém costuma acessar o caixa pra disparar a checagem
+  // reativa que a ABERTURA automática usa (`ensureAutomaticSchedule`); por isso precisa de um
+  // "tick" em processo, mesmo raciocínio dos 3 workers acima. 5 minutos: preciso o bastante sem
+  // sobrecarregar o banco varrendo todos os restaurantes com fechamento automático ligado.
+  .then(() => {
+    startPeriodicWorker('cash-register-auto-close', 5 * 60_000, () => cashRegisterAutoCloseWorker.run());
   })
   .catch((error) => {
     // eslint-disable-next-line no-console

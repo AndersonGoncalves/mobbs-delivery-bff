@@ -105,6 +105,8 @@ interface RestaurantLeanDocument {
   orderDeliveredWhatsAppTemplate?: string;
   facebookUrl?: string;
   cashRegisterMode?: CashRegisterMode;
+  cashRegisterAutoCloseMode?: CashRegisterMode;
+  cashRegisterAutoCloseTime?: string;
   customerBlockingEnabled?: boolean;
   autoPrintEnabled?: boolean;
   autoPrintIntervalSeconds?: number;
@@ -140,6 +142,13 @@ interface RestaurantLeanDocument {
   ninetyNineFoodConnectedAt?: string;
   ninetyNineFoodAuthorizationPendingAt?: string;
   ninetyNineFoodEntregaActivatedAt?: string;
+  keetaShopId?: string;
+  keetaBrandId?: string;
+  keetaAccessToken?: string;
+  keetaRefreshToken?: string;
+  keetaTokenExpiresAt?: string;
+  keetaConnectedAt?: string;
+  keetaAuthorizationState?: string;
 }
 
 const ALL_PAYMENT_METHODS: PaymentMethod[] = ['creditCard', 'debitCard', 'pix', 'cash'];
@@ -224,6 +233,8 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     orderDeliveredWhatsAppTemplate: doc.orderDeliveredWhatsAppTemplate,
     facebookUrl: doc.facebookUrl,
     cashRegisterMode: doc.cashRegisterMode ?? 'manual',
+    cashRegisterAutoCloseMode: doc.cashRegisterAutoCloseMode ?? 'manual',
+    cashRegisterAutoCloseTime: doc.cashRegisterAutoCloseTime ?? '04:00',
     customerBlockingEnabled: doc.customerBlockingEnabled ?? false,
     autoPrintEnabled: doc.autoPrintEnabled ?? false,
     autoPrintIntervalSeconds: doc.autoPrintIntervalSeconds ?? 10,
@@ -259,6 +270,13 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     ninetyNineFoodConnectedAt: doc.ninetyNineFoodConnectedAt,
     ninetyNineFoodAuthorizationPendingAt: doc.ninetyNineFoodAuthorizationPendingAt,
     ninetyNineFoodEntregaActivatedAt: doc.ninetyNineFoodEntregaActivatedAt,
+    keetaShopId: doc.keetaShopId,
+    keetaBrandId: doc.keetaBrandId,
+    keetaAccessToken: doc.keetaAccessToken,
+    keetaRefreshToken: doc.keetaRefreshToken,
+    keetaTokenExpiresAt: doc.keetaTokenExpiresAt,
+    keetaConnectedAt: doc.keetaConnectedAt,
+    keetaAuthorizationState: doc.keetaAuthorizationState,
   };
 }
 
@@ -662,6 +680,86 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
       { new: true },
     ).lean<RestaurantLeanDocument>();
     return toEntity(doc as RestaurantLeanDocument);
+  }
+
+  // specs/0212-integracao-keeta — mesmo molde de `markNinetyNineFoodAuthorizationPending`/
+  // `saveNinetyNineFoodBinding`/`disconnectNinetyNineFood` acima, ver docstrings na interface.
+  async markKeetaAuthorizationPending(id: string, state: string): Promise<IRestaurant> {
+    const doc = await RestaurantModel.findByIdAndUpdate(
+      id,
+      { $set: { keetaAuthorizationState: state } },
+      { new: true },
+    ).lean<RestaurantLeanDocument>();
+    return toEntity(doc as RestaurantLeanDocument);
+  }
+
+  async saveKeetaBinding(
+    id: string,
+    data: { shopId: string; brandId?: string; accessToken: string; refreshToken: string; tokenExpiresAt: string },
+  ): Promise<IRestaurant> {
+    const existing = await RestaurantModel.findById(id).lean<RestaurantLeanDocument>();
+    const doc = await RestaurantModel.findByIdAndUpdate(
+      id,
+      {
+        $set: {
+          keetaShopId: data.shopId,
+          ...(data.brandId ? { keetaBrandId: data.brandId } : {}),
+          keetaAccessToken: data.accessToken,
+          keetaRefreshToken: data.refreshToken,
+          keetaTokenExpiresAt: data.tokenExpiresAt,
+          keetaConnectedAt: existing?.keetaConnectedAt ?? new Date().toISOString(),
+        },
+        $unset: { keetaAuthorizationState: 1 },
+      },
+      { new: true },
+    ).lean<RestaurantLeanDocument>();
+    return toEntity(doc as RestaurantLeanDocument);
+  }
+
+  async disconnectKeeta(id: string): Promise<IRestaurant> {
+    const doc = await RestaurantModel.findByIdAndUpdate(
+      id,
+      {
+        $unset: {
+          keetaShopId: 1,
+          keetaBrandId: 1,
+          keetaAccessToken: 1,
+          keetaRefreshToken: 1,
+          keetaTokenExpiresAt: 1,
+          keetaConnectedAt: 1,
+          keetaAuthorizationState: 1,
+        },
+      },
+      { new: true },
+    ).lean<RestaurantLeanDocument>();
+    return toEntity(doc as RestaurantLeanDocument);
+  }
+
+  async findByKeetaAuthorizationState(state: string): Promise<IRestaurant | null> {
+    const doc = await RestaurantModel.findOne({ keetaAuthorizationState: state }).lean<RestaurantLeanDocument>();
+    return doc ? toEntity(doc) : null;
+  }
+
+  async findByKeetaShopId(shopId: string): Promise<IRestaurant | null> {
+    const doc = await RestaurantModel.findOne({ keetaShopId: shopId }).lean<RestaurantLeanDocument>();
+    return doc ? toEntity(doc) : null;
+  }
+
+  async disconnectAllByKeetaBrandId(brandId: string): Promise<void> {
+    await RestaurantModel.updateMany(
+      { keetaBrandId: brandId },
+      {
+        $unset: {
+          keetaShopId: 1,
+          keetaBrandId: 1,
+          keetaAccessToken: 1,
+          keetaRefreshToken: 1,
+          keetaTokenExpiresAt: 1,
+          keetaConnectedAt: 1,
+          keetaAuthorizationState: 1,
+        },
+      },
+    );
   }
 
   async markAsaasCheckoutWebhookRegistered(id: string): Promise<IRestaurant> {

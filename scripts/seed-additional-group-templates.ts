@@ -8,7 +8,7 @@
  * outros grupos/templates que o operador já tenha criado manualmente pela retaguarda.
  *
  * Uso:
- *   npm run seed:additional-group-templates -- --slug=meu-restaurante
+ *   npm run seed:additional-group-templates -- --slug=bs-delivery
  *
  * (rode `npm run seed:catalog` antes, se o cardápio ainda não existir.)
  */
@@ -81,7 +81,7 @@ const KNOWN_TEMPLATE_NAMES = TEMPLATE_DEFINITIONS.map((t) => t.name);
 
 async function main(): Promise<void> {
   const args = parseArgs();
-  const slug = args.slug ?? 'meu-restaurante';
+  const slug = args.slug ?? 'bs-delivery';
 
   const dbUrl = process.env.DB_URL ?? 'mongodb://localhost:27017/mobbs-delivery';
   await mongoose.connect(dbUrl);

@@ -17,6 +17,26 @@ import { FiscalEmissionService } from '../../../fiscal-integration/domain/servic
 type SelectionInput = { groupName: string; optionName: string; nestedSelections?: SelectionInput[] };
 type Adjustment = NonNullable<IOrder['tableAdjustment']>;
 
+/**
+ * specs/0214-estorno-sobrepagamento-mesa REQ-1 — lançada por `assertNoUnhandledOverpayment`
+ * quando uma edição (reduzir item, aplicar ajuste) deixaria o pedido com saldo pago maior que o
+ * novo total, sem confirmação explícita do operador. Capturada no controller
+ * (`table-service.controller.ts`) e convertida em `409 { requiresConfirmation: true, ... }` —
+ * mesmo contrato HTTP já usado em `raw-materials`/`additional-group-templates` (desativar com
+ * produtos vinculados), ainda que o mecanismo aqui seja "lança e captura" em vez do "pré-checa no
+ * controller" usado lá (a checagem real de totais mora toda em `TableOrderService`, não faz
+ * sentido duplicá-la no controller só pra bater 100% com o outro estilo).
+ */
+export class OverpaymentRequiresConfirmationError extends Error {
+  constructor(
+    public readonly alreadyPaid: number,
+    public readonly newTotal: number,
+    public readonly excess: number,
+  ) {
+    super('Esta mudança deixaria o pedido com saldo pago maior que o novo total — confirme para aplicar mesmo assim.');
+  }
+}
+
 function calculateTotals(order: IOrder, items: IOrderItem[], patch: Partial<IOrder> = {}) {
   const subtotal = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
   const serviceChargePercent = patch.serviceChargePercent ?? order.serviceChargePercent ?? 0;
@@ -232,7 +252,7 @@ export class TableOrderService {
     return updated;
   }
 
-  async setItemQuantity(restaurantId: string, orderId: string, itemId: string, quantity: number, operationId: string) {
+  async setItemQuantity(restaurantId: string, orderId: string, itemId: string, quantity: number, operationId: string, confirmed = false) {
     const order = await this.findOpenOrder(restaurantId, orderId);
     const currentItem = order.items.find((item) => item.id === itemId);
     if (!currentItem) throw new NotFoundError('Item do pedido não encontrado');
@@ -248,6 +268,10 @@ export class TableOrderService {
         throw new ConflictError('Este item ultrapassaria o limite de consumo configurado. Registre um pagamento parcial antes de continuar.');
       }
     }
+    // specs/0214-estorno-sobrepagamento-mesa REQ-1/REQ-2 — reduzir quantidade (ou remover,
+    // quantity 0) pode deixar o pedido sobre-pago; lançado ANTES de mexer em estoque/persistência,
+    // pra nunca aplicar a mudança sem confirmação quando há excedente.
+    const excess = this.assertNoUnhandledOverpayment(order, totals.total, confirmed);
     const restaurant = await this.restaurantRepository.findById(restaurantId);
     const reservations = delta < 0 || restaurant?.stockControlEnabled
       ? await this.stockReservationService.resizeItemReservations(restaurantId, order.id, currentItem, delta, operationId)
@@ -265,6 +289,7 @@ export class TableOrderService {
       }
       throw new ConflictError('O pedido não está mais aberto');
     }
+    if (excess > 0) await this.tryRefundOverpayment(updated, excess);
     return updated;
   }
 
@@ -291,6 +316,7 @@ export class TableOrderService {
     coverCharge?: number | null;
     adjustment?: Adjustment | null;
     peopleCount?: number | null;
+    confirmed?: boolean;
   }) {
     const order = await this.findOpenOrder(restaurantId, orderId);
     const patch = {
@@ -299,8 +325,13 @@ export class TableOrderService {
       tableAdjustment: input.adjustment === undefined ? order.tableAdjustment : input.adjustment ?? undefined,
       tablePeopleCount: input.peopleCount === undefined ? order.tablePeopleCount : input.peopleCount ?? undefined,
     };
-    const updated = await this.orderRepository.updateTableOrder(order.id, restaurantId, { ...patch, ...calculateTotals(order, order.items, patch) });
+    const totals = calculateTotals(order, order.items, patch);
+    // specs/0214-estorno-sobrepagamento-mesa REQ-1/REQ-2 — mesma checagem de `setItemQuantity`:
+    // um desconto/taxa pode deixar o pedido sobre-pago.
+    const excess = this.assertNoUnhandledOverpayment(order, totals.total, input.confirmed ?? false);
+    const updated = await this.orderRepository.updateTableOrder(order.id, restaurantId, { ...patch, ...totals });
     if (!updated) throw new ConflictError('O pedido não está mais aberto');
+    if (excess > 0) await this.tryRefundOverpayment(updated, excess);
     return updated;
   }
 
@@ -418,6 +449,75 @@ export class TableOrderService {
       });
     } catch (error) {
       console.error(`[financeiro] erro lançando movimento de caixa do pedido de mesa ${order.id}:`, error);
+    }
+  }
+
+  /**
+   * specs/0214-estorno-sobrepagamento-mesa REQ-3 — ao contrário de `balanceDue` (que usa
+   * `Math.max(0, ...)`, nunca negativo, pro resto do sistema — fechamento, limite de consumo),
+   * aqui o excedente real importa: se o pedido já tem mais pago do que o novo total valeria,
+   * a mudança exige confirmação explícita (REQ-1) antes de aplicar.
+   */
+  private assertNoUnhandledOverpayment(order: IOrder, newTotal: number, confirmed: boolean): number {
+    const paid = (order.tablePayments ?? []).reduce((sum, payment) => sum + payment.amount, 0);
+    const excess = paid - newTotal;
+    if (excess <= 0.01) return 0;
+    if (!confirmed) throw new OverpaymentRequiresConfirmationError(paid, newTotal, excess);
+    return excess;
+  }
+
+  /** specs/0214-estorno-sobrepagamento-mesa REQ-2 — troco a devolver depois de uma edição
+   * confirmada que deixou o pedido sobre-pago. Não-bloqueante: falha no lançamento contábil nunca
+   * desfaz a edição, que já foi aplicada. */
+  private async tryRefundOverpayment(order: IOrder, excess: number) {
+    if (!this.cashRegisterService) return;
+    try {
+      await this.cashRegisterService.addPartialRefundEntry({
+        restaurantId: order.restaurantId,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        amount: excess,
+        paymentMethod: order.paymentMethod,
+      });
+    } catch (error) {
+      console.error(`[financeiro] erro inesperado estornando sobre-pagamento do pedido de mesa ${order.id}:`, error);
+    }
+  }
+
+  /**
+   * specs/0214-estorno-sobrepagamento-mesa REQ-7/REQ-8 — cancela um atendimento de mesa/balcão
+   * ainda aberto: libera reservas de estoque, libera a mesa, estorna cada pagamento já registrado
+   * (um movimento por `tablePayment`, na mesma forma de pagamento recebida).
+   */
+  async cancelOrder(restaurantId: string, orderId: string, reason: string, operatorId: string) {
+    const order = await this.findOpenOrder(restaurantId, orderId);
+    const updated = await this.orderRepository.updateStatus(order.id, 'cancelado', operatorId, reason);
+    if (order.items.some((item) => (item.stockReservations?.length ?? 0) > 0)) {
+      await this.stockReservationService.releaseOrderReservations(restaurantId, order.id, order.items);
+    }
+    if (order.tableId) await this.tableRepository.releaseFromOrder(order.tableId, restaurantId, order.id);
+    for (const payment of order.tablePayments ?? []) {
+      await this.tryRefundTablePayment(order, payment.method, payment.amount, payment.id);
+    }
+    return updated;
+  }
+
+  /** specs/0214-estorno-sobrepagamento-mesa REQ-8 — mesmo raciocínio não-bloqueante de
+   * `tryRefundOverpayment`, um por pagamento já recebido (`tablePayments`), não o excedente
+   * agregado (aqui o pedido inteiro foi cancelado, o valor certo a estornar é o que foi pago). */
+  private async tryRefundTablePayment(order: IOrder, method: IOrder['paymentMethod'], amount: number, paymentId: string) {
+    if (!this.cashRegisterService || !(amount > 0)) return;
+    try {
+      await this.cashRegisterService.addPartialRefundEntry({
+        restaurantId: order.restaurantId,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        amount,
+        paymentMethod: method,
+        paymentId,
+      });
+    } catch (error) {
+      console.error(`[financeiro] erro inesperado estornando pagamento do pedido de mesa cancelado ${order.id}:`, error);
     }
   }
 

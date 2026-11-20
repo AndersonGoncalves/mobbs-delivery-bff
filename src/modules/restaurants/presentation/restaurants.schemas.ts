@@ -139,6 +139,11 @@ export const restaurantProfileSchema = z
     // specs/0118-controle-caixa-automatico-redes-sociais REQ-1 — seletor "manual"/"automático"
     // salvo junto com o resto do perfil (`CashRegisterPage.tsx`, não o Perfil de verdade).
     cashRegisterMode: z.enum(['manual', 'automatic']),
+    // specs/0216-fechamento-automatico-caixa REQ-1/REQ-2 — independente do `cashRegisterMode`
+    // acima (abertura); `cashRegisterAutoCloseTime` mesma validação de `businessHourSchema`
+    // abaixo ("HH:mm").
+    cashRegisterAutoCloseMode: z.enum(['manual', 'automatic']),
+    cashRegisterAutoCloseTime: z.string().regex(/^\d{2}:\d{2}$/),
     // Pedido explícito do usuário — liga/desliga global do bloqueio de clientes.
     customerBlockingEnabled: z.boolean(),
     // specs/0139-impressao-automatica-bridge REQ-5 — a chave de API (`autoPrintApiKey`) não entra

@@ -77,14 +77,38 @@ export interface CashClosingSummary {
 export interface ICashRegisterService {
   addAutomaticEntry(input: AutomaticCashEntryInput): Promise<void>;
 
+  /**
+   * specs/0213-caixa-pix-na-confirmacao REQ-3/REQ-4 — estorno (saída) do lançamento automático
+   * de um pedido Pix cancelado depois de já ter passado por `'confirmado'` (onde
+   * `addAutomaticEntry` acima já lançou a entrada). Mesmo input, dedup própria (nunca estornar o
+   * mesmo `orderId` duas vezes).
+   */
+  addAutomaticReversalEntry(input: AutomaticCashEntryInput): Promise<void>;
+
+  /**
+   * specs/0214-estorno-sobrepagamento-mesa REQ-2/REQ-8 — troco/estorno parcial de uma comanda de
+   * mesa/balcão (edição que deixou saldo sobre-pago, ou cancelamento com pagamento já recebido).
+   * DIFERENTE de `addAutomaticReversalEntry` acima: SEM dedup própria — pode acontecer mais de
+   * uma vez no mesmo pedido (cada evento é novo).
+   */
+  addPartialRefundEntry(input: AutomaticCashEntryInput): Promise<void>;
+
   /** Garante um movimento para cada pagamento já recebido na sessão aberta. */
   syncOpenSession(restaurantId: string, sessionId?: string): Promise<void>;
 
   /**
    * 0176: abertura lazy por data civil, seguindo businessHours. Nunca fecha automaticamente
-   * nem reabre uma data já fechada. Caixas de datas anteriores permanecem pendentes.
+   * nem reabre uma data já fechada (fechamento automático é outro mecanismo, independente,
+   * ver `closeDueAutomaticSessions` abaixo — specs/0216). Caixas de datas anteriores permanecem
+   * pendentes.
    */
   ensureAutomaticSchedule(restaurantId: string, now?: Date): Promise<void>;
+
+  /** specs/0216-fechamento-automatico-caixa REQ-3 — fecha, pra todo restaurante com
+   * `cashRegisterAutoCloseMode: 'automatic'`, a sessão aberta cujo horário configurado
+   * (`cashRegisterAutoCloseTime`) já passou. Chamada por um worker periódico, nunca por uma rota
+   * HTTP (diferente de `ensureAutomaticSchedule`, que é reativa). */
+  closeDueAutomaticSessions(now?: Date): Promise<void>;
 
   /** REQ-9 — saldo da sessão (aberta ou fechada) separado por forma de pagamento. */
   getBalanceByPaymentMethod(sessionId: string): Promise<CashBalanceByPaymentMethod>;

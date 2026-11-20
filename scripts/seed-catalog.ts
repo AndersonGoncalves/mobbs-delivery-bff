@@ -8,7 +8,7 @@
  * precisar de chave natural única em cada coleção.
  *
  * Uso:
- *   npm run seed:catalog -- --slug=meu-restaurante
+ *   npm run seed:catalog -- --slug=bs-delivery
  *
  * (rode `npm run seed:restaurant` antes, se o restaurante ainda não existir).
  *

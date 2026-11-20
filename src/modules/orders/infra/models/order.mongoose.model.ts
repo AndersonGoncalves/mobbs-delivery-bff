@@ -189,13 +189,18 @@ const orderSchema = new Schema(
     orderType: { type: String, enum: ['delivery', 'pickup', 'table'], required: true },
     // specs/0155-app-totem-autoatendimento REQ-14 — ausente = pedido do app cliente (default de
     // todo documento já existente antes desta spec).
-    source: { type: String, enum: ['totem', 'operador-web', 'operador-extensao', 'ifood', 'comanda', '99food'] },
+    source: { type: String, enum: ['totem', 'operador-web', 'operador-extensao', 'ifood', 'comanda', '99food', 'keeta'] },
     // specs/0122-integracao-99food — id do pedido no sistema da 99Food (string, nunca number —
     // inteiro de 64 bits perderia precisão). Índice não-único — specs/0130 resolve o pedido a
     // partir disso no webhook deliveryStatus (findByNinetyNineFoodOrderId).
     ninetyNineFoodOrderId: { type: String, index: true },
     // specs/0130-integracao-99-entrega.
     ninetyNineFoodDeliveryAddress: { type: ninetyNineFoodDeliveryAddressSchema, default: undefined },
+    // specs/0212-integracao-keeta — `orderViewId` do pedido na Keeta (string por precaução, a
+    // doc pública não confirma se precisa de precisão de 64 bits como o 99Food). Índice
+    // não-único, mesmo padrão de `ninetyNineFoodOrderId` — usado pra deduplicar reentregas do
+    // webhook (`findByKeetaOrderViewId`).
+    keetaOrderViewId: { type: String, index: true },
     // specs/0174-pdv-extensao-chrome-lateral REQ-22.
     operatorId: { type: String },
     deliveryAddress: { type: String },

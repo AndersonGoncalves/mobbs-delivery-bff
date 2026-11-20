@@ -14,7 +14,7 @@
  * `customerId` antes de inserir de novo, sem tocar em pedidos reais de clientes de verdade.
  *
  * Uso:
- *   npm run seed:highlights -- --slug=meu-restaurante --instagram=https://instagram.com/minha-loja
+ *   npm run seed:highlights -- --slug=bs-delivery --instagram=https://instagram.com/minha-loja
  */
 import { randomUUID } from 'crypto';
 import * as dotenv from 'dotenv';

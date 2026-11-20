@@ -17,11 +17,13 @@ export interface NewOrderInput {
   /** specs/0155-app-totem-autoatendimento REQ-14 / specs/0174-pdv-extensao-chrome-lateral REQ-22
    * / specs/0090-integracao-ifood REQ-3 / specs/0122-integracao-99food REQ-4 — ver
    * `IOrder.source`. */
-  source?: 'totem' | 'operador-web' | 'operador-extensao' | 'ifood' | 'comanda' | '99food';
+  source?: 'totem' | 'operador-web' | 'operador-extensao' | 'ifood' | 'comanda' | '99food' | 'keeta';
   /** specs/0122-integracao-99food — ver `IOrder.ninetyNineFoodOrderId`. */
   ninetyNineFoodOrderId?: string;
   /** specs/0130-integracao-99-entrega — ver `IOrder.ninetyNineFoodDeliveryAddress`. */
   ninetyNineFoodDeliveryAddress?: INinetyNineFoodDeliveryAddress;
+  /** specs/0212-integracao-keeta — ver `IOrder.keetaOrderViewId`. */
+  keetaOrderViewId?: string;
   /** specs/0174-pdv-extensao-chrome-lateral REQ-22 — ver `IOrder.operatorId`. */
   operatorId?: string;
   deliveryAddress?: string;
@@ -153,6 +155,13 @@ export interface IOrderRepository {
   findReceivedSalesBetween(restaurantId: string, from: Date, to: Date): Promise<IOrder[]>;
 
   /**
+   * specs/0213-caixa-pix-na-confirmacao REQ-6/REQ-7 — pedidos delivery/retirada em Pix cujo
+   * `statusHistory` passou por `'confirmado'` no período (status atual pode ser qualquer um —
+   * ainda em andamento, entregue, ou cancelado depois de confirmado).
+   */
+  findConfirmedPixSalesBetween(restaurantId: string, from: Date, to: Date): Promise<IOrder[]>;
+
+  /**
    * specs/0016-clientes-retaguarda REQ-3 — histórico de pedidos de um cliente **só neste
    * restaurante** (nunca cruza com pedidos do mesmo `Customer` em outro restaurante, já que
    * `Customer` é global — `docs/architecture/data-model.md`); mais recente primeiro, mesmo
@@ -261,4 +270,9 @@ export interface IOrderRepository {
    * ID) que o webhook `deliveryStatus` manda — diferente de `findByUberDeliveryId`, não precisa
    * do `restaurantId` antes porque `ninetyNineFoodOrderId` já é globalmente único. */
   findByNinetyNineFoodOrderId(orderId: string): Promise<IOrder | null>;
+
+  /** specs/0212-integracao-keeta — resolve o pedido a partir do `keetaOrderViewId`; usado pelo
+   * `KeetaWebhookController` pra deduplicar reentregas do evento `1001` (a Keeta reentrega até
+   * 3x se não receber ACK) antes de criar um `Order` novo. */
+  findByKeetaOrderViewId(orderViewId: string): Promise<IOrder | null>;
 }

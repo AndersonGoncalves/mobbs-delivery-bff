@@ -15,7 +15,7 @@
  * manualmente pela retaguarda).
  *
  * Uso:
- *   npm run seed:additional-group-option-images -- --slug=meu-restaurante
+ *   npm run seed:additional-group-option-images -- --slug=bs-delivery
  */
 import * as dotenv from 'dotenv';
 import mongoose from 'mongoose';
@@ -48,7 +48,7 @@ const picsum = (seed: string) => `https://picsum.photos/seed/${seed}/300/300`;
 
 async function main(): Promise<void> {
   const args = parseArgs();
-  const slug = args.slug ?? 'meu-restaurante';
+  const slug = args.slug ?? 'bs-delivery';
 
   const dbUrl = process.env.DB_URL ?? 'mongodb://localhost:27017/mobbs-delivery';
   await mongoose.connect(dbUrl);

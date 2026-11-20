@@ -1,6 +1,7 @@
 import { PaymentMethod } from '../../../orders/domain/entities/order.entity';
 import { IOrderRepository } from '../../../orders/domain/repositories/order.repository.interface';
 import { getRestaurantLocalTime, minutesSinceMidnight } from '../../../restaurants/domain/is-restaurant-open-now';
+import { IRestaurant } from '../../../restaurants/domain/entities/restaurant.entity';
 import { IRestaurantRepository } from '../../../restaurants/domain/repositories/restaurant.repository.interface';
 import { ICashRegisterRepository } from '../../domain/repositories/cash-register.repository.interface';
 import { cashRegisterDate, cashRegisterPeriodEnd } from '../../domain/cash-register-date';
@@ -90,6 +91,85 @@ export class CashRegisterService implements ICashRegisterService {
     await this.recordAutomaticEntry(session.id, input);
   }
 
+  /**
+   * specs/0213-caixa-pix-na-confirmacao REQ-3/REQ-4 — mesma busca/abertura de sessão de
+   * `addAutomaticEntry` acima (mesmo raciocínio: o estorno nunca pode ficar sem caixa pra
+   * entrar, mesmo que a sessão que lançou a entrada original já tenha fechado — cai como
+   * lançamento tardio, igual qualquer outro movimento depois do fechamento).
+   */
+  async addAutomaticReversalEntry(input: AutomaticCashEntryInput): Promise<void> {
+    if (!(input.amount > 0)) return;
+    await this.ensureAutomaticSchedule(input.restaurantId);
+    const openSession = await this.cashRegisterRepository.findOpenSessionByRestaurant(input.restaurantId);
+    if (openSession) {
+      await this.recordAutomaticReversalEntry(openSession.id, input);
+      return;
+    }
+    const todaySession = await this.cashRegisterRepository.findSessionByDate(input.restaurantId, cashRegisterDate());
+    if (todaySession) {
+      await this.recordAutomaticReversalEntry(todaySession.id, input);
+      return;
+    }
+    const session = await this.openSessionForFirstSale(input.restaurantId);
+    if (!session) return;
+    await this.recordAutomaticReversalEntry(session.id, input);
+  }
+
+  private async recordAutomaticReversalEntry(sessionId: string, input: AutomaticCashEntryInput): Promise<void> {
+    const movements = await this.cashRegisterRepository.listMovements(sessionId);
+    const alreadyReversed = movements.some((movement) => movement.orderId === input.orderId && movement.type === 'saida');
+    if (alreadyReversed) return;
+
+    const methodLabel = PAYMENT_LABEL[input.paymentMethod] ?? input.paymentMethod;
+    await this.cashRegisterRepository.addMovement(sessionId, {
+      type: 'saida',
+      amount: input.amount,
+      description: `Estorno - Venda #${input.orderNumber} (${methodLabel})`,
+      orderId: input.orderId,
+      paymentMethod: input.paymentMethod,
+    });
+  }
+
+  /**
+   * specs/0214-estorno-sobrepagamento-mesa REQ-2/REQ-8 — troco/estorno parcial de uma comanda de
+   * mesa/balcão, DIFERENTE de `addAutomaticReversalEntry` acima: aquele é pro cancelamento
+   * INTEIRO de um pedido (dedup única por `orderId`, nunca repete); este pode acontecer mais de
+   * uma vez no mesmo pedido (cada edição que gera excedente, ou cada pagamento estornado num
+   * cancelamento com mais de um `tablePayment`, é um evento novo) — por isso SEM dedup, confiando
+   * em quem chama (`TableOrderService`) pra nunca chamar duas vezes pelo mesmo evento. Mesma
+   * busca/abertura de sessão de `addAutomaticEntry` (nunca fica sem caixa pra entrar, mesmo numa
+   * sessão já fechada — cai como lançamento tardio, igual qualquer outro).
+   */
+  async addPartialRefundEntry(input: AutomaticCashEntryInput): Promise<void> {
+    if (!(input.amount > 0)) return;
+    await this.ensureAutomaticSchedule(input.restaurantId);
+    const openSession = await this.cashRegisterRepository.findOpenSessionByRestaurant(input.restaurantId);
+    if (openSession) {
+      await this.recordPartialRefundEntry(openSession.id, input);
+      return;
+    }
+    const todaySession = await this.cashRegisterRepository.findSessionByDate(input.restaurantId, cashRegisterDate());
+    if (todaySession) {
+      await this.recordPartialRefundEntry(todaySession.id, input);
+      return;
+    }
+    const session = await this.openSessionForFirstSale(input.restaurantId);
+    if (!session) return;
+    await this.recordPartialRefundEntry(session.id, input);
+  }
+
+  private async recordPartialRefundEntry(sessionId: string, input: AutomaticCashEntryInput): Promise<void> {
+    const methodLabel = PAYMENT_LABEL[input.paymentMethod] ?? input.paymentMethod;
+    await this.cashRegisterRepository.addMovement(sessionId, {
+      type: 'saida',
+      amount: input.amount,
+      description: `Troco a devolver - Mesa/balcão #${input.orderNumber} (${methodLabel})`,
+      orderId: input.orderId,
+      paymentMethod: input.paymentMethod,
+      paymentId: input.paymentId,
+    });
+  }
+
   private async openSessionForFirstSale(restaurantId: string): Promise<{ id: string } | null> {
     try {
       return await this.cashRegisterRepository.open(restaurantId, 0, AUTOMATIC_ACTOR, true);
@@ -146,7 +226,26 @@ export class CashRegisterService implements ICashRegisterService {
         }
         continue;
       }
-      if (order.status !== 'entregue') continue;
+      // specs/0213-caixa-pix-na-confirmacao REQ-7 — Pix não entra mais aqui (gatilho é
+      // "confirmado", tratado no loop abaixo); as demais formas continuam por "entregue".
+      if (order.status !== 'entregue' || order.paymentMethod === 'pix') continue;
+      await this.recordAutomaticEntry(session.id, {
+        restaurantId,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        amount: order.total,
+        paymentMethod: order.paymentMethod,
+      });
+    }
+
+    // specs/0213-caixa-pix-na-confirmacao REQ-7 — recria a entrada automática de pedidos Pix que
+    // passaram por "confirmado" dentro do período desta sessão. Pedido já cancelado depois de
+    // confirmado fica de fora por simplicidade (limitação conhecida, documentada em `plan.md`):
+    // o par entrada+estorno já deveria existir de quando o cancelamento aconteceu ao vivo; esta
+    // reconstrução cobre só a entrada "solta" de um pedido ainda em andamento ou já entregue.
+    const confirmedPixOrders = await this.orderRepository.findConfirmedPixSalesBetween(restaurantId, from, to);
+    for (const order of confirmedPixOrders) {
+      if (order.status === 'cancelado') continue;
       await this.recordAutomaticEntry(session.id, {
         restaurantId,
         orderId: order.id,
@@ -192,7 +291,48 @@ export class CashRegisterService implements ICashRegisterService {
       return;
     }
 
-    // Fechamento é sempre uma conferência manual, inclusive depois do horário.
+    // Fechamento reativo (igual abertura acima) nunca acontece aqui — ver
+    // `closeDueAutomaticSessions` abaixo (specs/0216), chamada por um worker periódico
+    // (`cash-register-auto-close-worker.ts`), não por esta checagem reativa. Fechamento
+    // automático é tipicamente de madrugada (default 04:00); um mecanismo reativo deixaria a
+    // sessão presa até alguém abrir a tela de manhã, nem sempre batendo com o horário
+    // configurado — diferente da abertura, que já tem um gatilho natural (primeiro acesso do
+    // dia).
+  }
+
+  /**
+   * specs/0216-fechamento-automatico-caixa REQ-3/REQ-5/REQ-6/REQ-7 — chamada pelo worker
+   * periódico `cash-register-auto-close-worker.ts`, nunca por uma rota HTTP. Cada restaurante
+   * falha isoladamente (mesmo raciocínio de `IFoodPollingWorker.run`): um erro num restaurante
+   * nunca impede o fechamento dos demais.
+   */
+  async closeDueAutomaticSessions(now: Date = new Date()): Promise<void> {
+    const restaurants = await this.restaurantRepository.listAll();
+    const due = restaurants.filter((restaurant) => restaurant.cashRegisterAutoCloseMode === 'automatic');
+    for (const restaurant of due) {
+      try {
+        await this.closeDueAutomaticSessionForRestaurant(restaurant, now);
+      } catch (error) {
+        console.error(`[financeiro] erro inesperado no fechamento automático de caixa do restaurante ${restaurant.id}:`, error);
+      }
+    }
+  }
+
+  private async closeDueAutomaticSessionForRestaurant(restaurant: IRestaurant, now: Date): Promise<void> {
+    const closeTime = restaurant.cashRegisterAutoCloseTime || '04:00';
+    const { minutes } = getRestaurantLocalTime(now);
+    if (minutes < minutesSinceMidnight(closeTime)) return;
+
+    const session = await this.cashRegisterRepository.findOpenSessionByRestaurant(restaurant.id);
+    if (!session) return;
+    // REQ-6 — uma sessão que o dono reabriu manualmente (`reopenedAt`) fica fora do fechamento
+    // automático: reabrir é um sinal explícito de "quero fazer a conferência física eu mesmo
+    // agora", e fechar de novo sozinha no próximo tick (minutos depois) tiraria exatamente a
+    // chance que REQ-6 promete. Essa sessão só volta a fechar por ação manual do dono.
+    if (session.reopenedAt) return;
+
+    const calculatedBalance = await this.cashRegisterRepository.getCalculatedBalance(session.id);
+    await this.cashRegisterRepository.close(session.id, calculatedBalance, AUTOMATIC_ACTOR, true);
   }
 
   async getBalanceByPaymentMethod(sessionId: string): Promise<CashBalanceByPaymentMethod> {
@@ -234,8 +374,28 @@ export class CashRegisterService implements ICashRegisterService {
         }
         continue;
       }
-      if (order.status !== 'entregue') continue;
+      // specs/0213-caixa-pix-na-confirmacao REQ-6 — Pix some daqui (fica por conta do loop
+      // abaixo, que conta pelo momento de "confirmado", não de "entregue").
+      if (order.status !== 'entregue' || order.paymentMethod === 'pix') continue;
       salesByPaymentMethod[order.paymentMethod] += order.total;
+      totalSales += order.total;
+      deliverySales += order.total;
+    }
+
+    // specs/0213-caixa-pix-na-confirmacao REQ-6 — pedidos Pix contam pelo momento em que
+    // passaram por "confirmado" dentro do período (onde o lançamento automático de REQ-1
+    // acontece), independente do status atual. Cancelado depois de confirmado soma zero (entrada
+    // + estorno se cancelam no ledger real — ambos os movimentos têm `orderId`, então nenhum dos
+    // dois é somado de novo no loop de movimentos manuais logo abaixo; não somar aqui mantém o
+    // total batendo com o ledger).
+    const confirmedPixOrders = await this.orderRepository.findConfirmedPixSalesBetween(
+      session.restaurantId,
+      new Date(session.openedAt),
+      periodEnd,
+    );
+    for (const order of confirmedPixOrders) {
+      if (order.status === 'cancelado') continue;
+      salesByPaymentMethod.pix += order.total;
       totalSales += order.total;
       deliverySales += order.total;
     }

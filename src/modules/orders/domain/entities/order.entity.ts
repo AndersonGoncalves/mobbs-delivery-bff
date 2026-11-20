@@ -123,7 +123,7 @@ export interface IOrder {
    * do 99Food (`NinetyNineFoodWebhookController`, evento `orderNew`), nunca criado pelo
    * cliente/operador/totem diretamente.
    */
-  source?: 'totem' | 'operador-web' | 'operador-extensao' | 'ifood' | 'comanda' | '99food';
+  source?: 'totem' | 'operador-web' | 'operador-extensao' | 'ifood' | 'comanda' | '99food' | 'keeta';
   /** specs/0174-pdv-extensao-chrome-lateral REQ-22 — id do operador que finalizou a venda, só
    * presente quando `source` é `'operador-web'`/`'operador-extensao'`. Rastreabilidade, nunca usado
    * pra autorização (quem decide o que o operador pode fazer é `req.operatorRole`, resolvido a
@@ -232,6 +232,12 @@ export interface IOrder {
    * falha por endereço inválido, sem solução possível do nosso lado (`plan.md`, "Riscos").
    */
   ninetyNineFoodDeliveryAddress?: INinetyNineFoodDeliveryAddress;
+  /**
+   * specs/0212-integracao-keeta — `orderViewId` do pedido na Keeta (mesmo risco documentado em
+   * `ninetyNineFoodOrderId`: nunca usar `order.id` interno pra confirmar/cancelar/marcar pronto
+   * na API deles — usar sempre este campo). Só presente quando `source === 'keeta'`.
+   */
+  keetaOrderViewId?: string;
   /**
    * specs/0130-integracao-99-entrega REQ-2/REQ-4/REQ-5/REQ-9 — entrega avulsa via 99 Entrega,
    * despachada manualmente pelo operador, só disponível pra pedidos de origem `99food` (a API

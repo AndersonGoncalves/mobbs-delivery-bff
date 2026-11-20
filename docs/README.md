@@ -147,7 +147,7 @@ arquivo.
 - `npm run seed:catalog` — popula cardápio de teste (categorias/produtos).
 - `npm run seed:additional-group-templates` / `seed:additional-group-option-images` /
   `seed:highlights` — dados de teste complementares.
-- `npm run reset:test-restaurant -- --slug=<slug>` (default `meu-restaurante`) —
+- `npm run reset:test-restaurant -- --slug=<slug>` (default `bs-delivery`) —
   `specs/0040-reset-restaurante-teste`: apaga um restaurante de teste por completo (todo o
   catálogo/pedidos/financeiro/estoque que pertence só a ele), a conta Firebase
   Authentication do(s) e-mail(is) de operador vinculados, **e** todas as imagens dele no S3
@@ -164,7 +164,7 @@ arquivo.
 Sem preparo nenhum — usa o `DB_URL` do seu `.env` direto:
 
 ```bash
-npm run reset:test-restaurant -- --slug=meu-restaurante
+npm run reset:test-restaurant -- --slug=bs-delivery
 ```
 
 ### Rodando o reset contra produção (banco na EC2)
@@ -185,7 +185,7 @@ rodando localmente na porta padrão, como no ambiente de desenvolvimento deste p
 
 ```bash
 export GOOGLE_APPLICATION_CREDENTIALS=./firebase-service-account.json
-DB_URL="mongodb://<usuario>:<senha>@localhost:27018/mobbs-delivery?authSource=admin" npm run reset:test-restaurant -- --slug=meu-restaurante
+DB_URL="mongodb://<usuario>:<senha>@localhost:27018/mobbs-delivery?authSource=admin" npm run reset:test-restaurant -- --slug=bs-delivery
 ```
 
 `<usuario>`/`<senha>` são as credenciais do Mongo **de produção** (`MONGO_USER`/`MONGO_PASSWORD`

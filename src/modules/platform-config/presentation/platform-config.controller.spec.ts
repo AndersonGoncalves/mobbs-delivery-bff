@@ -10,6 +10,7 @@ function buildSnapshot(overrides: Partial<PlatformConfigSnapshot> = {}): Platfor
     mercadoPagoIntegrationEnabled: false,
     ifoodIntegrationEnabled: false,
     ninetyNineFoodIntegrationEnabled: false,
+    keetaIntegrationEnabled: false,
     kdsAppEnabled: false,
     comandaAppEnabled: false,
     totemAppEnabled: false,
@@ -24,6 +25,7 @@ function setup(snapshot: PlatformConfigSnapshot = buildSnapshot()) {
     isMercadoPagoIntegrationEnabled: jest.fn(),
     isIfoodIntegrationEnabled: jest.fn(),
     isNinetyNineFoodIntegrationEnabled: jest.fn(),
+    isKeetaIntegrationEnabled: jest.fn(),
     isKdsAppEnabled: jest.fn(),
     isComandaAppEnabled: jest.fn(),
     isTotemAppEnabled: jest.fn(),
@@ -54,6 +56,8 @@ describe('PlatformConfigController (specs/0209-desacoplar-integracoes-cnpj-plata
       ifoodIntegrationIsNew: false,
       ninetyNineFoodIntegrationEnabled: false,
       ninetyNineFoodIntegrationIsNew: false,
+      keetaIntegrationEnabled: false,
+      keetaIntegrationIsNew: false,
       kdsAppEnabled: false,
       kdsAppIsNew: false,
       comandaAppEnabled: false,
@@ -80,8 +84,19 @@ describe('PlatformConfigController (specs/0209-desacoplar-integracoes-cnpj-plata
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({
       ifoodIntegrationEnabled: true,
       ninetyNineFoodIntegrationEnabled: false,
+      keetaIntegrationEnabled: false,
       asaasIntegrationEnabled: false,
       mercadoPagoIntegrationEnabled: false,
+    }));
+  });
+
+  // specs/0212-integracao-keeta — mesmo padrão do iFood/99Food acima.
+  it('devolve keetaIntegrationEnabled: true quando o switch está ligado, independente dos outros', async () => {
+    const { json } = await setup(buildSnapshot({ keetaIntegrationEnabled: true })).run('GET /platform/config');
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({
+      keetaIntegrationEnabled: true,
+      ifoodIntegrationEnabled: false,
+      ninetyNineFoodIntegrationEnabled: false,
     }));
   });
 
