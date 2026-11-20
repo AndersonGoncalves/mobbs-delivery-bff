@@ -5,7 +5,7 @@
  * manualmente no mongosh.
  *
  * Uso:
- *   npm run seed:restaurant -- --slug=meu-restaurante --name="Meu Restaurante" --email=voce@gmail.com --logoUrl=/home/anderson/Downloads/mcdonald1.jpg
+ *   npm run seed:restaurant -- --slug=bs-delivery --name="Bs Delivery" --email=voce@gmail.com --logoUrl=/home/anderson/Downloads/mcdonald1.jpg
  *
  * Todos os argumentos são opcionais (defaults abaixo). O e-mail do operador precisa bater com o
  * e-mail da conta Google que vai logar na retaguarda depois que um projeto Firebase real

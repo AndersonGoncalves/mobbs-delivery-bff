@@ -8,9 +8,9 @@
  * Idempotente (REQ-3): se o slug não existir, só loga e sai com código 0, sem erro.
  *
  * Uso:
- *   npm run reset:test-restaurant -- --slug=meu-restaurante
+ *   npm run reset:test-restaurant -- --slug=bs-delivery
  *
- * `--slug` é opcional, default `meu-restaurante` (ADR-0040-02) — reflete o uso real declarado:
+ * `--slug` é opcional, default `bs-delivery` (ADR-0040-02) — reflete o uso real declarado:
  * o mesmo restaurante reaproveitado em toda rodada de teste.
  */
 import * as dotenv from 'dotenv';
@@ -93,7 +93,7 @@ async function deleteFirebaseUsers(emails: string[]): Promise<string[]> {
 
 async function main(): Promise<void> {
   const args = parseArgs();
-  const slug = args.slug ?? 'meu-restaurante';
+  const slug = args.slug ?? 'bs-delivery';
 
   const dbUrl = process.env.DB_URL ?? 'mongodb://localhost:27017/mobbs-delivery';
   await mongoose.connect(dbUrl);
