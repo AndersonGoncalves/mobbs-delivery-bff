@@ -64,6 +64,31 @@ export async function useMongoAuthState(restaurantId: string): Promise<{
       }, PERSIST_DEBOUNCE_MS);
     });
 
+  // Achado (20/11/2026) — `saveCreds` (credencial) NÃO pode usar o mesmo debounce de `keys.set`
+  // (chave de sessão). Logo após o QR ser escaneado, o Baileys dispara `creds.update` (credencial
+  // nova, com o registro feito) e, quase ao mesmo tempo, fecha o socket com `restartRequired`
+  // (515) — o handler de fechamento reconecta NA HORA, lendo o Mongo de novo via
+  // `useMongoAuthState()`. Com debounce de 1s na credencial, essa leitura corria na frente da
+  // gravação: a reconexão usava uma credencial ainda não registrada, a autenticação nunca
+  // completava, e o QR parecia "travado" (ou pedia escanear de novo, em loop). Credencial muda
+  // raras vezes por sessão (não é por mensagem, como a chave) — grava-la na hora, sem esperar o
+  // debounce, não reintroduz o problema de performance que o debounce de `keys.set` resolve.
+  const persistImmediately = async (): Promise<void> => {
+    if (persistTimer) {
+      clearTimeout(persistTimer);
+      persistTimer = null;
+    }
+    const waiters = persistWaiters;
+    persistWaiters = [];
+    try {
+      await writeNow();
+      waiters.forEach((waiter) => waiter.resolve());
+    } catch (error) {
+      waiters.forEach((waiter) => waiter.reject(error));
+      throw error;
+    }
+  };
+
   return {
     state: {
       creds,
@@ -95,7 +120,7 @@ export async function useMongoAuthState(restaurantId: string): Promise<{
         },
       },
     },
-    saveCreds: persist,
+    saveCreds: persistImmediately,
   };
 }
 

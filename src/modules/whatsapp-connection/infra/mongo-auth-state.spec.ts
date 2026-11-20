@@ -61,16 +61,31 @@ describe('useMongoAuthState — debounce de persist (achado de auditoria 2026-10
     expect(WhatsAppSessionModel.findByIdAndUpdate).toHaveBeenCalledTimes(2);
   });
 
-  it('saveCreds (creds.update) também passa pelo mesmo debounce de persist', async () => {
+  // Achado (20/11/2026) — `saveCreds` NÃO pode esperar o debounce de `keys.set`. Logo após o QR
+  // ser escaneado, o Baileys dispara `creds.update` e, quase junto, fecha o socket com
+  // `restartRequired`; o handler de fechamento reconecta na hora, relendo o Mongo. Com debounce
+  // na credencial, essa releitura corria na frente da gravação, usando uma credencial ainda não
+  // registrada — a autenticação nunca completava (QR "travado"/loop). `saveCreds` grava na hora.
+  it('saveCreds (creds.update) grava imediatamente, sem esperar o debounce de keys.set', async () => {
     const { saveCreds } = await useMongoAuthState('r-1');
 
-    const write1 = saveCreds();
-    const write2 = saveCreds();
+    await saveCreds();
+
+    expect(WhatsAppSessionModel.findByIdAndUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it('saveCreds também grava (e cancela) qualquer escrita de keys.set ainda pendente no debounce', async () => {
+    const { state, saveCreds } = await useMongoAuthState('r-1');
+
+    const pendingKeysWrite = state.keys.set({ 'pre-key': { 'id-1': { value: 1 } } } as never);
     expect(WhatsAppSessionModel.findByIdAndUpdate).not.toHaveBeenCalled();
 
-    await jest.advanceTimersByTimeAsync(1_000);
-    await Promise.all([write1, write2]);
+    await saveCreds();
+    expect(WhatsAppSessionModel.findByIdAndUpdate).toHaveBeenCalledTimes(1);
 
+    await pendingKeysWrite;
+    // O timer do debounce foi cancelado pela escrita imediata — nenhuma segunda escrita avulsa.
+    await jest.advanceTimersByTimeAsync(1_000);
     expect(WhatsAppSessionModel.findByIdAndUpdate).toHaveBeenCalledTimes(1);
   });
 
