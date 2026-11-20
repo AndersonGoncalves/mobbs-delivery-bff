@@ -2,7 +2,7 @@ import pino from 'pino';
 
 import { IPlatformWhatsAppConnectionService } from '../domain/services/i-platform-whatsapp-connection.service';
 import { toWhatsAppJidCandidates } from '../domain/whatsapp-jid';
-import { loadBaileys } from './load-baileys';
+import { getBaileysVersion, loadBaileys } from './load-baileys';
 import { clearWhatsAppSession, useMongoAuthState } from './mongo-auth-state';
 import { WhatsAppSessionModel } from './models/whatsapp-session.mongoose.model';
 
@@ -118,10 +118,12 @@ export class PlatformWhatsAppConnectionService implements IPlatformWhatsAppConne
   private async connect(): Promise<void> {
     const { makeWASocket, makeCacheableSignalKeyStore, DisconnectReason } = await loadBaileys();
     const { state, saveCreds } = await useMongoAuthState(PLATFORM_WHATSAPP_SESSION_ID);
+    const version = await getBaileysVersion();
 
     const socket = makeWASocket({
       auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, logger) },
       logger,
+      version,
     });
 
     const entry: SessionEntry = { socket, qr: null, connected: false, everConnected: false };

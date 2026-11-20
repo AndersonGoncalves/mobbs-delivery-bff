@@ -3,7 +3,7 @@ import pino from 'pino';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IWhatsAppConnectionService } from '../domain/services/i-whatsapp-connection.service';
 import { toWhatsAppJidCandidates } from '../domain/whatsapp-jid';
-import { loadBaileys } from './load-baileys';
+import { getBaileysVersion, loadBaileys } from './load-baileys';
 import { clearWhatsAppSession, useMongoAuthState } from './mongo-auth-state';
 
 type BaileysModule = typeof import('@whiskeysockets/baileys');
@@ -140,10 +140,12 @@ export class WhatsAppConnectionService implements IWhatsAppConnectionService {
   private async connect(restaurantId: string): Promise<void> {
     const { makeWASocket, makeCacheableSignalKeyStore, DisconnectReason } = await loadBaileys();
     const { state, saveCreds } = await useMongoAuthState(restaurantId);
+    const version = await getBaileysVersion();
 
     const socket = makeWASocket({
       auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, logger) },
       logger,
+      version,
     });
 
     const entry: SessionEntry = { socket, qr: null, connected: false, everConnected: false };
