@@ -64,6 +64,7 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
     };
     const restaurantRepository: Partial<IRestaurantRepository> = {
       findById: jest.fn().mockResolvedValue(buildRestaurant()),
+      listAll: jest.fn().mockResolvedValue([]),
       ...overrides.restaurantRepository,
     };
     const orderRepository: Partial<IOrderRepository> = {
@@ -424,6 +425,106 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
       await expect(service.ensureAutomaticSchedule('r-1', MONDAY_9AM_BRT)).resolves.toBeUndefined();
 
       expect(cashRegisterRepository.open).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('closeDueAutomaticSessions (specs/0216-fechamento-automatico-caixa AC-2/AC-3/AC-4/AC-5)', () => {
+    const MONDAY_11PM_BRT = new Date('2026-10-13T02:00:00.000Z'); // segunda, 23:00 em Brasília
+    const MONDAY_9AM_BRT = new Date('2026-10-12T12:00:00.000Z'); // segunda, 09:00 em Brasília
+
+    it('AC-2: fecha a sessão aberta de um restaurante elegível cujo horário já passou, com o saldo calculado', async () => {
+      const { service, cashRegisterRepository } = setup({
+        restaurantRepository: {
+          listAll: jest.fn().mockResolvedValue([
+            buildRestaurant({ cashRegisterAutoCloseMode: 'automatic', cashRegisterAutoCloseTime: '23:00' }),
+          ]),
+        },
+        cashRegisterRepository: { getCalculatedBalance: jest.fn().mockResolvedValue(123.45) },
+      });
+
+      await service.closeDueAutomaticSessions(MONDAY_11PM_BRT);
+
+      expect(cashRegisterRepository.close).toHaveBeenCalledWith('cr-1', 123.45, 'automatico', true);
+    });
+
+    it('AC-3: restaurante elegível sem sessão aberta não faz nada, sem erro', async () => {
+      const { service, cashRegisterRepository } = setup({
+        restaurantRepository: {
+          listAll: jest.fn().mockResolvedValue([
+            buildRestaurant({ cashRegisterAutoCloseMode: 'automatic', cashRegisterAutoCloseTime: '23:00' }),
+          ]),
+        },
+        cashRegisterRepository: { findOpenSessionByRestaurant: jest.fn().mockResolvedValue(null) },
+      });
+
+      await expect(service.closeDueAutomaticSessions(MONDAY_11PM_BRT)).resolves.toBeUndefined();
+
+      expect(cashRegisterRepository.close).not.toHaveBeenCalled();
+    });
+
+    it('não fecha antes do horário configurado chegar', async () => {
+      const { service, cashRegisterRepository } = setup({
+        restaurantRepository: {
+          listAll: jest.fn().mockResolvedValue([
+            buildRestaurant({ cashRegisterAutoCloseMode: 'automatic', cashRegisterAutoCloseTime: '23:00' }),
+          ]),
+        },
+      });
+
+      await service.closeDueAutomaticSessions(MONDAY_9AM_BRT);
+
+      expect(cashRegisterRepository.close).not.toHaveBeenCalled();
+    });
+
+    it('AC-5: restaurante com fechamento automático desligado (modo manual) nunca fecha sozinho', async () => {
+      const { service, cashRegisterRepository } = setup({
+        restaurantRepository: {
+          listAll: jest.fn().mockResolvedValue([
+            buildRestaurant({ cashRegisterAutoCloseMode: 'manual', cashRegisterAutoCloseTime: '23:00' }),
+          ]),
+        },
+      });
+
+      await service.closeDueAutomaticSessions(MONDAY_11PM_BRT);
+
+      expect(cashRegisterRepository.close).not.toHaveBeenCalled();
+    });
+
+    it('AC-4: sessão reaberta manualmente pelo dono não é fechada de novo automaticamente', async () => {
+      const { service, cashRegisterRepository } = setup({
+        restaurantRepository: {
+          listAll: jest.fn().mockResolvedValue([
+            buildRestaurant({ cashRegisterAutoCloseMode: 'automatic', cashRegisterAutoCloseTime: '23:00' }),
+          ]),
+        },
+        cashRegisterRepository: {
+          findOpenSessionByRestaurant: jest.fn().mockResolvedValue(buildSession({ reopenedAt: '2026-10-12T15:00:00.000Z', reopenedBy: 'dono-1' })),
+        },
+      });
+
+      await service.closeDueAutomaticSessions(MONDAY_11PM_BRT);
+
+      expect(cashRegisterRepository.close).not.toHaveBeenCalled();
+    });
+
+    it('um restaurante com erro não impede o fechamento dos demais', async () => {
+      const { service, cashRegisterRepository } = setup({
+        restaurantRepository: {
+          listAll: jest.fn().mockResolvedValue([
+            buildRestaurant({ id: 'r-1', cashRegisterAutoCloseMode: 'automatic', cashRegisterAutoCloseTime: '23:00' }),
+            buildRestaurant({ id: 'r-2', cashRegisterAutoCloseMode: 'automatic', cashRegisterAutoCloseTime: '23:00' }),
+          ]),
+        },
+        cashRegisterRepository: {
+          findOpenSessionByRestaurant: jest.fn()
+            .mockRejectedValueOnce(new Error('falha inesperada'))
+            .mockResolvedValueOnce(buildSession({ id: 'cr-2', restaurantId: 'r-2' })),
+        },
+      });
+
+      await expect(service.closeDueAutomaticSessions(MONDAY_11PM_BRT)).resolves.toBeUndefined();
+
+      expect(cashRegisterRepository.close).toHaveBeenCalledWith('cr-2', 100, 'automatico', true);
     });
   });
 

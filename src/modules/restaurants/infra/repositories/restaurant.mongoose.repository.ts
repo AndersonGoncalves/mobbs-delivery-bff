@@ -105,6 +105,8 @@ interface RestaurantLeanDocument {
   orderDeliveredWhatsAppTemplate?: string;
   facebookUrl?: string;
   cashRegisterMode?: CashRegisterMode;
+  cashRegisterAutoCloseMode?: CashRegisterMode;
+  cashRegisterAutoCloseTime?: string;
   customerBlockingEnabled?: boolean;
   autoPrintEnabled?: boolean;
   autoPrintIntervalSeconds?: number;
@@ -231,6 +233,8 @@ function toEntity(doc: RestaurantLeanDocument): IRestaurant {
     orderDeliveredWhatsAppTemplate: doc.orderDeliveredWhatsAppTemplate,
     facebookUrl: doc.facebookUrl,
     cashRegisterMode: doc.cashRegisterMode ?? 'manual',
+    cashRegisterAutoCloseMode: doc.cashRegisterAutoCloseMode ?? 'manual',
+    cashRegisterAutoCloseTime: doc.cashRegisterAutoCloseTime ?? '04:00',
     customerBlockingEnabled: doc.customerBlockingEnabled ?? false,
     autoPrintEnabled: doc.autoPrintEnabled ?? false,
     autoPrintIntervalSeconds: doc.autoPrintIntervalSeconds ?? 10,

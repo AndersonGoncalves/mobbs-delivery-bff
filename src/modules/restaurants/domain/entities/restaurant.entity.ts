@@ -321,6 +321,16 @@ export interface IRestaurant {
    * (abertura/fechamento seguem o `businessHours` do dia, sem horário próprio — REQ-2). Seletor
    * mora em `CashRegisterPage.tsx` (decisão do spec), não no Perfil. */
   cashRegisterMode: CashRegisterMode;
+  /** specs/0216-fechamento-automatico-caixa REQ-1/REQ-2 — fechamento automático é independente
+   * da abertura (`cashRegisterMode` acima): `'manual'` (default, comportamento de sempre — dono
+   * fecha com conferência física) ou `'automatic'` (fecha sozinho no horário de
+   * `cashRegisterAutoCloseTime`, com o saldo calculado, sem contagem física — mesmo princípio já
+   * usado pela abertura automática, mas com horário PRÓPRIO, não vinculado a `businessHours`:
+   * pedido de mesa pode continuar fechando bem depois da cozinha parar de receber pedido novo). */
+  cashRegisterAutoCloseMode: CashRegisterMode;
+  /** "HH:mm", default "04:00" (madrugada — horário em que a esmagadora maioria dos restaurantes
+   * já não tem nenhum movimento). Só relevante quando `cashRegisterAutoCloseMode === 'automatic'`. */
+  cashRegisterAutoCloseTime: string;
   /** Pedido explícito do usuário — liga/desliga global do bloqueio de clientes por telefone
    * (`BlockedCustomer`, módulo `customer-blocking`); desligado (default) não bloqueia ninguém
    * mesmo com números cadastrados na lista — a lista e o liga/desliga são independentes. */

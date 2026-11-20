@@ -1,6 +1,7 @@
 import { PaymentMethod } from '../../../orders/domain/entities/order.entity';
 import { IOrderRepository } from '../../../orders/domain/repositories/order.repository.interface';
 import { getRestaurantLocalTime, minutesSinceMidnight } from '../../../restaurants/domain/is-restaurant-open-now';
+import { IRestaurant } from '../../../restaurants/domain/entities/restaurant.entity';
 import { IRestaurantRepository } from '../../../restaurants/domain/repositories/restaurant.repository.interface';
 import { ICashRegisterRepository } from '../../domain/repositories/cash-register.repository.interface';
 import { cashRegisterDate, cashRegisterPeriodEnd } from '../../domain/cash-register-date';
@@ -290,7 +291,48 @@ export class CashRegisterService implements ICashRegisterService {
       return;
     }
 
-    // Fechamento é sempre uma conferência manual, inclusive depois do horário.
+    // Fechamento reativo (igual abertura acima) nunca acontece aqui — ver
+    // `closeDueAutomaticSessions` abaixo (specs/0216), chamada por um worker periódico
+    // (`cash-register-auto-close-worker.ts`), não por esta checagem reativa. Fechamento
+    // automático é tipicamente de madrugada (default 04:00); um mecanismo reativo deixaria a
+    // sessão presa até alguém abrir a tela de manhã, nem sempre batendo com o horário
+    // configurado — diferente da abertura, que já tem um gatilho natural (primeiro acesso do
+    // dia).
+  }
+
+  /**
+   * specs/0216-fechamento-automatico-caixa REQ-3/REQ-5/REQ-6/REQ-7 — chamada pelo worker
+   * periódico `cash-register-auto-close-worker.ts`, nunca por uma rota HTTP. Cada restaurante
+   * falha isoladamente (mesmo raciocínio de `IFoodPollingWorker.run`): um erro num restaurante
+   * nunca impede o fechamento dos demais.
+   */
+  async closeDueAutomaticSessions(now: Date = new Date()): Promise<void> {
+    const restaurants = await this.restaurantRepository.listAll();
+    const due = restaurants.filter((restaurant) => restaurant.cashRegisterAutoCloseMode === 'automatic');
+    for (const restaurant of due) {
+      try {
+        await this.closeDueAutomaticSessionForRestaurant(restaurant, now);
+      } catch (error) {
+        console.error(`[financeiro] erro inesperado no fechamento automático de caixa do restaurante ${restaurant.id}:`, error);
+      }
+    }
+  }
+
+  private async closeDueAutomaticSessionForRestaurant(restaurant: IRestaurant, now: Date): Promise<void> {
+    const closeTime = restaurant.cashRegisterAutoCloseTime || '04:00';
+    const { minutes } = getRestaurantLocalTime(now);
+    if (minutes < minutesSinceMidnight(closeTime)) return;
+
+    const session = await this.cashRegisterRepository.findOpenSessionByRestaurant(restaurant.id);
+    if (!session) return;
+    // REQ-6 — uma sessão que o dono reabriu manualmente (`reopenedAt`) fica fora do fechamento
+    // automático: reabrir é um sinal explícito de "quero fazer a conferência física eu mesmo
+    // agora", e fechar de novo sozinha no próximo tick (minutos depois) tiraria exatamente a
+    // chance que REQ-6 promete. Essa sessão só volta a fechar por ação manual do dono.
+    if (session.reopenedAt) return;
+
+    const calculatedBalance = await this.cashRegisterRepository.getCalculatedBalance(session.id);
+    await this.cashRegisterRepository.close(session.id, calculatedBalance, AUTOMATIC_ACTOR, true);
   }
 
   async getBalanceByPaymentMethod(sessionId: string): Promise<CashBalanceByPaymentMethod> {

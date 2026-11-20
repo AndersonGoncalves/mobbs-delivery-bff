@@ -173,6 +173,11 @@ const restaurantSchema = new Schema(
     // já existia manteve o que já tinha configurado (este default só vale na criação do
     // documento, nunca sobrescreve um restaurante já existente).
     cashRegisterMode: { type: String, enum: ['manual', 'automatic'], required: true, default: 'automatic' },
+    // specs/0216-fechamento-automatico-caixa — default 'manual' (preserva o comportamento atual
+    // pra todo restaurante, novo ou existente; diferente de `cashRegisterMode` acima, que já
+    // nasce 'automatic' pra restaurante novo).
+    cashRegisterAutoCloseMode: { type: String, enum: ['manual', 'automatic'], required: true, default: 'manual' },
+    cashRegisterAutoCloseTime: { type: String, required: true, default: '04:00' },
     // Pedido explícito do usuário — default desligado preserva o comportamento atual (sem
     // nenhuma restrição) de todo restaurante já existente.
     customerBlockingEnabled: { type: Boolean, required: true, default: false },

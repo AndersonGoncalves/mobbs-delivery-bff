@@ -115,6 +115,7 @@ import { AccountPayableMongooseRepository } from './modules/financeiro/infra/rep
 import { AccountReceivableMongooseRepository } from './modules/financeiro/infra/repositories/account-receivable.mongoose.repository';
 import { CashRegisterMongooseRepository } from './modules/financeiro/infra/repositories/cash-register.mongoose.repository';
 import { CashRegisterService } from './modules/financeiro/infra/services/cash-register.service';
+import { CashRegisterAutoCloseWorker } from './modules/financeiro/infra/cash-register-auto-close-worker';
 import { AccountsPayableController } from './modules/financeiro/presentation/accounts-payable.controller';
 import { AccountsReceivableController } from './modules/financeiro/presentation/accounts-receivable.controller';
 import { CashRegisterController } from './modules/financeiro/presentation/cash-register.controller';
@@ -287,6 +288,9 @@ const orderRepository = new OrderMongooseRepository();
 // specs/0118-controle-caixa-automatico-redes-sociais — ver comentário acima de
 // `cashRegisterRepository`: só pode ser montado aqui, depois de `orderRepository` existir.
 const cashRegisterService = new CashRegisterService(cashRegisterRepository, restaurantRepository, orderRepository);
+// specs/0216-fechamento-automatico-caixa — worker periódico, registrado junto com os outros 3
+// mais abaixo (billing/Instagram/iFood).
+const cashRegisterAutoCloseWorker = new CashRegisterAutoCloseWorker(cashRegisterService);
 
 // specs/0131-cashback-app + specs/0132-programa-fidelidade-app — mesma instância compartilhada
 // entre `OrdersController` (resgate/devolução/crédito), `CustomerBalanceController` (leitura do
@@ -901,6 +905,14 @@ server
   // demora perceptível, sem sobrecarregar a API do iFood com polling agressivo.
   .then(() => {
     startPeriodicWorker('ifood-integration', 30_000, () => ifoodPollingWorker.run());
+  })
+  // specs/0216-fechamento-automatico-caixa REQ-3 — fechamento é tipicamente de madrugada
+  // (default 04:00), horário em que ninguém costuma acessar o caixa pra disparar a checagem
+  // reativa que a ABERTURA automática usa (`ensureAutomaticSchedule`); por isso precisa de um
+  // "tick" em processo, mesmo raciocínio dos 3 workers acima. 5 minutos: preciso o bastante sem
+  // sobrecarregar o banco varrendo todos os restaurantes com fechamento automático ligado.
+  .then(() => {
+    startPeriodicWorker('cash-register-auto-close', 5 * 60_000, () => cashRegisterAutoCloseWorker.run());
   })
   .catch((error) => {
     // eslint-disable-next-line no-console

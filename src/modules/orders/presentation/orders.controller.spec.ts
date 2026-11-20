@@ -363,6 +363,7 @@ describe('OrdersController', () => {
       addPartialRefundEntry: jest.fn().mockResolvedValue(undefined),
       syncOpenSession: jest.fn().mockResolvedValue(undefined),
       ensureAutomaticSchedule: jest.fn().mockResolvedValue(undefined),
+      closeDueAutomaticSessions: jest.fn().mockResolvedValue(undefined),
       getBalanceByPaymentMethod: jest.fn().mockResolvedValue({}),
       getClosingSummary: jest.fn(),
     };

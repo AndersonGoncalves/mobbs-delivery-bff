@@ -98,9 +98,17 @@ export interface ICashRegisterService {
 
   /**
    * 0176: abertura lazy por data civil, seguindo businessHours. Nunca fecha automaticamente
-   * nem reabre uma data já fechada. Caixas de datas anteriores permanecem pendentes.
+   * nem reabre uma data já fechada (fechamento automático é outro mecanismo, independente,
+   * ver `closeDueAutomaticSessions` abaixo — specs/0216). Caixas de datas anteriores permanecem
+   * pendentes.
    */
   ensureAutomaticSchedule(restaurantId: string, now?: Date): Promise<void>;
+
+  /** specs/0216-fechamento-automatico-caixa REQ-3 — fecha, pra todo restaurante com
+   * `cashRegisterAutoCloseMode: 'automatic'`, a sessão aberta cujo horário configurado
+   * (`cashRegisterAutoCloseTime`) já passou. Chamada por um worker periódico, nunca por uma rota
+   * HTTP (diferente de `ensureAutomaticSchedule`, que é reativa). */
+  closeDueAutomaticSessions(now?: Date): Promise<void>;
 
   /** REQ-9 — saldo da sessão (aberta ou fechada) separado por forma de pagamento. */
   getBalanceByPaymentMethod(sessionId: string): Promise<CashBalanceByPaymentMethod>;
