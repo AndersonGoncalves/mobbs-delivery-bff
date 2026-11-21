@@ -431,15 +431,19 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
   describe('closeDueAutomaticSessions (specs/0216-fechamento-automatico-caixa AC-2/AC-3/AC-4/AC-5)', () => {
     const MONDAY_11PM_BRT = new Date('2026-10-13T02:00:00.000Z'); // segunda, 23:00 em Brasília
     const MONDAY_9AM_BRT = new Date('2026-10-12T12:00:00.000Z'); // segunda, 09:00 em Brasília
+    const TODAY = '2026-10-12'; // businessDate correspondente aos 2 instantes acima.
 
-    it('AC-2: fecha a sessão aberta de um restaurante elegível cujo horário já passou, com o saldo calculado', async () => {
+    it('AC-2: fecha a sessão de HOJE de um restaurante elegível cujo horário já passou, com o saldo calculado', async () => {
       const { service, cashRegisterRepository } = setup({
         restaurantRepository: {
           listAll: jest.fn().mockResolvedValue([
             buildRestaurant({ cashRegisterAutoCloseMode: 'automatic', cashRegisterAutoCloseTime: '23:00' }),
           ]),
         },
-        cashRegisterRepository: { getCalculatedBalance: jest.fn().mockResolvedValue(123.45) },
+        cashRegisterRepository: {
+          findPendingSessions: jest.fn().mockResolvedValue([buildSession({ businessDate: TODAY })]),
+          getCalculatedBalance: jest.fn().mockResolvedValue(123.45),
+        },
       });
 
       await service.closeDueAutomaticSessions(MONDAY_11PM_BRT);
@@ -454,7 +458,7 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
             buildRestaurant({ cashRegisterAutoCloseMode: 'automatic', cashRegisterAutoCloseTime: '23:00' }),
           ]),
         },
-        cashRegisterRepository: { findOpenSessionByRestaurant: jest.fn().mockResolvedValue(null) },
+        cashRegisterRepository: { findPendingSessions: jest.fn().mockResolvedValue([]) },
       });
 
       await expect(service.closeDueAutomaticSessions(MONDAY_11PM_BRT)).resolves.toBeUndefined();
@@ -462,18 +466,44 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
       expect(cashRegisterRepository.close).not.toHaveBeenCalled();
     });
 
-    it('não fecha antes do horário configurado chegar', async () => {
+    it('não fecha a sessão de HOJE antes do horário configurado chegar', async () => {
       const { service, cashRegisterRepository } = setup({
         restaurantRepository: {
           listAll: jest.fn().mockResolvedValue([
             buildRestaurant({ cashRegisterAutoCloseMode: 'automatic', cashRegisterAutoCloseTime: '23:00' }),
           ]),
         },
+        cashRegisterRepository: {
+          findPendingSessions: jest.fn().mockResolvedValue([buildSession({ businessDate: TODAY })]),
+        },
       });
 
       await service.closeDueAutomaticSessions(MONDAY_9AM_BRT);
 
       expect(cashRegisterRepository.close).not.toHaveBeenCalled();
+    });
+
+    // Achado real de produção (21/11/2026) — antes usava `findOpenSessionByRestaurant` (só
+    // "hoje"), então uma sessão deixada aberta de um dia anterior nunca era vista pelo worker e
+    // ficava presa pra sempre (ninguém acessa o caixa de madrugada pra abrir o dia seguinte,
+    // nem o worker olhava a sessão de ontem). Agora qualquer sessão de uma data anterior a hoje
+    // fecha na hora, mesmo antes do horário configurado (já está vencida de qualquer jeito).
+    it('fecha uma sessão presa de um dia anterior imediatamente, mesmo antes do horário configurado', async () => {
+      const { service, cashRegisterRepository } = setup({
+        restaurantRepository: {
+          listAll: jest.fn().mockResolvedValue([
+            buildRestaurant({ cashRegisterAutoCloseMode: 'automatic', cashRegisterAutoCloseTime: '23:00' }),
+          ]),
+        },
+        cashRegisterRepository: {
+          findPendingSessions: jest.fn().mockResolvedValue([buildSession({ businessDate: '2026-10-10' })]),
+          getCalculatedBalance: jest.fn().mockResolvedValue(50),
+        },
+      });
+
+      await service.closeDueAutomaticSessions(MONDAY_9AM_BRT);
+
+      expect(cashRegisterRepository.close).toHaveBeenCalledWith('cr-1', 50, 'automatico', true);
     });
 
     it('AC-5: restaurante com fechamento automático desligado (modo manual) nunca fecha sozinho', async () => {
@@ -498,7 +528,9 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
           ]),
         },
         cashRegisterRepository: {
-          findOpenSessionByRestaurant: jest.fn().mockResolvedValue(buildSession({ reopenedAt: '2026-10-12T15:00:00.000Z', reopenedBy: 'dono-1' })),
+          findPendingSessions: jest.fn().mockResolvedValue([
+            buildSession({ businessDate: TODAY, reopenedAt: '2026-10-12T15:00:00.000Z', reopenedBy: 'dono-1' }),
+          ]),
         },
       });
 
@@ -516,9 +548,9 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
           ]),
         },
         cashRegisterRepository: {
-          findOpenSessionByRestaurant: jest.fn()
+          findPendingSessions: jest.fn()
             .mockRejectedValueOnce(new Error('falha inesperada'))
-            .mockResolvedValueOnce(buildSession({ id: 'cr-2', restaurantId: 'r-2' })),
+            .mockResolvedValueOnce([buildSession({ id: 'cr-2', restaurantId: 'r-2', businessDate: TODAY })]),
         },
       });
 
