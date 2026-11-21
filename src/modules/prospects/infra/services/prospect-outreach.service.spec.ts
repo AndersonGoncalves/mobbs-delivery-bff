@@ -137,7 +137,9 @@ describe('ProspectOutreachService (specs/0124-campanha-whatsapp-prospects)', () 
 
       await service.contactAdHoc('85999998888', 'Olá {nomeContato}!');
 
-      expect(platformWhatsAppConnectionService.sendMessage).toHaveBeenCalledWith('85999998888', 'Olá !');
+      // Achado (20/11/2026) — sem nome, a sentença inteira do placeholder é removida, não só o
+      // placeholder em branco (ver build-prospect-outreach-message.ts).
+      expect(platformWhatsAppConnectionService.sendMessage).toHaveBeenCalledWith('85999998888', '');
       expect(prospectRepository.findById).not.toHaveBeenCalled();
       expect(prospectRepository.markContacted).not.toHaveBeenCalled();
     });

@@ -318,18 +318,37 @@ export class CashRegisterService implements ICashRegisterService {
     }
   }
 
+  /**
+   * Achado real de produção (21/11/2026) — usava `findOpenSessionByRestaurant` (escopado à data
+   * de HOJE); uma sessão deixada aberta de um dia anterior (ninguém acessou nenhuma tela do
+   * caixa pra disparar a abertura reativa do dia seguinte) nunca aparecia nessa busca —
+   * "hoje" nunca bate com a `businessDate` de uma sessão presa, então o worker rodava a cada 5min
+   * sem achar nada pra fechar, pra sempre, sem erro nenhum. `findPendingSessions` busca por
+   * `status: 'aberto'` puro, qualquer data (a invariante de "só 1 sessão aberta por vez" garante
+   * no máximo 1 resultado) — enxerga a sessão travada de verdade.
+   */
   private async closeDueAutomaticSessionForRestaurant(restaurant: IRestaurant, now: Date): Promise<void> {
-    const closeTime = restaurant.cashRegisterAutoCloseTime || '04:00';
-    const { minutes } = getRestaurantLocalTime(now);
-    if (minutes < minutesSinceMidnight(closeTime)) return;
-
-    const session = await this.cashRegisterRepository.findOpenSessionByRestaurant(restaurant.id);
+    const session = (await this.cashRegisterRepository.findPendingSessions(restaurant.id))[0];
     if (!session) return;
     // REQ-6 — uma sessão que o dono reabriu manualmente (`reopenedAt`) fica fora do fechamento
     // automático: reabrir é um sinal explícito de "quero fazer a conferência física eu mesmo
     // agora", e fechar de novo sozinha no próximo tick (minutos depois) tiraria exatamente a
     // chance que REQ-6 promete. Essa sessão só volta a fechar por ação manual do dono.
     if (session.reopenedAt) return;
+
+    // Sessão de um dia civil anterior (`businessDate`, ou `openedAt` pra sessões antigas sem esse
+    // campo) já está vencida de qualquer jeito — fecha na hora, sem esperar o horário
+    // configurado (que só faz sentido pra decidir SE a sessão de HOJE já pode fechar).
+    const sessionDate = session.businessDate ?? cashRegisterDate(new Date(session.openedAt));
+    if (sessionDate !== cashRegisterDate(now)) {
+      const calculatedBalance = await this.cashRegisterRepository.getCalculatedBalance(session.id);
+      await this.cashRegisterRepository.close(session.id, calculatedBalance, AUTOMATIC_ACTOR, true);
+      return;
+    }
+
+    const closeTime = restaurant.cashRegisterAutoCloseTime || '04:00';
+    const { minutes } = getRestaurantLocalTime(now);
+    if (minutes < minutesSinceMidnight(closeTime)) return;
 
     const calculatedBalance = await this.cashRegisterRepository.getCalculatedBalance(session.id);
     await this.cashRegisterRepository.close(session.id, calculatedBalance, AUTOMATIC_ACTOR, true);

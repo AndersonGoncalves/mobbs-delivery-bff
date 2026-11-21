@@ -77,11 +77,18 @@ export class RawMaterialMongooseRepository implements IRawMaterialRepository {
     tracksStock?: boolean,
     imageUrl?: string,
   ): Promise<IRawMaterial> {
-    const patch: Record<string, unknown> = { name, priceDelta, unit, minimumStockAlert, description, imageUrl };
+    // Achado real (pedido do usuário, "Remover imagem" não funcionava) — `$set` com valor
+    // `undefined` é descartado pelo driver (o campo ficaria do jeito que estava, nunca
+    // removido); `imageUrl` ausente precisa de `$unset` de verdade pra remover a foto já salva.
+    // Mesmo padrão já usado em `menu-category.mongoose.repository.ts`.
+    const patch: Record<string, unknown> = { name, priceDelta, unit, minimumStockAlert, description };
     if (tracksStock !== undefined) patch.tracksStock = tracksStock;
+    const update: Record<string, unknown> = imageUrl
+      ? { $set: { ...patch, imageUrl } }
+      : { $set: patch, $unset: { imageUrl: '' } };
     const doc = await RawMaterialModel.findByIdAndUpdate(
       id,
-      { $set: patch },
+      update,
       { new: true },
     ).lean<RawMaterialLeanDocument>();
     return toEntity(doc as RawMaterialLeanDocument);

@@ -233,6 +233,7 @@ export class CashRegisterMongooseRepository implements ICashRegisterRepository {
     sessionId: string,
     countedValue: number,
     closedBy?: string,
+    closedAutomatically = false,
   ): Promise<CloseCashRegisterResult> {
     const snapshot = await CashRegisterSessionModel.findById(sessionId).lean<SessionLeanDocument>();
     if (!snapshot || snapshot.status !== 'aberto' || snapshot.movementWrites) {
@@ -250,7 +251,10 @@ export class CashRegisterMongooseRepository implements ICashRegisterRepository {
         movementVersion: snapshot.movementVersion === undefined ? { $exists: false } : snapshot.movementVersion,
         movementWrites: snapshot.movementWrites === undefined ? { $exists: false } : 0,
       },
-      { $set: { status: 'fechado', closedAt: now, accountingEndAt: now, closingBalance: countedValue, closedBy, closedAutomatically: false } },
+      // Achado real de produção (21/11/2026) — este `$set` ignorava o parâmetro recebido e
+      // gravava `closedAutomatically: false` sempre, não importa quem chamou; todo o histórico
+      // mostrava fechamento manual mesmo quando era o worker automático que fechou.
+      { $set: { status: 'fechado', closedAt: now, accountingEndAt: now, closingBalance: countedValue, closedBy, closedAutomatically } },
       { new: true },
     ).lean<SessionLeanDocument>();
     if (!doc) throw new ConflictError('O caixa foi fechado ou recebeu novos lançamentos. Atualize e confira novamente');

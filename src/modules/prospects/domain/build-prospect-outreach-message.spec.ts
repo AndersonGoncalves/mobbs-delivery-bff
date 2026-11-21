@@ -11,10 +11,21 @@ describe('buildProspectOutreachMessage (specs/0124-campanha-whatsapp-prospects R
     expect(result).toBe('Ana, tudo bem? Ana!');
   });
 
-  // REQ-11 — envio avulso não tem nome associado.
-  it('substitui por string vazia quando não há nome (envio avulso)', () => {
+  // REQ-11 — envio avulso não tem nome associado. Achado (20/11/2026): sem nome, remove a
+  // sentença inteira (não só o placeholder), pra não deixar frase quebrada no envio.
+  it('remove a sentença inteira do placeholder quando não há nome (envio avulso)', () => {
     const result = buildProspectOutreachMessage('Olá {nomeContato}!', '');
-    expect(result).toBe('Olá !');
+    expect(result).toBe('');
+  });
+
+  it('remove só a sentença do placeholder, preservando o resto da mensagem (sem nome)', () => {
+    const result = buildProspectOutreachMessage(
+      'Olá! 👋\nVi o {nomeContato} por aqui. Você já parou pra calcular quanto paga de comissão nos apps de entrega por mês?',
+      '',
+    );
+    expect(result).toBe(
+      'Olá! 👋\nVocê já parou pra calcular quanto paga de comissão nos apps de entrega por mês?',
+    );
   });
 
   it('mensagem sem o placeholder fica inalterada', () => {

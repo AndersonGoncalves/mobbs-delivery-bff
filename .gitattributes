@@ -1,0 +1,3 @@
+# Normaliza quebra de linha entre Linux/Mac/Windows — sem isso, commits feitos em SOs
+# diferentes geram diffs gigantes de CRLF/LF sem mudança de conteúdo real.
+* text=auto
