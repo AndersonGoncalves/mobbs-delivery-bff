@@ -21,10 +21,16 @@ export interface CloseCashRegisterResult {
 }
 
 export interface ICashRegisterRepository {
-  /** Caixa aberto na data civil atual, nunca um caixa pendente de outra data. */
+  /** A sessão aberta agora, de qualquer `businessDate` (a invariante "nunca mais de uma aberta
+   * ao mesmo tempo" garante no máximo 1 resultado — equivalente a `findPendingSessions()[0]`). */
   findOpenSessionByRestaurant(restaurantId: string): Promise<ICashRegisterSession | null>;
   findSessionByDate(restaurantId: string, date: string): Promise<ICashRegisterSession | null>;
   findPendingSessions(restaurantId: string): Promise<ICashRegisterSession[]>;
+  /** specs/0219-multiplas-sessoes-caixa-por-dia — sessões FECHADAS de um `businessDate` (mais
+   * antiga primeiro); com múltiplas sessões por dia, pode ter mais de um resultado. Usado pelo
+   * seletor "Caixa para conferência" (web) e pelo fallback de lançamento tardio (o último item é
+   * a sessão fechada mais recente do dia). */
+  findClosedSessionsForDate(restaurantId: string, date: string): Promise<ICashRegisterSession[]>;
   findById(id: string): Promise<ICashRegisterSession | null>;
   /** specs/0118-controle-caixa-automatico-redes-sociais REQ-3 — `openedAutomatically` default
    * `false`/ausente (abertura manual, comportamento de sempre); `true` quando chamado por

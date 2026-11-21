@@ -46,6 +46,10 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
     const cashRegisterRepository: Partial<ICashRegisterRepository> = {
       findOpenSessionByRestaurant: jest.fn().mockResolvedValue(buildSession()),
       findSessionByDate: overrides.cashRegisterRepository?.findOpenSessionByRestaurant ?? jest.fn().mockResolvedValue(buildSession()),
+      // specs/0219-multiplas-sessoes-caixa-por-dia — fallback de lançamento tardio (pode ter mais
+      // de uma sessão fechada no mesmo dia; vazio por padrão aqui, já que os testes padrão sempre
+      // têm uma sessão ABERTA via `findOpenSessionByRestaurant`).
+      findClosedSessionsForDate: jest.fn().mockResolvedValue([]),
       findPendingSessions: jest.fn().mockResolvedValue([]),
       findById: jest.fn().mockResolvedValue(buildSession()),
       open: jest.fn().mockResolvedValue(buildSession()),
@@ -167,7 +171,7 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
       const { cashRegisterRepository, service } = setup({
         cashRegisterRepository: {
           findOpenSessionByRestaurant: jest.fn().mockResolvedValue(null),
-          findSessionByDate: jest.fn().mockResolvedValue(null),
+          findClosedSessionsForDate: jest.fn().mockResolvedValue([]),
           open: jest.fn().mockResolvedValue(buildSession({ id: 'cr-nova' })),
         },
       });
@@ -180,13 +184,13 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
 
     // Caso 2 do cabeçalho de `addAutomaticEntry` — caixa de hoje já existe, mas só pode estar
     // fechado (senão `findOpenSessionByRestaurant` já teria achado ele acima); lança mesmo assim,
-    // sem abrir um segundo caixa na mesma data (o sistema nunca permite dois). `getClosingSummary`
-    // é quem separa esse lançamento da conferência já feita (`lateMovements`).
+    // sem abrir uma sessão nova. `getClosingSummary` é quem separa esse lançamento da conferência
+    // já feita (`lateMovements`).
     it('sem nenhuma sessão aberta mas a de hoje já existe (fechada), lança nela sem abrir uma segunda', async () => {
       const { cashRegisterRepository, service } = setup({
         cashRegisterRepository: {
           findOpenSessionByRestaurant: jest.fn().mockResolvedValue(null),
-          findSessionByDate: jest.fn().mockResolvedValue(buildSession({ id: 'cr-hoje', status: 'fechado' })),
+          findClosedSessionsForDate: jest.fn().mockResolvedValue([buildSession({ id: 'cr-hoje', status: 'fechado' })]),
         },
       });
 
@@ -194,6 +198,26 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
 
       expect(cashRegisterRepository.open).not.toHaveBeenCalled();
       expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-hoje', expect.objectContaining({ orderId: 'o-1', amount: 10 }));
+    });
+
+    // specs/0219-multiplas-sessoes-caixa-por-dia REQ-5 — decisão explícita do usuário
+    // (21/11/2026): com mais de uma sessão fechada no mesmo dia (turnos), o lançamento tardio cai
+    // na ÚLTIMA (mais recente), nunca numa sessão anterior do mesmo dia.
+    it('com mais de uma sessão fechada hoje (turnos), lançamento tardio cai na mais recente', async () => {
+      const { cashRegisterRepository, service } = setup({
+        cashRegisterRepository: {
+          findOpenSessionByRestaurant: jest.fn().mockResolvedValue(null),
+          findClosedSessionsForDate: jest.fn().mockResolvedValue([
+            buildSession({ id: 'cr-manha', status: 'fechado' }),
+            buildSession({ id: 'cr-tarde', status: 'fechado' }),
+          ]),
+        },
+      });
+
+      await service.addAutomaticEntry({ restaurantId: 'r-1', orderId: 'o-1', orderNumber: 1, amount: 10, paymentMethod: 'pix' });
+
+      expect(cashRegisterRepository.open).not.toHaveBeenCalled();
+      expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-tarde', expect.objectContaining({ orderId: 'o-1', amount: 10 }));
     });
   });
 
@@ -231,7 +255,7 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
       const { cashRegisterRepository, service } = setup({
         cashRegisterRepository: {
           findOpenSessionByRestaurant: jest.fn().mockResolvedValue(null),
-          findSessionByDate: jest.fn().mockResolvedValue(null),
+          findClosedSessionsForDate: jest.fn().mockResolvedValue([]),
           open: jest.fn().mockResolvedValue(buildSession({ id: 'cr-nova' })),
         },
       });
@@ -275,7 +299,7 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
       const { cashRegisterRepository, service } = setup({
         cashRegisterRepository: {
           findOpenSessionByRestaurant: jest.fn().mockResolvedValue(null),
-          findSessionByDate: jest.fn().mockResolvedValue(null),
+          findClosedSessionsForDate: jest.fn().mockResolvedValue([]),
           open: jest.fn().mockResolvedValue(buildSession({ id: 'cr-nova' })),
         },
       });

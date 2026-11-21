@@ -1,11 +1,13 @@
 import type { Request, Response, Server } from 'restify';
+import { ConflictError } from 'restify-errors';
 
 import { ICashRegisterRepository } from '../domain/repositories/cash-register.repository.interface';
+import { IRestaurantOperatorRepository } from '../../restaurant-operators/domain/repositories/restaurant-operator.repository.interface';
 import { CashClosingSummary, ICashRegisterService } from '../domain/services/i-cash-register.service';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { CashRegisterController } from './cash-register.controller';
 
-type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & { restaurantId?: string; user?: { uid: string }; operatorRole?: string };
+type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & { restaurantId?: string; user?: { uid: string }; operatorRole?: string; operatorId?: string };
 type FakeResponse = Pick<Response, 'json'>;
 type RouteHandler = (req: FakeRequest, res: FakeResponse) => Promise<void>;
 
@@ -87,10 +89,12 @@ describe('CashRegisterController', () => {
     cashRegisterRepository?: Partial<ICashRegisterRepository>;
     orderRepository?: Partial<IOrderRepository>;
     cashRegisterService?: Partial<ICashRegisterService>;
+    restaurantOperatorRepository?: Partial<IRestaurantOperatorRepository>;
   } = {}) {
     const cashRegisterRepository: Partial<ICashRegisterRepository> = {
       findOpenSessionByRestaurant: jest.fn().mockResolvedValue(null),
       findSessionByDate: overrides.cashRegisterRepository?.findOpenSessionByRestaurant ?? jest.fn().mockResolvedValue(null),
+      findClosedSessionsForDate: jest.fn().mockResolvedValue([]),
       findPendingSessions: jest.fn().mockResolvedValue([]),
       findById: jest.fn().mockResolvedValue(buildSession()),
       open: jest.fn().mockResolvedValue(buildSession()),
@@ -127,14 +131,21 @@ describe('CashRegisterController', () => {
       ...overrides.cashRegisterService,
     };
     const restaurantOperatorMiddleware = jest.fn(async () => {});
+    // specs/0220-operador-no-fechamento-caixa — vazio por padrão: a maioria dos testes não
+    // precisa resolver nome nenhum (sem `openedBy`/`closedBy` nos mocks de sessão).
+    const restaurantOperatorRepository: Partial<IRestaurantOperatorRepository> = {
+      findManyByIds: jest.fn().mockResolvedValue([]),
+      ...overrides.restaurantOperatorRepository,
+    };
     const { application, routes } = buildFakeApplication();
     new CashRegisterController(
       cashRegisterRepository as ICashRegisterRepository,
       orderRepository as IOrderRepository,
       cashRegisterService as ICashRegisterService,
       restaurantOperatorMiddleware,
+      restaurantOperatorRepository as IRestaurantOperatorRepository,
     ).initializeRoutes(application);
-    return { cashRegisterRepository, orderRepository, cashRegisterService, routes };
+    return { cashRegisterRepository, orderRepository, cashRegisterService, restaurantOperatorRepository, routes };
   }
 
   it('specs/0127 AC-1/AC-2: agrupa taxa integral por motoboy e separa pedidos sem atribuição', async () => {
@@ -240,8 +251,22 @@ describe('CashRegisterController', () => {
 
     await runOperatorChain(routes['GET /restaurants/me/cash-register/open'], { restaurantId: 'r-1' }, { json });
 
-    expect(json).toHaveBeenCalledWith(200, { session: null, pendingSessions: [], todaySession: null, movements: [], calculatedBalance: 0, tableSales: 0, deliverySales: 0, balanceByPaymentMethod: {} });
+    expect(json).toHaveBeenCalledWith(200, { session: null, pendingSessions: [], todayClosedSessions: [], movements: [], calculatedBalance: 0, tableSales: 0, deliverySales: 0, balanceByPaymentMethod: {} });
     expect(cashRegisterService.ensureAutomaticSchedule).toHaveBeenCalledWith('r-1');
+  });
+
+  // specs/0219-multiplas-sessoes-caixa-por-dia REQ-3 — alimenta o seletor "Caixa para
+  // conferência" (web) com as sessões fechadas de hoje, pode ter mais de uma (turnos).
+  it('specs/0219: GET /restaurants/me/cash-register/open lista as sessões fechadas de hoje quando não há caixa aberto', async () => {
+    const closedMorning = buildSession({ id: 'cr-manha', status: 'fechado' });
+    const { routes } = setup({
+      cashRegisterRepository: { findClosedSessionsForDate: jest.fn().mockResolvedValue([closedMorning]) },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(routes['GET /restaurants/me/cash-register/open'], { restaurantId: 'r-1' }, { json });
+
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ session: null, todayClosedSessions: [expect.objectContaining(closedMorning)] }));
   });
 
   it('0176: consulta e fecha caixa pendente individualmente, sem alterar outros caixas', async () => {
@@ -255,15 +280,50 @@ describe('CashRegisterController', () => {
     });
     const json = jest.fn();
     await runOperatorChain(routes['GET /restaurants/me/cash-register/:id'], { restaurantId: 'r-1', params: { id: 'yesterday' } }, { json });
-    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ session: previous, pendingSessions: expect.any(Array) }));
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ session: expect.objectContaining(previous), pendingSessions: expect.any(Array) }));
     // Pedido explícito do usuário (follow-up, achado real 06/11/2026) — caixa pendente ainda
     // aberto soma até "agora" (sem teto de meia-noite), ver `cashRegisterPeriodEnd`.
     expect(orderRepository.getTableSalesBetween).toHaveBeenCalledWith('r-1', new Date(previous.openedAt), new Date('2026-09-09T12:00:00Z'));
     await runOperatorChain(routes['POST /restaurants/me/cash-register/:id/close'], {
-      restaurantId: 'r-1', params: { id: 'yesterday' }, body: { countedValue: 150 }, user: { uid: 'operator' },
+      restaurantId: 'r-1', params: { id: 'yesterday' }, body: { countedValue: 150 }, user: { uid: 'operator' }, operatorId: 'operator',
     }, { json });
     expect(cashRegisterService.syncOpenSession).toHaveBeenCalledWith('r-1', 'yesterday');
     expect(cashRegisterRepository.close).toHaveBeenCalledWith('yesterday', 150, 'operator');
+  });
+
+  // specs/0219-multiplas-sessoes-caixa-por-dia (achado real, pedido explícito do usuário) —
+  // `GET .../:id` tinha ficado sem `todayClosedSessions`; ao selecionar qualquer sessão no
+  // seletor "Caixa para conferência", a lista de sessões fechadas de hoje sumia do combobox web.
+  it('specs/0219: GET /restaurants/me/cash-register/:id também devolve as sessões fechadas de hoje', async () => {
+    const closedToday = buildSession({ id: 'cr-fechado-hoje', status: 'fechado' });
+    const { routes } = setup({
+      cashRegisterRepository: { findClosedSessionsForDate: jest.fn().mockResolvedValue([closedToday]) },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(routes['GET /restaurants/me/cash-register/:id'], { restaurantId: 'r-1', params: { id: 'cr-1' } }, { json });
+
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ todayClosedSessions: [expect.objectContaining(closedToday)] }));
+  });
+
+  // specs/0219-multiplas-sessoes-caixa-por-dia (achado real, pedido explícito do usuário) — mesmo
+  // ajuste de `GET .../open`: ao selecionar uma sessão fechada de hoje no seletor, a sessão
+  // aberta (de outro turno) não pode aparecer duplicada em `pendingSessions`.
+  it('specs/0219: GET /restaurants/me/cash-register/:id não duplica a sessão aberta em pendingSessions', async () => {
+    const closedSelected = buildSession({ id: 'cr-fechado-selecionado', status: 'fechado' });
+    const openNow = buildSession({ id: 'cr-aberto-agora' });
+    const { routes } = setup({
+      cashRegisterRepository: {
+        findById: jest.fn().mockResolvedValue(closedSelected),
+        findOpenSessionByRestaurant: jest.fn().mockResolvedValue(openNow),
+        findPendingSessions: jest.fn().mockResolvedValue([openNow]),
+      },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(routes['GET /restaurants/me/cash-register/:id'], { restaurantId: 'r-1', params: { id: 'cr-fechado-selecionado' } }, { json });
+
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ pendingSessions: [] }));
   });
 
   it('0176: consulta por id não revela caixa de outro restaurante', async () => {
@@ -299,6 +359,11 @@ describe('CashRegisterController', () => {
     expect(json).toHaveBeenCalledWith(200, {
       session: expect.objectContaining({ id: 'cr-1' }),
       pendingSessions: [],
+      // specs/0219-multiplas-sessoes-caixa-por-dia (achado real, pedido explícito do usuário) —
+      // devolvido mesmo havendo sessão aberta (não só no branch `session: null`), senão o
+      // seletor "Caixa para conferência" (web) perde as sessões fechadas de hoje assim que uma
+      // nova sessão é aberta.
+      todayClosedSessions: [],
       movements: [expect.objectContaining({ id: 'mv-1' })],
       calculatedBalance: 150,
       tableSales: 75,
@@ -310,13 +375,52 @@ describe('CashRegisterController', () => {
     expect(cashRegisterService.getBalanceByPaymentMethod).toHaveBeenCalledWith('cr-1');
   });
 
+  // specs/0219-multiplas-sessoes-caixa-por-dia (achado real, pedido explícito do usuário) — tinha
+  // ficado só dentro do `if (!session)`: com uma sessão aberta hoje (ex. caixa do turno da
+  // tarde) e uma sessão já fechada hoje mais cedo (ex. turno da manhã), a fechada sumia do
+  // combobox assim que o turno da tarde era aberto.
+  it('specs/0219: GET /restaurants/me/cash-register/open inclui todayClosedSessions mesmo com uma sessão aberta', async () => {
+    const closedMorning = buildSession({ id: 'cr-manha', status: 'fechado' });
+    const { routes } = setup({
+      cashRegisterRepository: {
+        findOpenSessionByRestaurant: jest.fn().mockResolvedValue(buildSession({ id: 'cr-tarde' })),
+        findClosedSessionsForDate: jest.fn().mockResolvedValue([closedMorning]),
+      },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(routes['GET /restaurants/me/cash-register/open'], { restaurantId: 'r-1' }, { json });
+
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ todayClosedSessions: [expect.objectContaining(closedMorning)] }));
+  });
+
+  // specs/0219-multiplas-sessoes-caixa-por-dia (achado real, pedido explícito do usuário) —
+  // `findPendingSessions` (qualquer sessão aberta, qualquer data) incluía a própria sessão de
+  // hoje quando ela existia, fazendo o seletor "Caixa para conferência" (web) mostrar a MESMA
+  // sessão duas vezes ("Caixa aberto Atual" e "Pendente de fechamento"). `pendingSessions`
+  // devolvido ao front nunca deve conter a sessão que já é `session`.
+  it('specs/0219: GET /restaurants/me/cash-register/open não duplica a sessão de hoje em pendingSessions', async () => {
+    const todaySession = buildSession({ id: 'cr-hoje' });
+    const { routes } = setup({
+      cashRegisterRepository: {
+        findOpenSessionByRestaurant: jest.fn().mockResolvedValue(todaySession),
+        findPendingSessions: jest.fn().mockResolvedValue([todaySession]),
+      },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(routes['GET /restaurants/me/cash-register/open'], { restaurantId: 'r-1' }, { json });
+
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ pendingSessions: [] }));
+  });
+
   it('AC-4: POST /restaurants/me/cash-register/open abre uma sessão com o valor inicial informado', async () => {
     const { cashRegisterRepository, routes } = setup();
     const json = jest.fn();
 
     await runOperatorChain(
       routes['POST /restaurants/me/cash-register/open'],
-      { restaurantId: 'r-1', user: { uid: 'operator-1' }, body: { openingBalance: 100 } },
+      { restaurantId: 'r-1', user: { uid: 'operator-1' }, operatorId: 'operator-1', body: { openingBalance: 100 } },
       { json },
     );
 
@@ -324,19 +428,59 @@ describe('CashRegisterController', () => {
     expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ status: 'aberto' }));
   });
 
+  // specs/0220-operador-no-fechamento-caixa REQ-1/AC-1 — grava o id do `RestaurantOperator`
+  // (`req.operatorId`), não mais o UID do Firebase (`req.user.uid`) — valores DIFERENTES aqui de
+  // propósito, pra pegar regressão se alguém trocar de volta pra `req.user.uid`.
+  it('specs/0220: POST .../open grava req.operatorId (id do RestaurantOperator), não o UID do Firebase', async () => {
+    const { cashRegisterRepository, routes } = setup();
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/cash-register/open'],
+      { restaurantId: 'r-1', user: { uid: 'firebase-uid-xyz' }, operatorId: 'operator-real-id', body: { openingBalance: 0 } },
+      { json: jest.fn() },
+    );
+
+    expect(cashRegisterRepository.open).toHaveBeenCalledWith('r-1', 0, 'operator-real-id');
+  });
+
+  // specs/0219-multiplas-sessoes-caixa-por-dia — deixou de checar "existe sessão desta data" no
+  // controller (bloqueava abrir de novo no mesmo dia depois de um fechamento); quem bloqueia
+  // agora é `cashRegisterRepository.open()` (via `findPendingSessions`/índice único), não mais
+  // uma checagem redundante aqui.
   it('AC-8: POST /restaurants/me/cash-register/open bloqueia e indica a sessão já aberta', async () => {
     const { cashRegisterRepository, routes } = setup({
-      cashRegisterRepository: { findOpenSessionByRestaurant: jest.fn().mockResolvedValue(buildSession()) },
+      cashRegisterRepository: {
+        open: jest.fn().mockRejectedValue(new ConflictError('Existe um caixa aberto (id cr-1) desde 2026-09-09 — feche-o antes de abrir um novo.')),
+      },
     });
 
     await expect(
       runOperatorChain(
         routes['POST /restaurants/me/cash-register/open'],
-        { restaurantId: 'r-1', user: { uid: 'operator-1' }, body: { openingBalance: 100 } },
+        { restaurantId: 'r-1', user: { uid: 'operator-1' }, operatorId: 'operator-1', body: { openingBalance: 100 } },
         { json: jest.fn() },
       ),
     ).rejects.toMatchObject({ statusCode: 409, message: expect.stringContaining('cr-1') });
-    expect(cashRegisterRepository.open).not.toHaveBeenCalled();
+    expect(cashRegisterRepository.open).toHaveBeenCalledWith('r-1', 100, 'operator-1');
+  });
+
+  // specs/0219-multiplas-sessoes-caixa-por-dia AC-1 — fechar o caixa de hoje não bloqueia mais
+  // abrir um novo em seguida (turnos/troca de operador): sem sessão aberta, `open()` é chamado
+  // normalmente mesmo havendo sessões fechadas hoje.
+  it('specs/0219: POST /restaurants/me/cash-register/open abre uma nova sessão mesmo com uma já fechada hoje', async () => {
+    const { cashRegisterRepository, routes } = setup({
+      cashRegisterRepository: { findClosedSessionsForDate: jest.fn().mockResolvedValue([buildSession({ id: 'cr-manha', status: 'fechado' })]) },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/cash-register/open'],
+      { restaurantId: 'r-1', user: { uid: 'operator-1' }, operatorId: 'operator-1', body: { openingBalance: 100 } },
+      { json },
+    );
+
+    expect(cashRegisterRepository.open).toHaveBeenCalledWith('r-1', 100, 'operator-1');
+    expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ status: 'aberto' }));
   });
 
   it('AC-6: POST .../:id/movements lança um movimento manual (sangria) numa sessão aberta', async () => {
@@ -396,7 +540,7 @@ describe('CashRegisterController', () => {
 
     await runOperatorChain(
       routes['POST /restaurants/me/cash-register/:id/close'],
-      { restaurantId: 'r-1', user: { uid: 'operator-1' }, params: { id: 'cr-1' }, body: { countedValue: 140 } },
+      { restaurantId: 'r-1', user: { uid: 'operator-1' }, operatorId: 'operator-1', params: { id: 'cr-1' }, body: { countedValue: 140 } },
       { json },
     );
 
@@ -440,7 +584,7 @@ describe('CashRegisterController', () => {
 
       await runOperatorChain(
         routes['POST /restaurants/me/cash-register/:id/reopen'],
-        { restaurantId: 'r-1', operatorRole: 'dono', user: { uid: 'dono-1' }, params: { id: 'cr-1' } },
+        { restaurantId: 'r-1', operatorRole: 'dono', user: { uid: 'dono-1' }, operatorId: 'dono-1', params: { id: 'cr-1' } },
         { json },
       );
 
@@ -528,11 +672,94 @@ describe('CashRegisterController', () => {
 
       expect(cashRegisterRepository.findClosedSessionsBetween).toHaveBeenCalledWith('r-1', new Date(from), new Date(to));
       expect(cashRegisterService.getClosingSummary).toHaveBeenCalledTimes(3);
+      // specs/0220-operador-no-fechamento-caixa — cada `closing.session` ganha
+      // `openedByName`/`closedByName`/`reopenedByName` resolvidos; `objectContaining` por sessão
+      // em vez de igualdade exata, já que esse não é o foco deste teste (REQ-10/AC-7).
+      const expectedSummary = (id: string) => ({ ...summaryFor(id), session: expect.objectContaining(summaryFor(id).session) });
       expect(json).toHaveBeenCalledWith(200, {
         from,
         to,
-        closings: [summaryFor('cr-1'), summaryFor('cr-2'), summaryFor('cr-3')],
+        closings: [expectedSummary('cr-1'), expectedSummary('cr-2'), expectedSummary('cr-3')],
       });
+    });
+
+    // specs/0220-operador-no-fechamento-caixa REQ-2/REQ-3/AC-2 — resolve `closedBy` (id do
+    // operador) pra nome, em lote, via `findManyByIds`.
+    it('specs/0220: resolve o nome de quem fechou cada sessão do histórico', async () => {
+      const from = '2026-10-01T00:00:00.000Z';
+      const to = '2026-10-31T23:59:59.000Z';
+      const closedSessions = [buildSession({ id: 'cr-1', status: 'fechado', closedBy: 'op-maria' })];
+      const { routes } = setup({
+        cashRegisterRepository: { findClosedSessionsBetween: jest.fn().mockResolvedValue(closedSessions) },
+        cashRegisterService: {
+          getClosingSummary: jest.fn().mockResolvedValue({
+            session: closedSessions[0], balanceByPaymentMethod: {}, totalSales: 0, calculatedBalance: 0,
+            difference: 0, tableSales: 0, deliverySales: 0, lateMovements: [],
+          }),
+        },
+        restaurantOperatorRepository: {
+          findManyByIds: jest.fn().mockResolvedValue([{ id: 'op-maria', name: 'Maria', email: 'maria@x.com', restaurantId: 'r-1', role: 'gerente', isActive: true, createdAt: new Date() }]),
+        },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(routes['GET /restaurants/me/cash-register/history'], { restaurantId: 'r-1', query: { from, to } }, { json });
+
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({
+        closings: [expect.objectContaining({ session: expect.objectContaining({ closedByName: 'Maria' }) })],
+      }));
+    });
+
+    // AC-4 — fechamento automático (worker) nunca deve tentar resolver 'automatico' como se
+    // fosse um id de operador real; rotulado direto, sem bater no repositório.
+    it('specs/0220 AC-4: fechamento automático mostra "Automático", não tenta resolver operador', async () => {
+      const from = '2026-10-01T00:00:00.000Z';
+      const to = '2026-10-31T23:59:59.000Z';
+      const closedSessions = [buildSession({ id: 'cr-1', status: 'fechado', closedBy: 'automatico', closedAutomatically: true })];
+      const findManyByIds = jest.fn().mockResolvedValue([]);
+      const { routes } = setup({
+        cashRegisterRepository: { findClosedSessionsBetween: jest.fn().mockResolvedValue(closedSessions) },
+        cashRegisterService: {
+          getClosingSummary: jest.fn().mockResolvedValue({
+            session: closedSessions[0], balanceByPaymentMethod: {}, totalSales: 0, calculatedBalance: 0,
+            difference: 0, tableSales: 0, deliverySales: 0, lateMovements: [],
+          }),
+        },
+        restaurantOperatorRepository: { findManyByIds },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(routes['GET /restaurants/me/cash-register/history'], { restaurantId: 'r-1', query: { from, to } }, { json });
+
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({
+        closings: [expect.objectContaining({ session: expect.objectContaining({ closedByName: 'Automático' }) })],
+      }));
+      expect(findManyByIds).not.toHaveBeenCalledWith(expect.arrayContaining(['automatico']));
+    });
+
+    // AC-3 — sessão fechada ANTES desta spec (UID do Firebase, não um id de operador válido)
+    // nunca quebra a página; resolve pra `null`.
+    it('specs/0220 AC-3: closedBy legado (UID do Firebase, sem operador correspondente) resolve pra null', async () => {
+      const from = '2026-10-01T00:00:00.000Z';
+      const to = '2026-10-31T23:59:59.000Z';
+      const closedSessions = [buildSession({ id: 'cr-1', status: 'fechado', closedBy: 'firebase-uid-antigo' })];
+      const { routes } = setup({
+        cashRegisterRepository: { findClosedSessionsBetween: jest.fn().mockResolvedValue(closedSessions) },
+        cashRegisterService: {
+          getClosingSummary: jest.fn().mockResolvedValue({
+            session: closedSessions[0], balanceByPaymentMethod: {}, totalSales: 0, calculatedBalance: 0,
+            difference: 0, tableSales: 0, deliverySales: 0, lateMovements: [],
+          }),
+        },
+        restaurantOperatorRepository: { findManyByIds: jest.fn().mockResolvedValue([]) },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(routes['GET /restaurants/me/cash-register/history'], { restaurantId: 'r-1', query: { from, to } }, { json });
+
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({
+        closings: [expect.objectContaining({ session: expect.objectContaining({ closedByName: null }) })],
+      }));
     });
 
     it('rejeita período inválido', async () => {

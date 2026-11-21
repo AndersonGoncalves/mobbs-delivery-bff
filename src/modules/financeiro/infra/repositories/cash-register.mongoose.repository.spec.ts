@@ -11,14 +11,16 @@ const session = () => ({
 describe('persistência concorrente do caixa (sem banco real)', () => {
   afterEach(() => jest.restoreAllMocks());
 
-  it('duas aberturas simultâneas da mesma data têm somente um vencedor, mesmo sem índice novo instalado', async () => {
+  // specs/0219-multiplas-sessoes-caixa-por-dia — `_id` deixou de ser determinístico
+  // (`daily:<restaurantId>:<businessDate>`); a corrida agora é resolvida pelo índice único
+  // parcial `{ restaurantId }`/`status: 'aberto'` do schema — simulado aqui via `restaurantId`.
+  it('duas aberturas simultâneas do mesmo restaurante têm somente um vencedor, mesmo sem índice novo instalado', async () => {
     const repository = new CashRegisterMongooseRepository();
-    jest.spyOn(repository, 'findSessionByDate').mockResolvedValue(null);
     jest.spyOn(repository, 'findPendingSessions').mockResolvedValue([]);
-    const ids = new Set<string>();
-    jest.spyOn(CashRegisterSessionModel, 'create').mockImplementation((async (input: { _id: string }) => {
-      if (ids.has(input._id)) throw { code: 11000 };
-      ids.add(input._id);
+    const openedForRestaurant = new Set<string>();
+    jest.spyOn(CashRegisterSessionModel, 'create').mockImplementation((async (input: { restaurantId: string }) => {
+      if (openedForRestaurant.has(input.restaurantId)) throw { code: 11000 };
+      openedForRestaurant.add(input.restaurantId);
       return { toObject: () => input };
     }) as never);
     const results = await Promise.allSettled([
@@ -27,16 +29,41 @@ describe('persistência concorrente do caixa (sem banco real)', () => {
     ]);
     expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
     expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
-    expect(ids.size).toBe(1);
+    expect(openedForRestaurant.size).toBe(1);
   });
 
-  it('permite datas diferentes e nunca reabre a data já fechada', async () => {
+  // specs/0219-multiplas-sessoes-caixa-por-dia — decisão explícita do usuário (21/11/2026):
+  // fechar o caixa não bloqueia mais abrir um novo na MESMA data (turnos/troca de operador);
+  // revoga o teste antigo ("nunca reabre a data já fechada"), que checava exatamente o oposto.
+  it('permite abrir uma nova sessão mesmo havendo uma sessão já FECHADA na mesma data', async () => {
     const repository = new CashRegisterMongooseRepository();
-    jest.spyOn(repository, 'findSessionByDate').mockResolvedValue({
-      id: 'old', restaurantId: 'r', openedAt: '2026-10-24T11:00:00Z', openingBalance: 0, status: 'fechado',
-    });
-    await expect(repository.open('r', 0, 'one', false, new Date('2026-10-24T12:00:00Z')))
-      .rejects.toMatchObject({ statusCode: 409 });
+    jest.spyOn(repository, 'findPendingSessions').mockResolvedValue([]);
+    const create = jest.spyOn(CashRegisterSessionModel, 'create').mockImplementation((async (input) => ({
+      toObject: () => input,
+    })) as never);
+
+    const opened = await repository.open('r', 0, 'one', false, new Date('2026-10-24T18:00:00Z'));
+
+    expect(opened.status).toBe('aberto');
+    expect(create).toHaveBeenCalledWith(expect.not.objectContaining({ _id: expect.anything() }));
+  });
+
+  // specs/0219-multiplas-sessoes-caixa-por-dia — alimenta o seletor "Caixa para conferência"
+  // (web) e o fallback de lançamento tardio (`CashRegisterService`); pode ter mais de uma sessão
+  // fechada na mesma data agora (turnos/troca de operador).
+  it('findClosedSessionsForDate retorna as sessões fechadas da data, mais antiga primeiro', async () => {
+    const repository = new CashRegisterMongooseRepository();
+    const find = jest.spyOn(CashRegisterSessionModel, 'find').mockReturnValue({
+      sort: () => lean([
+        { ...session(), _id: 'morning', status: 'fechado', closedAt: new Date('2026-10-24T15:00:00Z') },
+        { ...session(), _id: 'afternoon', status: 'fechado', closedAt: new Date('2026-10-24T22:00:00Z') },
+      ]),
+    } as never);
+
+    const closedSessions = await repository.findClosedSessionsForDate('r', '2026-10-24');
+
+    expect(find).toHaveBeenCalledWith(expect.objectContaining({ restaurantId: 'r', status: 'fechado' }));
+    expect(closedSessions.map((item) => item.id)).toEqual(['morning', 'afternoon']);
   });
 
   // Ajuste explícito do usuário (02/11/2026) — nunca abrir uma data nova (manual ou automático)

@@ -81,9 +81,22 @@ function toMovementEntity(doc: MovementLeanDocument): ICashMovementEntry {
 }
 
 export class CashRegisterMongooseRepository implements ICashRegisterRepository {
+  /** Caixa aberto na data civil atual, nunca um caixa pendente de outra data (esse caso é
+   * `findPendingSessions`, de propósito: uma sessão presa de um dia anterior precisa do aviso
+   * explícito de "feche-o antes", não ser tratada como "a sessão de hoje" transparentemente). */
   async findOpenSessionByRestaurant(restaurantId: string): Promise<ICashRegisterSession | null> {
-    const session = await this.findSessionByDate(restaurantId, cashRegisterDate());
-    return session?.status === 'aberto' ? session : null;
+    const date = cashRegisterDate();
+    const { from, to } = cashRegisterDayBounds(date);
+    // specs/0219-multiplas-sessoes-caixa-por-dia — filtra `status: 'aberto'` NA QUERY (não mais
+    // delegando pra `findSessionByDate` e checando o status depois em JS): com múltiplas sessões
+    // no mesmo dia, aquele método (`findOne` sem `sort`) podia devolver uma sessão FECHADA de hoje
+    // mesmo havendo uma aberta também hoje, fazendo esta função devolver `null` por engano.
+    const doc = await CashRegisterSessionModel.findOne({
+      restaurantId,
+      status: 'aberto',
+      $or: [{ businessDate: date }, { businessDate: { $exists: false }, openedAt: { $gte: from, $lt: to } }],
+    }).lean<SessionLeanDocument>();
+    return doc ? toSessionEntity(doc) : null;
   }
 
   async findSessionByDate(restaurantId: string, date: string): Promise<ICashRegisterSession | null> {
@@ -93,6 +106,18 @@ export class CashRegisterMongooseRepository implements ICashRegisterRepository {
       $or: [{ businessDate: date }, { businessDate: { $exists: false }, openedAt: { $gte: from, $lt: to } }],
     }).lean<SessionLeanDocument>();
     return doc ? toSessionEntity(doc) : null;
+  }
+
+  async findClosedSessionsForDate(restaurantId: string, date: string): Promise<ICashRegisterSession[]> {
+    const { from, to } = cashRegisterDayBounds(date);
+    const docs = await CashRegisterSessionModel.find({
+      restaurantId,
+      status: 'fechado',
+      $or: [{ businessDate: date }, { businessDate: { $exists: false }, openedAt: { $gte: from, $lt: to } }],
+    })
+      .sort({ closedAt: 1 })
+      .lean<SessionLeanDocument[]>();
+    return docs.map(toSessionEntity);
   }
 
   async findPendingSessions(restaurantId: string): Promise<ICashRegisterSession[]> {
@@ -114,22 +139,21 @@ export class CashRegisterMongooseRepository implements ICashRegisterRepository {
     now: Date = new Date(),
   ): Promise<ICashRegisterSession> {
     const businessDate = cashRegisterDate(now);
-    if (await this.findSessionByDate(restaurantId, businessDate)) {
-      throw new ConflictError('Já existe um caixa para esta data');
-    }
-    // Ajuste explícito do usuário (02/11/2026) — nunca abrir uma data nova (manual ou automático)
-    // enquanto uma data anterior segue aberta (sem fechamento); `findPendingSessions` só pode
-    // conter sessões de outra data aqui (`findSessionByDate` acima já confirmou que hoje não tem
-    // nenhuma).
+    // specs/0219-multiplas-sessoes-caixa-por-dia — deixou de checar "existe sessão desta data"
+    // (podia ser uma já FECHADA, bloqueando abrir uma nova no mesmo dia sem necessidade); a única
+    // invariante real é "nunca duas sessões abertas ao mesmo tempo", já coberta abaixo e reforçada
+    // pelo índice único parcial do schema.
     const stuckOpenSession = (await this.findPendingSessions(restaurantId))[0];
     if (stuckOpenSession) {
       throw new ConflictError(
-        `Existe um caixa aberto desde ${stuckOpenSession.businessDate ?? cashRegisterDate(new Date(stuckOpenSession.openedAt))} — feche-o antes de abrir um novo.`,
+        `Existe um caixa aberto (id ${stuckOpenSession.id}) desde ${stuckOpenSession.businessDate ?? cashRegisterDate(new Date(stuckOpenSession.openedAt))} — feche-o antes de abrir um novo.`,
       );
     }
     try {
+      // `_id` não é mais fixado aqui (não é mais `daily:<restaurantId>:<businessDate>`) — o
+      // schema gera um identificador próprio (`randomUUID()`), já que uma mesma `businessDate`
+      // pode ter mais de uma sessão agora.
       const doc = await CashRegisterSessionModel.create({
-        _id: `daily:${restaurantId}:${businessDate}`,
         restaurantId,
         businessDate,
         openedAt: now,
@@ -140,7 +164,7 @@ export class CashRegisterMongooseRepository implements ICashRegisterRepository {
       });
       return toSessionEntity(doc.toObject() as SessionLeanDocument);
     } catch (error) {
-      if ((error as { code?: number }).code === 11000) throw new ConflictError('Já existe um caixa para esta data');
+      if ((error as { code?: number }).code === 11000) throw new ConflictError('Já existe um caixa aberto para este restaurante');
       throw error;
     }
   }

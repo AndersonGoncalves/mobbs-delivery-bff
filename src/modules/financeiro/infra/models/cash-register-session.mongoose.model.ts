@@ -29,9 +29,16 @@ const cashRegisterSessionSchema = new Schema(
 // REQ-8 — resolver rapidamente "há sessão aberta pra este restaurante?" é a query mais frequente
 // do módulo (toda tela de caixa abre consultando isso).
 cashRegisterSessionSchema.index({ restaurantId: 1, status: 1 });
+// specs/0219-multiplas-sessoes-caixa-por-dia — índice de apoio pra consultas por `businessDate`
+// (sessões fechadas de um dia, combobox "Caixa para conferência"); deixou de ser único: um dia
+// pode ter mais de uma sessão (turnos/troca de operador), uma depois da outra.
+cashRegisterSessionSchema.index({ restaurantId: 1, businessDate: 1 });
+// A invariante real do sistema nunca foi "1 sessão por dia" — é "nunca mais de uma sessão ABERTA
+// ao mesmo tempo pro mesmo restaurante" (já garantida na aplicação por `findPendingSessions`
+// antes de `open()`). Este índice único parcial garante a mesma coisa no banco.
 cashRegisterSessionSchema.index(
-  { restaurantId: 1, businessDate: 1 },
-  { unique: true, partialFilterExpression: { businessDate: { $type: 'string' } } },
+  { restaurantId: 1 },
+  { unique: true, partialFilterExpression: { status: 'aberto' } },
 );
 
 export const CashRegisterSessionModel = model('CashRegisterSession', cashRegisterSessionSchema, 'cashRegisterSession');
