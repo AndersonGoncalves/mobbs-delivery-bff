@@ -2,11 +2,12 @@ import type { Request, Response, Server } from 'restify';
 import { ConflictError } from 'restify-errors';
 
 import { ICashRegisterRepository } from '../domain/repositories/cash-register.repository.interface';
+import { IRestaurantOperatorRepository } from '../../restaurant-operators/domain/repositories/restaurant-operator.repository.interface';
 import { CashClosingSummary, ICashRegisterService } from '../domain/services/i-cash-register.service';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { CashRegisterController } from './cash-register.controller';
 
-type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & { restaurantId?: string; user?: { uid: string }; operatorRole?: string };
+type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & { restaurantId?: string; user?: { uid: string }; operatorRole?: string; operatorId?: string };
 type FakeResponse = Pick<Response, 'json'>;
 type RouteHandler = (req: FakeRequest, res: FakeResponse) => Promise<void>;
 
@@ -88,6 +89,7 @@ describe('CashRegisterController', () => {
     cashRegisterRepository?: Partial<ICashRegisterRepository>;
     orderRepository?: Partial<IOrderRepository>;
     cashRegisterService?: Partial<ICashRegisterService>;
+    restaurantOperatorRepository?: Partial<IRestaurantOperatorRepository>;
   } = {}) {
     const cashRegisterRepository: Partial<ICashRegisterRepository> = {
       findOpenSessionByRestaurant: jest.fn().mockResolvedValue(null),
@@ -129,14 +131,21 @@ describe('CashRegisterController', () => {
       ...overrides.cashRegisterService,
     };
     const restaurantOperatorMiddleware = jest.fn(async () => {});
+    // specs/0220-operador-no-fechamento-caixa — vazio por padrão: a maioria dos testes não
+    // precisa resolver nome nenhum (sem `openedBy`/`closedBy` nos mocks de sessão).
+    const restaurantOperatorRepository: Partial<IRestaurantOperatorRepository> = {
+      findManyByIds: jest.fn().mockResolvedValue([]),
+      ...overrides.restaurantOperatorRepository,
+    };
     const { application, routes } = buildFakeApplication();
     new CashRegisterController(
       cashRegisterRepository as ICashRegisterRepository,
       orderRepository as IOrderRepository,
       cashRegisterService as ICashRegisterService,
       restaurantOperatorMiddleware,
+      restaurantOperatorRepository as IRestaurantOperatorRepository,
     ).initializeRoutes(application);
-    return { cashRegisterRepository, orderRepository, cashRegisterService, routes };
+    return { cashRegisterRepository, orderRepository, cashRegisterService, restaurantOperatorRepository, routes };
   }
 
   it('specs/0127 AC-1/AC-2: agrupa taxa integral por motoboy e separa pedidos sem atribuição', async () => {
@@ -257,7 +266,7 @@ describe('CashRegisterController', () => {
 
     await runOperatorChain(routes['GET /restaurants/me/cash-register/open'], { restaurantId: 'r-1' }, { json });
 
-    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ session: null, todayClosedSessions: [closedMorning] }));
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ session: null, todayClosedSessions: [expect.objectContaining(closedMorning)] }));
   });
 
   it('0176: consulta e fecha caixa pendente individualmente, sem alterar outros caixas', async () => {
@@ -271,12 +280,12 @@ describe('CashRegisterController', () => {
     });
     const json = jest.fn();
     await runOperatorChain(routes['GET /restaurants/me/cash-register/:id'], { restaurantId: 'r-1', params: { id: 'yesterday' } }, { json });
-    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ session: previous, pendingSessions: expect.any(Array) }));
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ session: expect.objectContaining(previous), pendingSessions: expect.any(Array) }));
     // Pedido explícito do usuário (follow-up, achado real 06/11/2026) — caixa pendente ainda
     // aberto soma até "agora" (sem teto de meia-noite), ver `cashRegisterPeriodEnd`.
     expect(orderRepository.getTableSalesBetween).toHaveBeenCalledWith('r-1', new Date(previous.openedAt), new Date('2026-09-09T12:00:00Z'));
     await runOperatorChain(routes['POST /restaurants/me/cash-register/:id/close'], {
-      restaurantId: 'r-1', params: { id: 'yesterday' }, body: { countedValue: 150 }, user: { uid: 'operator' },
+      restaurantId: 'r-1', params: { id: 'yesterday' }, body: { countedValue: 150 }, user: { uid: 'operator' }, operatorId: 'operator',
     }, { json });
     expect(cashRegisterService.syncOpenSession).toHaveBeenCalledWith('r-1', 'yesterday');
     expect(cashRegisterRepository.close).toHaveBeenCalledWith('yesterday', 150, 'operator');
@@ -294,7 +303,7 @@ describe('CashRegisterController', () => {
 
     await runOperatorChain(routes['GET /restaurants/me/cash-register/:id'], { restaurantId: 'r-1', params: { id: 'cr-1' } }, { json });
 
-    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ todayClosedSessions: [closedToday] }));
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ todayClosedSessions: [expect.objectContaining(closedToday)] }));
   });
 
   // specs/0219-multiplas-sessoes-caixa-por-dia (achado real, pedido explícito do usuário) — mesmo
@@ -382,7 +391,7 @@ describe('CashRegisterController', () => {
 
     await runOperatorChain(routes['GET /restaurants/me/cash-register/open'], { restaurantId: 'r-1' }, { json });
 
-    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ todayClosedSessions: [closedMorning] }));
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ todayClosedSessions: [expect.objectContaining(closedMorning)] }));
   });
 
   // specs/0219-multiplas-sessoes-caixa-por-dia (achado real, pedido explícito do usuário) —
@@ -411,12 +420,27 @@ describe('CashRegisterController', () => {
 
     await runOperatorChain(
       routes['POST /restaurants/me/cash-register/open'],
-      { restaurantId: 'r-1', user: { uid: 'operator-1' }, body: { openingBalance: 100 } },
+      { restaurantId: 'r-1', user: { uid: 'operator-1' }, operatorId: 'operator-1', body: { openingBalance: 100 } },
       { json },
     );
 
     expect(cashRegisterRepository.open).toHaveBeenCalledWith('r-1', 100, 'operator-1');
     expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ status: 'aberto' }));
+  });
+
+  // specs/0220-operador-no-fechamento-caixa REQ-1/AC-1 — grava o id do `RestaurantOperator`
+  // (`req.operatorId`), não mais o UID do Firebase (`req.user.uid`) — valores DIFERENTES aqui de
+  // propósito, pra pegar regressão se alguém trocar de volta pra `req.user.uid`.
+  it('specs/0220: POST .../open grava req.operatorId (id do RestaurantOperator), não o UID do Firebase', async () => {
+    const { cashRegisterRepository, routes } = setup();
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/cash-register/open'],
+      { restaurantId: 'r-1', user: { uid: 'firebase-uid-xyz' }, operatorId: 'operator-real-id', body: { openingBalance: 0 } },
+      { json: jest.fn() },
+    );
+
+    expect(cashRegisterRepository.open).toHaveBeenCalledWith('r-1', 0, 'operator-real-id');
   });
 
   // specs/0219-multiplas-sessoes-caixa-por-dia — deixou de checar "existe sessão desta data" no
@@ -433,7 +457,7 @@ describe('CashRegisterController', () => {
     await expect(
       runOperatorChain(
         routes['POST /restaurants/me/cash-register/open'],
-        { restaurantId: 'r-1', user: { uid: 'operator-1' }, body: { openingBalance: 100 } },
+        { restaurantId: 'r-1', user: { uid: 'operator-1' }, operatorId: 'operator-1', body: { openingBalance: 100 } },
         { json: jest.fn() },
       ),
     ).rejects.toMatchObject({ statusCode: 409, message: expect.stringContaining('cr-1') });
@@ -451,7 +475,7 @@ describe('CashRegisterController', () => {
 
     await runOperatorChain(
       routes['POST /restaurants/me/cash-register/open'],
-      { restaurantId: 'r-1', user: { uid: 'operator-1' }, body: { openingBalance: 100 } },
+      { restaurantId: 'r-1', user: { uid: 'operator-1' }, operatorId: 'operator-1', body: { openingBalance: 100 } },
       { json },
     );
 
@@ -516,7 +540,7 @@ describe('CashRegisterController', () => {
 
     await runOperatorChain(
       routes['POST /restaurants/me/cash-register/:id/close'],
-      { restaurantId: 'r-1', user: { uid: 'operator-1' }, params: { id: 'cr-1' }, body: { countedValue: 140 } },
+      { restaurantId: 'r-1', user: { uid: 'operator-1' }, operatorId: 'operator-1', params: { id: 'cr-1' }, body: { countedValue: 140 } },
       { json },
     );
 
@@ -560,7 +584,7 @@ describe('CashRegisterController', () => {
 
       await runOperatorChain(
         routes['POST /restaurants/me/cash-register/:id/reopen'],
-        { restaurantId: 'r-1', operatorRole: 'dono', user: { uid: 'dono-1' }, params: { id: 'cr-1' } },
+        { restaurantId: 'r-1', operatorRole: 'dono', user: { uid: 'dono-1' }, operatorId: 'dono-1', params: { id: 'cr-1' } },
         { json },
       );
 
@@ -648,11 +672,94 @@ describe('CashRegisterController', () => {
 
       expect(cashRegisterRepository.findClosedSessionsBetween).toHaveBeenCalledWith('r-1', new Date(from), new Date(to));
       expect(cashRegisterService.getClosingSummary).toHaveBeenCalledTimes(3);
+      // specs/0220-operador-no-fechamento-caixa — cada `closing.session` ganha
+      // `openedByName`/`closedByName`/`reopenedByName` resolvidos; `objectContaining` por sessão
+      // em vez de igualdade exata, já que esse não é o foco deste teste (REQ-10/AC-7).
+      const expectedSummary = (id: string) => ({ ...summaryFor(id), session: expect.objectContaining(summaryFor(id).session) });
       expect(json).toHaveBeenCalledWith(200, {
         from,
         to,
-        closings: [summaryFor('cr-1'), summaryFor('cr-2'), summaryFor('cr-3')],
+        closings: [expectedSummary('cr-1'), expectedSummary('cr-2'), expectedSummary('cr-3')],
       });
+    });
+
+    // specs/0220-operador-no-fechamento-caixa REQ-2/REQ-3/AC-2 — resolve `closedBy` (id do
+    // operador) pra nome, em lote, via `findManyByIds`.
+    it('specs/0220: resolve o nome de quem fechou cada sessão do histórico', async () => {
+      const from = '2026-10-01T00:00:00.000Z';
+      const to = '2026-10-31T23:59:59.000Z';
+      const closedSessions = [buildSession({ id: 'cr-1', status: 'fechado', closedBy: 'op-maria' })];
+      const { routes } = setup({
+        cashRegisterRepository: { findClosedSessionsBetween: jest.fn().mockResolvedValue(closedSessions) },
+        cashRegisterService: {
+          getClosingSummary: jest.fn().mockResolvedValue({
+            session: closedSessions[0], balanceByPaymentMethod: {}, totalSales: 0, calculatedBalance: 0,
+            difference: 0, tableSales: 0, deliverySales: 0, lateMovements: [],
+          }),
+        },
+        restaurantOperatorRepository: {
+          findManyByIds: jest.fn().mockResolvedValue([{ id: 'op-maria', name: 'Maria', email: 'maria@x.com', restaurantId: 'r-1', role: 'gerente', isActive: true, createdAt: new Date() }]),
+        },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(routes['GET /restaurants/me/cash-register/history'], { restaurantId: 'r-1', query: { from, to } }, { json });
+
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({
+        closings: [expect.objectContaining({ session: expect.objectContaining({ closedByName: 'Maria' }) })],
+      }));
+    });
+
+    // AC-4 — fechamento automático (worker) nunca deve tentar resolver 'automatico' como se
+    // fosse um id de operador real; rotulado direto, sem bater no repositório.
+    it('specs/0220 AC-4: fechamento automático mostra "Automático", não tenta resolver operador', async () => {
+      const from = '2026-10-01T00:00:00.000Z';
+      const to = '2026-10-31T23:59:59.000Z';
+      const closedSessions = [buildSession({ id: 'cr-1', status: 'fechado', closedBy: 'automatico', closedAutomatically: true })];
+      const findManyByIds = jest.fn().mockResolvedValue([]);
+      const { routes } = setup({
+        cashRegisterRepository: { findClosedSessionsBetween: jest.fn().mockResolvedValue(closedSessions) },
+        cashRegisterService: {
+          getClosingSummary: jest.fn().mockResolvedValue({
+            session: closedSessions[0], balanceByPaymentMethod: {}, totalSales: 0, calculatedBalance: 0,
+            difference: 0, tableSales: 0, deliverySales: 0, lateMovements: [],
+          }),
+        },
+        restaurantOperatorRepository: { findManyByIds },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(routes['GET /restaurants/me/cash-register/history'], { restaurantId: 'r-1', query: { from, to } }, { json });
+
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({
+        closings: [expect.objectContaining({ session: expect.objectContaining({ closedByName: 'Automático' }) })],
+      }));
+      expect(findManyByIds).not.toHaveBeenCalledWith(expect.arrayContaining(['automatico']));
+    });
+
+    // AC-3 — sessão fechada ANTES desta spec (UID do Firebase, não um id de operador válido)
+    // nunca quebra a página; resolve pra `null`.
+    it('specs/0220 AC-3: closedBy legado (UID do Firebase, sem operador correspondente) resolve pra null', async () => {
+      const from = '2026-10-01T00:00:00.000Z';
+      const to = '2026-10-31T23:59:59.000Z';
+      const closedSessions = [buildSession({ id: 'cr-1', status: 'fechado', closedBy: 'firebase-uid-antigo' })];
+      const { routes } = setup({
+        cashRegisterRepository: { findClosedSessionsBetween: jest.fn().mockResolvedValue(closedSessions) },
+        cashRegisterService: {
+          getClosingSummary: jest.fn().mockResolvedValue({
+            session: closedSessions[0], balanceByPaymentMethod: {}, totalSales: 0, calculatedBalance: 0,
+            difference: 0, tableSales: 0, deliverySales: 0, lateMovements: [],
+          }),
+        },
+        restaurantOperatorRepository: { findManyByIds: jest.fn().mockResolvedValue([]) },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(routes['GET /restaurants/me/cash-register/history'], { restaurantId: 'r-1', query: { from, to } }, { json });
+
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({
+        closings: [expect.objectContaining({ session: expect.objectContaining({ closedByName: null }) })],
+      }));
     });
 
     it('rejeita período inválido', async () => {

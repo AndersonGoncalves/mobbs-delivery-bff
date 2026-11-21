@@ -6,7 +6,9 @@ import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
 import { requireOperatorRole, requireOwnerRole } from '../../../shared/http/require-operator-role.middleware';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
+import { IRestaurantOperatorRepository } from '../../restaurant-operators/domain/repositories/restaurant-operator.repository.interface';
 import { ICashRegisterRepository } from '../domain/repositories/cash-register.repository.interface';
+import { ICashRegisterSession } from '../domain/entities/cash-register.entity';
 import { ICashRegisterService } from '../domain/services/i-cash-register.service';
 import { cashRegisterDate, cashRegisterPeriodEnd } from '../domain/cash-register-date';
 import {
@@ -21,11 +23,10 @@ type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
 /**
  * specs/0014-financeiro REQ-4/REQ-6/REQ-7/REQ-8 — caixa do restaurante do operador logado.
- * `openedBy`/`closedBy` usam `req.user!.uid` (id do operador no Firebase, mesma fonte de
- * `RestaurantOperator`, specs/0007) — diferente do `changedBy` de `OrdersController`, que usa
- * `req.restaurantId` por decisão daquele módulo; aqui o dado que a spec pede
- * (`docs/architecture/data-model.md`, "id do operador") está disponível em `req.user`, então é
- * esse que é gravado.
+ * specs/0220-operador-no-fechamento-caixa — `openedBy`/`closedBy`/`reopenedBy` gravam
+ * `req.operatorId` (id do `RestaurantOperator`, mesmo padrão de `deliveryMotoboy` em
+ * `OrdersController`), não mais `req.user!.uid` (UID do Firebase, sem nenhum jeito de resolver
+ * pra nome depois — era a inconsistência original).
  */
 export class CashRegisterController extends BaseRouter {
   constructor(
@@ -35,8 +36,38 @@ export class CashRegisterController extends BaseRouter {
     // REQ-6) chamado no início de toda rota abaixo que lê ou muda o caixa (ver `plan.md`).
     private readonly cashRegisterService: ICashRegisterService,
     private readonly restaurantOperatorMiddleware: AsyncHandler,
+    // specs/0220-operador-no-fechamento-caixa REQ-2 — resolve `openedBy`/`closedBy`/`reopenedBy`
+    // (id do operador) pra nome/e-mail antes de responder.
+    private readonly restaurantOperatorRepository: IRestaurantOperatorRepository,
   ) {
     super();
+  }
+
+  /** specs/0220-operador-no-fechamento-caixa REQ-2 — resolve em lote (`findManyByIds`, mesmo
+   * padrão de `deliveryMotoboy` em `OrdersController`), ignorando aberturas/fechamentos
+   * automáticos (`openedAutomatically`/`closedAutomatically` — rotulados "Automático" sem
+   * precisar resolver nada) e ids que não correspondem a nenhum operador (dado legado, UID do
+   * Firebase gravado antes desta spec — resolve pra `null`, nunca erro). */
+  private async resolveOperatorNames(sessions: ICashRegisterSession[]): Promise<Map<string, string>> {
+    const ids = new Set<string>();
+    for (const session of sessions) {
+      if (session.openedBy && !session.openedAutomatically) ids.add(session.openedBy);
+      if (session.closedBy && !session.closedAutomatically) ids.add(session.closedBy);
+      if (session.reopenedBy) ids.add(session.reopenedBy);
+    }
+    if (ids.size === 0) return new Map();
+    const operators = await this.restaurantOperatorRepository.findManyByIds([...ids]);
+    return new Map(operators.map((operator) => [operator.id, operator.name || operator.email]));
+  }
+
+  private withOperatorNames(session: ICashRegisterSession, names: Map<string, string>) {
+    const resolve = (id?: string) => (id ? names.get(id) ?? null : null);
+    return {
+      ...session,
+      openedByName: session.openedAutomatically ? 'Automático' : resolve(session.openedBy),
+      closedByName: session.closedAutomatically ? 'Automático' : resolve(session.closedBy),
+      reopenedByName: resolve(session.reopenedBy),
+    };
   }
 
   initializeRoutes(application: Server): void {
@@ -163,8 +194,17 @@ export class CashRegisterController extends BaseRouter {
       // conferência" (web); calculado ANTES do `if (!session)` (não só dentro dele) — senão some
       // do combobox assim que existir uma sessão aberta de novo.
       const todayClosedSessions = await this.cashRegisterRepository.findClosedSessionsForDate(req.restaurantId!, cashRegisterDate());
+      // specs/0220-operador-no-fechamento-caixa REQ-2 — resolve o(s) operador(es) de todas as
+      // sessões que vão pro seletor "Caixa para conferência" numa chamada só.
+      const operatorNames = await this.resolveOperatorNames([...(session ? [session] : []), ...pendingSessions, ...todayClosedSessions]);
+      const withNames = (list: ICashRegisterSession[]) => list.map((item) => this.withOperatorNames(item, operatorNames));
       if (!session) {
-        res.json(200, { session: null, pendingSessions, todayClosedSessions, movements: [], calculatedBalance: 0, tableSales: 0, deliverySales: 0, balanceByPaymentMethod: {} });
+        res.json(200, {
+          session: null,
+          pendingSessions: withNames(pendingSessions),
+          todayClosedSessions: withNames(todayClosedSessions),
+          movements: [], calculatedBalance: 0, tableSales: 0, deliverySales: 0, balanceByPaymentMethod: {},
+        });
         return;
       }
       const [movements, calculatedBalance, tableSales, deliverySales, balanceByPaymentMethod] = await Promise.all([
@@ -174,7 +214,12 @@ export class CashRegisterController extends BaseRouter {
         this.orderRepository.getDeliverySalesBetween(req.restaurantId!, new Date(session.openedAt), cashRegisterPeriodEnd(session)),
         this.cashRegisterService.getBalanceByPaymentMethod(session.id),
       ]);
-      res.json(200, { session, pendingSessions, todayClosedSessions, movements, calculatedBalance, tableSales, deliverySales, balanceByPaymentMethod });
+      res.json(200, {
+        session: this.withOperatorNames(session, operatorNames),
+        pendingSessions: withNames(pendingSessions),
+        todayClosedSessions: withNames(todayClosedSessions),
+        movements, calculatedBalance, tableSales, deliverySales, balanceByPaymentMethod,
+      });
     });
 
     // AC-4/AC-8 — REQ-8: bloqueia se já houver sessão aberta, indicando qual é. specs/0219 —
@@ -183,7 +228,7 @@ export class CashRegisterController extends BaseRouter {
     application.post('/restaurants/me/cash-register/open', ...authenticated, async (req: Request, res: Response) => {
       await this.cashRegisterService.ensureAutomaticSchedule(req.restaurantId!);
       const { openingBalance } = parseBody(openCashRegisterSchema, req.body);
-      const session = await this.cashRegisterRepository.open(req.restaurantId!, openingBalance, req.user?.uid);
+      const session = await this.cashRegisterRepository.open(req.restaurantId!, openingBalance, req.operatorId);
       res.json(201, session);
     });
 
@@ -220,7 +265,7 @@ export class CashRegisterController extends BaseRouter {
           throw new BadRequestError('Sessão de caixa já está fechada');
         }
         await this.cashRegisterService.syncOpenSession(req.restaurantId!, session.id);
-        const result = await this.cashRegisterRepository.close(session.id, countedValue, req.user?.uid);
+        const result = await this.cashRegisterRepository.close(session.id, countedValue, req.operatorId);
         const tableSales = await this.orderRepository.getTableSalesBetween(req.restaurantId!, new Date(session.openedAt), cashRegisterPeriodEnd(session));
         const deliverySales = await this.orderRepository.getDeliverySalesBetween(req.restaurantId!, new Date(session.openedAt), cashRegisterPeriodEnd(session));
         res.json(200, { ...result, tableSales, deliverySales });
@@ -247,7 +292,7 @@ export class CashRegisterController extends BaseRouter {
             `Existe um caixa aberto desde ${openSessions[0].businessDate ?? cashRegisterDate(new Date(openSessions[0].openedAt))} — feche-o antes de reabrir outro.`,
           );
         }
-        const reopened = await this.cashRegisterRepository.reopen(session.id, req.user?.uid);
+        const reopened = await this.cashRegisterRepository.reopen(session.id, req.operatorId);
         res.json(200, reopened);
       },
     );
@@ -259,7 +304,14 @@ export class CashRegisterController extends BaseRouter {
       const { from, to } = parseBody(cashRegisterPeriodSchema, req.query);
       const sessions = await this.cashRegisterRepository.findClosedSessionsBetween(req.restaurantId!, new Date(from), new Date(to));
       const closings = await Promise.all(sessions.map((session) => this.cashRegisterService.getClosingSummary(session.id)));
-      res.json(200, { from, to, closings });
+      // specs/0220-operador-no-fechamento-caixa REQ-2/REQ-3 — resolve quem fechou cada sessão do
+      // relatório de Movimento de Caixa.
+      const operatorNames = await this.resolveOperatorNames(closings.map((closing) => closing.session));
+      const closingsWithOperator = closings.map((closing) => ({
+        ...closing,
+        session: this.withOperatorNames(closing.session, operatorNames),
+      }));
+      res.json(200, { from, to, closings: closingsWithOperator });
     });
 
     // (ajuste, pedido explícito do usuário) — era só manuais (REQ-11 original); "Entradas e
@@ -299,7 +351,14 @@ export class CashRegisterController extends BaseRouter {
       // como "Pendente de fechamento" (`openSession`, não `session` — aqui `session` é a
       // selecionada no seletor, que pode ser outra sessão qualquer, não necessariamente a aberta).
       const pendingSessions = pendingSessionsRaw.filter((pending) => pending.id !== openSession?.id);
-      res.json(200, { session, pendingSessions, todayClosedSessions, movements, calculatedBalance, balanceByPaymentMethod, tableSales, deliverySales });
+      // specs/0220-operador-no-fechamento-caixa REQ-2 — mesma resolução de `GET .../open`.
+      const operatorNames = await this.resolveOperatorNames([session, ...pendingSessions, ...todayClosedSessions]);
+      res.json(200, {
+        session: this.withOperatorNames(session, operatorNames),
+        pendingSessions: pendingSessions.map((item) => this.withOperatorNames(item, operatorNames)),
+        todayClosedSessions: todayClosedSessions.map((item) => this.withOperatorNames(item, operatorNames)),
+        movements, calculatedBalance, balanceByPaymentMethod, tableSales, deliverySales,
+      });
     });
   }
 
