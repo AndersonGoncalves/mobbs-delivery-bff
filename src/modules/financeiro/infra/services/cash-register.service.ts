@@ -81,9 +81,9 @@ export class CashRegisterService implements ICashRegisterService {
       await this.recordAutomaticEntry(openSession.id, input);
       return;
     }
-    const todaySession = await this.cashRegisterRepository.findSessionByDate(input.restaurantId, cashRegisterDate());
-    if (todaySession) {
-      await this.recordAutomaticEntry(todaySession.id, input);
+    const latestClosedToday = await this.findLatestClosedSessionToday(input.restaurantId);
+    if (latestClosedToday) {
+      await this.recordAutomaticEntry(latestClosedToday.id, input);
       return;
     }
     const session = await this.openSessionForFirstSale(input.restaurantId);
@@ -105,9 +105,9 @@ export class CashRegisterService implements ICashRegisterService {
       await this.recordAutomaticReversalEntry(openSession.id, input);
       return;
     }
-    const todaySession = await this.cashRegisterRepository.findSessionByDate(input.restaurantId, cashRegisterDate());
-    if (todaySession) {
-      await this.recordAutomaticReversalEntry(todaySession.id, input);
+    const latestClosedToday = await this.findLatestClosedSessionToday(input.restaurantId);
+    if (latestClosedToday) {
+      await this.recordAutomaticReversalEntry(latestClosedToday.id, input);
       return;
     }
     const session = await this.openSessionForFirstSale(input.restaurantId);
@@ -148,14 +148,25 @@ export class CashRegisterService implements ICashRegisterService {
       await this.recordPartialRefundEntry(openSession.id, input);
       return;
     }
-    const todaySession = await this.cashRegisterRepository.findSessionByDate(input.restaurantId, cashRegisterDate());
-    if (todaySession) {
-      await this.recordPartialRefundEntry(todaySession.id, input);
+    const latestClosedToday = await this.findLatestClosedSessionToday(input.restaurantId);
+    if (latestClosedToday) {
+      await this.recordPartialRefundEntry(latestClosedToday.id, input);
       return;
     }
     const session = await this.openSessionForFirstSale(input.restaurantId);
     if (!session) return;
     await this.recordPartialRefundEntry(session.id, input);
+  }
+
+  /**
+   * specs/0219-multiplas-sessoes-caixa-por-dia — com múltiplas sessões por dia, o fallback de
+   * lançamento tardio (nenhuma sessão aberta agora) passa a ser "a última sessão FECHADA de
+   * hoje" (a mais recente), em vez de "a sessão de hoje" no singular — decisão explícita do
+   * usuário (21/11/2026): o lançamento pertence ao turno em que o evento realmente aconteceu.
+   */
+  private async findLatestClosedSessionToday(restaurantId: string) {
+    const todayClosedSessions = await this.cashRegisterRepository.findClosedSessionsForDate(restaurantId, cashRegisterDate());
+    return todayClosedSessions[todayClosedSessions.length - 1];
   }
 
   private async recordPartialRefundEntry(sessionId: string, input: AutomaticCashEntryInput): Promise<void> {
@@ -174,8 +185,10 @@ export class CashRegisterService implements ICashRegisterService {
     try {
       return await this.cashRegisterRepository.open(restaurantId, 0, AUTOMATIC_ACTOR, true);
     } catch (error) {
-      // Corrida: duas vendas chegaram juntas e a outra já abriu a sessão de hoje.
-      const existing = await this.cashRegisterRepository.findSessionByDate(restaurantId, cashRegisterDate());
+      // Corrida: duas vendas chegaram juntas e a outra já abriu uma sessão (specs/0219 — o
+      // conflito agora é sobre "existe sessão aberta", não mais sobre "existe sessão desta
+      // data", então a recuperação busca a sessão aberta, não a de hoje no singular).
+      const existing = await this.cashRegisterRepository.findOpenSessionByRestaurant(restaurantId);
       if (existing) return existing;
       throw error;
     }

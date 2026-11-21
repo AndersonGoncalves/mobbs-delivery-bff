@@ -150,10 +150,21 @@ export class CashRegisterController extends BaseRouter {
       await this.cashRegisterService.ensureAutomaticSchedule(req.restaurantId!);
       await this.cashRegisterService.syncOpenSession(req.restaurantId!);
       const session = await this.cashRegisterRepository.findOpenSessionByRestaurant(req.restaurantId!);
-      const pendingSessions = await this.cashRegisterRepository.findPendingSessions(req.restaurantId!);
+      // specs/0219-multiplas-sessoes-caixa-por-dia (achado real, pedido explícito do usuário) —
+      // `findPendingSessions` (qualquer sessão `aberto`, qualquer data) incluía a própria sessão
+      // de hoje quando ela existia, fazendo ela aparecer duplicada no seletor "Caixa para
+      // conferência" (uma vez como "Caixa aberto Atual", outra como "Pendente de fechamento" —
+      // a mesma sessão, duas entradas). "Pendente de fechamento" deve significar só uma sessão
+      // presa de OUTRA data, nunca a sessão normal de hoje.
+      const pendingSessions = (await this.cashRegisterRepository.findPendingSessions(req.restaurantId!))
+        .filter((pending) => pending.id !== session?.id);
+      // specs/0219-multiplas-sessoes-caixa-por-dia (achado real, pedido explícito do usuário) —
+      // lista TODAS as sessões fechadas de hoje, pra alimentar o seletor "Caixa para
+      // conferência" (web); calculado ANTES do `if (!session)` (não só dentro dele) — senão some
+      // do combobox assim que existir uma sessão aberta de novo.
+      const todayClosedSessions = await this.cashRegisterRepository.findClosedSessionsForDate(req.restaurantId!, cashRegisterDate());
       if (!session) {
-        const todaySession = await this.cashRegisterRepository.findSessionByDate(req.restaurantId!, cashRegisterDate());
-        res.json(200, { session: null, pendingSessions, todaySession, movements: [], calculatedBalance: 0, tableSales: 0, deliverySales: 0, balanceByPaymentMethod: {} });
+        res.json(200, { session: null, pendingSessions, todayClosedSessions, movements: [], calculatedBalance: 0, tableSales: 0, deliverySales: 0, balanceByPaymentMethod: {} });
         return;
       }
       const [movements, calculatedBalance, tableSales, deliverySales, balanceByPaymentMethod] = await Promise.all([
@@ -163,19 +174,15 @@ export class CashRegisterController extends BaseRouter {
         this.orderRepository.getDeliverySalesBetween(req.restaurantId!, new Date(session.openedAt), cashRegisterPeriodEnd(session)),
         this.cashRegisterService.getBalanceByPaymentMethod(session.id),
       ]);
-      res.json(200, { session, pendingSessions, movements, calculatedBalance, tableSales, deliverySales, balanceByPaymentMethod });
+      res.json(200, { session, pendingSessions, todayClosedSessions, movements, calculatedBalance, tableSales, deliverySales, balanceByPaymentMethod });
     });
 
-    // AC-4/AC-8 — REQ-8: bloqueia se já houver sessão aberta, indicando qual é.
+    // AC-4/AC-8 — REQ-8: bloqueia se já houver sessão aberta, indicando qual é. specs/0219 —
+    // deixou de checar "já existe sessão desta data" (bloqueava abrir de novo no mesmo dia depois
+    // de um fechamento); `open()` (repository) já lança `ConflictError` se houver sessão aberta.
     application.post('/restaurants/me/cash-register/open', ...authenticated, async (req: Request, res: Response) => {
       await this.cashRegisterService.ensureAutomaticSchedule(req.restaurantId!);
       const { openingBalance } = parseBody(openCashRegisterSchema, req.body);
-      const existing = await this.cashRegisterRepository.findSessionByDate(req.restaurantId!, cashRegisterDate());
-      if (existing) {
-        throw new ConflictError(
-          `Já existe uma sessão de caixa para esta data desde ${existing.openedAt} (id ${existing.id})`,
-        );
-      }
       const session = await this.cashRegisterRepository.open(req.restaurantId!, openingBalance, req.user?.uid);
       res.json(201, session);
     });
@@ -273,15 +280,26 @@ export class CashRegisterController extends BaseRouter {
     application.get('/restaurants/me/cash-register/:id', ...authenticated, async (req: Request, res: Response) => {
       const session = await this.findOwnedSession(req.params.id, req.restaurantId!);
       await this.cashRegisterService.syncOpenSession(req.restaurantId!, session.id);
-      const [movements, calculatedBalance, balanceByPaymentMethod, pendingSessions, tableSales, deliverySales] = await Promise.all([
+      // specs/0219-multiplas-sessoes-caixa-por-dia (achado real, pedido explícito do usuário) —
+      // faltava `todayClosedSessions` aqui (só `GET .../open` devolvia): ao selecionar qualquer
+      // sessão no seletor "Caixa para conferência", a lista de sessões fechadas de hoje sumia do
+      // combobox, só reaparecendo depois de voltar pra "Caixa aberto agora".
+      const [movements, calculatedBalance, balanceByPaymentMethod, openSession, pendingSessionsRaw, todayClosedSessions, tableSales, deliverySales] = await Promise.all([
         this.cashRegisterRepository.listMovements(session.id),
         this.cashRegisterRepository.getCalculatedBalance(session.id),
         this.cashRegisterService.getBalanceByPaymentMethod(session.id),
+        this.cashRegisterRepository.findOpenSessionByRestaurant(req.restaurantId!),
         this.cashRegisterRepository.findPendingSessions(req.restaurantId!),
+        this.cashRegisterRepository.findClosedSessionsForDate(req.restaurantId!, cashRegisterDate()),
         this.orderRepository.getTableSalesBetween(req.restaurantId!, new Date(session.openedAt), cashRegisterPeriodEnd(session)),
         this.orderRepository.getDeliverySalesBetween(req.restaurantId!, new Date(session.openedAt), cashRegisterPeriodEnd(session)),
       ]);
-      res.json(200, { session, pendingSessions, movements, calculatedBalance, balanceByPaymentMethod, tableSales, deliverySales });
+      // specs/0219-multiplas-sessoes-caixa-por-dia (achado real, pedido explícito do usuário) —
+      // mesmo ajuste de `GET .../open`: a sessão aberta de hoje nunca deve aparecer duplicada
+      // como "Pendente de fechamento" (`openSession`, não `session` — aqui `session` é a
+      // selecionada no seletor, que pode ser outra sessão qualquer, não necessariamente a aberta).
+      const pendingSessions = pendingSessionsRaw.filter((pending) => pending.id !== openSession?.id);
+      res.json(200, { session, pendingSessions, todayClosedSessions, movements, calculatedBalance, balanceByPaymentMethod, tableSales, deliverySales });
     });
   }
 
