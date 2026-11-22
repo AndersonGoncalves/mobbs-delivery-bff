@@ -191,6 +191,25 @@ describe('NinetyNineFoodWebhookController (specs/0122-integracao-99food REQ-1/RE
       expect(orderRepository.create).not.toHaveBeenCalled();
       expect(send).toHaveBeenCalledWith(200);
     });
+
+    it('order_id já processado (reenvio do webhook pela 99Food) não cria pedido duplicado', async () => {
+      const { orderRepository, routes } = setup({
+        orderRepository: { findByNinetyNineFoodOrderId: jest.fn().mockResolvedValue({ id: 'order-1', restaurantId: 'restaurant-1' }) },
+      });
+      const rawBody = JSON.stringify({
+        app_id: '123',
+        app_shop_id: 'shop-1',
+        type: 'orderNew',
+        timestamp: 1,
+        data: { order_id: '5764656197621845665', order_info: { order_id: '5764656197621845665', fulfillment_mode: 0, price: { order_price: 100 }, order_items: [] } },
+      });
+      const send = jest.fn();
+
+      await routes['POST /webhooks/99food'].at(-1)!(signedRequest(rawBody), { send });
+
+      expect(orderRepository.create).not.toHaveBeenCalled();
+      expect(send).toHaveBeenCalledWith(200);
+    });
   });
 
   describe('deliveryStatus (specs/0130-integracao-99-entrega REQ-5/REQ-7)', () => {
