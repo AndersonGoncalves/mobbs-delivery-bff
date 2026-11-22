@@ -125,6 +125,11 @@ export class NinetyNineFoodWebhookController extends BaseRouter {
       return;
     }
 
+    // achado real (22/11/2026, teste de homologação) — a 99Food reenvia o webhook `orderNew` pro
+    // mesmo `order_id` (retry deles), e sem essa checagem o pedido era recriado a cada reenvio.
+    const existing = await this.orderRepository.findByNinetyNineFoodOrderId(data.order_id);
+    if (existing) return;
+
     const orderInfo = data.order_info;
     const customer = await this.customerRepository.createStandalone(
       orderInfo.receive_address?.name || 'Cliente 99Food',
