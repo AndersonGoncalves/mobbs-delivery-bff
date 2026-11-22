@@ -28,8 +28,11 @@ export interface IFoodOrderItem {
   id: string;
   name: string;
   quantity: number;
-  unitPrice: { value: number };
-  totalPrice: { value: number };
+  // achado real (22/11/2026, pedido de teste gerado no Developer Portal) — a API real devolve
+  // número direto (`"unitPrice": 5.0`), nunca `{ value: number }` (suposição errada original,
+  // causava `Cast to Number failed for value "NaN"` ao mapear qualquer pedido real/de teste).
+  unitPrice: number;
+  totalPrice: number;
   observations?: string;
 }
 
@@ -48,7 +51,8 @@ export interface IFoodOrderDetails {
   orderType: 'DELIVERY' | 'TAKEOUT' | 'INDOOR';
   customer: IFoodOrderCustomer;
   items: IFoodOrderItem[];
-  total: { orderAmount: { value: number }; deliveryFee?: { value: number } };
+  // mesmo achado real acima — número direto, não `{ value: number }`.
+  total: { orderAmount: number; deliveryFee?: number };
   delivery?: IFoodOrderDelivery;
   payments?: { methods: { value: { value: number } }[] };
 }

@@ -55,7 +55,7 @@ describe('IFoodClient (specs/0090-integracao-ifood)', () => {
   });
 
   it('getOrderDetails: GET /order/v1.0/orders/:id', async () => {
-    const payload = { id: 'o-1', displayId: '123', orderType: 'DELIVERY', customer: { name: 'Ana' }, items: [], total: { orderAmount: { value: 50 } } };
+    const payload = { id: 'o-1', displayId: '123', orderType: 'DELIVERY', customer: { name: 'Ana' }, items: [], total: { orderAmount: 50 } };
     mockFetchOnce(200, payload);
 
     const result = await client.getOrderDetails('token-1', 'o-1');

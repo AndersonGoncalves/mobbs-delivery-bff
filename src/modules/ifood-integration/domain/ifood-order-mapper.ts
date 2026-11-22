@@ -18,13 +18,13 @@ export function mapIFoodOrderToNewOrderInput(
     productId: item.id,
     productName: item.name,
     quantity: item.quantity,
-    unitPrice: item.unitPrice.value,
+    unitPrice: item.unitPrice,
     notes: item.observations,
   }));
 
-  const subtotal = ifoodOrder.items.reduce((sum, item) => sum + item.totalPrice.value, 0);
-  const deliveryFee = ifoodOrder.total.deliveryFee?.value ?? 0;
-  const total = ifoodOrder.total.orderAmount.value;
+  const subtotal = ifoodOrder.items.reduce((sum, item) => sum + item.totalPrice, 0);
+  const deliveryFee = ifoodOrder.total.deliveryFee ?? 0;
+  const total = ifoodOrder.total.orderAmount;
 
   return {
     customerId,

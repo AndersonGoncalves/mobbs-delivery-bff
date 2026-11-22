@@ -52,6 +52,13 @@ services:
       # Console (Configurações do projeto > Contas de serviço > Gerar nova chave privada), salva
       # como ./firebase-service-account.json (mesma pasta deste arquivo, já no .gitignore).
       - GOOGLE_APPLICATION_CREDENTIALS=/app/firebase-service-account.json
+      # specs/0122-integracao-99food — mesma classe de bug do achado do BILLING_PIX_KEY_TYPE
+      # acima: precisa estar listado aqui pra chegar no container. app_id/app_secret de nível de
+      # plataforma (cadastrado uma única vez no portal 99Food Plataforma Aberta), nunca por
+      # restaurante.
+      - NINETY_NINE_FOOD_BASE_URL=${NINETY_NINE_FOOD_BASE_URL}
+      - NINETY_NINE_FOOD_APP_ID=${NINETY_NINE_FOOD_APP_ID}
+      - NINETY_NINE_FOOD_APP_SECRET=${NINETY_NINE_FOOD_APP_SECRET}
       # specs/0121-integracao-uber-entregas — pedido explícito do usuário (10/11/2026): precisa
       # estar listado aqui pra chegar no container (mesma classe de bug do achado do
       # BILLING_PIX_KEY_TYPE acima). Ativa o Robo Courier (entregador simulado da Uber) só nas
