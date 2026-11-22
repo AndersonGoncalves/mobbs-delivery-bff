@@ -8,10 +8,10 @@ function buildIFoodOrder(overrides: Partial<IFoodOrderDetails> = {}): IFoodOrder
     orderType: 'DELIVERY',
     customer: { name: 'Ana', phone: '11999999999' },
     items: [
-      { id: 'i-1', name: 'Pizza', quantity: 1, unitPrice: { value: 40 }, totalPrice: { value: 40 } },
-      { id: 'i-2', name: 'Refrigerante', quantity: 2, unitPrice: { value: 5 }, totalPrice: { value: 10 } },
+      { id: 'i-1', name: 'Pizza', quantity: 1, unitPrice: 40, totalPrice: 40 },
+      { id: 'i-2', name: 'Refrigerante', quantity: 2, unitPrice: 5, totalPrice: 10 },
     ],
-    total: { orderAmount: { value: 55 }, deliveryFee: { value: 5 } },
+    total: { orderAmount: 55, deliveryFee: 5 },
     delivery: { deliveryAddress: { formattedAddress: 'Rua A, 123' } },
     ...overrides,
   };
