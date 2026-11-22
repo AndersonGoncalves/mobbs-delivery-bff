@@ -16,8 +16,8 @@ function buildIFoodOrder(overrides: Partial<IFoodOrderDetails> = {}): IFoodOrder
     displayId: '123',
     orderType: 'DELIVERY',
     customer: { name: 'Ana', phone: '11999999999' },
-    items: [{ id: 'i-1', name: 'Pizza', quantity: 1, unitPrice: { value: 40 }, totalPrice: { value: 40 } }],
-    total: { orderAmount: { value: 40 } },
+    items: [{ id: 'i-1', name: 'Pizza', quantity: 1, unitPrice: 40, totalPrice: 40 }],
+    total: { orderAmount: 40 },
     ...overrides,
   };
 }
