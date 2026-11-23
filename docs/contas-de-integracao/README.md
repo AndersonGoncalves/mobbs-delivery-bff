@@ -16,3 +16,8 @@ arquivo aqui cobre exatamente isso, pra uma integração:
 Nenhuma das 6 integrações foi homologada contra uma conta real de produção ainda — todas estão
 com a estrutura de código completa, testadas localmente com mocks/sandbox apenas. Ver cada
 arquivo pra detalhes específicos e pendências.
+
+Pra quem vai preparar o ambiente de homologação pro QA testar as 6 integrações, ver
+[Preparar as 6 integrações pro QA](./homologacao-qa.md) — resumo de quem precisa cadastrar o quê
+antes, e se o QA consegue se cadastrar sozinho (como um cliente real) ou depende de uma ação sua
+primeiro.
