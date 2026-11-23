@@ -495,6 +495,7 @@ const ordersController = new OrdersController(
     orderRepository,
     notifier: new BillingNotifier(whatsAppConnectionService),
     billingSettingsRepository,
+    annualSubscriptionRepository,
   }),
   new RestaurantTableMongooseRepository(),
   rawMaterialRepository,

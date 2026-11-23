@@ -13,7 +13,7 @@ function delivered(total: number): IOrder {
 
 const NOW = new Date('2026-10-15T15:00:00Z');
 
-function setup(options: { orders: IOrder[]; restaurant?: IRestaurant }) {
+function setup(options: { orders: IOrder[]; restaurant?: IRestaurant; hasActiveAnnualSubscription?: boolean }) {
   let stored: IRestaurantBilling | undefined = options.restaurant?.billing;
   const base = options.restaurant ?? buildRestaurant();
   const restaurantRepository = {
@@ -28,7 +28,16 @@ function setup(options: { orders: IOrder[]; restaurant?: IRestaurant }) {
   const notifier = { notifyRestaurant: jest.fn().mockResolvedValue(undefined) };
   // specs/0113-parametrizacao-faixas-cobranca — sem configuração salva nestes testes: usa o default.
   const billingSettingsRepository = { get: jest.fn().mockResolvedValue(DEFAULT_BILLING_SETTINGS), update: jest.fn() };
-  const useCase = new RecomputeRestaurantBillingUseCase({ restaurantRepository, orderRepository, notifier, billingSettingsRepository });
+  const annualSubscriptionRepository = {
+    findActiveByRestaurantId: jest.fn().mockResolvedValue(options.hasActiveAnnualSubscription ? { id: 'sub-1' } : null),
+  };
+  const useCase = new RecomputeRestaurantBillingUseCase({
+    restaurantRepository,
+    orderRepository,
+    notifier,
+    billingSettingsRepository,
+    annualSubscriptionRepository,
+  });
   return { useCase, restaurantRepository, notifier, stored: () => stored };
 }
 
@@ -85,5 +94,17 @@ describe('RecomputeRestaurantBillingUseCase (specs/0042 REQ-1/REQ-2/REQ-3/REQ-4)
 
     expect(stored()?.status).toBe('blocked');
     expect(stored()?.cycle).toBe('annual');
+  });
+
+  // Achado real (23/11/2026) — restaurante com assinatura anual ATIVA e paga (specs/0175) estava
+  // recebendo o aviso de "perto do limite" e o "parabéns, subiu de plano" mesmo já pagando preço
+  // fixo até o aniversário, sem relação com a faixa de faturamento do mês.
+  it('23/11: não envia aviso de 75%/subida de plano a um restaurante com assinatura anual ativa', async () => {
+    const { useCase, notifier, stored } = setup({ orders: [delivered(1950), delivered(100)], hasActiveAnnualSubscription: true });
+
+    await useCase.call('r-1', NOW);
+
+    expect(stored()?.currentTier).toBe('pro');
+    expect(notifier.notifyRestaurant).not.toHaveBeenCalled();
   });
 });
