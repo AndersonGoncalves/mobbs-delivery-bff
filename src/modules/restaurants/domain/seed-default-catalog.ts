@@ -97,7 +97,16 @@ export async function seedDefaultCatalog(restaurantId: string, businessType: Bus
 
   // Matérias-primas padrão (queijo, ovos, etc.), iguais pra todo ramo; nascem sem preço de adicional.
   for (const material of DEFAULT_RAW_MATERIALS) {
-    await deps.rawMaterialRepository.create(restaurantId, material.name, 0, material.unit);
+    await deps.rawMaterialRepository.create(
+      restaurantId,
+      material.name,
+      0,
+      material.unit,
+      undefined,
+      undefined,
+      undefined,
+      material.imageUrl,
+    );
   }
 
   // specs/0049-catalogo-padrao-bebidas-reais REQ-18 — 3ª passada: só reenvia os templates que

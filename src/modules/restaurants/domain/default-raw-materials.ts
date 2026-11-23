@@ -3,14 +3,30 @@
  * matérias-primas, como queijo e ovos, assim como já existem produtos padrão). Editáveis depois na retaguarda.
  * `unit` é texto livre (ver `specs/0015-estoque-compras`).
  */
-export const DEFAULT_RAW_MATERIALS: { name: string; unit: string }[] = [
-  { name: 'Queijo mussarela', unit: 'kg' },
+export const DEFAULT_RAW_MATERIALS: { name: string; unit: string; imageUrl?: string }[] = [
+  {
+    name: 'Queijo mussarela',
+    unit: 'kg',
+    imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/queijo-mussarela.jpeg',
+  },
   { name: 'Queijo prato', unit: 'kg' },
-  { name: 'Presunto', unit: 'kg' },
-  { name: 'Ovo', unit: 'un' },
-  { name: 'Pão', unit: 'un' },
-  { name: 'Carne bovina moída', unit: 'kg' },
-  { name: 'Frango desfiado', unit: 'kg' },
+  {
+    name: 'Presunto',
+    unit: 'kg',
+    imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/presunto.jpeg',
+  },
+  { name: 'Ovo', unit: 'un', imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/ovo.jpeg' },
+  { name: 'Pão', unit: 'un', imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/pao.jpeg' },
+  {
+    name: 'Carne bovina moída',
+    unit: 'kg',
+    imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/carne-bovina-moida.jpeg',
+  },
+  {
+    name: 'Frango desfiado',
+    unit: 'kg',
+    imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/frango-desfiado.jpeg',
+  },
   { name: 'Bacon', unit: 'kg' },
   { name: 'Tomate', unit: 'kg' },
   { name: 'Alface', unit: 'kg' },
@@ -29,7 +45,11 @@ export const DEFAULT_RAW_MATERIALS: { name: string; unit: string }[] = [
   { name: 'Carne do sol', unit: 'kg' },
   { name: 'Catupiry', unit: 'kg' },
   { name: 'Cheddar', unit: 'kg' },
-  { name: 'Cream cheese', unit: 'kg' },
+  {
+    name: 'Cream cheese',
+    unit: 'kg',
+    imageUrl: 'https://mobbs-delivery-images.s3.us-east-1.amazonaws.com/app-imagens/cream-cheese.jpeg',
+  },
   { name: 'Milho', unit: 'kg' },
   { name: 'Molho da casa temperado', unit: 'kg' },
   { name: 'Orégano', unit: 'g' },
