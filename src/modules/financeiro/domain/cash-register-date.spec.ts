@@ -1,4 +1,4 @@
-import { cashRegisterDate, cashRegisterDayBounds, cashRegisterPeriodEnd } from './cash-register-date';
+import { cashRegisterDate, cashRegisterDayBounds, cashRegisterPeriodEnd, nextAutoCloseAt } from './cash-register-date';
 import { ICashRegisterSession } from './entities/cash-register.entity';
 
 const session: ICashRegisterSession = {
@@ -38,3 +38,38 @@ describe('caixa por data civil (0176)', () => {
       .toEqual(new Date('2026-10-25T09:00:00Z'));
   });
 });
+
+// specs/0216-fechamento-automatico-caixa T009.
+describe('nextAutoCloseAt — 1º horário de fechamento DEPOIS da abertura (horário de Brasília)', () => {
+  const iso = (date: Date) => date.toISOString();
+
+  it('aberta 09:23 com 04:00 → 04:00 do dia seguinte (o caso real)', () => {
+    expect(iso(nextAutoCloseAt(new Date('2026-11-24T12:23:51.000Z'), '04:00'))).toBe('2026-11-25T07:00:00.000Z');
+  });
+
+  it('aberta 09:00 com 23:00 → 23:00 do mesmo dia', () => {
+    expect(iso(nextAutoCloseAt(new Date('2026-11-24T12:00:00.000Z'), '23:00'))).toBe('2026-11-25T02:00:00.000Z');
+  });
+
+  it('aberta 02:00 com 04:00 → 04:00 do mesmo dia (madrugada antes do horário)', () => {
+    expect(iso(nextAutoCloseAt(new Date('2026-11-24T05:00:00.000Z'), '04:00'))).toBe('2026-11-24T07:00:00.000Z');
+  });
+
+  it('aberta exatamente no horário → próximo dia (nunca fecha no instante em que abriu)', () => {
+    expect(iso(nextAutoCloseAt(new Date('2026-11-24T07:00:00.000Z'), '04:00'))).toBe('2026-11-25T07:00:00.000Z');
+  });
+
+  it('aberta 23:30 com 23:00 → 23:00 do dia seguinte', () => {
+    expect(iso(nextAutoCloseAt(new Date('2026-11-25T02:30:00.000Z'), '23:00'))).toBe('2026-11-26T02:00:00.000Z');
+  });
+
+  it('aberta às 22:00 de Brasília (já é outro dia em UTC) usa a data de Brasília', () => {
+    // 2026-11-24 22:00 BRT = 2026-11-25 01:00 UTC; o próximo 04:00 é 25/11 04:00 BRT.
+    expect(iso(nextAutoCloseAt(new Date('2026-11-25T01:00:00.000Z'), '04:00'))).toBe('2026-11-25T07:00:00.000Z');
+  });
+
+  it('aceita horário sem zero à esquerda (ex. "4:00")', () => {
+    expect(iso(nextAutoCloseAt(new Date('2026-11-24T12:00:00.000Z'), '4:00'))).toBe('2026-11-25T07:00:00.000Z');
+  });
+});
+

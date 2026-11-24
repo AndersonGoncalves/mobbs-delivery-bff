@@ -4,7 +4,7 @@ import { getRestaurantLocalTime, minutesSinceMidnight } from '../../../restauran
 import { IRestaurant } from '../../../restaurants/domain/entities/restaurant.entity';
 import { IRestaurantRepository } from '../../../restaurants/domain/repositories/restaurant.repository.interface';
 import { ICashRegisterRepository } from '../../domain/repositories/cash-register.repository.interface';
-import { cashRegisterDate, cashRegisterPeriodEnd } from '../../domain/cash-register-date';
+import { cashRegisterDate, cashRegisterPeriodEnd, nextAutoCloseAt } from '../../domain/cash-register-date';
 import {
   AutomaticCashEntryInput,
   CashBalanceByPaymentMethod,
@@ -349,19 +349,14 @@ export class CashRegisterService implements ICashRegisterService {
     // chance que REQ-6 promete. Essa sessão só volta a fechar por ação manual do dono.
     if (session.reopenedAt) return;
 
-    // Sessão de um dia civil anterior (`businessDate`, ou `openedAt` pra sessões antigas sem esse
-    // campo) já está vencida de qualquer jeito — fecha na hora, sem esperar o horário
-    // configurado (que só faz sentido pra decidir SE a sessão de HOJE já pode fechar).
-    const sessionDate = session.businessDate ?? cashRegisterDate(new Date(session.openedAt));
-    if (sessionDate !== cashRegisterDate(now)) {
-      const calculatedBalance = await this.cashRegisterRepository.getCalculatedBalance(session.id);
-      await this.cashRegisterRepository.close(session.id, calculatedBalance, AUTOMATIC_ACTOR, true);
-      return;
-    }
-
+    // specs/0216 T009 — fecha quando chega o PRIMEIRO horário configurado DEPOIS da abertura da
+    // sessão. Antes comparava só "hora atual >= horário" pra sessão de hoje: com o default 04:00
+    // (madrugada, REQ-2), toda sessão aberta de dia já estava "vencida" e fechava no tick seguinte
+    // do worker (achado real: 09:23 → 09:26 e 15:32 → 15:33); e a de ontem fechava à meia-noite
+    // (troca de data), não às 04:00. Sessão esquecida há dias continua fechando no próximo tick
+    // (o horário dela já passou faz tempo).
     const closeTime = restaurant.cashRegisterAutoCloseTime || '04:00';
-    const { minutes } = getRestaurantLocalTime(now);
-    if (minutes < minutesSinceMidnight(closeTime)) return;
+    if (now.getTime() < nextAutoCloseAt(new Date(session.openedAt), closeTime).getTime()) return;
 
     const calculatedBalance = await this.cashRegisterRepository.getCalculatedBalance(session.id);
     await this.cashRegisterRepository.close(session.id, calculatedBalance, AUTOMATIC_ACTOR, true);
