@@ -10,6 +10,7 @@ arquivo aqui cobre exatamente isso, pra uma integração:
 - [Uber Entregas (Uber Direct)](./uber-direct.md)
 - [FocusNFe (fiscal)](./focusnfe.md)
 - [Mercado Pago](./mercado-pago.md)
+  - [Mercado Pago — homologação e produção (estado, passos e pendências)](./mercado-pago-hml-producao.md)
 - [99Food](./99food.md)
 - [Asaas (Pix dos pedidos)](./asaas.md)
 
