@@ -4,6 +4,7 @@ import {
   HOMOLOG_TEST_PASSWORD,
   HOMOLOG_TEST_RESTAURANTS,
   buildHomologOperators,
+  findUnsafeExistingSlugs,
   isHomologConfirmed,
 } from './homolog-test-restaurants';
 
@@ -54,5 +55,27 @@ describe('homolog-test-restaurants (specs/0215 REQ-5)', () => {
     expect(isHomologConfirmed({ confirmar: 'homologacao' })).toBe(true);
     expect(isHomologConfirmed({})).toBe(false);
     expect(isHomologConfirmed({ confirmar: 'producao' })).toBe(false);
+  });
+
+  // specs/0215 T018 — trava contra vincular logins de teste a um restaurante real.
+  it('recusa slug existente sem a marca do seed (ex.: restaurante real em produção)', () => {
+    expect(findUnsafeExistingSlugs([{ slug: 'pizzaria' }])).toEqual(['pizzaria']);
+    expect(findUnsafeExistingSlugs([{ slug: 'pizzaria', homologSeed: false }])).toEqual(['pizzaria']);
+    expect(findUnsafeExistingSlugs([{ slug: 'pizzaria', homologSeed: 'true' }])).toEqual(['pizzaria']);
+  });
+
+  it('aceita slug criado pelo próprio seed e banco sem os slugs', () => {
+    expect(findUnsafeExistingSlugs([{ slug: 'pizzaria', homologSeed: true }])).toEqual([]);
+    expect(findUnsafeExistingSlugs([])).toEqual([]);
+  });
+
+  it('lista todos os slugs inseguros de uma vez (mistura de marcado e não marcado)', () => {
+    expect(
+      findUnsafeExistingSlugs([
+        { slug: 'pizzaria', homologSeed: true },
+        { slug: 'hamburgueria' },
+        { slug: 'pastelaria' },
+      ]),
+    ).toEqual(['hamburgueria', 'pastelaria']);
   });
 });

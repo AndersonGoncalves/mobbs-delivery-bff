@@ -60,6 +60,24 @@ export function buildHomologOperators(restaurant: HomologTestRestaurant): Homolo
   }));
 }
 
+/** Campo gravado (fora do schema, `strict: false`) só nos restaurantes que o PRÓPRIO seed criou. */
+export const HOMOLOG_SEED_MARKER = 'homologSeed';
+
+export interface ExistingRestaurantMarker {
+  slug: string;
+  homologSeed?: unknown;
+}
+
+/**
+ * specs/0215 T018 — trava de segurança: slugs fixos que JÁ existem no banco sem a marca do seed.
+ * Sem esta checagem, rodar o seed por engano contra o Mongo de produção vincularia 6 logins com
+ * senha `123456` a um restaurante REAL com slug `pizzaria`/`hamburgueria`/`pastelaria`. Qualquer
+ * item retornado aqui faz o seed parar ANTES de qualquer escrita.
+ */
+export function findUnsafeExistingSlugs(existing: ExistingRestaurantMarker[]): string[] {
+  return existing.filter((restaurant) => restaurant[HOMOLOG_SEED_MARKER] !== true).map((restaurant) => restaurant.slug);
+}
+
 /** Exige `--confirmar=homologacao` — trava contra rodar o seed, sem querer, com o `.env` de
  * produção (o seed cria restaurantes e contas com senha fraca de propósito). */
 export function isHomologConfirmed(args: Record<string, string>): boolean {

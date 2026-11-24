@@ -67,6 +67,43 @@ services:
       # de janelas de teste explicitamente combinadas; `${UBER_DIRECT_TEST_MODE}` vazio também
       # resolve pra "false" (checagem `=== 'true'` em `environment.ts`).
       - UBER_DIRECT_TEST_MODE=${UBER_DIRECT_TEST_MODE}
+      # specs/0215-ambiente-homologacao T017 — achado real (24/11/2026), mesma classe de bug dos
+      # achados acima: estas 22 variáveis são lidas pelo código mas nunca tinham sido listadas
+      # aqui, então NUNCA chegavam ao container (a imagem não lê `.env`, ver `.dockerignore`) —
+      # o BFF rodava sempre com o default do código, mesmo com o `.env` preenchido. Na homologação
+      # isso faria os webhooks (Asaas/Mercado Pago/Uber/Keeta, montados a partir de
+      # BFF_PUBLIC_BASE_URL) irem pra PRODUÇÃO. Variável ausente no `.env` vira texto vazio aqui,
+      # e o código trata vazio igual a ausente (`||` com default, ou `?? ''`) — comportamento
+      # inalterado pra quem não define. Exceção: NODE_ENV usa `??` no código (Sentry), por isso
+      # tem default próprio abaixo.
+      - NODE_ENV=${NODE_ENV:-production}
+      - SERVER_PORT=${SERVER_PORT}
+      # URLs públicas — base de toda URL de webhook (BFF) e dos links pro app/retaguarda.
+      - BFF_PUBLIC_BASE_URL=${BFF_PUBLIC_BASE_URL}
+      - PUBLIC_APP_BASE_URL=${PUBLIC_APP_BASE_URL}
+      # Mercado Pago (specs da integração) — sem isto o vínculo/pagamento nunca recebe credencial.
+      - MERCADOPAGO_CLIENT_ID=${MERCADOPAGO_CLIENT_ID}
+      - MERCADOPAGO_CLIENT_SECRET=${MERCADOPAGO_CLIENT_SECRET}
+      - MERCADOPAGO_REDIRECT_URI=${MERCADOPAGO_REDIRECT_URI}
+      - MERCADOPAGO_WEBHOOK_SECRET=${MERCADOPAGO_WEBHOOK_SECRET}
+      - MERCADOPAGO_PLATFORM_ACCESS_TOKEN=${MERCADOPAGO_PLATFORM_ACCESS_TOKEN}
+      - MERCADOPAGO_BASE_URL=${MERCADOPAGO_BASE_URL}
+      # iFood (credencial é por restaurante; só a URL base muda por ambiente).
+      - IFOOD_BASE_URL=${IFOOD_BASE_URL}
+      # Keeta (specs/0212).
+      - KEETA_BASE_URL=${KEETA_BASE_URL}
+      - KEETA_MERCHANT_AUTHORIZE_URL=${KEETA_MERCHANT_AUTHORIZE_URL}
+      - KEETA_APP_ID=${KEETA_APP_ID}
+      - KEETA_APP_SECRET=${KEETA_APP_SECRET}
+      - KEETA_REDIRECT_URI=${KEETA_REDIRECT_URI}
+      # Facebook/Instagram (docs/FACEBOOK-INSTAGRAM.md).
+      - FACEBOOK_APP_ID=${FACEBOOK_APP_ID}
+      - FACEBOOK_APP_SECRET=${FACEBOOK_APP_SECRET}
+      - FACEBOOK_REDIRECT_URI=${FACEBOOK_REDIRECT_URI}
+      - FACEBOOK_GRAPH_BASE_URL=${FACEBOOK_GRAPH_BASE_URL}
+      # Armazenamento de imagens (S3).
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - AWS_REGION=${AWS_REGION}
     volumes:
       - ./firebase-service-account.json:/app/firebase-service-account.json:ro
     depends_on:
