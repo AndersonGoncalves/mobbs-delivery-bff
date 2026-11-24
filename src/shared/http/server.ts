@@ -5,6 +5,7 @@ import { MongooseConnection } from '../database/mongoose.connection';
 import type { BaseRouter } from '../router/base.router';
 import { BUILD_VERSION } from '../../buildInfo';
 import { handleError } from './error.handler';
+import { registerWebhookRequestLog } from './request-log';
 
 export class Server {
   private readonly application: RestifyServer;
@@ -51,6 +52,8 @@ export class Server {
     });
 
     this.application.on('restifyError', handleError);
+    // specs/0215 T019 — 1 linha de log por chamada de webhook (chegou? qual status/erro?).
+    registerWebhookRequestLog(this.application);
   }
 
   /**
