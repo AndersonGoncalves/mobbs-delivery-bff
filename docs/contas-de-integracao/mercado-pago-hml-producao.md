@@ -1,7 +1,12 @@
 # Mercado Pago — o que fazer na homologação e na produção
 
 Registro de 24/11/2026, depois do primeiro teste local de ponta a ponta da configuração (webhook +
-vínculo OAuth). Complementa [`./mercado-pago.md`](./mercado-pago.md) (conta e custos) e
+vínculo OAuth).
+
+> **Decisão de 24/11/2026 (`specs/0226`):** o Mercado Pago passa a ser o **único provedor dos
+> pagamentos dos pedidos** — cartão de crédito online **e** Pix com confirmação automática (este
+> ainda em desenvolvimento). A chave Pix manual do restaurante continua (padrão pra quem não
+> vincula e reserva se o Mercado Pago falhar). O **Asaas fica só com a mensalidade da plataforma**. Complementa [`./mercado-pago.md`](./mercado-pago.md) (conta e custos) e
 [`../MERCADO-PAGO.md`](../MERCADO-PAGO.md) (técnico). Nenhuma senha ou token neste arquivo — só onde
 cada coisa está.
 
@@ -83,7 +88,10 @@ Os passos longos (criar aplicação, credenciais, contas de teste) **não se rep
 
 ## 3. Produção — o que fazer
 
-Só depois da homologação aprovada e das decisões do §5 e §6.
+Só depois da homologação aprovada e das decisões do §5 e §6. **Pré-requisito de código:** a parte A
+da `specs/0226` (valor cobrado com taxa de entrega/descontos, estorno com o id certo, Pix fora do
+checkout de cartão, webhook conferindo o restaurante, campo de provedor, cartão só pelo Mercado
+Pago) — sem ela, o cartão online cobra o valor errado em produção.
 
 | Item | Teste (local/hml) | Produção |
 |---|---|---|
@@ -125,7 +133,7 @@ aplicação); o token de produção dela é o que o BFF usa hoje pra consultar p
 - **O dinheiro nunca passa por ela**: cada pedido é cobrado com o token do restaurante e cai direto
   na conta do restaurante; ela não recebe, não paga taxa e não aparece pro cliente final.
 - **Ponto de atenção**: o vínculo de cada restaurante fica preso à **aplicação**. Mudar depois para
-  uma conta com o **CNPJ da Mobbs** (ainda não existe — mesma pendência do Asaas) exigiria criar uma
+  uma conta com o **CNPJ da Mobbs** (ainda não existe) exigiria criar uma
   aplicação nova lá e **todos os restaurantes vincularem de novo**.
 - Decidir: esperar a conta com CNPJ antes de vincular restaurantes reais, ou seguir com a conta
   pessoal aceitando um revínculo futuro.
@@ -140,7 +148,14 @@ testado** (o teste local parou antes do pagamento). Se acontecer: o BFF passa a 
 token OAuth do restaurante — e o token da plataforma deixa de ser necessário em produção (um segredo
 a menos no servidor). Já previsto na `specs/0225` (REQ-4).
 
-### 6.2 API de Preferences → API de Orders (`specs/0225`)
+### 6.2 Pix com confirmação automática (`specs/0226`)
+
+Em requisitos. Pix gerado no Mercado Pago com o token do restaurante (QR + copia e cola no app),
+confirmado pelo webhook; testável no sandbox (`payer.first_name = "APRO"` aprova sozinho). Quando
+ficar pronto: incluir o evento **"Order (Mercado Pago)"** no webhook (teste e produção), além do
+"Pagamentos (legacy)" do cartão.
+
+### 6.3 API de Preferences → API de Orders (`specs/0225`)
 
 O painel avisa que a API de Preferences "será descontinuada em breve"; a documentação a marca como
 legado, **sem data de desligamento**. Migração aberta em

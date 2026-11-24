@@ -12,7 +12,7 @@ arquivo aqui cobre exatamente isso, pra uma integração:
 - [Mercado Pago](./mercado-pago.md)
   - [Mercado Pago — homologação e produção (estado, passos e pendências)](./mercado-pago-hml-producao.md)
 - [99Food](./99food.md)
-- [Asaas (Pix dos pedidos)](./asaas.md)
+- [Asaas (Pix dos pedidos)](./asaas.md) — **desativado nos pedidos desde 24/11/2026**; o Asaas fica só com a mensalidade da plataforma
 
 Nenhuma das 6 integrações foi homologada contra uma conta real de produção ainda — todas estão
 com a estrutura de código completa, testadas localmente com mocks/sandbox apenas. Ver cada

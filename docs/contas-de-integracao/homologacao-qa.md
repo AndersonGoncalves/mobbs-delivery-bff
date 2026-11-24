@@ -15,30 +15,23 @@ restaurantes de teste).
 
 | Integração | Credencial é de quem | QA se cadastra sozinho? | Ação sua antes de liberar |
 |---|---|---|---|
-| Asaas | Conta mãe (Mobbs), já no `.env` | Sim — preenche dados fictícios na retaguarda | Nenhuma |
-| Mercado Pago | Aplicação (Mobbs) + conta de cada loja | Não | Criar 2 usuários de teste no painel Developers |
+| ~~Asaas~~ | — | — | **Não usado nos pedidos** desde 24/11/2026 (só mensalidade da plataforma) — QA não testa |
+| Mercado Pago | Aplicação (Mobbs) + conta de cada loja | Não | **Já feito** (aplicação e contas de teste, 24/11/2026); na subida: webhook de teste → `api.hml` |
 | iFood | App de teste (Mobbs, CNAE de tecnologia) | Não | Nenhuma — já existe de 22/11, só repassar credenciais |
 | 99Food | App da Mobbs + loja de teste própria | Não | Criar a loja de teste no portal (ou reaproveitar `bsdelivery-teste-01`) |
 | Fiscal (FocusNFe) | Empresa emitente própria do QA (CNPJ + certificado dele) | Sim — cadastro independente, sem vínculo com a Mobbs | Nenhuma |
 | Uber Entregas | Por restaurante (conta de negócio) | Sim — vetting leve, sem CNAE exigido | Nenhuma |
 
-## 1. Asaas — QA não precisa de conta própria
+## 1. Asaas — fora dos pedidos (decisão de 24/11/2026)
 
-A conta sandbox é a conta mãe da Mobbs, configurada uma vez no `.env` do BFF (ver `./asaas.md`
-§3 — sandbox já é o padrão do código). O QA **não cria nada no Asaas de propósito**: ele abre
-**Integrações → Asaas** na retaguarda de homologação e preenche o formulário de "dados da
-subconta" — nome/CPF/endereço podem ser fictícios, exatamente como um dono de restaurante real
-faria, **mas o e-mail precisa ser um e-mail de verdade que o QA tenha acesso**. O BFF cria a
-subconta automaticamente (`POST /v3/accounts`), e o Asaas trata cada subconta como uma conta
-independente: manda um e-mail de boas-vindas pra esse endereço, o QA define a própria senha e
-loga **direto na subconta dele** (não na conta mãe) pra ver extrato/cobranças Pix — sem precisar
-de nenhum acesso seu.
+O Asaas deixou de ser usado nos pagamentos dos pedidos (`specs/0226`): Pix automático e cartão
+online passam a ser só pelo **Mercado Pago**, e a chave Pix manual do restaurante continua. O Asaas
+fica só com a **mensalidade da plataforma** (`specs/0175`, conta da Mobbs cobrando os
+restaurantes) — não é algo que o QA testa como restaurante. Motivo da troca: as subcontas Asaas por
+restaurante exigiriam CNPJ da Mobbs (regra do Banco Central); no Mercado Pago cada restaurante usa a
+própria conta, sem subconta.
 
-Depois de criado o pedido com Pix, o Asaas sandbox tem um simulador de pagamento — o pedido muda
-de status sozinho quando o Pix de teste é "pago" (ver `./asaas.md` §3, passo 4).
-
-**O que entregar ao QA:** nada de credencial — só a instrução de preencher o formulário com um
-e-mail de verdade dele (os outros dados podem ser fictícios).
+**O que entregar ao QA:** nada — e orientar a **não** usar a tela Integrações → Asaas.
 
 ## 2. Mercado Pago — depende de você
 
@@ -47,9 +40,13 @@ QA usa**, fica só no servidor, ele nunca precisa ver esse valor. Os **usuários
 (comprador e vendedor) só podem ser criados por quem tem acesso ao painel Developers dessa
 aplicação — não é algo que o QA consiga se cadastrar sozinho como faria em produção.
 
-**O que você faz uma vez:** cria um usuário de teste "vendedor" (representa o restaurante) e um
-"comprador" (representa o cliente) no painel Developers (ver `./mercado-pago.md` §3). Esses dois
-são contas Mercado Pago de teste **completas e independentes**, com login/senha próprios.
+**Já feito (24/11/2026):** aplicação de teste "BsDelivery Teste" e as contas **"Restaurante teste"**
+(vendedora, vincular ao restaurante) e **"Cliente teste"** (compradora) — detalhes, papéis de cada
+conta e o que falta na subida em [`./mercado-pago-hml-producao.md`](./mercado-pago-hml-producao.md).
+**Não** usar a "Seller Test User" no vínculo (é a conta da plataforma, dona do token de teste).
+
+Pix automático pelo Mercado Pago (`specs/0226`) ainda em desenvolvimento — quando ficar pronto, o QA
+testa com as mesmas contas.
 
 **O que entregar ao QA:** login/senha dos 2 usuários de teste (não o Client ID/Secret) + um
 número de cartão de teste (listado no mesmo painel). Com esse login, o QA entra normalmente no

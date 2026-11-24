@@ -1,4 +1,4 @@
-# Roteiro pro QA — as 6 integrações
+# Roteiro pro QA — as integrações
 
 Roteiro pronto pra repassar ao QA, depois do ambiente de homologação (`specs/0215`) estar no ar.
 O "porquê" de cada decisão, as pendências e as alternativas descartadas estão em
@@ -10,46 +10,53 @@ WhatsApp, fiscal funcional, conta do cliente), ver
 Convenção: ⬜ **Antes de liberar (você)** = passo que só você faz, uma vez, antes de chamar o QA.
 📋 **Roteiro do QA** = o que ele segue sozinho, na ordem.
 
----
-
-## 1. Asaas
-
-⬜ **Antes de liberar:** nenhuma ação sua.
-
-📋 **Roteiro do QA:**
-1. Abra **Integrações → Asaas** na retaguarda de homologação.
-2. Preencha o formulário de "dados da subconta": nome, CPF, data de nascimento, celular,
-   faturamento e endereço podem ser **fictícios**. O **e-mail precisa ser um e-mail de verdade
-   que você tenha acesso**.
-3. Salve. Você vai receber um e-mail de boas-vindas do Asaas nesse endereço — defina sua própria
-   senha e logue na subconta criada.
-4. Monte um pedido de teste com Pix como forma de pagamento.
-5. O sandbox do Asaas simula o pagamento sozinho — confirme que o pedido muda de status
-   automaticamente, sem precisar fazer nada manual.
-6. Confira o recebimento na sua própria conta Asaas (extrato/cobranças) — é independente, não
-   precisa de acesso de ninguém.
+> **Decisão de 24/11/2026 (`specs/0226`):** os pagamentos **dos pedidos** (Pix automático e cartão
+> online) passam a ser **só pelo Mercado Pago** (+ chave Pix manual do restaurante). O **Asaas** fica
+> só com a mensalidade da plataforma e **não é testado pelo QA**. O **Pix com confirmação automática
+> pelo Mercado Pago ainda está em desenvolvimento** — até lá, Pix nos pedidos = chave manual,
+> confirmada pelo operador ("Pix recebido").
 
 ---
 
-## 2. Mercado Pago
+## 1. Asaas — não testar
 
-⬜ **Antes de liberar (você):**
-1. Entre no [painel Developers](https://www.mercadopago.com.br/developers/panel/app) da
-   aplicação da Mobbs.
-2. Crie um usuário de teste "vendedor" (representa o restaurante).
-3. Crie um usuário de teste "comprador" (representa o cliente final).
-4. Anote login/senha dos dois + um número de cartão de teste (listado no mesmo painel).
-5. Envie esses 2 logins + o cartão de teste pro QA.
+O Asaas não é mais usado nos pagamentos dos pedidos (decisão de 24/11/2026). A tela
+**Integrações → Asaas** não deve ser usada; se ainda aparecer na retaguarda de homologação, ignore.
+
+---
+
+## 2. Mercado Pago (cartão de crédito online)
+
+⬜ **Antes de liberar (você):** já feito em 24/11/2026 — aplicação de teste "BsDelivery Teste" e
+contas de teste criadas (`./mercado-pago-hml-producao.md` §1). Só falta, na subida da homologação:
+apontar o webhook do modo de teste pra `api.hml`, ligar o menu, e mandar ao QA o usuário/senha das
+contas **"Restaurante teste"** (vendedora) e **"Cliente teste"** (compradora) + os números de cartão
+de teste (painel → Cartões de teste).
 
 📋 **Roteiro do QA:**
-1. Em **Integrações → Mercado Pago** na retaguarda, clique em "Vincular com Mercado Pago".
-2. Na tela de login do Mercado Pago que abrir, entre com o usuário de teste **vendedor** recebido.
-3. Autorize o vínculo.
-4. Monte um pedido de teste, feche o checkout, pague com o **cartão de teste** recebido.
-5. Confirme: pedido muda pra "pago", webhook chegou, valor bate.
-6. Teste também pagamento recusado (existem números de cartão de teste específicos pra isso no
-   painel) — o pedido não deve ser aprovado.
-7. Confira o recebimento logando com o usuário **vendedor** (não precisa de acesso seu).
+1. Abra uma **janela anônima** (Ctrl+Shift+N) e entre na retaguarda de homologação
+   (`https://hml.bsdelivery.com.br/painel`). A janela anônima evita que o vínculo use alguma conta
+   Mercado Pago sua que esteja logada no navegador.
+2. **Integrações → Mercado Pago → "Vincular com Mercado Pago"**. Na aba que abrir:
+   - país **Brasil**;
+   - login com o **usuário** da conta **Restaurante teste** (`TESTUSER…`, não é CPF nem e-mail) e a
+     senha dela; se pedir código, use os **6 últimos dígitos do User ID** dela;
+   - **Autorizar**. Você volta para a retaguarda com "Conta vinculada com sucesso"; feche a aba e
+     clique em **"Atualizar vínculo"** na aba original.
+3. **Configurações → Formas de pagamento** → marque **"Cartão de Crédito Online"** e salve (não é o
+   "Cartão de Crédito" comum, que é maquininha).
+4. No app do cliente, faça um pedido com **Cartão de Crédito Online**; no checkout do Mercado Pago,
+   entre com a conta **Cliente teste** e pague com um **cartão de teste aprovado**.
+5. Confirme: pedido muda pra "pago" sozinho e o aviso aparece nos logs
+   (`[webhook] POST /webhooks/mercadopago → 200`).
+6. Teste também **cartão recusado** (números específicos no painel) — o pedido não deve ser
+   aprovado.
+7. Teste **cancelamento de pedido pago** — o valor deve ser estornado.
+
+**Limitações conhecidas — reporte, mas saiba que já estão mapeadas (`specs/0226` parte A):**
+- o valor cobrado no Mercado Pago ainda **não inclui a taxa de entrega/descontos**;
+- o **estorno** do cartão online pode falhar;
+- o checkout de cartão ainda deixa pagar com **Pix** lá dentro (o pedido aparece como cartão online).
 
 ---
 
@@ -143,10 +150,13 @@ Convenção: ⬜ **Antes de liberar (você)** = passo que só você faz, uma vez
 
 ## Checklist rápido do que você precisa fazer ANTES de chamar o QA
 
-- [ ] Mercado Pago: criar 2 usuários de teste e anotar login/senha + cartão de teste
+- [ ] Mercado Pago: aplicação e contas de teste **já criadas**; na subida, trocar a URL do webhook
+      de teste pra `api.hml`, ligar o menu e mandar ao QA usuário/senha da "Restaurante teste" e
+      da "Cliente teste" + cartões de teste (`./mercado-pago-hml-producao.md` §2)
 - [ ] iFood: separar `merchantId`/`clientId`/`clientSecret` da loja de teste + combinar quem gera
       o pedido de teste
 - [ ] 99Food: revincular/criar loja de teste no restaurante de homologação + combinar quem gera
       o pedido de teste
 - [ ] Verificar se iFood/99Food Developer Portal permitem convidar colaborador (resolveria os 2
       itens acima de vez)
+- [ ] **Não** ligar o menu do Asaas na homologação (`asaasIntegrationEnabled` fica desligado)
