@@ -28,6 +28,7 @@
     "seed:help-articles-aplicativos": "ts-node --transpile-only scripts/seed-help-articles-aplicativos.ts",
     "seed:help-articles-configuracoes": "ts-node --transpile-only scripts/seed-help-articles-configuracoes.ts",
     "reset:test-restaurant": "ts-node --transpile-only scripts/reset-test-restaurant.ts",
+    "seed:homolog-restaurants": "ts-node --transpile-only scripts/seed-homolog-restaurants.ts",
     "set:billing-status": "ts-node --transpile-only scripts/set-billing-status.ts",
     "set:platform-config": "ts-node --transpile-only scripts/set-platform-config.ts",
     "activate:asaas-integration": "ts-node --transpile-only scripts/set-platform-config.ts -- --key=asaasIntegrationEnabled --value=true",
