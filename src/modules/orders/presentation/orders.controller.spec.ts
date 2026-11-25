@@ -3677,6 +3677,36 @@ describe('OrdersController', () => {
       expect(paymentRepository.setMercadoPagoPixDetails).toHaveBeenCalledWith('o-1', { externalReference: 'ORD01ABC', pixPayload: '00020101...copia-e-cola-mp' });
     });
 
+    // specs/0226 REQ-B11 — achado no teste em produção (25/11/2026, pedido #239): cliente
+    // cadastrado só com nome e WhatsApp não tem e-mail, e o Pix caía na chave manual.
+    it('AC-B11: cliente sem e-mail gera o Pix no Mercado Pago com o e-mail técnico do cliente, sem cair na chave manual', async () => {
+      const { paymentRepository, routes } = setup({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ mercadoPagoAccessToken: 'token-restaurante', pixKey: '11999999999' })) },
+        customerRepository: { findById: jest.fn().mockResolvedValue({ ...ANA, email: undefined }) },
+        platformConfigRepository: platformConfig(true),
+      });
+
+      await runAuthenticatedChain(routes['POST /orders'], { body: buildValidBody({ paymentMethod: 'pix' }), user: { uid: 'customer-1' } }, { json: jest.fn() });
+
+      expect(MockedMercadoPagoClient.prototype.createPixOrder).toHaveBeenCalledWith(
+        'token-restaurante',
+        expect.objectContaining({ payerEmail: 'cliente-customer-1@bsdelivery.com.br', payerFirstName: 'APRO' }),
+      );
+      expect(paymentRepository.setMercadoPagoPixDetails).toHaveBeenCalledWith('o-1', { externalReference: 'ORD01ABC', pixPayload: '00020101...copia-e-cola-mp' });
+    });
+
+    it('AC-B11: e-mail só com espaços também usa o e-mail técnico', async () => {
+      const { routes } = setup({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ mercadoPagoAccessToken: 'token-restaurante' })) },
+        customerRepository: { findById: jest.fn().mockResolvedValue({ ...ANA, email: '   ' }) },
+        platformConfigRepository: platformConfig(true),
+      });
+
+      await runAuthenticatedChain(routes['POST /orders'], { body: buildValidBody({ paymentMethod: 'pix' }), user: { uid: 'customer-1' } }, { json: jest.fn() });
+
+      expect(MockedMercadoPagoClient.prototype.createPixOrder).toHaveBeenCalledWith('token-restaurante', expect.objectContaining({ payerEmail: 'cliente-customer-1@bsdelivery.com.br' }));
+    });
+
     it('AC-B5: restaurante sem chave manual, só com Mercado Pago, aceita Pix', async () => {
       const { paymentRepository, routes } = setup({
         restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ mercadoPagoAccessToken: 'token-restaurante' })) },

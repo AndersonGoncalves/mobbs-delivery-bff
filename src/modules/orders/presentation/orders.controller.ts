@@ -1121,18 +1121,19 @@ export class OrdersController extends BaseRouter {
   private async tryChargeOrderPixViaMercadoPago(order: IOrder, restaurant: IRestaurant): Promise<void> {
     try {
       const customer = await this.customerRepository.findById(order.customerId);
-      if (!customer?.email) {
-        console.warn(`[mercadopago] pedido ${order.id}: cliente sem e-mail, caindo na chave Pix manual`);
-        return;
-      }
+      // specs/0226 REQ-B11 — o Mercado Pago exige `payer.email`, mas o cadastro só com nome e
+      // WhatsApp não tem e-mail (antes isso caía na chave manual: Pix automático nunca saía para
+      // esses clientes). Sem e-mail, vai um endereço técnico do nosso domínio, estável por cliente:
+      // o Pix é pago pelo QR, o e-mail só identifica o pagador.
+      const payerEmail = customer?.email?.trim() || `cliente-${order.customerId}@bsdelivery.com.br`;
 
       const client = new MercadoPagoClient(environment.mercadoPago.clientId ?? '', environment.mercadoPago.clientSecret ?? '', environment.mercadoPago.baseUrl);
       const pixOrder = await client.createPixOrder(restaurant.mercadoPagoAccessToken!, {
         orderId: order.id,
         amount: order.total,
-        payerEmail: customer.email,
+        payerEmail,
         // No sandbox, cliente com primeiro nome "APRO" tem o Pix aprovado sozinho pelo Mercado Pago.
-        payerFirstName: customer.name?.trim().split(/\s+/)[0] || undefined,
+        payerFirstName: customer?.name?.trim().split(/\s+/)[0] || undefined,
         expirationTime: 'PT30M',
         idempotencyKey: `pix-${order.id}`,
       });
