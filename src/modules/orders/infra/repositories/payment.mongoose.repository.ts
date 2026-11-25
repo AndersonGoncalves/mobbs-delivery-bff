@@ -51,6 +51,17 @@ export class PaymentMongooseRepository implements IPaymentRepository {
     return toEntity(doc as PaymentLeanDocument);
   }
 
+  async markAsApprovedIfPending(orderId: string): Promise<IPayment | null> {
+    const doc = await PaymentModel.findOneAndUpdate({ orderId, status: 'pendente' }, { $set: { status: 'aprovado' } }, { new: true }).lean<PaymentLeanDocument>();
+    return doc ? toEntity(doc) : null;
+  }
+
+  // specs/0226 REQ-B1.
+  async setMercadoPagoPixDetails(orderId: string, data: { externalReference: string; pixPayload: string }): Promise<IPayment> {
+    const doc = await PaymentModel.findOneAndUpdate({ orderId }, { $set: { ...data, provider: 'mercadopago' } }, { new: true }).lean<PaymentLeanDocument>();
+    return toEntity(doc as PaymentLeanDocument);
+  }
+
   // specs/0101-integracao-asaas (fase 1).
   async setAsaasPixDetails(orderId: string, data: { externalReference: string; pixPayload: string }): Promise<IPayment> {
     const doc = await PaymentModel.findOneAndUpdate({ orderId }, { $set: { ...data, provider: 'asaas' } }, { new: true }).lean<PaymentLeanDocument>();

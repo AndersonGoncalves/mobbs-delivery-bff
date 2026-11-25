@@ -1,6 +1,7 @@
 import { buildOrderPixCode } from '../../orders/domain/build-order-pix-code';
 import { ICustomerRepository } from '../../customers/domain/repositories/customer.repository.interface';
 import { IOrder } from '../../orders/domain/entities/order.entity';
+import { IPaymentRepository } from '../../orders/domain/repositories/payment.repository.interface';
 import { IRestaurant } from '../../restaurants/domain/entities/restaurant.entity';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IWhatsAppConnectionService } from '../../whatsapp-connection/domain/services/i-whatsapp-connection.service';
@@ -28,7 +29,23 @@ export class WhatsAppNotificationService implements IWhatsAppNotificationService
     private readonly whatsAppConnectionService: IWhatsAppConnectionService,
     private readonly customerRepository: ICustomerRepository,
     private readonly restaurantRepository: IRestaurantRepository,
+    /** specs/0226 REQ-B7 — opcional (testes antigos e chamadores sem pagamento online). */
+    private readonly paymentRepository?: IPaymentRepository,
   ) {}
+
+  /** specs/0226 REQ-B7 — o copia e cola da cobrança do provedor (Mercado Pago; Asaas nos antigos)
+   * quando existir, o mesmo que o app mostra (`GET /orders/:id`); senão, o da chave manual. Antes
+   * mandava sempre o da chave manual, que não confirma sozinho. */
+  private async resolvePixCode(restaurant: IRestaurant, order: IOrder): Promise<string | undefined> {
+    if (order.paymentMethod !== 'pix') return undefined;
+    try {
+      const payment = await this.paymentRepository?.findByOrderId(order.id);
+      if (payment?.pixPayload) return payment.pixPayload;
+    } catch (error) {
+      console.error(`[whatsapp] pedido ${order.id}: falha lendo o pagamento, usando a chave Pix manual:`, error);
+    }
+    return buildOrderPixCode(restaurant, order);
+  }
 
   async sendOrderReceipt(order: IOrder, cardBrand?: string): Promise<void> {
     try {
@@ -44,6 +61,7 @@ export class WhatsAppNotificationService implements IWhatsAppNotificationService
       // specs/0069 — `=== false` (não `!`): documento antigo sem o campo conta como ligado.
       if (restaurant!.notifyCustomerOnOrderCreated === false) return;
 
+      const pixCode = await this.resolvePixCode(restaurant!, order);
       const message = buildOrderReceiptMessage({
         restaurant: {
           slug: restaurant!.slug,
@@ -52,7 +70,7 @@ export class WhatsAppNotificationService implements IWhatsAppNotificationService
         customer: { name: customer!.name, phone: customer!.phone },
         order,
         cardBrand,
-        pixCode: buildOrderPixCode(restaurant!, order),
+        pixCode,
       });
 
       await this.whatsAppConnectionService.sendMessage(restaurant!.id, customer!.phone!, message);
@@ -60,7 +78,6 @@ export class WhatsAppNotificationService implements IWhatsAppNotificationService
       // specs/0073 — copia-e-cola Pix numa mensagem só com o código (segurar a mensagem e tocar em
       // "Copiar" copia tudo, sem ter que selecionar um trecho do recibo). Envio em sequência: a
       // ordem no chat é recibo -> código. Falha aqui não desfaz o recibo já enviado.
-      const pixCode = buildOrderPixCode(restaurant!, order);
       if (pixCode) {
         try {
           await this.whatsAppConnectionService.sendMessage(restaurant!.id, customer!.phone!, pixCode);
@@ -126,7 +143,7 @@ export class WhatsAppNotificationService implements IWhatsAppNotificationService
         customerName: customer!.name,
         customerPhone: customer!.phone,
         restaurantSlug: restaurant!.slug,
-        pixCode: buildOrderPixCode(restaurant!, order),
+        pixCode: await this.resolvePixCode(restaurant!, order),
         reason,
         templates: {
           confirmado: restaurant.orderConfirmedWhatsAppTemplate,

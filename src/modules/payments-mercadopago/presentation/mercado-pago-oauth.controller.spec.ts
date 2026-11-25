@@ -115,7 +115,7 @@ describe('MercadoPagoOAuthController (specs/0170-integracao-mercado-pago)', () =
 
     await runOperatorChain(routes['POST /restaurants/me/mercadopago/callback'], { restaurantId: 'r-1', body: { code: 'code-1' } }, { json: jest.fn(), send: jest.fn() });
 
-    expect(MockedMercadoPagoClient.prototype.exchangeCodeForToken).toHaveBeenCalledWith('code-1', 'https://bsdelivery.com.br/painel/settings/mercadopago/callback', undefined);
+    expect(MockedMercadoPagoClient.prototype.exchangeCodeForToken).toHaveBeenCalledWith('code-1', 'https://bsdelivery.com.br/painel/settings/mercadopago/callback', undefined, environment.mercadoPago.testToken);
   });
 
   it('0180: configuração pública vem do BFF sem expor segredos', async () => {
@@ -154,7 +154,7 @@ describe('MercadoPagoOAuthController (specs/0170-integracao-mercado-pago)', () =
     const { routes } = setup();
     const codeVerifier = 'v'.repeat(64);
     await runOperatorChain(routes['POST /restaurants/me/mercadopago/callback'], { restaurantId: 'r1', body: { code: 'code-1', codeVerifier } }, { json: jest.fn(), send: jest.fn() });
-    expect(MockedMercadoPagoClient.prototype.exchangeCodeForToken).toHaveBeenCalledWith('code-1', environment.mercadoPago.redirectUri, codeVerifier);
+    expect(MockedMercadoPagoClient.prototype.exchangeCodeForToken).toHaveBeenCalledWith('code-1', environment.mercadoPago.redirectUri, codeVerifier, environment.mercadoPago.testToken);
     await expect(runOperatorChain(routes['POST /restaurants/me/mercadopago/callback'], { body: { code: 'code', codeVerifier: 'short' } }, { json: jest.fn(), send: jest.fn() }))
       .rejects.toMatchObject({ statusCode: 400 });
   });

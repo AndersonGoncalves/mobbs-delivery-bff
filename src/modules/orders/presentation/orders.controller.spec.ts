@@ -375,6 +375,8 @@ describe('OrdersController', () => {
       setAsaasPixDetails: jest.fn().mockImplementation(async (orderId, data) => ({ ...buildPayment({ orderId }), ...data })),
       // specs/0170-integracao-mercado-pago.
       setMercadoPagoCheckoutDetails: jest.fn().mockImplementation(async (orderId, data) => ({ ...buildPayment({ orderId }), ...data })),
+      // specs/0226 REQ-B1.
+      setMercadoPagoPixDetails: jest.fn().mockImplementation(async (orderId, data) => ({ ...buildPayment({ orderId }), ...data })),
       // specs/0101-integracao-asaas (fase 2).
       setAsaasCheckoutDetails: jest.fn().mockImplementation(async (orderId, data) => ({ ...buildPayment({ orderId }), ...data })),
       markAsRefunded: jest.fn().mockImplementation(async (orderId) => ({ ...buildPayment({ orderId }), status: 'estornado' })),
@@ -2739,21 +2741,34 @@ describe('OrdersController', () => {
       MockedAsaasClient.prototype.refundCharge = jest.fn().mockResolvedValue(undefined);
     });
 
-    it('POST /orders: restaurante com Asaas habilitado e cliente com CPF cria a cobrança real e persiste no Payment', async () => {
+    // specs/0226 AC-B0 (substitui o teste da cobrança Pix no Asaas) — o Asaas saiu dos pedidos.
+    it('specs/0226 AC-B0: restaurante com Asaas ativo e sem Mercado Pago usa a chave manual, sem cobrança no Asaas', async () => {
       const { paymentRepository, routes } = setup({
-        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ onlinePaymentsEnabled: true, asaasApiKey: 'key-subconta' })) },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ onlinePaymentsEnabled: true, asaasApiKey: 'key-subconta', pixKey: '11999999999' })) },
         customerRepository: { findById: jest.fn().mockResolvedValue({ id: 'customer-1', name: 'Ana', email: 'ana@exemplo.com', phone: '85984224877', document: '529.982.247-25' }) },
       });
+      const json = jest.fn();
 
       await runAuthenticatedChain(
         routes['POST /orders'],
         { body: buildValidBody({ paymentMethod: 'pix' }), user: { uid: 'customer-1' } },
-        { json: jest.fn() },
+        { json },
       );
 
-      expect(MockedAsaasClient.prototype.createCustomer).toHaveBeenCalledWith('Ana', '52998224725');
-      expect(MockedAsaasClient.prototype.createPixCharge).toHaveBeenCalledWith('cus_1', expect.any(Number), expect.any(String), 'o-1');
-      expect(paymentRepository.setAsaasPixDetails).toHaveBeenCalledWith('o-1', { externalReference: 'pay_1', pixPayload: '00020126...copia-e-cola-asaas' });
+      expect(MockedAsaasClient.prototype.createCustomer).not.toHaveBeenCalled();
+      expect(MockedAsaasClient.prototype.createPixCharge).not.toHaveBeenCalled();
+      expect(paymentRepository.setAsaasPixDetails).not.toHaveBeenCalled();
+      expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ id: 'o-1' }));
+    });
+
+    it('specs/0226 REQ-B0: só com Asaas (sem chave manual nem Mercado Pago) o Pix não é mais aceito', async () => {
+      const { routes } = setup({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ onlinePaymentsEnabled: true, asaasApiKey: 'key-subconta' })) },
+      });
+
+      await expect(
+        runAuthenticatedChain(routes['POST /orders'], { body: buildValidBody({ paymentMethod: 'pix' }), user: { uid: 'customer-1' } }, { json: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 400 });
     });
 
     it('POST /orders: restaurante sem Asaas habilitado nunca chama o AsaasClient', async () => {
@@ -3615,6 +3630,161 @@ describe('OrdersController', () => {
       await controller.markDeliveredViaExternalCourier('o-1', 'r-1');
 
       expect(orderRepository.updateStatus).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('specs/0226 Parte B — Pix pelo Mercado Pago', () => {
+    const MockedMercadoPagoClient = MercadoPagoClient as jest.MockedClass<typeof MercadoPagoClient>;
+    const ANA = { id: 'customer-1', name: 'APRO Silva', email: 'ana@exemplo.com', phone: '85984224877' };
+
+    function platformConfig(mercadoPagoEnabled: boolean): IPlatformConfigRepository {
+      return {
+        isAsaasIntegrationEnabled: jest.fn().mockResolvedValue(true),
+        isMercadoPagoIntegrationEnabled: jest.fn().mockResolvedValue(mercadoPagoEnabled),
+        isIfoodIntegrationEnabled: jest.fn().mockResolvedValue(false),
+        isNinetyNineFoodIntegrationEnabled: jest.fn().mockResolvedValue(false),
+        isKeetaIntegrationEnabled: jest.fn().mockResolvedValue(false),
+        isKdsAppEnabled: jest.fn().mockResolvedValue(false),
+        isComandaAppEnabled: jest.fn().mockResolvedValue(false),
+      } as unknown as IPlatformConfigRepository;
+    }
+
+    beforeEach(() => {
+      MockedMercadoPagoClient.mockClear();
+      MockedMercadoPagoClient.prototype.createPixOrder = jest.fn().mockResolvedValue({ id: 'ORD01ABC', status: 'action_required', qrCode: '00020101...copia-e-cola-mp' });
+      MockedMercadoPagoClient.prototype.refundOrder = jest.fn().mockResolvedValue(undefined);
+      MockedMercadoPagoClient.prototype.cancelOrder = jest.fn().mockResolvedValue(undefined);
+      (AsaasClient as jest.MockedClass<typeof AsaasClient>).prototype.refundCharge = jest.fn().mockResolvedValue(undefined);
+    });
+
+    it('AC-B1: restaurante vinculado gera o Pix no Mercado Pago com o token dele, total do pedido, e-mail e primeiro nome do cliente, 30 min e chave fixa', async () => {
+      const { paymentRepository, routes } = setup({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ mercadoPagoAccessToken: 'token-restaurante', pixKey: '11999999999' })) },
+        customerRepository: { findById: jest.fn().mockResolvedValue(ANA) },
+        platformConfigRepository: platformConfig(true),
+      });
+
+      await runAuthenticatedChain(routes['POST /orders'], { body: buildValidBody({ paymentMethod: 'pix' }), user: { uid: 'customer-1' } }, { json: jest.fn() });
+
+      expect(MockedMercadoPagoClient.prototype.createPixOrder).toHaveBeenCalledWith('token-restaurante', {
+        orderId: 'o-1',
+        amount: expect.any(Number),
+        payerEmail: 'ana@exemplo.com',
+        payerFirstName: 'APRO',
+        expirationTime: 'PT30M',
+        idempotencyKey: 'pix-o-1',
+      });
+      expect(paymentRepository.setMercadoPagoPixDetails).toHaveBeenCalledWith('o-1', { externalReference: 'ORD01ABC', pixPayload: '00020101...copia-e-cola-mp' });
+    });
+
+    it('AC-B5: restaurante sem chave manual, só com Mercado Pago, aceita Pix', async () => {
+      const { paymentRepository, routes } = setup({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ mercadoPagoAccessToken: 'token-restaurante' })) },
+        customerRepository: { findById: jest.fn().mockResolvedValue(ANA) },
+        platformConfigRepository: platformConfig(true),
+      });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['POST /orders'], { body: buildValidBody({ paymentMethod: 'pix' }), user: { uid: 'customer-1' } }, { json });
+
+      expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ id: 'o-1' }));
+      expect(paymentRepository.setMercadoPagoPixDetails).toHaveBeenCalled();
+    });
+
+    it('switch do Mercado Pago desligado na plataforma: usa a chave manual, sem chamar o Mercado Pago', async () => {
+      const { paymentRepository, routes } = setup({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ mercadoPagoAccessToken: 'token-restaurante', pixKey: '11999999999' })) },
+        customerRepository: { findById: jest.fn().mockResolvedValue(ANA) },
+        platformConfigRepository: platformConfig(false),
+      });
+
+      await runAuthenticatedChain(routes['POST /orders'], { body: buildValidBody({ paymentMethod: 'pix' }), user: { uid: 'customer-1' } }, { json: jest.fn() });
+
+      expect(MockedMercadoPagoClient.prototype.createPixOrder).not.toHaveBeenCalled();
+      expect(paymentRepository.setMercadoPagoPixDetails).not.toHaveBeenCalled();
+    });
+
+    it('D4: falha do Mercado Pago não derruba o pedido — GET /orders/:id cai na chave Pix manual', async () => {
+      jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      MockedMercadoPagoClient.prototype.createPixOrder = jest.fn().mockRejectedValue(new Error('Mercado Pago API respondeu 500'));
+      const restaurant = buildRestaurant({ mercadoPagoAccessToken: 'token-restaurante', pixKey: '11999999999' });
+      const { paymentRepository, routes } = setup({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(restaurant) },
+        customerRepository: { findById: jest.fn().mockResolvedValue(ANA) },
+        platformConfigRepository: platformConfig(true),
+        orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ paymentMethod: 'pix' })) },
+        paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ method: 'pix', status: 'pendente' })) },
+      });
+      const createJson = jest.fn();
+      await runAuthenticatedChain(routes['POST /orders'], { body: buildValidBody({ paymentMethod: 'pix' }), user: { uid: 'customer-1' } }, { json: createJson });
+      expect(createJson).toHaveBeenCalledWith(201, expect.objectContaining({ id: 'o-1' }));
+      expect(paymentRepository.setMercadoPagoPixDetails).not.toHaveBeenCalled();
+
+      const detailJson = jest.fn();
+      await runAuthenticatedChain(routes['GET /orders/:id'], { params: { id: 'o-1' }, user: { uid: 'customer-1' } }, { json: detailJson });
+      expect(detailJson).toHaveBeenCalledWith(200, expect.objectContaining({ pixCode: expect.stringContaining('11999999999') }));
+    });
+
+    it('GET /orders/:id mostra o copia e cola do Mercado Pago (não o da chave manual)', async () => {
+      const { routes } = setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ paymentMethod: 'pix' })) },
+        paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ method: 'pix', provider: 'mercadopago', pixPayload: '00020101...copia-e-cola-mp' })) },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ pixKey: '11999999999' })) },
+      });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['GET /orders/:id'], { params: { id: 'o-1' }, user: { uid: 'customer-1' } }, { json });
+
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ pixCode: '00020101...copia-e-cola-mp' }));
+    });
+
+    it('AC-B3: Pix do Mercado Pago já pago e pedido cancelado pelo cliente → estorno da order no Mercado Pago (Asaas não é chamado)', async () => {
+      const { paymentRepository, routes } = setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ paymentMethod: 'pix' })) },
+        paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ method: 'pix', provider: 'mercadopago', status: 'aprovado', externalReference: 'ORD01ABC' })) },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ mercadoPagoAccessToken: 'token-restaurante', asaasApiKey: 'key-subconta' })) },
+      });
+
+      await runAuthenticatedChain(routes['PATCH /orders/:id/cancel'], { params: { id: 'o-1' }, user: { uid: 'customer-1' } }, { json: jest.fn() });
+
+      expect(MockedMercadoPagoClient.prototype.refundOrder).toHaveBeenCalledWith('token-restaurante', 'ORD01ABC');
+      expect(paymentRepository.markAsRefunded).toHaveBeenCalledWith('o-1');
+      expect((AsaasClient as jest.MockedClass<typeof AsaasClient>).prototype.refundCharge).not.toHaveBeenCalled();
+    });
+
+    it('AC-B4: Pix do Mercado Pago ainda não pago e pedido cancelado pelo operador → cobrança cancelada no Mercado Pago', async () => {
+      const { paymentRepository, routes } = setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ paymentMethod: 'pix' })) },
+        paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ method: 'pix', provider: 'mercadopago', status: 'pendente', externalReference: 'ORD01ABC' })) },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ mercadoPagoAccessToken: 'token-restaurante' })) },
+      });
+
+      await runOperatorChain(
+        routes['PATCH /restaurants/me/orders/:id/cancel'],
+        { restaurantId: 'r-1', params: { id: 'o-1' }, body: { reason: 'Cliente desistiu' } },
+        { json: jest.fn() },
+      );
+
+      expect(MockedMercadoPagoClient.prototype.cancelOrder).toHaveBeenCalledWith('token-restaurante', 'ORD01ABC');
+      expect(MockedMercadoPagoClient.prototype.refundOrder).not.toHaveBeenCalled();
+      expect(paymentRepository.markAsRefunded).not.toHaveBeenCalled();
+    });
+
+    it('falha no estorno do Mercado Pago é logada e não desfaz o cancelamento', async () => {
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      MockedMercadoPagoClient.prototype.refundOrder = jest.fn().mockRejectedValue(new Error('saldo insuficiente'));
+      const { paymentRepository, routes } = setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ paymentMethod: 'pix' })) },
+        paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ method: 'pix', provider: 'mercadopago', status: 'aprovado', externalReference: 'ORD01ABC' })) },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ mercadoPagoAccessToken: 'token-restaurante' })) },
+      });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['PATCH /orders/:id/cancel'], { params: { id: 'o-1' }, user: { uid: 'customer-1' } }, { json });
+
+      expect(json).toHaveBeenCalledWith(200, expect.anything());
+      expect(paymentRepository.markAsRefunded).not.toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('resolver manualmente'), expect.any(Error));
     });
   });
 });

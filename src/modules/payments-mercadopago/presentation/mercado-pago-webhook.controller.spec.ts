@@ -36,12 +36,13 @@ function signature(paymentId: string, requestId: string, ts: string, secret = 'w
 // specs/0226 REQ-A4 — conta Mercado Pago (vendedora) dona do pagamento, vinculada ao restaurante r-1.
 const SELLER_USER_ID = '3874969016';
 
-function buildReq(paymentId: string, overrides: { xSignature?: string; xRequestId?: string; userId?: string | null } = {}): FakeRequest {
+function buildReq(paymentId: string, overrides: { xSignature?: string; xRequestId?: string; userId?: string | null; type?: string } = {}): FakeRequest {
   const ts = '1700000000';
   const xRequestId = overrides.xRequestId ?? 'req-1';
-  const xSignature = overrides.xSignature ?? signature(paymentId, xRequestId, ts);
+  // Manifesto com o id em minúsculas (regra do Mercado Pago pra id alfanumérico, ex. `ORD…`).
+  const xSignature = overrides.xSignature ?? signature(paymentId.toLowerCase(), xRequestId, ts);
   return {
-    body: { type: 'payment', data: { id: paymentId }, ...(overrides.userId === null ? {} : { user_id: overrides.userId ?? SELLER_USER_ID }) },
+    body: { type: overrides.type ?? 'payment', data: { id: paymentId }, ...(overrides.userId === null ? {} : { user_id: overrides.userId ?? SELLER_USER_ID }) },
     header: (name: string) => {
       if (name === 'x-signature') return xSignature;
       if (name === 'x-request-id') return xRequestId;
@@ -84,6 +85,7 @@ describe('MercadoPagoWebhookController (specs/0170-integracao-mercado-pago)', ()
     const paymentRepository: Partial<IPaymentRepository> = {
       findByOrderId: jest.fn().mockResolvedValue(buildPayment()),
       markAsApproved: jest.fn().mockResolvedValue(buildPayment({ status: 'aprovado' })),
+      markAsApprovedIfPending: jest.fn().mockResolvedValue(buildPayment({ status: 'aprovado' })),
       updateExternalReference: jest.fn().mockResolvedValue(buildPayment()),
       ...overrides.paymentRepository,
     };
@@ -220,6 +222,116 @@ describe('MercadoPagoWebhookController (specs/0170-integracao-mercado-pago)', ()
 
       await expect(routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1'), { json: jest.fn(), send: jest.fn() })).rejects.toMatchObject({ statusCode: 409 });
       expect(paymentRepository.markAsApproved).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('specs/0226 REQ-B3 — Pix pelo Mercado Pago', () => {
+    const pixOrder = () => buildOrder({ paymentMethod: 'pix' });
+    const pixPayment = (overrides: Record<string, unknown> = {}) =>
+      buildPayment({ method: 'pix', provider: 'mercadopago', externalReference: 'ORD01ABC', pixPayload: '000201...', ...overrides });
+
+    it('AC-B1: tópico order processed confirma o Pix, consultando a order com o token do restaurante', async () => {
+      MockedMercadoPagoClient.prototype.getOrder = jest.fn().mockResolvedValue({ id: 'ORD01ABC', status: 'processed', statusDetail: 'accredited', externalReference: 'o-1' });
+      const { paymentRepository, routes } = setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(pixOrder()) },
+        paymentRepository: {
+          findByOrderId: jest.fn().mockResolvedValue(pixPayment()),
+          markAsApprovedIfPending: jest.fn().mockResolvedValue(pixPayment({ status: 'aprovado' })),
+          markAsApproved: jest.fn().mockResolvedValue(pixPayment({ status: 'aprovado' })),
+        },
+      });
+      const json = jest.fn();
+
+      await routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('ORD01ABC', { type: 'order' }), { json, send: jest.fn() });
+
+      expect(MockedMercadoPagoClient.prototype.getOrder).toHaveBeenCalledWith('restaurant-token-1', 'ORD01ABC');
+      expect(paymentRepository.markAsApprovedIfPending).toHaveBeenCalledWith('o-1');
+      // O Pix mantém o id da ORDER (é o que o estorno do Pix usa) — não troca pelo id do pagamento.
+      expect(paymentRepository.updateExternalReference).not.toHaveBeenCalled();
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ payment: { method: 'pix', status: 'aprovado' } }));
+    });
+
+    it('tópico order ainda aguardando o Pix (action_required) é 200 no-op', async () => {
+      MockedMercadoPagoClient.prototype.getOrder = jest.fn().mockResolvedValue({ id: 'ORD01ABC', status: 'action_required', externalReference: 'o-1' });
+      const { paymentRepository, routes } = setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(pixOrder()) },
+        paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(pixPayment()) },
+      });
+      const send = jest.fn();
+
+      await routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('ORD01ABC', { type: 'order' }), { json: jest.fn(), send });
+
+      expect(send).toHaveBeenCalledWith(200);
+      expect(paymentRepository.markAsApprovedIfPending).not.toHaveBeenCalled();
+    });
+
+    it('tópico payment de um Pix aprovado também confirma (o Mercado Pago avisa pelos dois)', async () => {
+      MockedMercadoPagoClient.prototype.getPayment = jest.fn().mockResolvedValue({ id: '190401708935', status: 'approved', externalReference: 'o-1', paymentMethodId: 'pix' });
+      const { paymentRepository, routes } = setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(pixOrder()) },
+        paymentRepository: {
+          findByOrderId: jest.fn().mockResolvedValue(pixPayment()),
+          markAsApprovedIfPending: jest.fn().mockResolvedValue(pixPayment({ status: 'aprovado' })),
+          markAsApproved: jest.fn().mockResolvedValue(pixPayment({ status: 'aprovado' })),
+        },
+      });
+
+      await routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('190401708935'), { json: jest.fn(), send: jest.fn() });
+
+      expect(paymentRepository.markAsApprovedIfPending).toHaveBeenCalledWith('o-1');
+      expect(paymentRepository.updateExternalReference).not.toHaveBeenCalled();
+    });
+
+    it('AC-B2: dois avisos ao mesmo tempo — o segundo perde a trava atômica e não confirma de novo', async () => {
+      MockedMercadoPagoClient.prototype.getOrder = jest.fn().mockResolvedValue({ id: 'ORD01ABC', status: 'processed', externalReference: 'o-1' });
+      const sendPaymentConfirmedMessage = jest.fn().mockResolvedValue(undefined);
+      const { paymentRepository, orderRepository, routes } = setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(pixOrder()) },
+        paymentRepository: {
+          // Leu "pendente" antes do outro aviso aprovar, mas a trava já foi tomada.
+          findByOrderId: jest.fn().mockResolvedValue(pixPayment()),
+          markAsApprovedIfPending: jest.fn().mockResolvedValue(null),
+        },
+        whatsAppNotificationService: { sendPaymentConfirmedMessage },
+      });
+      const json = jest.fn();
+
+      await routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('ORD01ABC', { type: 'order' }), { json, send: jest.fn() });
+
+      expect(paymentRepository.markAsApproved).not.toHaveBeenCalled();
+      expect(orderRepository.updateStatus).not.toHaveBeenCalled();
+      expect(sendPaymentConfirmedMessage).not.toHaveBeenCalled();
+      expect(json).toHaveBeenCalledWith(200, expect.anything());
+    });
+
+    it('tópico order para um pedido cujo pagamento não é Pix do Mercado Pago (ex. chave manual) é 409', async () => {
+      MockedMercadoPagoClient.prototype.getOrder = jest.fn().mockResolvedValue({ id: 'ORD01ABC', status: 'processed', externalReference: 'o-1' });
+      const { routes } = setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(pixOrder()) },
+        paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ method: 'pix' })) },
+      });
+
+      await expect(
+        routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('ORD01ABC', { type: 'order' }), { json: jest.fn(), send: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 409 });
+    });
+
+    it('aviso de Pix (tópico payment) num pedido de cartão é 409 — Pix nunca confirma cartão', async () => {
+      MockedMercadoPagoClient.prototype.getPayment = jest.fn().mockResolvedValue({ id: '1', status: 'approved', externalReference: 'o-1', paymentMethodId: 'pix' });
+      const { routes } = setup();
+
+      await expect(
+        routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('1'), { json: jest.fn(), send: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 409 });
+    });
+
+    it('assinatura do tópico order: id alfanumérico em minúsculas no manifesto (maiúsculas = 401)', async () => {
+      const { routes } = setup();
+      const upperSignature = signature('ORD01ABC', 'req-1', '1700000000');
+
+      await expect(
+        routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('ORD01ABC', { type: 'order', xSignature: upperSignature }), { json: jest.fn(), send: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 401 });
     });
   });
 });

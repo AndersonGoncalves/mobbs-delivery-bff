@@ -65,6 +65,12 @@ export const environment = {
      * `GET /v1/payments/{id}` na recepção do webhook (`MercadoPagoWebhookController`), quando
      * ainda não sabemos de qual restaurante é o pagamento — ver plan.md. */
     platformAccessToken: process.env.MERCADOPAGO_PLATFORM_ACCESS_TOKEN,
+    /** specs/0226 REQ-B1 — `true` só no local/homologação: o vínculo OAuth pede ao Mercado Pago um
+     * token de SANDBOX (`test_token: true` em `POST /oauth/token`). Sem isso, a conta de teste
+     * vinculada recebe um token "de produção" que o Mercado Pago recusa ao gerar Pix
+     * (`user_allowed_only_in_test` / 422 — conferido no sandbox em 24/11/2026). Em produção fica
+     * desligado (ausente). */
+    testToken: process.env.MERCADOPAGO_TEST_TOKEN === 'true',
   },
   /** Pedido explícito do usuário (follow-up) — automação de postagens no Instagram, mesmo
    * modelo OAuth do Mercado Pago (`mercadoPago` acima): cada restaurante autoriza ESTA

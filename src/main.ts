@@ -251,10 +251,13 @@ const customerPixKeyRepository = new CustomerPixKeyMongooseRepository();
 // compartilhada entre `OrdersController` (envia mensagens) e `WhatsAppConnectionController`
 // (pareamento/status), já que ela guarda os sockets ativos em memória por restaurante.
 const whatsAppConnectionService = new WhatsAppConnectionService(restaurantRepository);
+// specs/0226 REQ-B7 — o repositório de pagamento entra pra mensagem usar o código Pix do provedor
+// (Mercado Pago), não o da chave manual.
 const whatsAppNotificationService = new WhatsAppNotificationService(
   whatsAppConnectionService,
   customerRepository,
   restaurantRepository,
+  new PaymentMongooseRepository(),
 );
 
 // specs/0014-financeiro — uma única instância de repositório de caixa compartilhada entre

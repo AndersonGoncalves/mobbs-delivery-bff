@@ -12,9 +12,9 @@ Convenção: ⬜ **Antes de liberar (você)** = passo que só você faz, uma vez
 
 > **Decisão de 24/11/2026 (`specs/0226`):** os pagamentos **dos pedidos** (Pix automático e cartão
 > online) passam a ser **só pelo Mercado Pago** (+ chave Pix manual do restaurante). O **Asaas** fica
-> só com a mensalidade da plataforma e **não é testado pelo QA**. O **Pix com confirmação automática
-> pelo Mercado Pago ainda está em desenvolvimento** — até lá, Pix nos pedidos = chave manual,
-> confirmada pelo operador ("Pix recebido").
+> só com a mensalidade da plataforma e **não é testado pelo QA**. Restaurante **com** Mercado Pago
+> vinculado: o Pix é gerado lá e o pedido confirma sozinho. **Sem** vínculo: Pix pela chave manual,
+> confirmado pelo operador ("Pix recebido").
 
 ---
 
@@ -25,11 +25,12 @@ O Asaas não é mais usado nos pagamentos dos pedidos (decisão de 24/11/2026). 
 
 ---
 
-## 2. Mercado Pago (cartão de crédito online)
+## 2. Mercado Pago (Pix automático e cartão de crédito online)
 
 ⬜ **Antes de liberar (você):** já feito em 24/11/2026 — aplicação de teste "BsDelivery Teste" e
 contas de teste criadas (`./mercado-pago-hml-producao.md` §1). Só falta, na subida da homologação:
-apontar o webhook do modo de teste pra `api.hml`, ligar o menu, e mandar ao QA o usuário/senha das
+apontar o webhook do modo de teste pra `api.hml` **com os eventos "Pagamentos" e "Order (Mercado
+Pago)"**, conferir `MERCADOPAGO_TEST_TOKEN=true` no `.env` do servidor, ligar o menu, e mandar ao QA o usuário/senha das
 contas **"Restaurante teste"** (vendedora) e **"Cliente teste"** (compradora) + os números de cartão
 de teste (painel → Cartões de teste).
 
@@ -43,18 +44,42 @@ de teste (painel → Cartões de teste).
      senha dela; se pedir código, use os **6 últimos dígitos do User ID** dela;
    - **Autorizar**. Você volta para a retaguarda com "Conta vinculada com sucesso"; feche a aba e
      clique em **"Atualizar vínculo"** na aba original.
-3. **Configurações → Formas de pagamento** → marque **"Cartão de Crédito Online"** e salve (não é o
-   "Cartão de Crédito" comum, que é maquininha).
-4. No app do cliente, faça um pedido com **Cartão de Crédito Online**; no checkout do Mercado Pago,
-   entre com a conta **Cliente teste** e pague com um **cartão de teste aprovado**.
-5. Confirme: pedido muda pra "pago" sozinho e o aviso aparece nos logs
-   (`[webhook] POST /webhooks/mercadopago → 200`).
-6. Teste também **cartão recusado** (números específicos no painel) — o pedido não deve ser
-   aprovado.
-7. Teste **cancelamento de pedido pago** — o valor deve ser estornado.
+3. **Configurações → Formas de pagamento** → marque **"PIX"** e **"Cartão de Crédito Online"** e
+   salve (não é o "Cartão de Crédito" comum, que é maquininha).
 
-**Confira com atenção (corrigido em 24/11/2026, `specs/0226` parte A — primeira vez testado com
+**Pix automático:**
+
+4. No app do cliente, entre com uma conta de cliente cujo **nome comece com `APRO`** (ex. "APRO
+   Teste"; altere em Perfil se precisar). No sandbox do Mercado Pago, esse nome faz o Pix ser
+   **pago sozinho** em alguns segundos — não existe como pagar um Pix de teste pelo app do banco.
+5. Faça um pedido com **Pix**. Confira: aparecem o QR Code e o copia e cola, e na retaguarda o card
+   mostra **"Pix automático — Mercado Pago"**.
+6. Em até ~30 s (sem clicar em nada): o pagamento vira **pago** no app e na retaguarda, chega o
+   WhatsApp de "Pix confirmado" (se o WhatsApp do restaurante estiver conectado), e o log mostra
+   `[webhook] POST /webhooks/mercadopago → 200`. Se em Formas de pagamento o PIX estiver com
+   **"confirma pedido automaticamente"** marcado, o pedido também passa sozinho para "Confirmado"
+   (senão, o operador confirma). O Pix entra no caixa quando o pedido é confirmado.
+7. **Pix não pago:** com um cliente de **outro nome** (que não comece com `APRO`), faça um pedido com
+   Pix — ele fica aguardando pagamento. Cancele o pedido: a cobrança é cancelada no Mercado Pago.
+8. **Estorno:** cancele um pedido com Pix **já pago** (passo 6) — o pagamento fica "estornado".
+9. O código Pix que chega no WhatsApp do cliente tem que ser **o mesmo** que o app mostra.
+10. O botão **"Pix recebido"** continua no card como reserva — não precisa usar no Pix automático.
+
+**Cartão de crédito online:**
+
+11. No app do cliente, faça um pedido com **Cartão de Crédito Online**; no checkout do Mercado Pago,
+    entre com a conta **Cliente teste** e pague com um **cartão de teste aprovado**.
+12. Confirme: pedido muda pra "pago" sozinho e o aviso aparece nos logs
+    (`[webhook] POST /webhooks/mercadopago → 200`).
+13. Teste também **cartão recusado** (números específicos no painel) — o pedido não deve ser
+    aprovado.
+14. Teste **cancelamento de pedido pago** — o valor deve ser estornado.
+
+**Confira com atenção (novo ou corrigido em 24/11/2026, `specs/0226` — primeira vez testado com
 pagamento de verdade no sandbox):**
+- Pix: confirmação **sem clique** do operador, e **uma vez só** (um WhatsApp de "Pix confirmado",
+  não dois);
+- Pix: restaurante **sem chave Pix manual**, só com o Mercado Pago, também tem que oferecer Pix;
 - o valor cobrado no Mercado Pago tem que ser o **total do pedido**, com taxa de entrega e descontos;
 - o **estorno** do cartão online tem que funcionar no cancelamento;
 - o checkout de cartão **não** pode oferecer Pix nem boleto.

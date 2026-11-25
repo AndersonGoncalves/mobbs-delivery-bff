@@ -4,8 +4,8 @@ Registro de 24/11/2026, depois do primeiro teste local de ponta a ponta da confi
 vínculo OAuth).
 
 > **Decisão de 24/11/2026 (`specs/0226`):** o Mercado Pago passa a ser o **único provedor dos
-> pagamentos dos pedidos** — cartão de crédito online **e** Pix com confirmação automática (este
-> ainda em desenvolvimento). A chave Pix manual do restaurante continua (padrão pra quem não
+> pagamentos dos pedidos** — cartão de crédito online **e** Pix com confirmação automática (ambos
+> implementados em 24/11/2026; falta o teste ponta a ponta no sandbox). A chave Pix manual do restaurante continua (padrão pra quem não
 > vincula e reserva se o Mercado Pago falhar). O **Asaas fica só com a mensalidade da plataforma**. Complementa [`./mercado-pago.md`](./mercado-pago.md) (conta e custos) e
 [`../MERCADO-PAGO.md`](../MERCADO-PAGO.md) (técnico). Nenhuma senha ou token neste arquivo — só onde
 cada coisa está.
@@ -45,7 +45,7 @@ por CPF/e-mail; código de verificação = **6 últimos dígitos do User ID**. F
 
 | Arquivo | Conteúdo Mercado Pago |
 |---|---|
-| `mobbs-delivery-bff/.env` (local) | Client ID, Client Secret, token **de teste**, assinatura do webhook |
+| `mobbs-delivery-bff/.env` (local) | Client ID, Client Secret, token **de teste**, assinatura do webhook, `MERCADOPAGO_TEST_TOKEN=true` (também no `.env.hml`) |
 | `mobbs-delivery-bff/.envs/.env.hml` | os mesmos + `MERCADOPAGO_REDIRECT_URI`, `BFF_PUBLIC_BASE_URL`, `PUBLIC_APP_BASE_URL` da homologação |
 | `mobbs-delivery-bff/.envs/.env.prd` | **nada** — Mercado Pago ainda não configurado em produção |
 
@@ -59,6 +59,12 @@ Todos fora do git. Client ID/Secret e token de teste foram validados contra a AP
   (`mercadoPagoUserId = 3874969016`).
 - ⏳ **Pagamento real de teste — ainda não feito** (falta ativar "Cartão de Crédito Online" e rodar o
   app do cliente).
+- ⚠️ **O vínculo de 24/11 precisa ser refeito**: ele emitiu um token "de produção" da conta de teste,
+  e o Mercado Pago recusa gerar Pix com ele (422 / `user_allowed_only_in_test`). Com
+  `MERCADOPAGO_TEST_TOKEN=true`, o BFF passa a pedir token de sandbox (`test_token`) — "Vincular
+  novamente" com a Restaurante teste, em janela anônima.
+- ✅ Pix pela API de Orders validado no sandbox com o token de teste da plataforma (criar, aprovação
+  automática com "APRO", consultar, cancelar, estornar) — `specs/0226`, "Prova de conceito".
 
 ## 2. Homologação — o que fazer
 
@@ -66,9 +72,12 @@ Os passos longos (criar aplicação, credenciais, contas de teste) **não se rep
 
 - [ ] Painel → Webhooks → **Modo de teste**: trocar a URL por
       `https://api.hml.bsdelivery.com.br/webhooks/mercadopago` (o modo de teste aceita uma URL só; se
-      voltar a testar no local, troca de novo). Conferir se a assinatura secreta continua a mesma do
+      voltar a testar no local, troca de novo) e marcar os eventos **"Pagamentos"** e **"Order
+      (Mercado Pago)"** (o segundo é o do Pix). Conferir se a assinatura secreta continua a mesma do
       `.env.hml`; se o painel gerar outra, atualizar o `.env.hml` e o `.env` do servidor.
 - [ ] Painel → Configuração avançada: remover a URL de redirecionamento do túnel (opcional).
+- [ ] Conferir `MERCADOPAGO_TEST_TOKEN=true` no `.env` do servidor de homologação (já está no
+      `.env.hml`) — sem ele, o vínculo da conta de teste não gera Pix.
 - [ ] Ligar o menu no banco da homologação: `npm run activate:mercadopago-integration` (todo banco
       novo nasce com o menu desligado).
 - [ ] Vincular um restaurante da homologação (ex. `pizzaria`) com a **Restaurante teste**, em janela
@@ -99,7 +108,8 @@ pagamento real no sandbox (homologação) antes de produção.
 | Aplicação | BsDelivery Teste | a mesma aplicação (renomeada) — ou uma nova, se §5/§6 exigirem |
 | Client ID / Secret | os atuais | os mesmos (Secret **renovado**) |
 | Token da plataforma | de teste | **não é mais necessário** (desde a parte A da `specs/0226`, o webhook consulta com o token do restaurante) |
-| Webhook | modo de teste | **modo de produção**: `https://api.bsdelivery.com.br/webhooks/mercadopago`, evento de pagamento, **outra** assinatura secreta |
+| Webhook | modo de teste | **modo de produção**: `https://api.bsdelivery.com.br/webhooks/mercadopago`, eventos "Pagamentos" e "Order (Mercado Pago)", **outra** assinatura secreta |
+| `MERCADOPAGO_TEST_TOKEN` | `true` | **ausente/false** — em produção o token tem que ser real |
 | URL de redirecionamento | hml | `https://bsdelivery.com.br/painel/settings/mercadopago/callback` |
 | Quem vincula | conta de teste | **cada restaurante, com a conta Mercado Pago real dele** |
 | Onde configurar | `.env.hml` | `.envs/.env.prd` + `.env` do servidor de produção |
@@ -155,7 +165,8 @@ a menos no servidor). Já previsto na `specs/0225` (REQ-4).
 
 ### 6.2 Pix com confirmação automática (`specs/0226`)
 
-Em requisitos. Pix gerado no Mercado Pago com o token do restaurante (QR + copia e cola no app),
+**Implementado em 24/11/2026** (parte B); falta o teste ponta a ponta com o restaurante
+revinculado. Como foi especificado: Pix gerado no Mercado Pago com o token do restaurante (QR + copia e cola no app),
 confirmado pelo webhook; testável no sandbox (`payer.first_name = "APRO"` aprova sozinho). Quando
 ficar pronto: incluir o evento **"Order (Mercado Pago)"** no webhook (teste e produção), além do
 "Pagamentos (legacy)" do cartão.

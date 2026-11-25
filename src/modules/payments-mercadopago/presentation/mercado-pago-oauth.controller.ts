@@ -73,7 +73,7 @@ export class MercadoPagoOAuthController extends BaseRouter {
       }
 
       const client = new MercadoPagoClient(environment.mercadoPago.clientId, environment.mercadoPago.clientSecret, environment.mercadoPago.baseUrl);
-      const tokens = await client.exchangeCodeForToken(input.code, environment.mercadoPago.redirectUri, input.codeVerifier);
+      const tokens = await client.exchangeCodeForToken(input.code, environment.mercadoPago.redirectUri, input.codeVerifier, environment.mercadoPago.testToken);
 
       const expiresAt = new Date(Date.now() + tokens.expiresIn * 1000).toISOString();
       await this.restaurantRepository.saveMercadoPagoTokens(req.restaurantId!, {
