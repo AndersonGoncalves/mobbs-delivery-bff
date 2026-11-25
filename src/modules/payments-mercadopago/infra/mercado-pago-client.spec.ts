@@ -132,6 +132,26 @@ describe('MercadoPagoClient (specs/0170-integracao-mercado-pago)', () => {
     await expect(client.getPayment('token-invalido', 'pay-1')).rejects.toThrow(/400/);
   });
 
+  // specs/0226 REQ-A12 — o suporte do Mercado Pago só investiga um erro com o `x-request-id` da
+  // chamada (achado em 25/11/2026: o Pix em produção voltava `processing_error` e os logs não tinham
+  // como identificar a tentativa).
+  it('specs/0226 AC-A12: erro da API traz o x-request-id da resposta na mensagem', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 402,
+      headers: new Headers({ 'x-request-id': '4abc9a8e-30fd-4b4b-a9e9-376f0ce59be0' }),
+      text: jest.fn().mockResolvedValue('{"errors":[{"code":"failed"}]}'),
+    }) as unknown as typeof fetch;
+
+    await expect(client.getPayment('token', 'pay-1')).rejects.toThrow('x-request-id 4abc9a8e-30fd-4b4b-a9e9-376f0ce59be0');
+  });
+
+  it('specs/0226 AC-A12: sem x-request-id na resposta, a mensagem de erro continua como antes', async () => {
+    mockFetchOnce(400, { message: 'invalid_token' });
+
+    await expect(client.getPayment('token', 'pay-1')).rejects.toThrow('Mercado Pago API (GET /v1/payments/pay-1) respondeu 400: {"message":"invalid_token"}');
+  });
+
   it('specs/0226 REQ-B1: exchangeCodeForToken com testToken envia test_token: true (token de sandbox)', async () => {
     mockFetchOnce(200, { access_token: 'TEST-token', refresh_token: 'r', user_id: 1, expires_in: 1 });
     await client.exchangeCodeForToken('code', 'https://hml.bsdelivery.com.br/cb', undefined, true);

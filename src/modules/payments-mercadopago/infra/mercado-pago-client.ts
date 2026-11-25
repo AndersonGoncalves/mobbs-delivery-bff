@@ -71,6 +71,13 @@ export interface MercadoPagoOrderStatusResult {
   externalReference: string;
 }
 
+/** specs/0226 REQ-A12 — o suporte do Mercado Pago só rastreia uma chamada com erro pelo
+ * `x-request-id` da resposta; sem ele no log, não dá para abrir chamado técnico. */
+function requestIdSuffix(response: Response): string {
+  const requestId = response.headers?.get?.('x-request-id');
+  return requestId ? ` (x-request-id ${requestId})` : '';
+}
+
 export class MercadoPagoClient {
   constructor(
     private readonly clientId: string,
@@ -92,7 +99,7 @@ export class MercadoPagoClient {
 
     if (!response.ok) {
       const responseBody = await response.text().catch(() => '');
-      throw new Error(`Mercado Pago API (${method} ${path}) respondeu ${response.status}: ${responseBody}`);
+      throw new Error(`Mercado Pago API (${method} ${path}) respondeu ${response.status}${requestIdSuffix(response)}: ${responseBody}`);
     }
 
     return (await response.json()) as T;
@@ -150,7 +157,7 @@ export class MercadoPagoClient {
 
     if (!response.ok) {
       const responseBody = await response.text().catch(() => '');
-      throw new Error(`Mercado Pago API (POST ${path}) respondeu ${response.status}: ${responseBody}`);
+      throw new Error(`Mercado Pago API (POST ${path}) respondeu ${response.status}${requestIdSuffix(response)}: ${responseBody}`);
     }
 
     return (await response.json()) as T;
