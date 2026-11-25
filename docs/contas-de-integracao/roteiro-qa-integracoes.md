@@ -29,7 +29,7 @@ O Asaas não é mais usado nos pagamentos dos pedidos (decisão de 24/11/2026). 
 
 ⬜ **Antes de liberar (você):** já feito em 24/11/2026 — aplicação de teste "BsDelivery Teste" e
 contas de teste criadas (`./mercado-pago-hml-producao.md` §1). Só falta, na subida da homologação:
-apontar o webhook do modo de teste pra `api.hml` **com os eventos "Pagamentos" e "Order (Mercado
+apontar o webhook do modo de teste pra `api-hml` **com os eventos "Pagamentos" e "Order (Mercado
 Pago)"**, conferir `MERCADOPAGO_TEST_TOKEN=true` no `.env` do servidor, ligar o menu, e mandar ao QA o usuário/senha das
 contas **"Restaurante teste"** (vendedora) e **"Cliente teste"** (compradora) + os números de cartão
 de teste (painel → Cartões de teste).
@@ -177,7 +177,7 @@ pagamento de verdade no sandbox):**
 ## Checklist rápido do que você precisa fazer ANTES de chamar o QA
 
 - [ ] Mercado Pago: aplicação e contas de teste **já criadas**; na subida, trocar a URL do webhook
-      de teste pra `api.hml`, ligar o menu e mandar ao QA usuário/senha da "Restaurante teste" e
+      de teste pra `api-hml`, ligar o menu e mandar ao QA usuário/senha da "Restaurante teste" e
       da "Cliente teste" + cartões de teste (`./mercado-pago-hml-producao.md` §2)
 - [ ] iFood: separar `merchantId`/`clientId`/`clientSecret` da loja de teste + combinar quem gera
       o pedido de teste
