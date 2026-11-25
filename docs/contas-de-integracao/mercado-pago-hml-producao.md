@@ -48,6 +48,7 @@ por CPF/e-mail; código de verificação = **6 últimos dígitos do User ID**. F
 | `mobbs-delivery-bff/.env` (local) | Client ID, Client Secret, token **de teste**, assinatura do webhook, `MERCADOPAGO_TEST_TOKEN=true` (também no `.env.hml`) |
 | `mobbs-delivery-bff/.envs/.env.hml` | os mesmos + `MERCADOPAGO_REDIRECT_URI`, `BFF_PUBLIC_BASE_URL`, `PUBLIC_APP_BASE_URL` da homologação |
 | `mobbs-delivery-bff/.envs/.env.prd` | **nada** — Mercado Pago ainda não configurado em produção |
+| `.env` do **servidor de produção** | **TEMPORÁRIO (24/11/2026)**: as credenciais **de teste** do `.env.hml` (Client ID/Secret, assinatura do webhook, `MERCADOPAGO_TEST_TOKEN=true`) + `MERCADOPAGO_REDIRECT_URI` de produção, num bloco `TEMPORARIO`, só pra testar o Pix automático enquanto a homologação não sobe. Backup: `.env.bak-antes-mercadopago-20261124`. **Remover o bloco depois do teste** |
 
 Todos fora do git. Client ID/Secret e token de teste foram validados contra a API do Mercado Pago.
 
