@@ -71,6 +71,13 @@ export interface MercadoPagoOrderStatusResult {
   externalReference: string;
 }
 
+/** specs/0226 REQ-A12 — o suporte do Mercado Pago só rastreia uma chamada com erro pelo
+ * `x-request-id` da resposta; sem ele no log, não dá para abrir chamado técnico. */
+function requestIdSuffix(response: Response): string {
+  const requestId = response.headers?.get?.('x-request-id');
+  return requestId ? ` (x-request-id ${requestId})` : '';
+}
+
 export class MercadoPagoClient {
   constructor(
     private readonly clientId: string,
@@ -92,7 +99,7 @@ export class MercadoPagoClient {
 
     if (!response.ok) {
       const responseBody = await response.text().catch(() => '');
-      throw new Error(`Mercado Pago API (${method} ${path}) respondeu ${response.status}: ${responseBody}`);
+      throw new Error(`Mercado Pago API (${method} ${path}) respondeu ${response.status}${requestIdSuffix(response)}: ${responseBody}`);
     }
 
     return (await response.json()) as T;
@@ -150,7 +157,7 @@ export class MercadoPagoClient {
 
     if (!response.ok) {
       const responseBody = await response.text().catch(() => '');
-      throw new Error(`Mercado Pago API (POST ${path}) respondeu ${response.status}: ${responseBody}`);
+      throw new Error(`Mercado Pago API (POST ${path}) respondeu ${response.status}${requestIdSuffix(response)}: ${responseBody}`);
     }
 
     return (await response.json()) as T;
@@ -236,6 +243,8 @@ export class MercadoPagoClient {
   /** `POST /v1/payments/:id/refunds` com o `accessToken` DO RESTAURANTE — sem corpo = estorno
    * total (único caso usado nesta fase, mesmo padrão do `AsaasClient.refundCharge`). */
   async refundPayment(accessToken: string, paymentId: string): Promise<void> {
-    await this.request('POST', `/v1/payments/${paymentId}/refunds`, accessToken, {});
+    // specs/0226 REQ-A11 — o Mercado Pago recusa o estorno sem `X-Idempotency-Key` (achado em
+    // produção, pedido #255). Chave fixa por pagamento: repetir o pedido nunca estorna duas vezes.
+    await this.request('POST', `/v1/payments/${paymentId}/refunds`, accessToken, {}, `refund-payment-${paymentId}`);
   }
 }
