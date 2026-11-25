@@ -236,6 +236,8 @@ export class MercadoPagoClient {
   /** `POST /v1/payments/:id/refunds` com o `accessToken` DO RESTAURANTE — sem corpo = estorno
    * total (único caso usado nesta fase, mesmo padrão do `AsaasClient.refundCharge`). */
   async refundPayment(accessToken: string, paymentId: string): Promise<void> {
-    await this.request('POST', `/v1/payments/${paymentId}/refunds`, accessToken, {});
+    // specs/0226 REQ-A11 — o Mercado Pago recusa o estorno sem `X-Idempotency-Key` (achado em
+    // produção, pedido #255). Chave fixa por pagamento: repetir o pedido nunca estorna duas vezes.
+    await this.request('POST', `/v1/payments/${paymentId}/refunds`, accessToken, {}, `refund-payment-${paymentId}`);
   }
 }

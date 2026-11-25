@@ -112,6 +112,20 @@ describe('MercadoPagoClient (specs/0170-integracao-mercado-pago)', () => {
     );
   });
 
+  // specs/0226 REQ-A11 — achado no teste em produção (25/11/2026, pedido #255): o Mercado Pago
+  // recusa o estorno sem `X-Idempotency-Key` (400 "Header X-Idempotency-Key can't be null"); o
+  // pedido foi cancelado e o dinheiro não voltou.
+  it('specs/0226 AC-A11: refundPayment manda X-Idempotency-Key fixa por pagamento (refund-payment-<id>)', async () => {
+    mockFetchOnce(201, { id: 1, status: 'approved' });
+
+    await client.refundPayment('restaurante-token', '190477178759');
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://api.mercadopago.com/v1/payments/190477178759/refunds',
+      expect.objectContaining({ method: 'POST', headers: expect.objectContaining({ 'X-Idempotency-Key': 'refund-payment-190477178759' }) }),
+    );
+  });
+
   it('lança erro com status e corpo quando a API responde com erro', async () => {
     mockFetchOnce(400, { message: 'invalid_token' });
 
