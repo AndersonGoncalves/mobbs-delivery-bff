@@ -37,8 +37,8 @@ const platformConfigSchema = new Schema(
     // = nunca foi ativado. Desligar o switch NÃO limpa o carimbo (não precisa: `isNew` já exige
     // `enabled === true` antes de olhar a data), mas ativar de novo sempre regrava com a data
     // atual — reinicia a contagem dos 30 dias a cada reativação, pedido explícito do usuário.
+    // Mercado Pago não tem carimbo: nunca mostra "Novo" (specs/0226 REQ-A13).
     asaasIntegrationEnabledAt: { type: Date },
-    mercadoPagoIntegrationEnabledAt: { type: Date },
     ifoodIntegrationEnabledAt: { type: Date },
     ninetyNineFoodIntegrationEnabledAt: { type: Date },
     keetaIntegrationEnabledAt: { type: Date },

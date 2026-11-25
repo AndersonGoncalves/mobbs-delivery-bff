@@ -34,7 +34,6 @@ export interface PlatformConfigSnapshot {
   asaasIntegrationEnabled: boolean;
   asaasIntegrationEnabledAt?: Date;
   mercadoPagoIntegrationEnabled: boolean;
-  mercadoPagoIntegrationEnabledAt?: Date;
   ifoodIntegrationEnabled: boolean;
   ifoodIntegrationEnabledAt?: Date;
   ninetyNineFoodIntegrationEnabled: boolean;

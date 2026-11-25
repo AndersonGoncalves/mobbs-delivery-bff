@@ -53,7 +53,6 @@ export class PlatformConfigMongooseRepository implements IPlatformConfigReposito
       asaasIntegrationEnabled: doc?.asaasIntegrationEnabled ?? false,
       asaasIntegrationEnabledAt: doc?.asaasIntegrationEnabledAt,
       mercadoPagoIntegrationEnabled: doc?.mercadoPagoIntegrationEnabled ?? false,
-      mercadoPagoIntegrationEnabledAt: doc?.mercadoPagoIntegrationEnabledAt,
       ifoodIntegrationEnabled: doc?.ifoodIntegrationEnabled ?? false,
       ifoodIntegrationEnabledAt: doc?.ifoodIntegrationEnabledAt,
       ninetyNineFoodIntegrationEnabled: doc?.ninetyNineFoodIntegrationEnabled ?? false,
