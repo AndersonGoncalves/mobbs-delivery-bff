@@ -6,14 +6,12 @@ import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
 import { IRestaurantRepository } from '../domain/repositories/restaurant.repository.interface';
 import { IRestaurantOperatorRepository } from '../../restaurant-operators/domain/repositories/restaurant-operator.repository.interface';
-import { buildDefaultWelcomeMessage } from '../domain/default-welcome-message';
 import { IMenuCategoryRepository } from '../../catalog/domain/repositories/menu-category.repository.interface';
 import { IProductRepository } from '../../catalog/domain/repositories/product.repository.interface';
 import { IAdditionalGroupTemplateRepository } from '../../additional-group-templates/domain/repositories/additional-group-template.repository.interface';
 import { generateUniqueSlug } from '../domain/generate-unique-slug';
 import { seedDefaultCatalog } from '../domain/seed-default-catalog';
-import { DEFAULT_NEW_ORDER_RESTAURANT_TEMPLATE } from '../../notifications/domain/new-order-restaurant-message-builder';
-import { IBusinessHours } from '../domain/entities/restaurant.entity';
+import { buildNewRestaurantInput } from '../domain/build-new-restaurant-input';
 import { IReferralRepository } from '../../referrals/domain/repositories/referral.repository.interface';
 import { IReferralCodeRepository } from '../../referrals/domain/repositories/referral-code.repository.interface';
 import { REFERRAL_REWARD_CENTS } from '../../referrals/domain/entities/referral.entity';
@@ -21,11 +19,6 @@ import { signupSchema } from './restaurants.schemas';
 import { IRawMaterialRepository } from '../../raw-materials/domain/repositories/raw-material.repository.interface';
 import { IResellerRepository } from '../../resellers/domain/repositories/reseller.repository.interface';
 import { IResellerClientRepository } from '../../resellers/domain/repositories/reseller-client.repository.interface';
-
-/** specs/0039-onboarding-primeiro-acesso REQ-1 — horário padrão "aberto todo dia, 08:00-23:00",
- * em vez de nascer vazio (o que faz o app mostrar "loja fechada" até o dono configurar). */
-const ALL_DAYS: IBusinessHours['dayOfWeek'][] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-const DEFAULT_BUSINESS_HOURS: IBusinessHours[] = ALL_DAYS.map((dayOfWeek) => ({ dayOfWeek, isClosed: false, openTime: '08:00', closeTime: '23:00' }));
 
 /**
  * specs/0038-autocadastro-restaurante — cria o restaurante e o primeiro operador (papel `dono`)
@@ -80,36 +73,8 @@ export class RestaurantSignupController extends BaseRouter {
       // não cria vínculo nenhum (mesmo racional do `?ref=`).
       const revendaCode = typeof req.query?.revenda === 'string' ? req.query.revenda.trim().toUpperCase() : '';
       const reseller = revendaCode ? await this.resellerRepository.findByCode(revendaCode) : null;
-      // specs/0039-onboarding-primeiro-acesso REQ-1/REQ-2 — destaques/banners/cancelar pedido/
-      // imagem à direita nascem desligados (o default do schema é ligado) porque uma loja recém-
-      // criada, sem produto/foto nenhum, fica com essas seções vazias/quebradas até o dono
-      // configurar de verdade. REQ-10 — taxa de entrega nasce grátis (o default do schema é
-      // `fixed`/R$ 0), pelo mesmo motivo: sem zona/valor configurado ainda, "grátis" é o estado
-      // inicial mais correto até o dono decidir a taxa de verdade.
-      const restaurant = await this.restaurantRepository.create({
-        name,
-        slug,
-        phone: whatsapp,
-        businessHours: DEFAULT_BUSINESS_HOURS,
-        showHighlights: false,
-        showBanners: false,
-        allowCustomerCancelOrder: false,
-        productImageOnRight: false,
-        category: businessType,
-        // specs/0062-confirmar-pedido-whatsapp-restaurante REQ-3 — grava o template de verdade
-        // (não só confia no fallback do builder), igual todo default gravado nesta chamada.
-        newOrderRestaurantWhatsAppTemplate: DEFAULT_NEW_ORDER_RESTAURANT_TEMPLATE,
-        deliveryFeeMode: 'free',
-        deliveryFeeCents: 0,
-        welcomeMessage: buildDefaultWelcomeMessage(businessType),
-        // Pedido explícito do usuário (11/11/2026) — autocadastro nasce com a identidade visual
-        // padrão da plataforma, em vez de primaryColor/onPrimaryColor ausentes (sem default no
-        // schema) e useWhiteBackground colorido (default `false` do schema), até o dono
-        // configurar de verdade na retaguarda (App do cliente).
-        primaryColor: '#3E44E8',
-        onPrimaryColor: '#FFFFFF',
-        useWhiteBackground: true,
-      });
+      // Defaults de restaurante recém-criado — ver `buildNewRestaurantInput` (domain/).
+      const restaurant = await this.restaurantRepository.create(buildNewRestaurantInput({ name, slug, phone: whatsapp, businessType }));
       await this.restaurantOperatorRepository.create(restaurant.id, email, 'dono', ownerName);
       if (referrerCustomerId) {
         await this.referralRepository.create({

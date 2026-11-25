@@ -14,6 +14,8 @@ const paymentSchema = new Schema(
     pixPayload: { type: String },
     // specs/0170-integracao-mercado-pago.
     checkoutUrl: { type: String },
+    // specs/0226 REQ-A5 — quem cobrou (ausente = chave Pix manual ou pagamento anterior ao campo).
+    provider: { type: String, enum: ['mercadopago', 'asaas'] },
   },
   { _id: false, timestamps: true },
 );

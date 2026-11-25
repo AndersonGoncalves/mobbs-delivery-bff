@@ -27,12 +27,23 @@ export interface IBillingNotifier {
   notifyRestaurant(restaurant: IRestaurant, text: string): Promise<void>;
 }
 
+// Achado real (23/11/2026) — restaurante com assinatura anual ATIVA (`AnnualSubscriptionService`,
+// specs/0175) já paga um preço fixo até o próximo aniversário, nunca muda de faixa por
+// faturamento do mês (`AnnualSubscriptionService.subscribe`/`issueRenewalIfDue`) — os avisos de
+// "perto do limite"/"subiu de faixa" abaixo não fazem sentido pra ele. Só `findActiveByRestaurantId`
+// conta (`renewalActive: true`); `restaurant.billing.cycle` é o campo legado, não confiável
+// (ver comentário em `platform.controller.ts`).
+export interface RecomputeBillingAnnualSubscriptionRepository {
+  findActiveByRestaurantId(restaurantId: string): Promise<{ id: string } | null>;
+}
+
 export interface RecomputeRestaurantBillingDeps {
   restaurantRepository: RecomputeBillingRestaurantRepository;
   orderRepository: RecomputeBillingOrderRepository;
   notifier: IBillingNotifier;
   // specs/0113-parametrizacao-faixas-cobranca.
   billingSettingsRepository: IBillingSettingsRepository;
+  annualSubscriptionRepository: RecomputeBillingAnnualSubscriptionRepository;
 }
 
 /**
@@ -60,15 +71,18 @@ export class RecomputeRestaurantBillingUseCase {
     let notifiedTierUpgrade = sameMonth && current ? current.notifiedTierUpgrade : false;
 
     const tier = computeBillingTier(revenueCents, settings);
+    const hasActiveAnnualSubscription = (await this.deps.annualSubscriptionRepository.findActiveByRestaurantId(restaurantId)) !== null;
 
-    if (tier !== 'premium' && !notified75Percent && revenueCents >= warningAtCents(tier, settings)) {
-      await this.deps.notifier.notifyRestaurant(restaurant, buildWarningMessage(tier, revenueCents, settings));
-      notified75Percent = true;
-    }
+    if (!hasActiveAnnualSubscription) {
+      if (tier !== 'premium' && !notified75Percent && revenueCents >= warningAtCents(tier, settings)) {
+        await this.deps.notifier.notifyRestaurant(restaurant, buildWarningMessage(tier, revenueCents, settings));
+        notified75Percent = true;
+      }
 
-    if (tierRank(tier) > tierRank(previousTier) && !notifiedTierUpgrade) {
-      await this.deps.notifier.notifyRestaurant(restaurant, buildUpgradeMessage(tier, settings));
-      notifiedTierUpgrade = true;
+      if (tierRank(tier) > tierRank(previousTier) && !notifiedTierUpgrade) {
+        await this.deps.notifier.notifyRestaurant(restaurant, buildUpgradeMessage(tier, settings));
+        notifiedTierUpgrade = true;
+      }
     }
 
     const base = current ?? defaultBilling(month);

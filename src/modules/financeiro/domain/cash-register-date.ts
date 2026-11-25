@@ -35,3 +35,16 @@ export function cashRegisterPeriodEnd(session: ICashRegisterSession, now = new D
   if (session.closedAt) return new Date(session.closedAt);
   return now;
 }
+
+/**
+ * specs/0216-fechamento-automatico-caixa T009 — instante em que uma sessão aberta em `openedAt`
+ * deve fechar sozinha: o PRIMEIRO horário `closeTime` (HH:mm, horário de Brasília) depois da
+ * abertura. Ex.: aberta 09:23 com 04:00 → 04:00 do dia seguinte; aberta 09:00 com 23:00 → 23:00 do
+ * mesmo dia; aberta exatamente às 04:00 com 04:00 → 04:00 do dia seguinte (nunca fecha no instante
+ * em que abriu). Mesmo fuso fixo -03:00 de `cashRegisterDayBounds` (Brasil sem horário de verão).
+ */
+export function nextAutoCloseAt(openedAt: Date, closeTime: string): Date {
+  const [hours, minutes] = closeTime.split(':');
+  const sameDay = new Date(`${cashRegisterDate(openedAt)}T${hours.padStart(2, '0')}:${minutes.padStart(2, '0')}:00-03:00`);
+  return sameDay.getTime() > openedAt.getTime() ? sameDay : new Date(sameDay.getTime() + 86_400_000);
+}

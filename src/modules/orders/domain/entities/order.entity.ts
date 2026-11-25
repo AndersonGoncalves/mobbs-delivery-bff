@@ -366,6 +366,11 @@ export interface IOrderUberDelivery {
  * `specs/0008-acompanhamento-vendas` mais adiante); o cliente nunca lê isso de volta nesta v1,
  * só o BFF grava pra retaguarda.
  */
+/** specs/0226 REQ-A5 — quem cobrou o pagamento (gravado junto com os dados da cobrança no
+ * gateway). Ausente = sem gateway (Pix pela chave manual) ou pagamento anterior a este campo —
+ * nesses casos estorno/confirmação seguem a regra antiga (pelo vínculo atual do restaurante). */
+export type PaymentProvider = 'mercadopago' | 'asaas';
+
 export interface IPayment {
   id: string;
   orderId: string;
@@ -387,6 +392,8 @@ export interface IPayment {
    * Genérico de propósito (não "mercadoPagoInitPoint"): qualquer gateway futuro baseado em
    * checkout hospedado pode reaproveitar o mesmo campo. */
   checkoutUrl?: string;
+  /** specs/0226 REQ-A5 — ver `PaymentProvider`. */
+  provider?: PaymentProvider;
 }
 
 /**

@@ -40,7 +40,9 @@ export class MercadoPagoOAuthController extends BaseRouter {
     ];
 
     application.get('/restaurants/me/mercadopago/config', ...operatorAuthenticated, async (_req: Request, res: Response) => {
-      const { clientId, clientSecret, redirectUri, webhookSecret, platformAccessToken } = environment.mercadoPago;
+      // specs/0226 REQ-A4 — `MERCADOPAGO_PLATFORM_ACCESS_TOKEN` não é mais exigido: o webhook
+      // consulta o pagamento com o token do restaurante.
+      const { clientId, clientSecret, redirectUri, webhookSecret } = environment.mercadoPago;
       const missing = [
         ...(!clientId || !/^\d+$/.test(clientId) ? ['MERCADOPAGO_CLIENT_ID (Application ID numérico)'] : []),
         ...(!clientSecret ? ['MERCADOPAGO_CLIENT_SECRET'] : []),
@@ -53,7 +55,6 @@ export class MercadoPagoOAuthController extends BaseRouter {
         missing,
         paymentMissing: [
           ...(!webhookSecret ? ['MERCADOPAGO_WEBHOOK_SECRET'] : []),
-          ...(!platformAccessToken ? ['MERCADOPAGO_PLATFORM_ACCESS_TOKEN'] : []),
         ],
       });
     });
@@ -72,7 +73,7 @@ export class MercadoPagoOAuthController extends BaseRouter {
       }
 
       const client = new MercadoPagoClient(environment.mercadoPago.clientId, environment.mercadoPago.clientSecret, environment.mercadoPago.baseUrl);
-      const tokens = await client.exchangeCodeForToken(input.code, environment.mercadoPago.redirectUri, input.codeVerifier);
+      const tokens = await client.exchangeCodeForToken(input.code, environment.mercadoPago.redirectUri, input.codeVerifier, environment.mercadoPago.testToken);
 
       const expiresAt = new Date(Date.now() + tokens.expiresIn * 1000).toISOString();
       await this.restaurantRepository.saveMercadoPagoTokens(req.restaurantId!, {

@@ -456,6 +456,9 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
     const MONDAY_11PM_BRT = new Date('2026-10-13T02:00:00.000Z'); // segunda, 23:00 em Brasília
     const MONDAY_9AM_BRT = new Date('2026-10-12T12:00:00.000Z'); // segunda, 09:00 em Brasília
     const TODAY = '2026-10-12'; // businessDate correspondente aos 2 instantes acima.
+    // specs/0216 T009 — a regra olha a hora de ABERTURA da sessão (1º horário de fechamento depois
+    // dela), então cada sessão de teste precisa de um `openedAt` realista.
+    const MONDAY_8AM_OPENED = '2026-10-12T11:00:00.000Z'; // segunda, 08:00 em Brasília
 
     it('AC-2: fecha a sessão de HOJE de um restaurante elegível cujo horário já passou, com o saldo calculado', async () => {
       const { service, cashRegisterRepository } = setup({
@@ -465,7 +468,7 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
           ]),
         },
         cashRegisterRepository: {
-          findPendingSessions: jest.fn().mockResolvedValue([buildSession({ businessDate: TODAY })]),
+          findPendingSessions: jest.fn().mockResolvedValue([buildSession({ businessDate: TODAY, openedAt: MONDAY_8AM_OPENED })]),
           getCalculatedBalance: jest.fn().mockResolvedValue(123.45),
         },
       });
@@ -498,7 +501,7 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
           ]),
         },
         cashRegisterRepository: {
-          findPendingSessions: jest.fn().mockResolvedValue([buildSession({ businessDate: TODAY })]),
+          findPendingSessions: jest.fn().mockResolvedValue([buildSession({ businessDate: TODAY, openedAt: MONDAY_8AM_OPENED })]),
         },
       });
 
@@ -509,10 +512,9 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
 
     // Achado real de produção (21/11/2026) — antes usava `findOpenSessionByRestaurant` (só
     // "hoje"), então uma sessão deixada aberta de um dia anterior nunca era vista pelo worker e
-    // ficava presa pra sempre (ninguém acessa o caixa de madrugada pra abrir o dia seguinte,
-    // nem o worker olhava a sessão de ontem). Agora qualquer sessão de uma data anterior a hoje
-    // fecha na hora, mesmo antes do horário configurado (já está vencida de qualquer jeito).
-    it('fecha uma sessão presa de um dia anterior imediatamente, mesmo antes do horário configurado', async () => {
+    // ficava presa pra sempre. specs/0216 T009 — continua fechando no próximo tick: o 1º horário de
+    // fechamento depois da abertura dela (sábado 23:00) já passou faz tempo.
+    it('fecha uma sessão esquecida aberta há dias no próximo tick', async () => {
       const { service, cashRegisterRepository } = setup({
         restaurantRepository: {
           listAll: jest.fn().mockResolvedValue([
@@ -520,7 +522,7 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
           ]),
         },
         cashRegisterRepository: {
-          findPendingSessions: jest.fn().mockResolvedValue([buildSession({ businessDate: '2026-10-10' })]),
+          findPendingSessions: jest.fn().mockResolvedValue([buildSession({ businessDate: '2026-10-10', openedAt: '2026-10-10T21:00:00.000Z' })]),
           getCalculatedBalance: jest.fn().mockResolvedValue(50),
         },
       });
@@ -528,6 +530,50 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
       await service.closeDueAutomaticSessions(MONDAY_9AM_BRT);
 
       expect(cashRegisterRepository.close).toHaveBeenCalledWith('cr-1', 50, 'automatico', true);
+    });
+
+    // specs/0216 T009 — achado real (banco local, 24/11/2026): com o default 04:00 a sessão
+    // fechava no tick seguinte à abertura (09:23 → 09:26; 15:32 → 15:33).
+    describe('T009: horário de madrugada (04:00) fecha só na madrugada SEGUINTE à abertura', () => {
+      const OPENED_0923 = '2026-10-12T12:23:51.000Z'; // segunda, 09:23:51 em Brasília
+      function setup0400(openedAt: string, businessDate = TODAY) {
+        return setup({
+          restaurantRepository: {
+            listAll: jest.fn().mockResolvedValue([buildRestaurant({ cashRegisterAutoCloseMode: 'automatic' })]), // sem horário = 04:00
+          },
+          cashRegisterRepository: {
+            findPendingSessions: jest.fn().mockResolvedValue([buildSession({ businessDate, openedAt })]),
+            getCalculatedBalance: jest.fn().mockResolvedValue(0),
+          },
+        });
+      }
+
+      it('aberta 09:23 NÃO fecha às 09:26 (o caso real)', async () => {
+        const { service, cashRegisterRepository } = setup0400(OPENED_0923);
+        await service.closeDueAutomaticSessions(new Date('2026-10-12T12:26:21.000Z'));
+        expect(cashRegisterRepository.close).not.toHaveBeenCalled();
+      });
+
+      it('aberta 09:23 continua aberta às 23:59 do mesmo dia e às 03:59 do dia seguinte', async () => {
+        const { service, cashRegisterRepository } = setup0400(OPENED_0923);
+        await service.closeDueAutomaticSessions(new Date('2026-10-13T02:59:00.000Z')); // seg 23:59
+        await service.closeDueAutomaticSessions(new Date('2026-10-13T06:59:00.000Z')); // ter 03:59
+        expect(cashRegisterRepository.close).not.toHaveBeenCalled();
+      });
+
+      it('aberta 09:23 fecha às 04:00 do dia seguinte, com o saldo calculado', async () => {
+        const { service, cashRegisterRepository } = setup0400(OPENED_0923);
+        await service.closeDueAutomaticSessions(new Date('2026-10-13T07:00:00.000Z')); // ter 04:00
+        expect(cashRegisterRepository.close).toHaveBeenCalledWith('cr-1', 0, 'automatico', true);
+      });
+
+      it('aberta ontem 18:00 NÃO fecha à meia-noite (antes fechava na troca de data) — só às 04:00', async () => {
+        const { service, cashRegisterRepository } = setup0400('2026-10-11T21:00:00.000Z', '2026-10-11'); // dom 18:00
+        await service.closeDueAutomaticSessions(new Date('2026-10-12T03:05:00.000Z')); // seg 00:05
+        expect(cashRegisterRepository.close).not.toHaveBeenCalled();
+        await service.closeDueAutomaticSessions(new Date('2026-10-12T07:00:00.000Z')); // seg 04:00
+        expect(cashRegisterRepository.close).toHaveBeenCalledTimes(1);
+      });
     });
 
     it('AC-5: restaurante com fechamento automático desligado (modo manual) nunca fecha sozinho', async () => {
@@ -553,7 +599,7 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
         },
         cashRegisterRepository: {
           findPendingSessions: jest.fn().mockResolvedValue([
-            buildSession({ businessDate: TODAY, reopenedAt: '2026-10-12T15:00:00.000Z', reopenedBy: 'dono-1' }),
+            buildSession({ businessDate: TODAY, openedAt: MONDAY_8AM_OPENED, reopenedAt: '2026-10-12T15:00:00.000Z', reopenedBy: 'dono-1' }),
           ]),
         },
       });
@@ -574,7 +620,7 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
         cashRegisterRepository: {
           findPendingSessions: jest.fn()
             .mockRejectedValueOnce(new Error('falha inesperada'))
-            .mockResolvedValueOnce([buildSession({ id: 'cr-2', restaurantId: 'r-2', businessDate: TODAY })]),
+            .mockResolvedValueOnce([buildSession({ id: 'cr-2', restaurantId: 'r-2', businessDate: TODAY, openedAt: MONDAY_8AM_OPENED })]),
         },
       });
 

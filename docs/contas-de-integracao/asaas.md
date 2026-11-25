@@ -1,5 +1,11 @@
 # Asaas (Pix dos pedidos) — conta, custo e como testar
 
+> ⚠️ **Desativado nos pedidos desde 24/11/2026 (`specs/0226`)** — decisão do usuário: Pix automático
+> e cartão online dos pedidos passam a ser só pelo **Mercado Pago** (+ chave Pix manual). O Asaas
+> fica só com a **mensalidade da plataforma** (`CHECKLIST-ATIVACAO-COBRANCA-ASSINATURA.md`,
+> `specs/0175`). Este guia fica como histórico; o código Asaas dos pedidos continua no ar só pra
+> pagamentos antigos, até uma limpeza posterior.
+
 Guia pra quem vai *usar* a integração, não pra quem vai mexer no código. Não existe um
 `ASAAS.md` técnico próprio ainda — o contrato está documentado direto no código
 (`src/modules/payments-asaas/`, `shared/config/environment.ts` linhas 39-48) e em

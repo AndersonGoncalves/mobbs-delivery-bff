@@ -19,6 +19,15 @@ export interface IPaymentRepository {
    */
   markAsApproved(orderId: string): Promise<IPayment>;
 
+  /** specs/0226 REQ-B3 — passa pra `aprovado` SÓ se ainda estiver `pendente`, numa operação
+   * atômica; devolve `null` se outro aviso já tiver aprovado (o Mercado Pago avisa o mesmo Pix
+   * pelos tópicos `payment` e `order`, às vezes ao mesmo tempo — sem isso, confirmaria duas vezes). */
+  markAsApprovedIfPending(orderId: string): Promise<IPayment | null>;
+
+  /** specs/0226 REQ-B1 — persiste o id da order Pix e o copia e cola devolvidos pelo Mercado Pago
+   * na criação do pedido (`provider: 'mercadopago'`). */
+  setMercadoPagoPixDetails(orderId: string, data: { externalReference: string; pixPayload: string }): Promise<IPayment>;
+
   /** specs/0101-integracao-asaas (fase 1) — persiste o id da cobrança e o copia-e-cola devolvidos
    * pelo Asaas na criação do pedido (`OrdersController.create`). */
   setAsaasPixDetails(orderId: string, data: { externalReference: string; pixPayload: string }): Promise<IPayment>;

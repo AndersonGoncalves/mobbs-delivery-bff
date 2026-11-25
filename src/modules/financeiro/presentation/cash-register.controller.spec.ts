@@ -464,6 +464,32 @@ describe('CashRegisterController', () => {
     expect(cashRegisterRepository.open).toHaveBeenCalledWith('r-1', 100, 'operator-1');
   });
 
+  // Achado real (23/11/2026) — restaurante com `cashRegisterMode: 'automatic'`: o
+  // `ensureAutomaticSchedule` chamado logo antes já abre a sessão de hoje dentro da MESMA
+  // requisição, fazendo o `open()` manual seguinte bater no índice único e lançar um
+  // `ConflictError` genérico (sem id/data, diferente do erro de sessão presa do AC-8 acima). Como
+  // há uma sessão aberta HOJE (`findOpenSessionByRestaurant`), o endpoint devolve essa sessão como
+  // sucesso em vez de propagar o erro — o usuário só queria abrir o caixa, e ele já está aberto.
+  it('23/11: POST .../open não propaga o ConflictError de corrida quando ensureAutomaticSchedule já abriu a sessão de hoje', async () => {
+    const openedAutomatically = buildSession({ id: 'cr-auto', openedBy: 'automatico', openedAutomatically: true });
+    const { cashRegisterRepository, routes } = setup({
+      cashRegisterRepository: {
+        open: jest.fn().mockRejectedValue(new ConflictError('Já existe um caixa aberto para este restaurante')),
+        findOpenSessionByRestaurant: jest.fn().mockResolvedValue(openedAutomatically),
+      },
+    });
+    const json = jest.fn();
+
+    await runOperatorChain(
+      routes['POST /restaurants/me/cash-register/open'],
+      { restaurantId: 'r-1', user: { uid: 'operator-1' }, operatorId: 'operator-1', body: { openingBalance: 0 } },
+      { json },
+    );
+
+    expect(cashRegisterRepository.open).toHaveBeenCalledWith('r-1', 0, 'operator-1');
+    expect(json).toHaveBeenCalledWith(200, openedAutomatically);
+  });
+
   // specs/0219-multiplas-sessoes-caixa-por-dia AC-1 — fechar o caixa de hoje não bloqueia mais
   // abrir um novo em seguida (turnos/troca de operador): sem sessão aberta, `open()` é chamado
   // normalmente mesmo havendo sessões fechadas hoje.

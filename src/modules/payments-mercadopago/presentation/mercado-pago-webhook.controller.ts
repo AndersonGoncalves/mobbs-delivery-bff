@@ -1,6 +1,6 @@
 import { createHmac } from 'crypto';
 import type { Request, Response, Server } from 'restify';
-import { ConflictError, NotFoundError, UnauthorizedError } from 'restify-errors';
+import { BadRequestError, ConflictError, NotFoundError, UnauthorizedError } from 'restify-errors';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { environment } from '../../../shared/config/environment';
@@ -16,9 +16,17 @@ import { MercadoPagoClient } from '../infra/mercado-pago-client';
 /**
  * specs/0170-integracao-mercado-pago (REQ-6) — recebe os webhooks de pagamento do Mercado Pago,
  * `POST /webhooks/mercadopago`, endpoint ÚNICO e GLOBAL (diferente do Asaas, que registra uma
- * URL por restaurante): o Mercado Pago não manda o restaurante na URL, por isso o pedido (e,
- * através dele, o restaurante) só é conhecido depois de consultar `GET /v1/payments/{id}` com
- * o `external_reference` que a gente mesmo gravou na criação da preferência.
+ * URL por restaurante).
+ *
+ * specs/0226 REQ-B3 — também recebe o tópico `order` (Pix criado pela API de Orders,
+ * `OrdersController.tryChargeOrderPixViaMercadoPago`) e o tópico `payment` de um Pix; os dois
+ * confirmam pelo mesmo `ConfirmOnlinePaymentService`, com trava atômica contra confirmação dupla.
+ *
+ * specs/0226 REQ-A3/REQ-A4 — o restaurante é achado pelo `user_id` do aviso (a conta Mercado Pago
+ * dona do pagamento, gravada no vínculo OAuth como `mercadoPagoUserId`), e o pagamento é
+ * consultado com o token DELE (antes: token da aplicação, que pode não enxergar pagamento de outra
+ * conta). O pedido (`external_reference`) precisa ser desse mesmo restaurante. Ao aprovar, grava o
+ * id do PAGAMENTO no `externalReference` (antes ficava o id da preferência, e o estorno falhava).
  *
  * Validação por assinatura (`x-signature: ts=<ts>,v1=<hash>`), segredo da APLICAÇÃO (não por
  * restaurante — ver `environment.mercadoPago.webhookSecret`). Contrato de assinatura
@@ -56,7 +64,9 @@ export class MercadoPagoWebhookController extends BaseRouter {
     const v1 = parts.v1;
     if (!ts || !v1) return false;
 
-    const manifest = `id:${paymentId};request-id:${xRequestId};ts:${ts};`;
+    // Documentação do Mercado Pago: id alfanumérico (ex. `ORD…` do tópico `order`) entra em
+    // minúsculas no manifesto; id numérico (tópico `payment`) não muda.
+    const manifest = `id:${paymentId.toLowerCase()};request-id:${xRequestId};ts:${ts};`;
     const expected = createHmac('sha256', environment.mercadoPago.webhookSecret).update(manifest).digest('hex');
     return expected === v1;
   }
@@ -65,41 +75,75 @@ export class MercadoPagoWebhookController extends BaseRouter {
     // Achado de auditoria (06/11/2026) — sem Firebase por trás, rate limit por IP antes de
     // calcular a assinatura HMAC (evita gastar CPU com isso a cada tentativa num flood).
     application.post('/webhooks/mercadopago', webhookRateLimitMiddleware, async (req: Request, res: Response) => {
-      const body = req.body as { type?: string; data?: { id?: string } };
-      const paymentId = body.data?.id;
+      const body = req.body as { type?: string; data?: { id?: string | number }; user_id?: string | number };
+      const resourceId = body.data?.id === undefined || body.data?.id === null ? '' : String(body.data.id);
 
-      if (!body.type || body.type !== 'payment' || !paymentId) {
+      // specs/0226 REQ-B3 — `payment` (cartão pela API de Preferences e, às vezes, o pagamento
+      // por trás do Pix) e `order` (Pix pela API de Orders). Os demais tópicos não interessam.
+      if ((body.type !== 'payment' && body.type !== 'order') || !resourceId) {
         res.send(200);
         return;
       }
 
-      if (!this.isValidSignature(req.header('x-signature'), req.header('x-request-id'), paymentId)) {
+      if (!this.isValidSignature(req.header('x-signature'), req.header('x-request-id'), resourceId)) {
         throw new UnauthorizedError('Assinatura de webhook inválida');
       }
 
-      if (!environment.mercadoPago.platformAccessToken) {
-        throw new Error('MERCADOPAGO_PLATFORM_ACCESS_TOKEN não configurado — não é possível consultar o pagamento recebido.');
+      // specs/0226 REQ-A4 — conta Mercado Pago dona do pagamento → restaurante vinculado a ela.
+      const mercadoPagoUserId = body.user_id === undefined || body.user_id === null ? '' : String(body.user_id);
+      if (!mercadoPagoUserId) {
+        throw new BadRequestError('Aviso do Mercado Pago sem user_id');
       }
-
-      const client = new MercadoPagoClient(environment.mercadoPago.clientId ?? '', environment.mercadoPago.clientSecret ?? '', environment.mercadoPago.baseUrl);
-      const mpPayment = await client.getPayment(environment.mercadoPago.platformAccessToken, paymentId);
-
-      if (!mpPayment.externalReference) {
+      const restaurant = await this.restaurantRepository.findByMercadoPagoUserId(mercadoPagoUserId);
+      if (!restaurant?.mercadoPagoAccessToken) {
+        // Conta que não está vinculada a nenhum restaurante (ex.: a própria conta da aplicação,
+        // ou o "Simular notificação" do painel): nada a fazer aqui — 200 pra não gerar reenvio.
+        console.warn(`[mercadopago] aviso ${body.type} ${resourceId} de uma conta (${mercadoPagoUserId}) sem restaurante vinculado — ignorado`);
         res.send(200);
         return;
       }
 
-      const order = await this.orderRepository.findById(mpPayment.externalReference);
+      const client = new MercadoPagoClient(environment.mercadoPago.clientId ?? '', environment.mercadoPago.clientSecret ?? '', environment.mercadoPago.baseUrl);
+
+      // Normaliza os dois tópicos: de qual pedido é, se já está pago, e se é Pix.
+      let externalReference: string;
+      let paid: boolean;
+      let isPix: boolean;
+      let mercadoPagoPaymentId: string | undefined;
+      if (body.type === 'order') {
+        const mpOrder = await client.getOrder(restaurant.mercadoPagoAccessToken, resourceId);
+        externalReference = mpOrder.externalReference;
+        paid = mpOrder.status === 'processed';
+        isPix = true; // só o Pix usa a API de Orders (o cartão segue na de Preferences, specs/0225)
+      } else {
+        const mpPayment = await client.getPayment(restaurant.mercadoPagoAccessToken, resourceId);
+        externalReference = mpPayment.externalReference;
+        paid = mpPayment.status === 'approved';
+        isPix = mpPayment.paymentMethodId === 'pix';
+        mercadoPagoPaymentId = mpPayment.id;
+      }
+
+      if (!externalReference) {
+        res.send(200);
+        return;
+      }
+
+      const order = await this.orderRepository.findById(externalReference);
       if (!order) {
         throw new NotFoundError('Pedido não encontrado');
       }
-
-      const payment = await this.paymentRepository.findByOrderId(order.id);
-      if (!payment || payment.method !== 'creditCardOnline') {
-        throw new ConflictError('Pedido não tem pagamento de cartão online via Mercado Pago');
+      if (order.restaurantId !== restaurant.id) {
+        throw new ConflictError('Pagamento não pertence ao restaurante do pedido');
       }
 
-      if (mpPayment.status !== 'approved') {
+      const payment = await this.paymentRepository.findByOrderId(order.id);
+      const isMercadoPagoPix = !!payment && payment.method === 'pix' && payment.provider === 'mercadopago';
+      const isMercadoPagoCard = !!payment && payment.method === 'creditCardOnline' && payment.provider !== 'asaas';
+      if (!payment || (isPix ? !isMercadoPagoPix : !isMercadoPagoCard)) {
+        throw new ConflictError('Pedido não tem pagamento online via Mercado Pago com esse meio');
+      }
+
+      if (!paid) {
         res.send(200);
         return;
       }
@@ -112,6 +156,21 @@ export class MercadoPagoWebhookController extends BaseRouter {
       }
       if (payment.status !== 'pendente') {
         throw new ConflictError('Pagamento não pode ser confirmado');
+      }
+
+      // specs/0226 REQ-B3 — trava atômica: o Pix chega pelos dois tópicos, às vezes juntos; só o
+      // primeiro confirma (WhatsApp e avanço do pedido uma vez só).
+      const claimed = await this.paymentRepository.markAsApprovedIfPending(order.id);
+      if (!claimed) {
+        const current = await this.paymentRepository.findByOrderId(order.id);
+        res.json(200, { ...order, payment: current ? this.toPaymentSummary(current) : undefined });
+        return;
+      }
+
+      // specs/0226 REQ-A3 — cartão: a partir daqui `externalReference` é o id do PAGAMENTO (o
+      // estorno usa). O Pix mantém o id da ORDER, que é o que o estorno do Pix usa (REQ-B4).
+      if (!isPix && mercadoPagoPaymentId) {
+        await this.paymentRepository.updateExternalReference(order.id, mercadoPagoPaymentId);
       }
 
       const { order: updatedOrder, payment: updatedPayment } = await new ConfirmOnlinePaymentService(

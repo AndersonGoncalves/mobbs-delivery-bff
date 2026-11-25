@@ -327,6 +327,11 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
     return doc ? toEntity(doc) : null;
   }
 
+  async findByMercadoPagoUserId(mercadoPagoUserId: string): Promise<IRestaurant | null> {
+    const doc = await RestaurantModel.findOne({ mercadoPagoUserId }).lean<RestaurantLeanDocument>();
+    return doc ? toEntity(doc) : null;
+  }
+
   async findByReferralCode(code: string): Promise<IRestaurant | null> {
     const doc = await RestaurantModel.findOne({ referralCode: code }).lean<RestaurantLeanDocument>();
     return doc ? toEntity(doc) : null;

@@ -1,5 +1,6 @@
 import type { Request, Response } from 'restify';
 import * as Sentry from '@sentry/node';
+import { formatServerErrorLogLine } from './request-log';
 
 interface RestifyHandledError extends Error {
   name: string;
@@ -17,7 +18,7 @@ function defineToJSON(err: RestifyHandledError, body: Record<string, unknown>): 
 }
 
 export const handleError = (
-  _req: Request,
+  req: Request,
   _res: Response,
   err: RestifyHandledError,
   done: () => void,
@@ -50,6 +51,15 @@ export const handleError = (
   // já tratado acima ou vindo pronto do restify-errors) é esperado, não é bug, viraria ruído.
   if (!err.statusCode || err.statusCode >= 500) {
     Sentry.captureException(err);
+    // specs/0215 T019 — também no console (antes ia só pro Sentry): é o que o QA (e você, via
+    // `docker compose logs`) vê ao investigar uma falha. Caminho sem query string; stack só do
+    // servidor, nunca dados da requisição.
+    // eslint-disable-next-line no-console
+    console.error(
+      formatServerErrorLogLine({ method: req.method ?? '?', path: req.getPath?.() ?? req.url ?? '?', errorName: err.name, errorMessage: err.message }),
+      // Só as linhas de localização da pilha (a 1ª repete a mensagem inteira, sem o corte de tamanho).
+      err.stack ? `\n${err.stack.split('\n').slice(1).join('\n')}` : '',
+    );
   }
   return done();
 };

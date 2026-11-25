@@ -1,5 +1,6 @@
 import { ICustomerRepository } from '../../customers/domain/repositories/customer.repository.interface';
-import { IOrder } from '../../orders/domain/entities/order.entity';
+import { IOrder, IPayment } from '../../orders/domain/entities/order.entity';
+import { IPaymentRepository } from '../../orders/domain/repositories/payment.repository.interface';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IWhatsAppConnectionService } from '../../whatsapp-connection/domain/services/i-whatsapp-connection.service';
 import { WhatsAppNotificationService } from './whatsapp-notification.service';
@@ -33,6 +34,7 @@ describe('WhatsAppNotificationService', () => {
       restaurant?:
         | { id: string; name: string; slug: string; whatsappConnected: boolean; notifyCustomerOnOrderConfirmed?: boolean; orderConfirmedWhatsAppTemplate?: string; notifyCustomerOnPixConfirmed?: boolean; pixConfirmedWhatsAppTemplate?: string; notifyCustomerOnOrderCreated?: boolean; orderReceiptWhatsAppTemplate?: string; notifyCustomerOnOrderOutForDelivery?: boolean; orderOutForDeliveryWhatsAppTemplate?: string; notifyCustomerOnOrderPreparing?: boolean; orderPreparingWhatsAppTemplate?: string; notifyCustomerOnOrderCancelled?: boolean; orderCancelledWhatsAppTemplate?: string; notifyCustomerOnOrderDelivered?: boolean; orderDeliveredWhatsAppTemplate?: string; pixKey?: string }
         | null;
+      payment?: Partial<IPayment> | null;
     } = {},
   ) {
     const customerRepository: Partial<ICustomerRepository> = {
@@ -70,12 +72,41 @@ describe('WhatsAppNotificationService', () => {
       whatsAppConnectionService as IWhatsAppConnectionService,
       customerRepository as ICustomerRepository,
       restaurantRepository as IRestaurantRepository,
+      overrides.payment === undefined
+        ? undefined
+        : ({ findByOrderId: jest.fn().mockResolvedValue(overrides.payment) } as Partial<IPaymentRepository> as IPaymentRepository),
     );
 
     return { service, customerRepository, restaurantRepository, whatsAppConnectionService };
   }
 
   describe('sendOrderReceipt', () => {
+    // specs/0226 AC-B6 / REQ-B7.
+    it('specs/0226 AC-B6: Pix do Mercado Pago — recibo e copia e cola usam o código da cobrança, não o da chave manual', async () => {
+      const { service, whatsAppConnectionService } = setup({
+        restaurant: { id: 'r-1', name: 'Prime Pizza', slug: 'primepizza', whatsappConnected: true, pixKey: '81507020325' },
+        payment: { method: 'pix', status: 'pendente', provider: 'mercadopago', pixPayload: '00020101...copia-e-cola-mp' },
+      });
+
+      await service.sendOrderReceipt(buildOrder({ paymentMethod: 'pix' }));
+
+      const calls = (whatsAppConnectionService.sendMessage as jest.Mock).mock.calls;
+      expect(calls[1]).toEqual(['r-1', '11999999999', '00020101...copia-e-cola-mp']);
+      expect(calls[0][2]).not.toContain('br.gov.bcb.pix');
+    });
+
+    it('specs/0226 REQ-B7: sem cobrança do provedor (pixPayload ausente) continua com o código da chave manual', async () => {
+      const { service, whatsAppConnectionService } = setup({
+        restaurant: { id: 'r-1', name: 'Prime Pizza', slug: 'primepizza', whatsappConnected: true, pixKey: '81507020325' },
+        payment: { method: 'pix', status: 'pendente' },
+      });
+
+      await service.sendOrderReceipt(buildOrder({ paymentMethod: 'pix' }));
+
+      const calls = (whatsAppConnectionService.sendMessage as jest.Mock).mock.calls;
+      expect(calls[1]).toEqual(['r-1', '11999999999', expect.stringMatching(/^000201.*br\.gov\.bcb\.pix/)]);
+    });
+
     it('AC-1: envia o recibo pro telefone do cliente quando conectado', async () => {
       const { service, whatsAppConnectionService } = setup();
 

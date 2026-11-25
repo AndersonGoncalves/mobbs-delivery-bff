@@ -228,8 +228,23 @@ export class CashRegisterController extends BaseRouter {
     application.post('/restaurants/me/cash-register/open', ...authenticated, async (req: Request, res: Response) => {
       await this.cashRegisterService.ensureAutomaticSchedule(req.restaurantId!);
       const { openingBalance } = parseBody(openCashRegisterSchema, req.body);
-      const session = await this.cashRegisterRepository.open(req.restaurantId!, openingBalance, req.operatorId);
-      res.json(201, session);
+      try {
+        const session = await this.cashRegisterRepository.open(req.restaurantId!, openingBalance, req.operatorId);
+        res.json(201, session);
+      } catch (error) {
+        // Achado real (23/11/2026) — em restaurantes com `cashRegisterMode: 'automatic'`, o
+        // `ensureAutomaticSchedule` acima já pode ter aberto a sessão de hoje alguns milissegundos
+        // antes desta mesma requisição tentar abrir de novo manualmente, batendo no índice único e
+        // devolvendo um `ConflictError` genérico (sem id/data) só porque o próprio request se
+        // autoconflitou — não porque o usuário tentou abrir um caixa que já estava aberto antes do
+        // clique. `findOpenSessionByRestaurant` só enxerga a sessão de HOJE (nunca uma pendente de
+        // dia anterior — ver comentário no repository), então nesse caso específico devolvemos a
+        // sessão que acabou de ser aberta como sucesso. Pendência de dia anterior continua
+        // propagando o erro normalmente (AC-8), pois não há sessão aberta hoje pra encontrar aqui.
+        const openToday = await this.cashRegisterRepository.findOpenSessionByRestaurant(req.restaurantId!);
+        if (!openToday) throw error;
+        res.json(200, openToday);
+      }
     });
 
     // AC-6 — lançamento manual (entrada ou saída), só numa sessão aberta e do próprio restaurante.
