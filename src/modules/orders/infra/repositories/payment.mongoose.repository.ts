@@ -1,4 +1,4 @@
-import { IPayment, PaymentMethod, PaymentStatus } from '../../domain/entities/order.entity';
+import { IPayment, PaymentMethod, PaymentProvider, PaymentStatus } from '../../domain/entities/order.entity';
 import { IPaymentRepository } from '../../domain/repositories/payment.repository.interface';
 import { PaymentModel } from '../models/payment.mongoose.model';
 
@@ -12,6 +12,7 @@ interface PaymentLeanDocument {
   externalReference?: string;
   pixPayload?: string;
   checkoutUrl?: string;
+  provider?: PaymentProvider;
 }
 
 function toEntity(doc: PaymentLeanDocument): IPayment {
@@ -25,6 +26,7 @@ function toEntity(doc: PaymentLeanDocument): IPayment {
     externalReference: doc.externalReference,
     pixPayload: doc.pixPayload,
     checkoutUrl: doc.checkoutUrl,
+    provider: doc.provider,
   };
 }
 
@@ -51,7 +53,7 @@ export class PaymentMongooseRepository implements IPaymentRepository {
 
   // specs/0101-integracao-asaas (fase 1).
   async setAsaasPixDetails(orderId: string, data: { externalReference: string; pixPayload: string }): Promise<IPayment> {
-    const doc = await PaymentModel.findOneAndUpdate({ orderId }, { $set: data }, { new: true }).lean<PaymentLeanDocument>();
+    const doc = await PaymentModel.findOneAndUpdate({ orderId }, { $set: { ...data, provider: 'asaas' } }, { new: true }).lean<PaymentLeanDocument>();
     return toEntity(doc as PaymentLeanDocument);
   }
 
@@ -66,13 +68,13 @@ export class PaymentMongooseRepository implements IPaymentRepository {
 
   // specs/0170-integracao-mercado-pago.
   async setMercadoPagoCheckoutDetails(orderId: string, data: { externalReference: string; checkoutUrl: string }): Promise<IPayment> {
-    const doc = await PaymentModel.findOneAndUpdate({ orderId }, { $set: data }, { new: true }).lean<PaymentLeanDocument>();
+    const doc = await PaymentModel.findOneAndUpdate({ orderId }, { $set: { ...data, provider: 'mercadopago' } }, { new: true }).lean<PaymentLeanDocument>();
     return toEntity(doc as PaymentLeanDocument);
   }
 
   // specs/0101-integracao-asaas (fase 2).
   async setAsaasCheckoutDetails(orderId: string, data: { externalReference: string; checkoutUrl: string }): Promise<IPayment> {
-    const doc = await PaymentModel.findOneAndUpdate({ orderId }, { $set: data }, { new: true }).lean<PaymentLeanDocument>();
+    const doc = await PaymentModel.findOneAndUpdate({ orderId }, { $set: { ...data, provider: 'asaas' } }, { new: true }).lean<PaymentLeanDocument>();
     return toEntity(doc as PaymentLeanDocument);
   }
 

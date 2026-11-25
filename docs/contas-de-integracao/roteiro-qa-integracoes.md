@@ -53,10 +53,11 @@ de teste (painel → Cartões de teste).
    aprovado.
 7. Teste **cancelamento de pedido pago** — o valor deve ser estornado.
 
-**Limitações conhecidas — reporte, mas saiba que já estão mapeadas (`specs/0226` parte A):**
-- o valor cobrado no Mercado Pago ainda **não inclui a taxa de entrega/descontos**;
-- o **estorno** do cartão online pode falhar;
-- o checkout de cartão ainda deixa pagar com **Pix** lá dentro (o pedido aparece como cartão online).
+**Confira com atenção (corrigido em 24/11/2026, `specs/0226` parte A — primeira vez testado com
+pagamento de verdade no sandbox):**
+- o valor cobrado no Mercado Pago tem que ser o **total do pedido**, com taxa de entrega e descontos;
+- o **estorno** do cartão online tem que funcionar no cancelamento;
+- o checkout de cartão **não** pode oferecer Pix nem boleto.
 
 ---
 

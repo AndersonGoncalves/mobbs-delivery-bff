@@ -2881,54 +2881,25 @@ describe('OrdersController', () => {
       MockedAsaasClient.prototype.refundCharge = jest.fn().mockResolvedValue(undefined);
     });
 
-    it('restaurante com Asaas vinculado (sem Mercado Pago) cria o checkout e persiste checkoutUrl/externalReference', async () => {
-      const { paymentRepository, restaurantRepository, routes } = setup({
+    // specs/0226 REQ-A6 (decisão do usuário, 24/11/2026) — cartão online só pelo Mercado Pago: o
+    // checkout de cartão do Asaas deixou de ser criado; restaurante só com Asaas não tem mais
+    // gateway de cartão online.
+    it('specs/0226 AC-A6: restaurante só com Asaas (sem Mercado Pago) é 400 e nunca cria checkout no Asaas', async () => {
+      const { paymentRepository, routes } = setup({
         restaurantRepository: {
           findById: jest.fn().mockResolvedValue(buildRestaurant({ onlinePaymentsEnabled: true, asaasApiKey: 'key-subconta', asaasCheckoutWebhookRegistered: true })),
-          markAsaasCheckoutWebhookRegistered: jest.fn(),
         },
       });
 
-      await runAuthenticatedChain(
-        routes['POST /orders'],
-        { body: buildValidBody({ paymentMethod: 'creditCardOnline' }), user: { uid: 'customer-1' } },
-        { json: jest.fn() },
-      );
-
-      expect(MockedAsaasClient.prototype.createCheckout).toHaveBeenCalledWith(expect.objectContaining({ externalReference: 'o-1' }));
-      expect(paymentRepository.setAsaasCheckoutDetails).toHaveBeenCalledWith('o-1', {
-        externalReference: 'chk_1',
-        checkoutUrl: 'https://asaas.com/checkoutSession/show?id=chk_1',
-      });
-      expect(restaurantRepository.markAsaasCheckoutWebhookRegistered).not.toHaveBeenCalled();
-    });
-
-    it('primeiro pedido com cartão online registra o webhook de checkout sob demanda antes de criar o checkout', async () => {
-      const { restaurantRepository, routes } = setup({
-        restaurantRepository: {
-          findById: jest.fn().mockResolvedValue(buildRestaurant({
-            onlinePaymentsEnabled: true,
-            asaasApiKey: 'key-subconta',
-            asaasWebhookToken: 'webhook-token-1',
-            asaasCheckoutWebhookRegistered: false,
-          })),
-          markAsaasCheckoutWebhookRegistered: jest.fn().mockResolvedValue(buildRestaurant()),
-        },
-      });
-
-      await runAuthenticatedChain(
-        routes['POST /orders'],
-        { body: buildValidBody({ paymentMethod: 'creditCardOnline' }), user: { uid: 'customer-1' } },
-        { json: jest.fn() },
-      );
-
-      expect(MockedAsaasClient.prototype.createCheckoutWebhook).toHaveBeenCalledWith(
-        expect.stringContaining('/webhooks/asaas/r-1'),
-        'webhook-token-1',
-        expect.any(String),
-      );
-      expect(restaurantRepository.markAsaasCheckoutWebhookRegistered).toHaveBeenCalledWith('r-1');
-      expect(MockedAsaasClient.prototype.createCheckout).toHaveBeenCalled();
+      await expect(
+        runAuthenticatedChain(
+          routes['POST /orders'],
+          { body: buildValidBody({ paymentMethod: 'creditCardOnline' }), user: { uid: 'customer-1' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 400 });
+      expect(MockedAsaasClient.prototype.createCheckout).not.toHaveBeenCalled();
+      expect(paymentRepository.setAsaasCheckoutDetails).not.toHaveBeenCalled();
     });
 
     it('restaurante com Mercado Pago E Asaas vinculados: Mercado Pago tem prioridade, Asaas nunca é chamado', async () => {
@@ -2971,26 +2942,6 @@ describe('OrdersController', () => {
       expect(paymentRepository.setAsaasCheckoutDetails).not.toHaveBeenCalled();
     });
 
-    it('falha do Asaas (rede/API) não derruba a criação do pedido, mas não preenche checkoutUrl (sem fallback local)', async () => {
-      jest.spyOn(console, 'error').mockImplementation(() => undefined);
-      MockedAsaasClient.prototype.createCheckout = jest.fn().mockRejectedValue(new Error('Asaas API respondeu 500'));
-      const { paymentRepository, routes } = setup({
-        restaurantRepository: {
-          findById: jest.fn().mockResolvedValue(buildRestaurant({ onlinePaymentsEnabled: true, asaasApiKey: 'key-subconta', asaasCheckoutWebhookRegistered: true })),
-        },
-      });
-      const json = jest.fn();
-
-      await runAuthenticatedChain(
-        routes['POST /orders'],
-        { body: buildValidBody({ paymentMethod: 'creditCardOnline' }), user: { uid: 'customer-1' } },
-        { json },
-      );
-
-      expect(paymentRepository.setAsaasCheckoutDetails).not.toHaveBeenCalled();
-      expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ id: 'o-1' }));
-    });
-
     it('PATCH /orders/:id/cancel: cartão online (Asaas) já aprovado dispara estorno pelo id do pagamento real e marca o Payment como estornado', async () => {
       const { paymentRepository, routes } = setup({
         orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ paymentMethod: 'creditCardOnline' })) },
@@ -3005,6 +2956,44 @@ describe('OrdersController', () => {
 
       expect(MockedAsaasClient.prototype.refundCharge).toHaveBeenCalledWith('pay_real_1');
       expect(paymentRepository.markAsRefunded).toHaveBeenCalledWith('o-1');
+    });
+
+    // specs/0226 REQ-A5 — o estorno vai pra quem cobrou (`payment.provider`), não pelo vínculo atual.
+    it('specs/0226 AC-A5: cartão cobrado pelo Asaas é estornado no Asaas mesmo se o restaurante vinculou o Mercado Pago depois', async () => {
+      const MockedMercadoPagoClient = MercadoPagoClient as jest.MockedClass<typeof MercadoPagoClient>;
+      MockedMercadoPagoClient.prototype.refundPayment = jest.fn().mockResolvedValue(undefined);
+      const { paymentRepository, routes } = setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ paymentMethod: 'creditCardOnline' })) },
+        paymentRepository: {
+          findByOrderId: jest.fn().mockResolvedValue(buildPayment({ method: 'creditCardOnline', status: 'aprovado', externalReference: 'pay_real_1', provider: 'asaas' })),
+          markAsRefunded: jest.fn().mockResolvedValue(buildPayment({ method: 'creditCardOnline', status: 'estornado' })),
+        },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ asaasApiKey: 'key-subconta', mercadoPagoAccessToken: 'token-restaurante' })) },
+      });
+
+      await runAuthenticatedChain(routes['PATCH /orders/:id/cancel'], { params: { id: 'o-1' }, user: { uid: 'customer-1' } }, { json: jest.fn() });
+
+      expect(MockedAsaasClient.prototype.refundCharge).toHaveBeenCalledWith('pay_real_1');
+      expect(MockedMercadoPagoClient.prototype.refundPayment).not.toHaveBeenCalled();
+      expect(paymentRepository.markAsRefunded).toHaveBeenCalledTimes(1);
+    });
+
+    it('specs/0226 AC-A5: cartão cobrado pelo Mercado Pago nunca é estornado no Asaas, mesmo com Asaas configurado', async () => {
+      const MockedMercadoPagoClient = MercadoPagoClient as jest.MockedClass<typeof MercadoPagoClient>;
+      MockedMercadoPagoClient.prototype.refundPayment = jest.fn().mockResolvedValue(undefined);
+      const { routes } = setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ paymentMethod: 'creditCardOnline' })) },
+        paymentRepository: {
+          findByOrderId: jest.fn().mockResolvedValue(buildPayment({ method: 'creditCardOnline', status: 'aprovado', externalReference: 'mp-pay-99', provider: 'mercadopago' })),
+          markAsRefunded: jest.fn().mockResolvedValue(buildPayment({ method: 'creditCardOnline', status: 'estornado' })),
+        },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ asaasApiKey: 'key-subconta', mercadoPagoAccessToken: 'token-restaurante' })) },
+      });
+
+      await runAuthenticatedChain(routes['PATCH /orders/:id/cancel'], { params: { id: 'o-1' }, user: { uid: 'customer-1' } }, { json: jest.fn() });
+
+      expect(MockedAsaasClient.prototype.refundCharge).not.toHaveBeenCalled();
+      expect(MockedMercadoPagoClient.prototype.refundPayment).toHaveBeenCalledWith('token-restaurante', 'mp-pay-99');
     });
 
     it('PATCH /orders/:id/cancel: cartão online (Asaas) ainda pendente (nunca pago) não tenta estornar', async () => {
@@ -3083,20 +3072,58 @@ describe('OrdersController', () => {
       expect(MockedMercadoPagoClient.prototype.createPreference).toHaveBeenCalled();
     });
 
-    it('specs/0209: isAsaasIntegrationEnabled sozinho já basta (OR, não precisa dos dois)', async () => {
+    // specs/0226 REQ-A6 — substitui o "Asaas sozinho já basta" da specs/0209: o cartão online passou
+    // a ser só pelo Mercado Pago, então o switch do Asaas não libera mais nada.
+    it('specs/0226 AC-A6: isAsaasIntegrationEnabled sozinho NÃO libera mais creditCardOnline (403)', async () => {
       const platformConfigRepository = buildPlatformConfigRepository({ isAsaasIntegrationEnabled: jest.fn().mockResolvedValue(true) });
       const { routes } = setup({
         restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ mercadoPagoAccessToken: 'token-restaurante' })) },
         platformConfigRepository,
       });
 
+      await expect(
+        runAuthenticatedChain(
+          routes['POST /orders'],
+          { body: buildValidBody({ paymentMethod: 'creditCardOnline' }), user: { uid: 'customer-1' } },
+          { json: jest.fn() },
+        ),
+      ).rejects.toMatchObject({ statusCode: 403 });
+      expect(MockedMercadoPagoClient.prototype.createPreference).not.toHaveBeenCalled();
+    });
+
+    it('specs/0226 AC-A1: a preferência cobra o TOTAL do pedido (com taxa de entrega) num item único', async () => {
+      const { routes } = setup({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ mercadoPagoAccessToken: 'token-restaurante', deliveryFeeMode: 'fixed', deliveryFeeCents: 800 })) },
+      });
+      const json = jest.fn();
+
       await runAuthenticatedChain(
         routes['POST /orders'],
         { body: buildValidBody({ paymentMethod: 'creditCardOnline' }), user: { uid: 'customer-1' } },
-        { json: jest.fn() },
+        { json },
       );
 
-      expect(MockedMercadoPagoClient.prototype.createPreference).toHaveBeenCalled();
+      const created = json.mock.calls[0][1];
+      expect(created.deliveryFee).toBeGreaterThan(0);
+      expect(MockedMercadoPagoClient.prototype.createPreference).toHaveBeenCalledWith(
+        'token-restaurante',
+        expect.objectContaining({ items: [{ title: expect.stringContaining('Pedido #1'), quantity: 1, unitPrice: created.total }] }),
+      );
+    });
+
+    it('specs/0226 AC-A5: cartão cobrado pelo Asaas nunca é estornado no Mercado Pago', async () => {
+      const { routes } = setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ paymentMethod: 'creditCardOnline' })) },
+        paymentRepository: {
+          findByOrderId: jest.fn().mockResolvedValue(buildPayment({ method: 'creditCardOnline', status: 'aprovado', externalReference: 'pay_real_1', provider: 'asaas' })),
+          markAsRefunded: jest.fn().mockResolvedValue(buildPayment({ method: 'creditCardOnline', status: 'estornado' })),
+        },
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ mercadoPagoAccessToken: 'token-restaurante' })) },
+      });
+
+      await runAuthenticatedChain(routes['PATCH /orders/:id/cancel'], { params: { id: 'o-1' }, user: { uid: 'customer-1' } }, { json: jest.fn() });
+
+      expect(MockedMercadoPagoClient.prototype.refundPayment).not.toHaveBeenCalled();
     });
 
     it('AC-3/REQ-3: POST /orders rejeita (400) creditCardOnline quando o restaurante não tem Mercado Pago vinculado', async () => {

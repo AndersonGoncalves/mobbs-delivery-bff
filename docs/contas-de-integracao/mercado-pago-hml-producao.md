@@ -89,15 +89,16 @@ Os passos longos (criar aplicação, credenciais, contas de teste) **não se rep
 ## 3. Produção — o que fazer
 
 Só depois da homologação aprovada e das decisões do §5 e §6. **Pré-requisito de código:** a parte A
-da `specs/0226` (valor cobrado com taxa de entrega/descontos, estorno com o id certo, Pix fora do
-checkout de cartão, webhook conferindo o restaurante, campo de provedor, cartão só pelo Mercado
-Pago) — sem ela, o cartão online cobra o valor errado em produção.
+da `specs/0226` — **implementada em 24/11/2026** (valor total com taxa de entrega/descontos, estorno
+com o id do pagamento, Pix/boleto fora do checkout de cartão, webhook conferindo o restaurante e
+consultando com o token dele, campo de provedor, cartão só pelo Mercado Pago). Falta validar com
+pagamento real no sandbox (homologação) antes de produção.
 
 | Item | Teste (local/hml) | Produção |
 |---|---|---|
 | Aplicação | BsDelivery Teste | a mesma aplicação (renomeada) — ou uma nova, se §5/§6 exigirem |
 | Client ID / Secret | os atuais | os mesmos (Secret **renovado**) |
-| Token da plataforma | de teste | de **produção**, **renovado** (pode deixar de ser necessário — §6.1) |
+| Token da plataforma | de teste | **não é mais necessário** (desde a parte A da `specs/0226`, o webhook consulta com o token do restaurante) |
 | Webhook | modo de teste | **modo de produção**: `https://api.bsdelivery.com.br/webhooks/mercadopago`, evento de pagamento, **outra** assinatura secreta |
 | URL de redirecionamento | hml | `https://bsdelivery.com.br/painel/settings/mercadopago/callback` |
 | Quem vincula | conta de teste | **cada restaurante, com a conta Mercado Pago real dele** |
@@ -107,8 +108,9 @@ Pago) — sem ela, o cartão online cobra o valor errado em produção.
       aplicativo…").
 - [ ] Renovar o **Client Secret** e colar direto no `.env.prd` (sem passar por chat/print).
 - [ ] Configurar no `.env.prd`: `MERCADOPAGO_CLIENT_ID`, `MERCADOPAGO_CLIENT_SECRET`,
-      `MERCADOPAGO_PLATFORM_ACCESS_TOKEN` (produção, renovado), `MERCADOPAGO_WEBHOOK_SECRET` (do modo
-      de produção), `MERCADOPAGO_REDIRECT_URI` (de produção).
+      `MERCADOPAGO_WEBHOOK_SECRET` (do modo de produção), `MERCADOPAGO_REDIRECT_URI` (de produção).
+      `MERCADOPAGO_PLATFORM_ACCESS_TOKEN` **não precisa** (a sua conta deixa de ter segredo no
+      servidor).
 - [ ] Levar ao servidor o `docker-compose.yml` novo (`specs/0215` T017 — sem ele as variáveis
       `MERCADOPAGO_*` não chegam ao container). **Antes, conferir o `.env` de produção**: as 22
       variáveis que passam a ser repassadas começam a valer.
@@ -140,7 +142,10 @@ aplicação); o token de produção dela é o que o BFF usa hoje pra consultar p
 
 ## 6. Pendências técnicas
 
-### 6.1 Consulta do pagamento com o token da plataforma
+### 6.1 Consulta do pagamento com o token da plataforma — resolvido (parte A da `specs/0226`)
+
+Desde 24/11/2026 o webhook acha o restaurante pelo `user_id` do aviso e consulta o pagamento com o
+token dele. Texto original abaixo, como histórico.
 
 O webhook consulta o pagamento com `MERCADOPAGO_PLATFORM_ACCESS_TOKEN` (conta da plataforma), mas o
 pagamento pertence à **conta do restaurante**. O Mercado Pago pode recusar (404). Ainda **não

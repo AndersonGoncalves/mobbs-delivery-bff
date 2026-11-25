@@ -82,12 +82,14 @@ describe('MercadoPagoClient (specs/0170-integracao-mercado-pago)', () => {
       external_reference: 'o-1',
       notification_url: 'https://api.bsdelivery.com.br/webhooks/mercadopago',
       auto_return: 'all',
+      // specs/0226 AC-A2 — checkout de cartão sem Pix (bank_transfer) nem boleto (ticket).
+      payment_methods: { excluded_payment_types: [{ id: 'bank_transfer' }, { id: 'ticket' }] },
     });
     expect(result).toEqual({ id: 'pref-1', initPoint: 'https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=pref-1' });
   });
 
-  it('getPayment: GET /v1/payments/:id devolve status e external_reference', async () => {
-    mockFetchOnce(200, { status: 'approved', external_reference: 'o-1' });
+  it('getPayment: GET /v1/payments/:id devolve id do pagamento, status e external_reference', async () => {
+    mockFetchOnce(200, { id: 1234567890, status: 'approved', external_reference: 'o-1' });
 
     const result = await client.getPayment('app-access-token', 'pay-1');
 
@@ -95,7 +97,8 @@ describe('MercadoPagoClient (specs/0170-integracao-mercado-pago)', () => {
       'https://api.mercadopago.com/v1/payments/pay-1',
       expect.objectContaining({ method: 'GET', headers: expect.objectContaining({ Authorization: 'Bearer app-access-token' }) }),
     );
-    expect(result).toEqual({ status: 'approved', externalReference: 'o-1' });
+    // specs/0226 REQ-A3 — id do PAGAMENTO (número no Mercado Pago, devolvido como string).
+    expect(result).toEqual({ id: '1234567890', status: 'approved', externalReference: 'o-1' });
   });
 
   it('refundPayment: POST /v1/payments/:id/refunds sem corpo (estorno total)', async () => {

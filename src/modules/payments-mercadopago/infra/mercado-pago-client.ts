@@ -33,6 +33,9 @@ export interface MercadoPagoPreferenceResult {
 }
 
 export interface MercadoPagoPaymentResult {
+  /** specs/0226 REQ-A3 — id do PAGAMENTO no Mercado Pago (diferente do id da preferência); é o
+   * que o estorno (`refundPayment`) espera. */
+  id: string;
   status: string;
   externalReference: string;
 }
@@ -126,17 +129,20 @@ export class MercadoPagoClient {
       notification_url: input.notificationUrl,
       back_urls: { success: input.backUrls.success, failure: input.backUrls.failure, pending: input.backUrls.pending },
       auto_return: 'all',
+      // specs/0226 REQ-A2 — checkout de CARTÃO: sem Pix (`bank_transfer`) nem boleto (`ticket`).
+      // Antes nada era excluído e o cliente podia pagar com Pix lá dentro — o pedido era
+      // confirmado e lançado no caixa como "cartão online".
+      payment_methods: { excluded_payment_types: [{ id: 'bank_transfer' }, { id: 'ticket' }] },
     });
     return { id: result.id, initPoint: result.init_point };
   }
 
-  /** `GET /v1/payments/:id` — chamado na recepção do webhook com o `accessToken` da APLICAÇÃO
-   * (`client_credentials`, não o de um restaurante específico: no momento do webhook ainda não
-   * sabemos de qual restaurante é o pagamento — é `external_reference`, devolvido aqui, que
-   * resolve isso). */
+  /** `GET /v1/payments/:id` — chamado na recepção do webhook com o `accessToken` DO RESTAURANTE
+   * dono do pagamento (specs/0226 REQ-A4: o restaurante é achado pelo `user_id` do aviso; antes
+   * usava o token da aplicação, que pode não enxergar pagamento de outra conta). */
   async getPayment(accessToken: string, paymentId: string): Promise<MercadoPagoPaymentResult> {
-    const result = await this.request<{ status: string; external_reference: string }>('GET', `/v1/payments/${paymentId}`, accessToken);
-    return { status: result.status, externalReference: result.external_reference };
+    const result = await this.request<{ id: number | string; status: string; external_reference: string }>('GET', `/v1/payments/${paymentId}`, accessToken);
+    return { id: String(result.id), status: result.status, externalReference: result.external_reference };
   }
 
   /** `POST /v1/payments/:id/refunds` com o `accessToken` DO RESTAURANTE — sem corpo = estorno

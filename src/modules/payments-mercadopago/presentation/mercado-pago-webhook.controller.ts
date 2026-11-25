@@ -1,6 +1,6 @@
 import { createHmac } from 'crypto';
 import type { Request, Response, Server } from 'restify';
-import { ConflictError, NotFoundError, UnauthorizedError } from 'restify-errors';
+import { BadRequestError, ConflictError, NotFoundError, UnauthorizedError } from 'restify-errors';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { environment } from '../../../shared/config/environment';
@@ -16,9 +16,13 @@ import { MercadoPagoClient } from '../infra/mercado-pago-client';
 /**
  * specs/0170-integracao-mercado-pago (REQ-6) — recebe os webhooks de pagamento do Mercado Pago,
  * `POST /webhooks/mercadopago`, endpoint ÚNICO e GLOBAL (diferente do Asaas, que registra uma
- * URL por restaurante): o Mercado Pago não manda o restaurante na URL, por isso o pedido (e,
- * através dele, o restaurante) só é conhecido depois de consultar `GET /v1/payments/{id}` com
- * o `external_reference` que a gente mesmo gravou na criação da preferência.
+ * URL por restaurante).
+ *
+ * specs/0226 REQ-A3/REQ-A4 — o restaurante é achado pelo `user_id` do aviso (a conta Mercado Pago
+ * dona do pagamento, gravada no vínculo OAuth como `mercadoPagoUserId`), e o pagamento é
+ * consultado com o token DELE (antes: token da aplicação, que pode não enxergar pagamento de outra
+ * conta). O pedido (`external_reference`) precisa ser desse mesmo restaurante. Ao aprovar, grava o
+ * id do PAGAMENTO no `externalReference` (antes ficava o id da preferência, e o estorno falhava).
  *
  * Validação por assinatura (`x-signature: ts=<ts>,v1=<hash>`), segredo da APLICAÇÃO (não por
  * restaurante — ver `environment.mercadoPago.webhookSecret`). Contrato de assinatura
@@ -65,7 +69,7 @@ export class MercadoPagoWebhookController extends BaseRouter {
     // Achado de auditoria (06/11/2026) — sem Firebase por trás, rate limit por IP antes de
     // calcular a assinatura HMAC (evita gastar CPU com isso a cada tentativa num flood).
     application.post('/webhooks/mercadopago', webhookRateLimitMiddleware, async (req: Request, res: Response) => {
-      const body = req.body as { type?: string; data?: { id?: string } };
+      const body = req.body as { type?: string; data?: { id?: string }; user_id?: string | number };
       const paymentId = body.data?.id;
 
       if (!body.type || body.type !== 'payment' || !paymentId) {
@@ -77,12 +81,22 @@ export class MercadoPagoWebhookController extends BaseRouter {
         throw new UnauthorizedError('Assinatura de webhook inválida');
       }
 
-      if (!environment.mercadoPago.platformAccessToken) {
-        throw new Error('MERCADOPAGO_PLATFORM_ACCESS_TOKEN não configurado — não é possível consultar o pagamento recebido.');
+      // specs/0226 REQ-A4 — conta Mercado Pago dona do pagamento → restaurante vinculado a ela.
+      const mercadoPagoUserId = body.user_id === undefined || body.user_id === null ? '' : String(body.user_id);
+      if (!mercadoPagoUserId) {
+        throw new BadRequestError('Aviso do Mercado Pago sem user_id');
+      }
+      const restaurant = await this.restaurantRepository.findByMercadoPagoUserId(mercadoPagoUserId);
+      if (!restaurant?.mercadoPagoAccessToken) {
+        // Conta que não está vinculada a nenhum restaurante (ex.: a própria conta da aplicação,
+        // ou o "Simular notificação" do painel): nada a fazer aqui — 200 pra não gerar reenvio.
+        console.warn(`[mercadopago] aviso de pagamento ${paymentId} de uma conta (${mercadoPagoUserId}) sem restaurante vinculado — ignorado`);
+        res.send(200);
+        return;
       }
 
       const client = new MercadoPagoClient(environment.mercadoPago.clientId ?? '', environment.mercadoPago.clientSecret ?? '', environment.mercadoPago.baseUrl);
-      const mpPayment = await client.getPayment(environment.mercadoPago.platformAccessToken, paymentId);
+      const mpPayment = await client.getPayment(restaurant.mercadoPagoAccessToken, paymentId);
 
       if (!mpPayment.externalReference) {
         res.send(200);
@@ -93,9 +107,12 @@ export class MercadoPagoWebhookController extends BaseRouter {
       if (!order) {
         throw new NotFoundError('Pedido não encontrado');
       }
+      if (order.restaurantId !== restaurant.id) {
+        throw new ConflictError('Pagamento não pertence ao restaurante do pedido');
+      }
 
       const payment = await this.paymentRepository.findByOrderId(order.id);
-      if (!payment || payment.method !== 'creditCardOnline') {
+      if (!payment || payment.method !== 'creditCardOnline' || payment.provider === 'asaas') {
         throw new ConflictError('Pedido não tem pagamento de cartão online via Mercado Pago');
       }
 
@@ -113,6 +130,9 @@ export class MercadoPagoWebhookController extends BaseRouter {
       if (payment.status !== 'pendente') {
         throw new ConflictError('Pagamento não pode ser confirmado');
       }
+
+      // specs/0226 REQ-A3 — a partir daqui `externalReference` é o id do PAGAMENTO (o estorno usa).
+      await this.paymentRepository.updateExternalReference(order.id, mpPayment.id);
 
       const { order: updatedOrder, payment: updatedPayment } = await new ConfirmOnlinePaymentService(
         this.paymentRepository,

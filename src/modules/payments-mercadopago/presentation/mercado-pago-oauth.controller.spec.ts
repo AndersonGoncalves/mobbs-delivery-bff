@@ -124,7 +124,8 @@ describe('MercadoPagoOAuthController (specs/0170-integracao-mercado-pago)', () =
     await runOperatorChain(routes['GET /restaurants/me/mercadopago/config'], {}, { json, send: jest.fn() });
     expect(json).toHaveBeenCalledWith(200, {
       configured: true, clientId: '123456', redirectUri: 'https://bsdelivery.com.br/painel/settings/mercadopago/callback',
-      missing: [], paymentMissing: ['MERCADOPAGO_WEBHOOK_SECRET', 'MERCADOPAGO_PLATFORM_ACCESS_TOKEN'],
+      // specs/0226 REQ-A4 — o token da plataforma não é mais exigido (webhook usa o do restaurante).
+      missing: [], paymentMissing: ['MERCADOPAGO_WEBHOOK_SECRET'],
     });
     expect(JSON.stringify(json.mock.calls)).not.toContain('app-client-secret');
   });
