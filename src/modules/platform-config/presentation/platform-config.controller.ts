@@ -23,6 +23,9 @@ import type { IPlatformConfigRepository } from '../domain/platform-config.reposi
  * janela (ou se o switch nunca foi ativado/está desligado), some pra sempre — reativar reinicia a
  * contagem (novo carimbo a cada ativação, pedido explícito do usuário). Calculado aqui (não no
  * repositório) porque é regra de apresentação do menu, não do domínio do switch em si.
+ *
+ * specs/0226 REQ-A13 (pedido explícito do usuário, 25/11/2026) — Mercado Pago faz parte do
+ * lançamento: não tem `mercadoPagoIntegrationIsNew` (nem carimbo de ativação), nunca é "Novo".
  */
 const NEW_TAG_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -43,7 +46,6 @@ export class PlatformConfigController extends BaseRouter {
         asaasIntegrationEnabled: snapshot.asaasIntegrationEnabled,
         asaasIntegrationIsNew: isNew(snapshot.asaasIntegrationEnabled, snapshot.asaasIntegrationEnabledAt),
         mercadoPagoIntegrationEnabled: snapshot.mercadoPagoIntegrationEnabled,
-        mercadoPagoIntegrationIsNew: isNew(snapshot.mercadoPagoIntegrationEnabled, snapshot.mercadoPagoIntegrationEnabledAt),
         ifoodIntegrationEnabled: snapshot.ifoodIntegrationEnabled,
         ifoodIntegrationIsNew: isNew(snapshot.ifoodIntegrationEnabled, snapshot.ifoodIntegrationEnabledAt),
         ninetyNineFoodIntegrationEnabled: snapshot.ninetyNineFoodIntegrationEnabled,

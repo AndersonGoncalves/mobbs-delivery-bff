@@ -575,6 +575,16 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
     return toEntity(doc as RestaurantLeanDocument);
   }
 
+  // specs/0226 REQ-A15.
+  async disconnectMercadoPago(id: string): Promise<IRestaurant> {
+    const doc = await RestaurantModel.findByIdAndUpdate(
+      id,
+      { $unset: { mercadoPagoAccessToken: 1, mercadoPagoRefreshToken: 1, mercadoPagoUserId: 1, mercadoPagoTokenExpiresAt: 1 } },
+      { new: true },
+    ).lean<RestaurantLeanDocument>();
+    return toEntity(doc as RestaurantLeanDocument);
+  }
+
   // Pedido explícito do usuário (follow-up) — automação de postagens no Instagram.
   async saveInstagramTokens(
     id: string,

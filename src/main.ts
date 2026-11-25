@@ -625,7 +625,7 @@ server
     new AsaasOnboardingController(restaurantRepository, restaurantOperatorMiddleware, platformConfigRepository),
     new AsaasWebhookController(orderRepository, paymentRepository, restaurantRepository, whatsAppNotificationService),
     // specs/0170-integracao-mercado-pago — cobrança de cartão de crédito via Checkout Pro.
-    new MercadoPagoOAuthController(restaurantRepository, restaurantOperatorMiddleware, platformConfigRepository),
+    new MercadoPagoOAuthController(restaurantRepository, restaurantOperatorMiddleware, paymentRepository, platformConfigRepository),
     new InstagramAutomationController(restaurantRepository, instagramPostRepository, restaurantOperatorMiddleware),
     new MercadoPagoWebhookController(orderRepository, paymentRepository, restaurantRepository, whatsAppNotificationService),
     // specs/0106 — painel da plataforma, restrito à lista PLATFORM_ADMIN_EMAILS.

@@ -1,5 +1,6 @@
 import type { Request, Response, Server } from 'restify';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
+import type { IPaymentRepository } from '../../orders/domain/repositories/payment.repository.interface';
 import type { IPlatformConfigRepository } from '../../platform-config/domain/platform-config.repository.interface';
 import { MercadoPagoClient } from '../infra/mercado-pago-client';
 import { MercadoPagoOAuthController } from './mercado-pago-oauth.controller';
@@ -21,6 +22,7 @@ function buildApp() {
   const application = {
     post: (path: string, ...handlers: RouteHandler[]) => { routes[`POST ${path}`] = handlers; },
     get: (path: string, ...handlers: RouteHandler[]) => { routes[`GET ${path}`] = handlers; },
+    del: (path: string, ...handlers: RouteHandler[]) => { routes[`DELETE ${path}`] = handlers; },
   };
   return { application: application as unknown as Server, routes };
 }
@@ -39,15 +41,55 @@ describe('MercadoPagoOAuthController (specs/0170-integracao-mercado-pago)', () =
   });
   afterEach(() => jest.restoreAllMocks());
 
-  function setup(overrides: { restaurantRepository?: Partial<IRestaurantRepository>; platformConfigRepository?: IPlatformConfigRepository } = {}) {
+  function setup(overrides: { restaurantRepository?: Partial<IRestaurantRepository>; platformConfigRepository?: IPlatformConfigRepository; pendingOrderNumbers?: number[] } = {}) {
     const restaurantRepository: Partial<IRestaurantRepository> = {
       saveMercadoPagoTokens: jest.fn().mockResolvedValue({ id: 'r-1', mercadoPagoUserId: '123' }),
+      disconnectMercadoPago: jest.fn().mockResolvedValue({ id: 'r-1' }),
       ...overrides.restaurantRepository,
     };
+    const paymentRepository: Partial<IPaymentRepository> = {
+      findOpenOrderNumbersWithPendingMercadoPagoPayment: jest.fn().mockResolvedValue(overrides.pendingOrderNumbers ?? []),
+    };
     const { application, routes } = buildApp();
-    new MercadoPagoOAuthController(restaurantRepository as IRestaurantRepository, jest.fn(), overrides.platformConfigRepository).initializeRoutes(application);
-    return { restaurantRepository, routes };
+    new MercadoPagoOAuthController(
+      restaurantRepository as IRestaurantRepository,
+      jest.fn(),
+      paymentRepository as IPaymentRepository,
+      overrides.platformConfigRepository,
+    ).initializeRoutes(application);
+    return { restaurantRepository, paymentRepository, routes };
   }
+
+  // specs/0226 AC-A15 — desvincular apaga o vínculo do próprio restaurante.
+  it('AC-A15: DELETE /restaurants/me/mercadopago sem pagamento pendente desvincula e responde 204', async () => {
+    const { restaurantRepository, paymentRepository, routes } = setup();
+    const send = jest.fn();
+
+    await runOperatorChain(routes['DELETE /restaurants/me/mercadopago'], { restaurantId: 'r-1' }, { json: jest.fn(), send });
+
+    expect(paymentRepository.findOpenOrderNumbersWithPendingMercadoPagoPayment).toHaveBeenCalledWith('r-1');
+    expect(restaurantRepository.disconnectMercadoPago).toHaveBeenCalledWith('r-1');
+    expect(send).toHaveBeenCalledWith(204);
+  });
+
+  // specs/0226 AC-A15 — com Pix/cartão do Mercado Pago pendente num pedido aberto, recusa e diz quais.
+  it('AC-A15: com pagamento pendente recusa (409) listando os pedidos e não desvincula', async () => {
+    const { restaurantRepository, routes } = setup({ pendingOrderNumbers: [12, 15] });
+
+    await expect(
+      runOperatorChain(routes['DELETE /restaurants/me/mercadopago'], { restaurantId: 'r-1' }, { json: jest.fn(), send: jest.fn() }),
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      message: 'Há pedidos com pagamento pelo Mercado Pago ainda pendente (#12, #15). Aguarde o pagamento ou cancele esses pedidos antes de desvincular.',
+    });
+    expect(restaurantRepository.disconnectMercadoPago).not.toHaveBeenCalled();
+  });
+
+  it('AC-A15: DELETE /restaurants/me/mercadopago exige operador dono (mesma cadeia do vínculo)', () => {
+    const { routes } = setup();
+    expect(routes['DELETE /restaurants/me/mercadopago']).toHaveLength(4);
+    expect(routes['POST /restaurants/me/mercadopago/callback']).toHaveLength(4);
+  });
 
   // specs/0209-desacoplar-integracoes-cnpj-plataforma REQ-2 (substitui specs/0201 REQ-2).
   it('specs/0209: switch do Mercado Pago desabilitado rejeita a conexão sem chamar o Mercado Pago', async () => {

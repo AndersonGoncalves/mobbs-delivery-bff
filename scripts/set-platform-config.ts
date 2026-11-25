@@ -39,6 +39,9 @@
  * `platform-config.controller.ts`). Reativar um switch já ligado antes (desligar e ligar de novo)
  * regrava o carimbo com a data atual, reiniciando a contagem — pedido explícito do usuário
  * (11/11/2026).
+ *
+ * Exceção: `mercadoPagoIntegrationEnabled` não carimba data — o Mercado Pago faz parte do
+ * lançamento e nunca mostra "Novo" (specs/0226 REQ-A13).
  */
 import * as dotenv from 'dotenv';
 import mongoose from 'mongoose';
@@ -59,6 +62,9 @@ const VALID_KEYS = [
   'instagramAutomationEnabled',
 ] as const;
 type ConfigKey = (typeof VALID_KEYS)[number];
+
+// specs/0226 REQ-A13 — switches sem tag "Novo", portanto sem carimbo de ativação.
+const KEYS_WITHOUT_NEW_TAG: readonly ConfigKey[] = ['mercadoPagoIntegrationEnabled'];
 
 function parseArgs(argv: string[]): Record<string, string> {
   const args: Record<string, string> = {};
@@ -89,7 +95,7 @@ async function main(): Promise<void> {
     const update: Record<string, unknown> = { [key]: nextValue };
     // Carimba a data só ao ATIVAR (nunca ao desligar) — reativar depois regrava com a data atual,
     // reiniciando os 10 dias da tag "Novo" (pedido explícito do usuário).
-    if (nextValue) update[`${key}At`] = new Date();
+    if (nextValue && !KEYS_WITHOUT_NEW_TAG.includes(key as ConfigKey)) update[`${key}At`] = new Date();
     await PlatformConfigModel.updateOne(
       { _id: PLATFORM_CONFIG_SINGLETON_ID },
       { $set: update },

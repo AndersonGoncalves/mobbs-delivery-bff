@@ -80,7 +80,6 @@ describe('PlatformConfigMongooseRepository (specs/0209-desacoplar-integracoes-cn
         asaasIntegrationEnabled: false,
         asaasIntegrationEnabledAt: undefined,
         mercadoPagoIntegrationEnabled: false,
-        mercadoPagoIntegrationEnabledAt: undefined,
         ifoodIntegrationEnabled: false,
         ifoodIntegrationEnabledAt: undefined,
         ninetyNineFoodIntegrationEnabled: false,

@@ -1,5 +1,5 @@
 import type { Request, Response, Server } from 'restify';
-import { ForbiddenError, ServiceUnavailableError } from 'restify-errors';
+import { ConflictError, ForbiddenError, ServiceUnavailableError } from 'restify-errors';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
@@ -7,6 +7,7 @@ import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middl
 import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { environment } from '../../../shared/config/environment';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
+import type { IPaymentRepository } from '../../orders/domain/repositories/payment.repository.interface';
 import type { IPlatformConfigRepository } from '../../platform-config/domain/platform-config.repository.interface';
 import { MercadoPagoClient } from '../infra/mercado-pago-client';
 import { mercadoPagoOAuthCallbackSchema } from './mercado-pago-oauth.schemas';
@@ -25,6 +26,8 @@ export class MercadoPagoOAuthController extends BaseRouter {
   constructor(
     private readonly restaurantRepository: IRestaurantRepository,
     private readonly restaurantOperatorMiddleware: AsyncHandler,
+    // specs/0226 REQ-A15 — bloqueia o "Desvincular" com pagamento do Mercado Pago pendente.
+    private readonly paymentRepository: IPaymentRepository,
     // specs/0201-controle-integracoes-cnpj-plataforma — opcional só pra não quebrar composição/
     // testes existentes que não injetam; em produção é sempre passado (ver main.ts).
     private readonly platformConfigRepository?: IPlatformConfigRepository,
@@ -85,6 +88,22 @@ export class MercadoPagoOAuthController extends BaseRouter {
 
       // Nunca devolve os tokens — só confirmação de que o vínculo foi feito.
       res.json(200, { mercadoPagoLinked: true, mercadoPagoUserId: tokens.userId });
+    });
+
+    // specs/0226 REQ-A15 — o restaurante desvincula a própria conta. Recusa (409) enquanto houver
+    // pedido aberto com Pix/cartão do Mercado Pago pendente: depois de apagar o token, esse
+    // pagamento não seria mais confirmado nem cancelado sozinho. Não chama o Mercado Pago (não há
+    // endpoint de revogação simples; a autorização pode ser removida pela própria conta).
+    application.del('/restaurants/me/mercadopago', ...operatorAuthenticated, async (req: Request, res: Response) => {
+      const pendingOrderNumbers = await this.paymentRepository.findOpenOrderNumbersWithPendingMercadoPagoPayment(req.restaurantId!);
+      if (pendingOrderNumbers.length > 0) {
+        const list = pendingOrderNumbers.map((orderNumber) => `#${orderNumber}`).join(', ');
+        throw new ConflictError(
+          `Há pedidos com pagamento pelo Mercado Pago ainda pendente (${list}). Aguarde o pagamento ou cancele esses pedidos antes de desvincular.`,
+        );
+      }
+      await this.restaurantRepository.disconnectMercadoPago(req.restaurantId!);
+      res.send(204);
     });
   }
 

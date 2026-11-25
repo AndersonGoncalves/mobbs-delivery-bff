@@ -51,7 +51,6 @@ describe('PlatformConfigController (specs/0209-desacoplar-integracoes-cnpj-plata
       asaasIntegrationEnabled: false,
       asaasIntegrationIsNew: false,
       mercadoPagoIntegrationEnabled: false,
-      mercadoPagoIntegrationIsNew: false,
       ifoodIntegrationEnabled: false,
       ifoodIntegrationIsNew: false,
       ninetyNineFoodIntegrationEnabled: false,
@@ -151,14 +150,24 @@ describe('PlatformConfigController (specs/0209-desacoplar-integracoes-cnpj-plata
 
     it('cada switch calcula isNew de forma independente', async () => {
       const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
-      const elevenDaysAgo = new Date(Date.now() - 11 * 24 * 60 * 60 * 1000);
+      const thirtyOneDaysAgo = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000);
       const { json } = await setup(buildSnapshot({
         kdsAppEnabled: true,
         kdsAppEnabledAt: fiveDaysAgo,
         comandaAppEnabled: true,
-        comandaAppEnabledAt: elevenDaysAgo,
+        comandaAppEnabledAt: thirtyOneDaysAgo,
       })).run('GET /platform/config');
       expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ kdsAppIsNew: true, comandaAppIsNew: false }));
+    });
+
+    // specs/0226 AC-A13 — Mercado Pago faz parte do lançamento: nunca "Novo", nem com um carimbo
+    // antigo ainda gravado no banco.
+    it('AC-A13: Mercado Pago ligado hoje não devolve mercadoPagoIntegrationIsNew', async () => {
+      const snapshot = { ...buildSnapshot({ mercadoPagoIntegrationEnabled: true }), mercadoPagoIntegrationEnabledAt: new Date() };
+      const { json } = await setup(snapshot).run('GET /platform/config');
+      const body = json.mock.calls[0][1];
+      expect(body.mercadoPagoIntegrationEnabled).toBe(true);
+      expect(body).not.toHaveProperty('mercadoPagoIntegrationIsNew');
     });
   });
 });
