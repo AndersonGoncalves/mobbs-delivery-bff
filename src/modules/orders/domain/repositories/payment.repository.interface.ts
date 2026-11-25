@@ -50,4 +50,8 @@ export interface IPaymentRepository {
    * id do PAGAMENTO real (`AsaasClient.findPaymentByExternalReference`) — estorno
    * (`POST /v3/payments/:id/refund`) opera sobre pagamento, nunca sobre checkout. */
   updateExternalReference(orderId: string, externalReference: string): Promise<IPayment>;
+
+  /** specs/0226 REQ-A15 — números dos pedidos ainda abertos (nem entregues nem cancelados) do
+   * restaurante com pagamento do Mercado Pago pendente; bloqueia o "Desvincular" enquanto houver. */
+  findOpenOrderNumbersWithPendingMercadoPagoPayment(restaurantId: string): Promise<number[]>;
 }

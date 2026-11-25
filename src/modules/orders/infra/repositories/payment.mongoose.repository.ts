@@ -1,5 +1,6 @@
 import { IPayment, PaymentMethod, PaymentProvider, PaymentStatus } from '../../domain/entities/order.entity';
 import { IPaymentRepository } from '../../domain/repositories/payment.repository.interface';
+import { OrderModel } from '../models/order.mongoose.model';
 import { PaymentModel } from '../models/payment.mongoose.model';
 
 interface PaymentLeanDocument {
@@ -92,5 +93,23 @@ export class PaymentMongooseRepository implements IPaymentRepository {
   async updateExternalReference(orderId: string, externalReference: string): Promise<IPayment> {
     const doc = await PaymentModel.findOneAndUpdate({ orderId }, { $set: { externalReference } }, { new: true }).lean<PaymentLeanDocument>();
     return toEntity(doc as PaymentLeanDocument);
+  }
+
+  // specs/0226 REQ-A15.
+  async findOpenOrderNumbersWithPendingMercadoPagoPayment(restaurantId: string): Promise<number[]> {
+    const openOrders = await OrderModel.find(
+      { restaurantId, status: { $nin: ['entregue', 'cancelado'] } },
+      { _id: 1, orderNumber: 1 },
+    ).lean<{ _id: string; orderNumber: number }[]>();
+    if (openOrders.length === 0) return [];
+    const pending = await PaymentModel.find(
+      { orderId: { $in: openOrders.map((order) => order._id) }, provider: 'mercadopago', status: 'pendente' },
+      { orderId: 1 },
+    ).lean<{ orderId: string }[]>();
+    const pendingOrderIds = new Set(pending.map((payment) => payment.orderId));
+    return openOrders
+      .filter((order) => pendingOrderIds.has(order._id))
+      .map((order) => order.orderNumber)
+      .sort((a, b) => a - b);
   }
 }

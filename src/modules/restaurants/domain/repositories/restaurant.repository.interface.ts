@@ -246,6 +246,10 @@ export interface IRestaurantRepository {
     data: { mercadoPagoAccessToken: string; mercadoPagoRefreshToken: string; mercadoPagoUserId: string; mercadoPagoTokenExpiresAt: string },
   ): Promise<IRestaurant>;
 
+  /** specs/0226 REQ-A15 — desvincula o Mercado Pago: apaga tokens, user_id e validade (mesmo molde
+   * de `disconnectIFood`). Quem decide se pode (sem pagamento pendente) é o controller. */
+  disconnectMercadoPago(id: string): Promise<IRestaurant>;
+
   /** Pedido explícito do usuário (follow-up) — automação de postagens no Instagram, mesmo
    * raciocínio de `saveMercadoPagoTokens`. */
   saveInstagramTokens(
