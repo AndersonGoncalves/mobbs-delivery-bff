@@ -22,7 +22,9 @@ export interface MercadoPagoTokenResult {
 
 export interface MercadoPagoPreferenceInput {
   orderId: string;
-  items: Array<{ title: string; quantity: number; unitPrice: number }>;
+  /** specs/0226 REQ-A17 — `id`/`description`/`categoryId` são opcionais no contrato, mas o pedido
+   * sempre manda (contam pontos na "Qualidade da integração" e ajudam a antifraude). */
+  items: Array<{ title: string; quantity: number; unitPrice: number; id?: string; description?: string; categoryId?: string }>;
   notificationUrl: string;
   backUrls: { success: string; failure: string; pending: string };
 }
@@ -169,7 +171,15 @@ export class MercadoPagoClient {
    * automaticamente após o pagamento (sucesso ou falha). */
   async createPreference(accessToken: string, input: MercadoPagoPreferenceInput): Promise<MercadoPagoPreferenceResult> {
     const result = await this.request<{ id: string; init_point: string }>('POST', '/checkout/preferences', accessToken, {
-      items: input.items.map((item) => ({ title: item.title, quantity: item.quantity, unit_price: item.unitPrice, currency_id: 'BRL' })),
+      items: input.items.map((item) => ({
+        ...(item.id ? { id: item.id } : {}),
+        title: item.title,
+        ...(item.description ? { description: item.description } : {}),
+        ...(item.categoryId ? { category_id: item.categoryId } : {}),
+        quantity: item.quantity,
+        unit_price: item.unitPrice,
+        currency_id: 'BRL',
+      })),
       external_reference: input.orderId,
       notification_url: input.notificationUrl,
       back_urls: { success: input.backUrls.success, failure: input.backUrls.failure, pending: input.backUrls.pending },

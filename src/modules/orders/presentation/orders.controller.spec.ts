@@ -25,7 +25,7 @@ import { CustomerBalanceService } from '../../customer-balance/domain/services/c
 import { ICustomerBalanceRepository } from '../../customer-balance/domain/repositories/customer-balance.repository.interface';
 import type { IPlatformConfigRepository } from '../../platform-config/domain/platform-config.repository.interface';
 import { IFiscalConfigRepository } from '../../fiscal-integration/domain/repositories/fiscal-config.repository.interface';
-import { OrdersController } from './orders.controller';
+import { OrdersController, describeOrderItemsForMercadoPago } from './orders.controller';
 
 // specs/0101-integracao-asaas (fase 1) — `tryChargeOrderPixViaAsaas`/`tryRefundOrderPixViaAsaas`
 // instanciam `AsaasClient` direto (não injetado via construtor, diferente dos repositórios),
@@ -3122,8 +3122,40 @@ describe('OrdersController', () => {
       expect(created.deliveryFee).toBeGreaterThan(0);
       expect(MockedMercadoPagoClient.prototype.createPreference).toHaveBeenCalledWith(
         'token-restaurante',
-        expect.objectContaining({ items: [{ title: expect.stringContaining('Pedido #1'), quantity: 1, unitPrice: created.total }] }),
+        expect.objectContaining({ items: [expect.objectContaining({ title: expect.stringContaining('Pedido #1'), quantity: 1, unitPrice: created.total })] }),
       );
+    });
+
+    it('specs/0226 AC-A17: o item da preferência leva código (pedido-<número>), descrição (os produtos) e categoria (others)', async () => {
+      const { routes } = setup({
+        restaurantRepository: { findById: jest.fn().mockResolvedValue(buildRestaurant({ mercadoPagoAccessToken: 'token-restaurante' })) },
+      });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(
+        routes['POST /orders'],
+        { body: buildValidBody({ paymentMethod: 'creditCardOnline', items: [buildItem({ quantity: 2 })] }), user: { uid: 'customer-1' } },
+        { json },
+      );
+
+      const created = json.mock.calls[0][1];
+      const expectedDescription = created.items.map((item: { quantity: number; productName: string }) => `${item.quantity}x ${item.productName}`).join(', ');
+      expect(expectedDescription).toBe('2x Pizza');
+      expect(MockedMercadoPagoClient.prototype.createPreference).toHaveBeenCalledWith(
+        'token-restaurante',
+        expect.objectContaining({
+          items: [{ id: `pedido-${created.orderNumber}`, title: expect.stringContaining(`Pedido #${created.orderNumber}`), description: expectedDescription, categoryId: 'others', quantity: 1, unitPrice: created.total }],
+        }),
+      );
+    });
+
+    it('specs/0226 AC-A17: a descrição do item é cortada em 256 caracteres', () => {
+      const items = Array.from({ length: 40 }, (_, i) => ({ ...buildItem({ quantity: 1 }), id: `i-${i}`, productName: `Produto com nome comprido ${i}` }));
+      const description = describeOrderItemsForMercadoPago({ items } as never);
+
+      expect(description.length).toBe(256);
+      expect(description.endsWith('…')).toBe(true);
+      expect(description.startsWith('1x Produto com nome comprido 0, 1x Produto com nome comprido 1')).toBe(true);
     });
 
     it('specs/0226 AC-A5: cartão cobrado pelo Asaas nunca é estornado no Mercado Pago', async () => {

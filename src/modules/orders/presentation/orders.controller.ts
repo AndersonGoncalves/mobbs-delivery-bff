@@ -56,6 +56,14 @@ import { assignOrderMotoboySchema, cancelOrderWithReasonSchema, createOrderSchem
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
+/** specs/0226 REQ-A17 — `items.description` da preferência do Mercado Pago: os produtos do pedido
+ * ("1x Pizza Mussarela, 2x Kibe"), cortado em 256 caracteres. */
+export function describeOrderItemsForMercadoPago(order: Pick<IOrder, 'items'>): string {
+  const MAX_LENGTH = 256;
+  const text = order.items.map((item) => `${item.quantity}x ${item.productName}`).join(', ');
+  return text.length <= MAX_LENGTH ? text : `${text.slice(0, MAX_LENGTH - 1)}…`;
+}
+
 /**
  * REQ-2 (`specs/0005-checkout`) — qualquer `Customer` autenticado pode criar um pedido pra
  * qualquer restaurante (não é rota de retaguarda, mesmo raciocínio de `CatalogController`): sem
@@ -1366,7 +1374,18 @@ export class OrdersController extends BaseRouter {
         orderId: order.id,
         // specs/0226 REQ-A1 — um único item com o TOTAL do pedido (itens + entrega − descontos −
         // cashback). Antes mandava os itens um a um, e taxa de entrega/descontos ficavam de fora.
-        items: [{ title: `Pedido #${order.orderNumber} - ${restaurant.name}`, quantity: 1, unitPrice: order.total }],
+        // specs/0226 REQ-A17 — código, descrição e categoria do item (ações pendentes da
+        // "Qualidade da integração"). `others`: a lista oficial do Mercado Pago não tem comida.
+        items: [
+          {
+            id: `pedido-${order.orderNumber}`,
+            title: `Pedido #${order.orderNumber} - ${restaurant.name}`,
+            description: describeOrderItemsForMercadoPago(order),
+            categoryId: 'others',
+            quantity: 1,
+            unitPrice: order.total,
+          },
+        ],
         notificationUrl: `${environment.server.publicBaseUrl}/webhooks/mercadopago`,
         backUrls: { success: trackingUrl, failure: trackingUrl, pending: trackingUrl },
       });

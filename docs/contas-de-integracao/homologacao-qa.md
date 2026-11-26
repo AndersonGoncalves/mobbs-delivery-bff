@@ -40,10 +40,12 @@ QA usa**, fica só no servidor, ele nunca precisa ver esse valor. Os **usuários
 (comprador e vendedor) só podem ser criados por quem tem acesso ao painel Developers dessa
 aplicação — não é algo que o QA consiga se cadastrar sozinho como faria em produção.
 
-**Já feito (24/11/2026):** aplicação de teste "BsDelivery Teste" e as contas **"Restaurante teste"**
-(vendedora, vincular ao restaurante) e **"Cliente teste"** (compradora) — detalhes, papéis de cada
-conta e o que falta na subida em [`./mercado-pago-hml-producao.md`](./mercado-pago-hml-producao.md).
-**Não** usar a "Seller Test User" no vínculo (é a conta da plataforma, dona do token de teste).
+**Já feito (26/11/2026, `specs/0215` T021):** aplicação própria da homologação **"BsDelivery
+Homologacao"**, dentro da conta de teste de mesmo nome; uma conta de restaurante por restaurante
+(**"Pizzaria teste"**, **"Hamburgueria teste"**, **"Pastelaria teste"**) e duas compradoras
+(**"Cliente teste"**, **"Cliente teste 2"**) — papéis e IDs em
+[`./mercado-pago-hml-producao.md`](./mercado-pago-hml-producao.md). **Nunca** usar a conta
+"BsDelivery Homologacao" no vínculo nem passá-la ao QA (é a dona da aplicação).
 
 Pix automático pelo Mercado Pago (`specs/0226`) ainda em desenvolvimento — quando ficar pronto, o QA
 testa com as mesmas contas.

@@ -1,6 +1,6 @@
 import { createHmac } from 'crypto';
 import type { Request, Response, Server } from 'restify';
-import { BadRequestError, ConflictError, NotFoundError, UnauthorizedError } from 'restify-errors';
+import { UnauthorizedError } from 'restify-errors';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { environment } from '../../../shared/config/environment';
@@ -36,6 +36,12 @@ import { MercadoPagoClient } from '../infra/mercado-pago-client';
  * Responde 200 pra qualquer evento reconhecido mas que não dispara nada (mesmo raciocínio do
  * `AsaasWebhookController`: erro pra evento que só não interessa faria o MP reentregar/alertar
  * sem motivo).
+ *
+ * specs/0226 REQ-A18 — o mesmo vale para os avisos que decidimos IGNORAR depois de validar a
+ * assinatura (pedido inexistente, de outro restaurante, sem pagamento do Mercado Pago com aquele
+ * meio, pagamento que não está mais pendente, aviso sem `user_id`): 200 + log com o motivo. Antes
+ * eram 400/404/409, o Mercado Pago reenviava e o indicador "Notificações entregues com sucesso"
+ * caía (25% em 26/11/2026). Só a assinatura inválida continua com erro (401).
  */
 export class MercadoPagoWebhookController extends BaseRouter {
   constructor(
@@ -45,6 +51,12 @@ export class MercadoPagoWebhookController extends BaseRouter {
     private readonly whatsAppNotificationService: IWhatsAppNotificationService,
   ) {
     super();
+  }
+
+  /** specs/0226 REQ-A18 — aviso válido que não vamos processar: registra o motivo e responde 200. */
+  private ignore(res: Response, type: string | undefined, resourceId: string, reason: string): void {
+    console.warn(`[mercadopago] aviso ${type} ${resourceId} ignorado: ${reason}`);
+    res.send(200);
   }
 
   private toPaymentSummary(payment: IPayment): Pick<IPayment, 'method' | 'status'> {
@@ -92,7 +104,8 @@ export class MercadoPagoWebhookController extends BaseRouter {
       // specs/0226 REQ-A4 — conta Mercado Pago dona do pagamento → restaurante vinculado a ela.
       const mercadoPagoUserId = body.user_id === undefined || body.user_id === null ? '' : String(body.user_id);
       if (!mercadoPagoUserId) {
-        throw new BadRequestError('Aviso do Mercado Pago sem user_id');
+        this.ignore(res, body.type, resourceId, 'aviso sem user_id');
+        return;
       }
       const restaurant = await this.restaurantRepository.findByMercadoPagoUserId(mercadoPagoUserId);
       if (!restaurant?.mercadoPagoAccessToken) {
@@ -130,17 +143,20 @@ export class MercadoPagoWebhookController extends BaseRouter {
 
       const order = await this.orderRepository.findById(externalReference);
       if (!order) {
-        throw new NotFoundError('Pedido não encontrado');
+        this.ignore(res, body.type, resourceId, `pedido ${externalReference} não encontrado`);
+        return;
       }
       if (order.restaurantId !== restaurant.id) {
-        throw new ConflictError('Pagamento não pertence ao restaurante do pedido');
+        this.ignore(res, body.type, resourceId, `pedido #${order.orderNumber} não pertence ao restaurante da conta ${mercadoPagoUserId}`);
+        return;
       }
 
       const payment = await this.paymentRepository.findByOrderId(order.id);
       const isMercadoPagoPix = !!payment && payment.method === 'pix' && payment.provider === 'mercadopago';
       const isMercadoPagoCard = !!payment && payment.method === 'creditCardOnline' && payment.provider !== 'asaas';
       if (!payment || (isPix ? !isMercadoPagoPix : !isMercadoPagoCard)) {
-        throw new ConflictError('Pedido não tem pagamento online via Mercado Pago com esse meio');
+        this.ignore(res, body.type, resourceId, `pedido #${order.orderNumber} não tem pagamento ${isPix ? 'Pix' : 'de cartão'} pelo Mercado Pago`);
+        return;
       }
 
       if (!paid) {
@@ -155,7 +171,8 @@ export class MercadoPagoWebhookController extends BaseRouter {
         return;
       }
       if (payment.status !== 'pendente') {
-        throw new ConflictError('Pagamento não pode ser confirmado');
+        this.ignore(res, body.type, resourceId, `pagamento do pedido #${order.orderNumber} está ${payment.status}, não pendente`);
+        return;
       }
 
       // specs/0226 REQ-B3 — trava atômica: o Pix chega pelos dois tópicos, às vezes juntos; só o
