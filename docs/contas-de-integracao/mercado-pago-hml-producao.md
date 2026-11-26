@@ -72,7 +72,7 @@ Todos fora do git. Client ID/Secret e token de teste foram validados contra a AP
 Os passos longos (criar aplicação, credenciais, contas de teste) **não se repetem**.
 
 - [ ] Painel → Webhooks → **Modo de teste**: trocar a URL por
-      `https://api.hml.bsdelivery.com.br/webhooks/mercadopago` (o modo de teste aceita uma URL só; se
+      `https://api-hml.bsdelivery.com.br/webhooks/mercadopago` (o modo de teste aceita uma URL só; se
       voltar a testar no local, troca de novo) e marcar os eventos **"Pagamentos"** e **"Order
       (Mercado Pago)"** (o segundo é o do Pix). Conferir se a assinatura secreta continua a mesma do
       `.env.hml`; se o painel gerar outra, atualizar o `.env.hml` e o `.env` do servidor.

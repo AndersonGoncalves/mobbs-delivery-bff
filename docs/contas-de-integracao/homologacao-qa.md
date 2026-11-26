@@ -16,7 +16,7 @@ restaurantes de teste).
 | Integração | Credencial é de quem | QA se cadastra sozinho? | Ação sua antes de liberar |
 |---|---|---|---|
 | ~~Asaas~~ | — | — | **Não usado nos pedidos** desde 24/11/2026 (só mensalidade da plataforma) — QA não testa |
-| Mercado Pago | Aplicação (Mobbs) + conta de cada loja | Não | **Já feito** (aplicação e contas de teste, 24/11/2026); na subida: webhook de teste → `api.hml` |
+| Mercado Pago | Aplicação (Mobbs) + conta de cada loja | Não | **Já feito** (aplicação e contas de teste, 24/11/2026); na subida: webhook de teste → `api-hml` |
 | iFood | App de teste (Mobbs, CNAE de tecnologia) | Não | Nenhuma — já existe de 22/11, só repassar credenciais |
 | 99Food | App da Mobbs + loja de teste própria | Não | Criar a loja de teste no portal (ou reaproveitar `bsdelivery-teste-01`) |
 | Fiscal (FocusNFe) | Empresa emitente própria do QA (CNPJ + certificado dele) | Sim — cadastro independente, sem vínculo com a Mobbs | Nenhuma |
