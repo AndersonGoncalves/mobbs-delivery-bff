@@ -4,10 +4,14 @@ import { IOrderRepository } from '../../orders/domain/repositories/order.reposit
 import { IPaymentRepository } from '../../orders/domain/repositories/payment.repository.interface';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IWhatsAppNotificationService } from '../../notifications/domain/services/i-whatsapp-notification.service';
-import { MercadoPagoClient } from '../infra/mercado-pago-client';
+import { MercadoPagoApiError, MercadoPagoClient } from '../infra/mercado-pago-client';
 import { MercadoPagoWebhookController } from './mercado-pago-webhook.controller';
 
-jest.mock('../infra/mercado-pago-client');
+// Cliente falso (automock), mas o erro de verdade: o webhook decide pelo `status` dele (REQ-A18).
+jest.mock('../infra/mercado-pago-client', () => ({
+  ...jest.createMockFromModule<object>('../infra/mercado-pago-client'),
+  MercadoPagoApiError: jest.requireActual('../infra/mercado-pago-client').MercadoPagoApiError,
+}));
 jest.mock('../../../shared/config/environment', () => ({
   environment: {
     mercadoPago: {
@@ -171,6 +175,45 @@ describe('MercadoPagoWebhookController (specs/0170-integracao-mercado-pago)', ()
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('ignorado'));
     warn.mockRestore();
     expect(paymentRepository.markAsApprovedIfPending).not.toHaveBeenCalled();
+  });
+
+  it('specs/0226 AC-A18: pagamento que o Mercado Pago diz não existir (404, ex. "Simular notificação") é 200 ignorado (antes 500)', async () => {
+    MockedMercadoPagoClient.prototype.getPayment = jest
+      .fn()
+      .mockRejectedValue(new MercadoPagoApiError('Mercado Pago API (GET /v1/payments/123456) respondeu 404: {"message":"Payment not found"}', 404));
+    const { paymentRepository, orderRepository, routes } = setup();
+    const send = jest.fn();
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('123456'), { json: jest.fn(), send });
+
+    expect(send).toHaveBeenCalledWith(200);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('não encontrado no Mercado Pago'));
+    expect(orderRepository.findById).not.toHaveBeenCalled();
+    expect(paymentRepository.markAsApprovedIfPending).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('specs/0226 AC-A18: order (Pix) que o Mercado Pago diz não existir (404) é 200 ignorado', async () => {
+    MockedMercadoPagoClient.prototype.getOrder = jest.fn().mockRejectedValue(new MercadoPagoApiError('Mercado Pago API (GET /v1/orders/ORD01X) respondeu 404', 404));
+    const { routes } = setup();
+    const send = jest.fn();
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('ORD01X', { type: 'order' }), { json: jest.fn(), send });
+
+    expect(send).toHaveBeenCalledWith(200);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('order não encontrado no Mercado Pago'));
+    warn.mockRestore();
+  });
+
+  it('specs/0226 AC-A18: Mercado Pago com falha na consulta (500) continua erro, para ele reenviar e o Sentry avisar', async () => {
+    MockedMercadoPagoClient.prototype.getPayment = jest.fn().mockRejectedValue(new MercadoPagoApiError('Mercado Pago API (GET /v1/payments/pay-1) respondeu 500', 500));
+    const { routes } = setup();
+    const send = jest.fn();
+
+    await expect(routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1'), { json: jest.fn(), send })).rejects.toThrow('respondeu 500');
+    expect(send).not.toHaveBeenCalled();
   });
 
   it('specs/0226 AC-A18: pagamento que não está mais pendente (ex. estornado) é 200 ignorado (antes 409)', async () => {

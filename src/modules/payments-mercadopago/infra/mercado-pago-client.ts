@@ -80,6 +80,19 @@ function requestIdSuffix(response: Response): string {
   return requestId ? ` (x-request-id ${requestId})` : '';
 }
 
+/** specs/0226 REQ-A18 (ampliação de 27/11/2026) — erro de resposta da API do Mercado Pago com o
+ * código HTTP, para quem chama distinguir "não existe" (404) de falha do Mercado Pago (5xx). A
+ * mensagem continua a mesma de antes (com o `x-request-id`, REQ-A12). */
+export class MercadoPagoApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = 'MercadoPagoApiError';
+  }
+}
+
 export class MercadoPagoClient {
   constructor(
     private readonly clientId: string,
@@ -101,7 +114,7 @@ export class MercadoPagoClient {
 
     if (!response.ok) {
       const responseBody = await response.text().catch(() => '');
-      throw new Error(`Mercado Pago API (${method} ${path}) respondeu ${response.status}${requestIdSuffix(response)}: ${responseBody}`);
+      throw new MercadoPagoApiError(`Mercado Pago API (${method} ${path}) respondeu ${response.status}${requestIdSuffix(response)}: ${responseBody}`, response.status);
     }
 
     return (await response.json()) as T;

@@ -148,6 +148,16 @@ describe('MercadoPagoClient (specs/0170-integracao-mercado-pago)', () => {
     await expect(client.getPayment('token-invalido', 'pay-1')).rejects.toThrow(/400/);
   });
 
+  it('specs/0226 REQ-A18: erro da API vira MercadoPagoApiError com o status HTTP (404 = não existe)', async () => {
+    mockFetchOnce(404, { message: 'Payment not found' });
+
+    await expect(client.getPayment('token', '123456')).rejects.toMatchObject({
+      name: 'MercadoPagoApiError',
+      status: 404,
+      message: expect.stringContaining('Mercado Pago API (GET /v1/payments/123456) respondeu 404'),
+    });
+  });
+
   // specs/0226 REQ-A12 — o suporte do Mercado Pago só investiga um erro com o `x-request-id` da
   // chamada (achado em 25/11/2026: o Pix em produção voltava `processing_error` e os logs não tinham
   // como identificar a tentativa).

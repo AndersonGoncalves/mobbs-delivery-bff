@@ -11,7 +11,7 @@ import { IPayment } from '../../orders/domain/entities/order.entity';
 import { ConfirmOnlinePaymentService } from '../../orders/domain/services/confirm-online-payment.service';
 import { IOrderRepository } from '../../orders/domain/repositories/order.repository.interface';
 import { IPaymentRepository } from '../../orders/domain/repositories/payment.repository.interface';
-import { MercadoPagoClient } from '../infra/mercado-pago-client';
+import { MercadoPagoApiError, MercadoPagoClient } from '../infra/mercado-pago-client';
 
 /**
  * specs/0170-integracao-mercado-pago (REQ-6) — recebe os webhooks de pagamento do Mercado Pago,
@@ -123,17 +123,28 @@ export class MercadoPagoWebhookController extends BaseRouter {
       let paid: boolean;
       let isPix: boolean;
       let mercadoPagoPaymentId: string | undefined;
-      if (body.type === 'order') {
-        const mpOrder = await client.getOrder(restaurant.mercadoPagoAccessToken, resourceId);
-        externalReference = mpOrder.externalReference;
-        paid = mpOrder.status === 'processed';
-        isPix = true; // só o Pix usa a API de Orders (o cartão segue na de Preferences, specs/0225)
-      } else {
-        const mpPayment = await client.getPayment(restaurant.mercadoPagoAccessToken, resourceId);
-        externalReference = mpPayment.externalReference;
-        paid = mpPayment.status === 'approved';
-        isPix = mpPayment.paymentMethodId === 'pix';
-        mercadoPagoPaymentId = mpPayment.id;
+      try {
+        if (body.type === 'order') {
+          const mpOrder = await client.getOrder(restaurant.mercadoPagoAccessToken, resourceId);
+          externalReference = mpOrder.externalReference;
+          paid = mpOrder.status === 'processed';
+          isPix = true; // só o Pix usa a API de Orders (o cartão segue na de Preferences, specs/0225)
+        } else {
+          const mpPayment = await client.getPayment(restaurant.mercadoPagoAccessToken, resourceId);
+          externalReference = mpPayment.externalReference;
+          paid = mpPayment.status === 'approved';
+          isPix = mpPayment.paymentMethodId === 'pix';
+          mercadoPagoPaymentId = mpPayment.id;
+        }
+      } catch (error) {
+        // specs/0226 REQ-A18 (ampliação de 27/11/2026) — o próprio Mercado Pago diz que o
+        // pagamento/order não existe (ex. o `123456` da "Simular notificação"): nada a processar.
+        // Qualquer outra falha (5xx, tempo esgotado) sobe como 500 — o Mercado Pago reenvia depois.
+        if (error instanceof MercadoPagoApiError && error.status === 404) {
+          this.ignore(res, body.type, resourceId, `${body.type === 'order' ? 'order' : 'pagamento'} não encontrado no Mercado Pago`);
+          return;
+        }
+        throw error;
       }
 
       if (!externalReference) {
