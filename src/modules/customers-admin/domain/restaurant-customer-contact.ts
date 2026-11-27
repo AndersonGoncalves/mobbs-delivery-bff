@@ -16,6 +16,15 @@ export function isCreatedByRestaurant(customer: ICustomer, restaurantId: string)
   return customer.id.startsWith('retaguarda_') && customer.createdByRestaurantId === restaurantId;
 }
 
+/**
+ * specs/0229 REQ-6 (opção A, decisão do usuário 27/11/2026) — nome e telefone: só o restaurante que
+ * CRIOU o cadastro, ou, no cliente avulso sem conta no app (`totem_…`: totem, iFood, 99Food, Keeta,
+ * PDV), quem já o atendeu. Cliente do app: só ele, pelo app.
+ */
+export function canRestaurantEditNameAndPhone(customer: ICustomer, restaurantId: string, hasOrdersHere: boolean): boolean {
+  return isCreatedByRestaurant(customer, restaurantId) || (customer.id.startsWith('totem_') && hasOrdersHere);
+}
+
 export function canRestaurantEditDocument(customer: ICustomer, restaurantId: string): boolean {
   return isCreatedByRestaurant(customer, restaurantId) || !customer.document;
 }

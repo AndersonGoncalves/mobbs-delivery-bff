@@ -33,6 +33,9 @@ export interface ICustomer {
    * restaurante específico antes do primeiro pedido (`CustomerSummaryMongooseRepository`). Fica
    * `undefined` pra qualquer `Customer` nascido de um pedido/login normal de cliente. */
   createdByRestaurantId?: string;
+  /** specs/0229 REQ-6 — restaurantes que só VINCULARAM este cliente (telefone já cadastrado em
+   * "Novo cliente"/cadastro rápido do PDV); dá visibilidade, nunca direito de editar o cadastro. */
+  linkedRestaurantIds?: string[];
 }
 
 /**

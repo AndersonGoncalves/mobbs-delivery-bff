@@ -13,7 +13,9 @@ import { IAddressRepository } from '../../customers/domain/repositories/address.
 import { ICustomerRepository } from '../../customers/domain/repositories/customer.repository.interface';
 import { saveAddressSchema } from '../../customers/presentation/customers.schemas';
 import { ICustomerSummaryRepository } from '../domain/repositories/customer-summary.repository.interface';
+import { isLinkedToRestaurant } from '../../customers/domain/customer-restaurant-link';
 import {
+  canRestaurantEditNameAndPhone,
   canRestaurantEditDocument,
   canRestaurantEditEmail,
   isCreatedByRestaurant,
@@ -83,7 +85,19 @@ export class CustomersSummaryController extends BaseRouter {
       requireOperatorRole('dono', 'gerente'),
       async (req: Request, res: Response) => {
         const { name, phone, document, email, address } = parseBody(createCustomerByRestaurantSchema, req.body);
-        let customer = await this.customerRepository.createByRestaurant(req.restaurantId!, name, normalizePhoneNumber(phone));
+        const normalizedPhone = normalizePhoneNumber(phone);
+        // specs/0229 REQ-6 (opção A) — telefone de cliente que já existe e que este restaurante não
+        // criou nem atendeu: só vincula, sem incluir endereço (a lista é do cliente). Recusa ANTES de
+        // gravar qualquer coisa, para o operador cadastrar sem o endereço.
+        if (address) {
+          const existing = await this.customerRepository.findByPhone(normalizedPhone);
+          if (existing && !(await this.canManageCustomer(existing, req.restaurantId!))) {
+            throw new ConflictError(
+              'Este telefone já é de um cliente cadastrado na plataforma — cadastre sem o endereço; só o cliente inclui endereços na lista dele até fazer um pedido aqui.',
+            );
+          }
+        }
+        let customer = await this.customerRepository.createByRestaurant(req.restaurantId!, name, normalizedPhone);
         // specs/0229 REQ-3 — telefone pode ser de um cliente que já existe (o cadastro é único na
         // plataforma): CPF/e-mail só entram onde ainda estão vazios, nunca sobrescrevem o do cliente.
         const contact: { document?: string; email?: string } = {};
@@ -111,8 +125,15 @@ export class CustomersSummaryController extends BaseRouter {
     // `upsertProfile` nunca cria de novo aqui — `ensureCustomerBelongsToRestaurant` já garantiu
     // que o documento existe e pertence a este restaurante antes de chegar aqui.
     application.put('/restaurants/me/customers-summary/:customerId', ...writeAccess, async (req: Request, res: Response) => {
-      const existing = await this.ensureCustomerBelongsToRestaurant(req.params.customerId, req.restaurantId!);
+      const { customer: existing, hasOrdersHere } = await this.ensureCanManageCustomer(req.params.customerId, req.restaurantId!);
       const { name, phone, document, email } = parseBody(updateCustomerByRestaurantSchema, req.body);
+      // specs/0229 REQ-6 (opção A) — nome/telefone só de quem criou o cadastro (ou cliente avulso já
+      // atendido aqui); mandar o mesmo valor que já está gravado não conta como troca.
+      const nameChanged = name !== undefined && name !== existing.name;
+      const phoneChanged = phone !== undefined && normalizePhoneNumber(phone) !== existing.phone;
+      if ((nameChanged || phoneChanged) && !canRestaurantEditNameAndPhone(existing, req.restaurantId!, hasOrdersHere)) {
+        throw new ConflictError('Nome e telefone foram informados pelo cliente no app — só ele pode alterar.');
+      }
       // specs/0229 REQ-4 — CPF/e-mail informados pelo próprio cliente no app não são do restaurante.
       const documentChanged = document !== undefined && document !== (existing.document ?? '');
       const emailChanged = email !== undefined && email !== (visibleEmail(existing) ?? '');
@@ -123,7 +144,7 @@ export class CustomersSummaryController extends BaseRouter {
         throw new ConflictError('O e-mail foi informado pelo cliente no app — só ele pode alterar.');
       }
       let customer = existing;
-      if (name !== undefined || phone !== undefined) {
+      if (nameChanged || phoneChanged) {
         customer = await this.customerRepository.upsertProfile(req.params.customerId, {
           name: name ?? existing.name,
           email: existing.email,
@@ -144,15 +165,21 @@ export class CustomersSummaryController extends BaseRouter {
     // specs/0229 REQ-4 — dados do "Editar cliente": CPF/e-mail (sem o e-mail interno) e se o
     // restaurante pode alterá-los. Mesmo acesso de escrita da edição.
     application.get('/restaurants/me/customers-summary/:customerId/profile', ...writeAccess, async (req: Request, res: Response) => {
-      const customer = await this.ensureCustomerBelongsToRestaurant(req.params.customerId, req.restaurantId!);
+      // specs/0229 REQ-6 — cliente só VINCULADO aparece na lista e abre aqui, mas tudo bloqueado.
+      const customer = await this.customerRepository.findById(req.params.customerId);
+      if (!customer) throw new NotFoundError('Cliente não encontrado');
+      const hasOrdersHere = await this.hasOrdersHere(customer.id, req.restaurantId!);
+      const canManage = isCreatedByRestaurant(customer, req.restaurantId!) || hasOrdersHere;
+      if (!canManage && !isLinkedToRestaurant(customer, req.restaurantId!)) throw new NotFoundError('Cliente não encontrado');
       res.json(200, {
         customerId: customer.id,
         name: customer.name,
         phone: customer.phone,
         document: customer.document,
         email: visibleEmail(customer),
-        canEditDocument: canRestaurantEditDocument(customer, req.restaurantId!),
-        canEditEmail: canRestaurantEditEmail(customer, req.restaurantId!),
+        canEditNameAndPhone: canManage && canRestaurantEditNameAndPhone(customer, req.restaurantId!, hasOrdersHere),
+        canEditDocument: canManage && canRestaurantEditDocument(customer, req.restaurantId!),
+        canEditEmail: canManage && canRestaurantEditEmail(customer, req.restaurantId!),
       });
     });
 
@@ -278,12 +305,29 @@ export class CustomersSummaryController extends BaseRouter {
    * `findManyByCustomerAndRestaurant`), comportamento pré-existente não alterado aqui.
    */
   private async ensureCustomerBelongsToRestaurant(customerId: string, restaurantId: string): Promise<ICustomer> {
+    return (await this.ensureCanManageCustomer(customerId, restaurantId)).customer;
+  }
+
+  /**
+   * specs/0229 REQ-6 (opção A) — gerir o cadastro (editar, incluir/alterar endereço): cliente CRIADO
+   * por este restaurante (critério estrito, `isCreatedByRestaurant`) ou que já pediu aqui. Só
+   * vinculado não basta (antes bastava `createdByRestaurantId`, que era sobrescrito ao digitar o
+   * telefone de qualquer cliente do app).
+   */
+  private async ensureCanManageCustomer(customerId: string, restaurantId: string): Promise<{ customer: ICustomer; hasOrdersHere: boolean }> {
     const customer = await this.customerRepository.findById(customerId);
     if (!customer) throw new NotFoundError('Cliente não encontrado');
-    if (customer.createdByRestaurantId === restaurantId) return customer;
-    const orders = await this.orderRepository.findManyByCustomerAndRestaurant(customerId, restaurantId);
-    if (orders.length === 0) throw new NotFoundError('Cliente não encontrado');
-    return customer;
+    const hasOrdersHere = await this.hasOrdersHere(customerId, restaurantId);
+    if (!isCreatedByRestaurant(customer, restaurantId) && !hasOrdersHere) throw new NotFoundError('Cliente não encontrado');
+    return { customer, hasOrdersHere };
+  }
+
+  private async canManageCustomer(customer: ICustomer, restaurantId: string): Promise<boolean> {
+    return isCreatedByRestaurant(customer, restaurantId) || (await this.hasOrdersHere(customer.id, restaurantId));
+  }
+
+  private async hasOrdersHere(customerId: string, restaurantId: string): Promise<boolean> {
+    return (await this.orderRepository.findManyByCustomerAndRestaurant(customerId, restaurantId)).length > 0;
   }
 
   private async findCustomerAddress(addressId: string, customerId: string): Promise<IAddress> {

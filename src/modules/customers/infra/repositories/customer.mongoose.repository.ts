@@ -17,6 +17,7 @@ interface CustomerLeanDocument {
   allowedPaymentMethods?: PaymentMethod[];
   deletedAt?: Date;
   createdByRestaurantId?: string;
+  linkedRestaurantIds?: string[];
 }
 
 function toEntity(doc: CustomerLeanDocument): ICustomer {
@@ -32,6 +33,7 @@ function toEntity(doc: CustomerLeanDocument): ICustomer {
     allowedPaymentMethods: doc.allowedPaymentMethods,
     deletedAt: doc.deletedAt?.toISOString(),
     createdByRestaurantId: doc.createdByRestaurantId,
+    linkedRestaurantIds: doc.linkedRestaurantIds,
   };
 }
 
@@ -83,9 +85,12 @@ export class CustomerMongooseRepository implements ICustomerRepository {
   async createByRestaurant(restaurantId: string, name: string, phone: string): Promise<ICustomer> {
     const existing = await CustomerModel.findOne({ phone }).lean<CustomerLeanDocument>();
     if (existing) {
+      // specs/0229 REQ-6 (opção A) — só vincula; nunca troca quem criou o cadastro (antes isso
+      // dava a qualquer restaurante o direito de editar um cliente do app só por digitar o telefone).
+      if (existing.createdByRestaurantId === restaurantId) return toEntity(existing);
       const updated = await CustomerModel.findByIdAndUpdate(
         existing._id,
-        { $set: { createdByRestaurantId: restaurantId } },
+        { $addToSet: { linkedRestaurantIds: restaurantId } },
         { new: true },
       ).lean<CustomerLeanDocument>();
       return toEntity(updated as CustomerLeanDocument);

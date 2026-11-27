@@ -53,8 +53,9 @@ export interface ICustomerRepository {
    * (achado real, pedido explícito do usuário) — "NOVO" em Clientes (`CustomersSummaryController`,
    * dono/gerente): cadastro manual, antes de qualquer pedido. Resolve pelo telefone normalizado
    * primeiro (mesmo cuidado de `createStandalone`/`TotemController` — nunca duplica um `Customer`
-   * já existente com aquele telefone); se já existir, só marca `createdByRestaurantId` nele (pra
-   * aparecer na lista deste restaurante) em vez de criar de novo. Se não existir, cria um
+   * já existente com aquele telefone); se já existir, só VINCULA este restaurante
+   * (`linkedRestaurantIds`, specs/0229 REQ-6 — nunca sobrescreve `createdByRestaurantId`) pra ele
+   * aparecer na lista deste restaurante, em vez de criar de novo. Se não existir, cria um
    * `Customer` avulso igual `createStandalone`, já com `createdByRestaurantId`.
    */
   createByRestaurant(restaurantId: string, name: string, phone: string): Promise<ICustomer>;

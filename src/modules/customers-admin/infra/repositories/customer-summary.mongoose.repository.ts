@@ -109,10 +109,14 @@ export class CustomerSummaryMongooseRepository implements ICustomerSummaryReposi
     // vaza um cadastro manual de outro restaurante. Um cliente já coberto por `fromOrders`
     // (já fez pedido aqui) não entra de novo com totais zerados.
     const alreadyListed = new Set(fromOrders.map((entry) => entry.customerId));
-    const standaloneQuery: Record<string, unknown> = { createdByRestaurantId: restaurantId, _id: { $nin: [...alreadyListed] } };
+    // specs/0229 REQ-6 — criado por este restaurante OU só vinculado a ele.
+    const standaloneQuery: Record<string, unknown> = {
+      $and: [{ $or: [{ createdByRestaurantId: restaurantId }, { linkedRestaurantIds: restaurantId }] }],
+      _id: { $nin: [...alreadyListed] },
+    };
     if (search) {
       const regex = new RegExp(escapeRegex(search), 'i');
-      standaloneQuery.$or = [{ name: regex }, { phone: regex }];
+      (standaloneQuery.$and as unknown[]).push({ $or: [{ name: regex }, { phone: regex }] });
     }
     const standaloneCustomers = await CustomerModel.find(standaloneQuery).lean<StandaloneCustomerDocument[]>();
     const fromStandalone = standaloneCustomers.map((customer) => ({
@@ -180,7 +184,8 @@ export class CustomerSummaryMongooseRepository implements ICustomerSummaryReposi
         $unionWith: {
           coll: 'customer',
           pipeline: [
-            { $match: { createdByRestaurantId: restaurantId } },
+            // specs/0229 REQ-6 — criado por este restaurante OU só vinculado a ele.
+            { $match: { $or: [{ createdByRestaurantId: restaurantId }, { linkedRestaurantIds: restaurantId }] } },
             {
               $project: {
                 _id: 0,

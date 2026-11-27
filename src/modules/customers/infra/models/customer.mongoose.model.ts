@@ -27,6 +27,9 @@ const customerSchema = new Schema(
     // (botão "NOVO" em Clientes), sem pedido nenhum ainda — só esse restaurante pode vê-lo na
     // lista (ver `CustomerSummaryMongooseRepository`), nunca outro.
     createdByRestaurantId: { type: String },
+    // specs/0229 REQ-6 — restaurantes que só vincularam o cliente (ver `ICustomer.linkedRestaurantIds`).
+    // `default: undefined` pelo mesmo motivo de `allowedPaymentMethods` acima.
+    linkedRestaurantIds: { type: [String], default: undefined },
   },
   { _id: false, timestamps: true },
 );
@@ -36,5 +39,7 @@ const customerSchema = new Schema(
 // `phone`, chamada a cada busca de cliente/cadastro rápido no PDV) era full scan da base inteira
 // da plataforma. `sparse: true` — a maioria dos clientes do app não preenche telefone.
 customerSchema.index({ phone: 1 }, { sparse: true });
+// specs/0229 REQ-6 — lista de Clientes busca os vinculados a um restaurante.
+customerSchema.index({ linkedRestaurantIds: 1 }, { sparse: true });
 
 export const CustomerModel = model('Customer', customerSchema, 'customer');

@@ -1,3 +1,4 @@
+import { isLinkedToRestaurant } from '../../customers/domain/customer-restaurant-link';
 import { randomUUID } from 'crypto';
 import type { Request, Response, Server } from 'restify';
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from 'restify-errors';
@@ -177,7 +178,7 @@ export class OperatorDraftsController extends BaseRouter {
       // outro restaurante) aparecia pra um operador que nunca atendeu esse cliente, só por digitar
       // o número. Sem relação própria (nenhum pedido aqui nem cadastro manual aqui), trata como
       // "não encontrado" — mesmo efeito que já existia só pros endereços, agora também pro nome.
-      const hasRelationship = ownOrders.length > 0 || customer.createdByRestaurantId === req.restaurantId;
+      const hasRelationship = ownOrders.length > 0 || isLinkedToRestaurant(customer, req.restaurantId!);
       if (!hasRelationship) {
         res.json(200, { customer: null, addresses: [], blocked });
         return;
@@ -204,7 +205,7 @@ export class OperatorDraftsController extends BaseRouter {
       const existing = await this.customerRepository.findByPhone(normalized);
       if (existing) {
         const ownOrders = await this.orderRepository.findManyByCustomerAndRestaurant(existing.id, req.restaurantId!);
-        const hasRelationship = ownOrders.length > 0 || existing.createdByRestaurantId === req.restaurantId;
+        const hasRelationship = ownOrders.length > 0 || isLinkedToRestaurant(existing, req.restaurantId!);
         if (hasRelationship) {
           res.json(200, { id: existing.id, name: existing.name, phone: existing.phone, allowedPaymentMethods: existing.allowedPaymentMethods });
           return;
