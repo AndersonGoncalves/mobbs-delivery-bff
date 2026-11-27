@@ -121,6 +121,7 @@ export class MercadoPagoWebhookController extends BaseRouter {
       // Normaliza os dois tópicos: de qual pedido é, se já está pago, e se é Pix.
       let externalReference: string;
       let paid: boolean;
+      let refused = false;
       let isPix: boolean;
       let mercadoPagoPaymentId: string | undefined;
       try {
@@ -134,6 +135,8 @@ export class MercadoPagoWebhookController extends BaseRouter {
           externalReference = mpPayment.externalReference;
           paid = mpPayment.status === 'approved';
           isPix = mpPayment.paymentMethodId === 'pix';
+          // specs/0226 REQ-A19 — só o cartão: o Pix recusado não existe (vence ou é cancelado).
+          refused = !isPix && mpPayment.status === 'rejected';
           mercadoPagoPaymentId = mpPayment.id;
         }
       } catch (error) {
@@ -171,6 +174,11 @@ export class MercadoPagoWebhookController extends BaseRouter {
       }
 
       if (!paid) {
+        // specs/0226 REQ-A19 — cartão recusado: o card mostra "recusado" (antes ficava "aguardando
+        // pagamento"); o pedido segue sem confirmar e o cliente pode tentar outro cartão.
+        if (refused && (await this.paymentRepository.markAsRefusedIfPending(order.id))) {
+          console.warn(`[mercadopago] cartão recusado no pedido #${order.orderNumber} (pagamento ${mercadoPagoPaymentId})`);
+        }
         res.send(200);
         return;
       }
@@ -181,7 +189,8 @@ export class MercadoPagoWebhookController extends BaseRouter {
         res.json(200, { ...order, payment: this.toPaymentSummary(payment) });
         return;
       }
-      if (payment.status !== 'pendente') {
+      // specs/0226 REQ-A19 — `recusado` pode virar aprovado (nova tentativa no mesmo checkout).
+      if (payment.status !== 'pendente' && payment.status !== 'recusado') {
         this.ignore(res, body.type, resourceId, `pagamento do pedido #${order.orderNumber} está ${payment.status}, não pendente`);
         return;
       }

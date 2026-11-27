@@ -24,6 +24,10 @@ export interface IPaymentRepository {
    * pelos tópicos `payment` e `order`, às vezes ao mesmo tempo — sem isso, confirmaria duas vezes). */
   markAsApprovedIfPending(orderId: string): Promise<IPayment | null>;
 
+  /** specs/0226 REQ-A19 — cartão online recusado: passa pra `recusado` SÓ se ainda estiver `pendente`
+   * (aviso de recusa atrasado nunca desfaz um pagamento já aprovado); `null` se não mudou. */
+  markAsRefusedIfPending(orderId: string): Promise<IPayment | null>;
+
   /** specs/0226 REQ-B1 — persiste o id da order Pix e o copia e cola devolvidos pelo Mercado Pago
    * na criação do pedido (`provider: 'mercadopago'`). */
   setMercadoPagoPixDetails(orderId: string, data: { externalReference: string; pixPayload: string }): Promise<IPayment>;

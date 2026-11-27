@@ -238,6 +238,43 @@ describe('MercadoPagoWebhookController (specs/0170-integracao-mercado-pago)', ()
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ payment: { method: 'creditCardOnline', status: 'aprovado' } }));
   });
 
+  // ---- specs/0226 REQ-A19 — cartão recusado (achado na homologação, pedido #10) ----
+  it('AC-A19: cartão recusado (rejected) marca o pagamento como recusado, sem confirmar o pedido', async () => {
+    MockedMercadoPagoClient.prototype.getPayment = jest.fn().mockResolvedValue({ id: 'mp-pay-99', status: 'rejected', externalReference: 'o-1' });
+    const markAsRefusedIfPending = jest.fn().mockResolvedValue(buildPayment({ status: 'recusado' }));
+    const { paymentRepository, orderRepository, routes } = setup({ paymentRepository: { markAsRefusedIfPending } });
+    const send = jest.fn();
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1'), { json: jest.fn(), send });
+    warn.mockRestore();
+
+    expect(send).toHaveBeenCalledWith(200);
+    expect(markAsRefusedIfPending).toHaveBeenCalledWith('o-1');
+    expect(paymentRepository.markAsApprovedIfPending).not.toHaveBeenCalled();
+    expect(orderRepository.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it('AC-A19: pagamento pendente (pending) não marca recusado', async () => {
+    MockedMercadoPagoClient.prototype.getPayment = jest.fn().mockResolvedValue({ id: 'mp-pay-99', status: 'pending', externalReference: 'o-1' });
+    const markAsRefusedIfPending = jest.fn();
+    const { routes } = setup({ paymentRepository: { markAsRefusedIfPending } });
+
+    await routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1'), { json: jest.fn(), send: jest.fn() });
+
+    expect(markAsRefusedIfPending).not.toHaveBeenCalled();
+  });
+
+  it('AC-A19: depois de recusado, nova tentativa aprovada no mesmo checkout confirma o pedido', async () => {
+    const { paymentRepository, routes } = setup({ paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ status: 'recusado' })) } });
+    const json = jest.fn();
+
+    await routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1'), { json, send: jest.fn() });
+
+    expect(paymentRepository.markAsApprovedIfPending).toHaveBeenCalledWith('o-1');
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ payment: { method: 'creditCardOnline', status: 'aprovado' } }));
+  });
+
   // specs/0226 parte A.
   describe('specs/0226 REQ-A3/REQ-A4 — restaurante pelo user_id e token do restaurante', () => {
     it('consulta o pagamento com o token DO RESTAURANTE achado pelo user_id (não o da plataforma)', async () => {

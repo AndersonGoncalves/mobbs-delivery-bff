@@ -39,3 +39,30 @@ describe('PaymentMongooseRepository.findOpenOrderNumbersWithPendingMercadoPagoPa
     expect(PaymentModel.find).not.toHaveBeenCalled();
   });
 });
+
+// specs/0226 REQ-A19 — cartão online recusado.
+describe('PaymentMongooseRepository — cartão recusado (specs/0226 REQ-A19)', () => {
+  // O model é substituído por `jest.mock` no topo do arquivo; aqui só ganha o `findOneAndUpdate`.
+  function stubUpdate(result: unknown) {
+    const update = jest.fn().mockReturnValue({ lean: () => Promise.resolve(result) });
+    (PaymentModel as unknown as { findOneAndUpdate: jest.Mock }).findOneAndUpdate = update;
+    return update;
+  }
+
+  it('markAsRefusedIfPending só muda pagamento PENDENTE para recusado (recusa atrasada não desfaz aprovado)', async () => {
+    const update = stubUpdate({ _id: 'p-1', orderId: 'o-1', method: 'creditCardOnline', status: 'recusado', amount: 10 });
+
+    const result = await new PaymentMongooseRepository().markAsRefusedIfPending('o-1');
+
+    expect(update).toHaveBeenCalledWith({ orderId: 'o-1', status: 'pendente' }, { $set: { status: 'recusado' } }, { new: true });
+    expect(result?.status).toBe('recusado');
+  });
+
+  it('markAsApprovedIfPending aceita pendente OU recusado (nova tentativa no mesmo checkout)', async () => {
+    const update = stubUpdate({ _id: 'p-1', orderId: 'o-1', method: 'creditCardOnline', status: 'aprovado', amount: 10 });
+
+    await new PaymentMongooseRepository().markAsApprovedIfPending('o-1');
+
+    expect(update).toHaveBeenCalledWith({ orderId: 'o-1', status: { $in: ['pendente', 'recusado'] } }, { $set: { status: 'aprovado' } }, { new: true });
+  });
+});

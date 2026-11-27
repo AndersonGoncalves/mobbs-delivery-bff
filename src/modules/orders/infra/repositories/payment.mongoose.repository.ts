@@ -53,7 +53,17 @@ export class PaymentMongooseRepository implements IPaymentRepository {
   }
 
   async markAsApprovedIfPending(orderId: string): Promise<IPayment | null> {
-    const doc = await PaymentModel.findOneAndUpdate({ orderId, status: 'pendente' }, { $set: { status: 'aprovado' } }, { new: true }).lean<PaymentLeanDocument>();
+    // specs/0226 REQ-A19 — `recusado` também: o cliente pode tentar outro cartão no mesmo checkout.
+    const doc = await PaymentModel.findOneAndUpdate(
+      { orderId, status: { $in: ['pendente', 'recusado'] } },
+      { $set: { status: 'aprovado' } },
+      { new: true },
+    ).lean<PaymentLeanDocument>();
+    return doc ? toEntity(doc) : null;
+  }
+
+  async markAsRefusedIfPending(orderId: string): Promise<IPayment | null> {
+    const doc = await PaymentModel.findOneAndUpdate({ orderId, status: 'pendente' }, { $set: { status: 'recusado' } }, { new: true }).lean<PaymentLeanDocument>();
     return doc ? toEntity(doc) : null;
   }
 
