@@ -313,7 +313,8 @@ describe('CustomersSummaryController (specs/0016-clientes-retaguarda)', () => {
         phone: '5511999990000',
         document: '12345678901',
       });
-      expect(json).toHaveBeenCalledWith(200, { customerId: 'cust-1', name: 'Maria Souza', phone: '5511999990000' });
+      // specs/0229 — a resposta passou a trazer CPF/e-mail (preservados) para a tela atualizar.
+      expect(json).toHaveBeenCalledWith(200, { customerId: 'cust-1', name: 'Maria Souza', phone: '5511999990000', document: '12345678901', email: 'maria@example.com' });
     });
 
     it('edição parcial (só nome) mantém o telefone atual', async () => {
@@ -460,6 +461,135 @@ describe('CustomersSummaryController (specs/0016-clientes-retaguarda)', () => {
       ).rejects.toMatchObject({ statusCode: 404 });
       expect(addressRepository.findById).not.toHaveBeenCalled();
       expect(addressRepository.update).not.toHaveBeenCalled();
+    });
+  });
+
+  // ---- specs/0229-cadastro-cliente-retaguarda ----
+  describe('specs/0229 — CPF, e-mail e endereço de entrega pela retaguarda', () => {
+    const POST = 'POST /restaurants/me/customers';
+    const PUT = 'PUT /restaurants/me/customers-summary/:customerId';
+    const PROFILE = 'GET /restaurants/me/customers-summary/:customerId/profile';
+    const ADDRESSES = 'GET /restaurants/me/customers-summary/:customerId/addresses';
+    const address = { label: 'Casa', street: 'Rua A', number: '10', neighborhood: 'Centro', city: 'Fortaleza', state: 'CE', zipCode: '60000000' };
+    const ownCustomer = { id: 'retaguarda_1', name: 'Cliente da loja', email: 'retaguarda_1@retaguarda.mobbs-delivery.local', phone: '5585999990000', createdByRestaurantId: 'r-1' };
+    const appCustomer = { id: 'firebase-uid-1', name: 'Cliente do app', email: 'cliente@gmail.com', phone: '5585999990000', document: '11144477735' };
+
+    it('AC-1: cliente novo recebe CPF e e-mail e o endereço entra na lista dele', async () => {
+      const updateContactByRestaurant = jest.fn().mockImplementation(async (id, contact) => ({ ...ownCustomer, id, ...contact }));
+      const { customerRepository, addressRepository, routes } = setup({
+        customerRepository: { createByRestaurant: jest.fn().mockResolvedValue(ownCustomer), updateContactByRestaurant },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(
+        routes[POST],
+        { restaurantId: 'r-1', body: { name: 'Cliente da loja', phone: '85999990000', document: '111.444.777-35', email: 'Loja@Exemplo.com', address } },
+        { json },
+      );
+
+      expect(customerRepository.updateContactByRestaurant).toHaveBeenCalledWith('retaguarda_1', { document: '11144477735', email: 'loja@exemplo.com' });
+      expect(addressRepository.create).toHaveBeenCalledWith('retaguarda_1', address);
+      expect(json).toHaveBeenCalledWith(201, expect.objectContaining({ document: '11144477735', email: 'loja@exemplo.com', addressId: 'addr-novo' }));
+    });
+
+    it('AC-2: CPF com dígito errado e e-mail inválido são recusados (400)', async () => {
+      const { routes } = setup();
+      await expect(
+        runOperatorChain(routes[POST], { restaurantId: 'r-1', body: { name: 'X', phone: '85999990000', document: '11144477700' } }, { json: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 400 });
+      await expect(
+        runOperatorChain(routes[POST], { restaurantId: 'r-1', body: { name: 'X', phone: '85999990000', email: 'nao-e-email' } }, { json: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it('AC-4: telefone de cliente do app — CPF/e-mail dele não mudam e o endereço é ACRESCENTADO à lista', async () => {
+      const updateContactByRestaurant = jest.fn();
+      const { addressRepository, routes } = setup({
+        customerRepository: { createByRestaurant: jest.fn().mockResolvedValue(appCustomer), updateContactByRestaurant },
+      });
+
+      await runOperatorChain(
+        routes[POST],
+        { restaurantId: 'r-1', body: { name: 'Outro nome', phone: '85999990000', document: '52998224725', email: 'outro@exemplo.com', address } },
+        { json: jest.fn() },
+      );
+
+      expect(updateContactByRestaurant).not.toHaveBeenCalled();
+      expect(addressRepository.create).toHaveBeenCalledWith('firebase-uid-1', address);
+    });
+
+    it('AC-3: sem endereço, cadastra só o cliente', async () => {
+      const { addressRepository, routes } = setup();
+      await runOperatorChain(routes[POST], { restaurantId: 'r-1', body: { name: 'Novo', phone: '85999990000' } }, { json: jest.fn() });
+      expect(addressRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('AC-5: perfil do cliente criado pelo restaurante — CPF/e-mail editáveis e sem o e-mail interno', async () => {
+      const { routes } = setup({ customerRepository: { findById: jest.fn().mockResolvedValue(ownCustomer) } });
+      const json = jest.fn();
+
+      await runOperatorChain(routes[PROFILE], { restaurantId: 'r-1', params: { customerId: 'retaguarda_1' } }, { json });
+
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ email: undefined, canEditDocument: true, canEditEmail: true }));
+    });
+
+    it('AC-5: perfil do cliente do app (já pediu aqui) — CPF e e-mail bloqueados', async () => {
+      const { routes } = setup({ customerRepository: { findById: jest.fn().mockResolvedValue(appCustomer) } });
+      const json = jest.fn();
+
+      await runOperatorChain(routes[PROFILE], { restaurantId: 'r-1', params: { customerId: 'firebase-uid-1' } }, { json });
+
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ document: '11144477735', email: 'cliente@gmail.com', canEditDocument: false, canEditEmail: false }));
+    });
+
+    it('AC-5: trocar o CPF de cliente do app é recusado (409), sem gravar nada', async () => {
+      const updateContactByRestaurant = jest.fn();
+      const { routes } = setup({ customerRepository: { findById: jest.fn().mockResolvedValue(appCustomer), updateContactByRestaurant } });
+
+      await expect(
+        runOperatorChain(routes[PUT], { restaurantId: 'r-1', params: { customerId: 'firebase-uid-1' }, body: { document: '52998224725' } }, { json: jest.fn() }),
+      ).rejects.toMatchObject({ statusCode: 409 });
+      expect(updateContactByRestaurant).not.toHaveBeenCalled();
+    });
+
+    it('AC-5: cliente criado pelo restaurante — troca o CPF e apaga o e-mail (volta ao interno)', async () => {
+      const updateContactByRestaurant = jest.fn().mockImplementation(async (id, contact) => ({ ...ownCustomer, document: '11144477735', ...contact }));
+      const { routes } = setup({
+        customerRepository: { findById: jest.fn().mockResolvedValue({ ...ownCustomer, document: '11144477735', email: 'loja@exemplo.com' }), updateContactByRestaurant },
+      });
+
+      await runOperatorChain(
+        routes[PUT],
+        { restaurantId: 'r-1', params: { customerId: 'retaguarda_1' }, body: { document: '529.982.247-25', email: '' } },
+        { json: jest.fn() },
+      );
+
+      expect(updateContactByRestaurant).toHaveBeenCalledWith('retaguarda_1', { document: '52998224725', email: 'retaguarda_1@retaguarda.mobbs-delivery.local' });
+    });
+
+    it('AC-6: cliente criado pelo restaurante e sem pedidos lista os endereços', async () => {
+      const { addressRepository, routes } = setup({
+        customerRepository: { findById: jest.fn().mockResolvedValue(ownCustomer) },
+        orderRepository: { findManyByCustomerAndRestaurant: jest.fn().mockResolvedValue([]) },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(routes[ADDRESSES], { restaurantId: 'r-1', params: { customerId: 'retaguarda_1' } }, { json });
+
+      expect(addressRepository.listByCustomer).toHaveBeenCalledWith('retaguarda_1');
+    });
+
+    it('AC-6: cliente do app só VINCULADO (createdByRestaurantId sem ser criado aqui) e sem pedidos continua com lista vazia', async () => {
+      const { addressRepository, routes } = setup({
+        customerRepository: { findById: jest.fn().mockResolvedValue({ ...appCustomer, createdByRestaurantId: 'r-1' }) },
+        orderRepository: { findManyByCustomerAndRestaurant: jest.fn().mockResolvedValue([]) },
+      });
+      const json = jest.fn();
+
+      await runOperatorChain(routes[ADDRESSES], { restaurantId: 'r-1', params: { customerId: 'firebase-uid-1' } }, { json });
+
+      expect(addressRepository.listByCustomer).not.toHaveBeenCalled();
+      expect(json).toHaveBeenCalledWith(200, []);
     });
   });
 });

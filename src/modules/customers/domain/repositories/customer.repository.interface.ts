@@ -60,6 +60,13 @@ export interface ICustomerRepository {
   createByRestaurant(restaurantId: string, name: string, phone: string): Promise<ICustomer>;
 
   /**
+   * specs/0229-cadastro-cliente-retaguarda — CPF/e-mail gravados pela retaguarda. `document: null`
+   * APAGA o CPF (`$unset`); campo ausente não mexe. Quem chama decide se pode (ver
+   * `customers-admin/domain/restaurant-customer-contact.ts`).
+   */
+  updateContactByRestaurant(id: string, contact: { document?: string | null; email?: string }): Promise<ICustomer | null>;
+
+  /**
    * REQ-2/REQ-4 (`specs/0017-lgpd-privacidade`) — `upsert` igual `upsertProfile`: um cliente
    * Google recém-logado pode aceitar os termos ANTES de qualquer `PUT /customers/me` (nunca
    * chamado por `signInWithGoogle`, ver `GET /customers/me`), então o documento pode ainda não

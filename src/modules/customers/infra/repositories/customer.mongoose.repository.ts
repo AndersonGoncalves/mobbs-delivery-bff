@@ -101,6 +101,21 @@ export class CustomerMongooseRepository implements ICustomerRepository {
     return toEntity(doc.toObject() as CustomerLeanDocument);
   }
 
+  async updateContactByRestaurant(id: string, contact: { document?: string | null; email?: string }): Promise<ICustomer | null> {
+    const $set: Record<string, string> = {};
+    const $unset: Record<string, ''> = {};
+    if (contact.document === null) $unset.document = '';
+    else if (contact.document !== undefined) $set.document = contact.document;
+    if (contact.email !== undefined) $set.email = contact.email;
+    if (Object.keys($set).length === 0 && Object.keys($unset).length === 0) return this.findById(id);
+    const doc = await CustomerModel.findByIdAndUpdate(
+      id,
+      { ...(Object.keys($set).length ? { $set } : {}), ...(Object.keys($unset).length ? { $unset } : {}) },
+      { new: true },
+    ).lean<CustomerLeanDocument>();
+    return doc ? toEntity(doc) : null;
+  }
+
   async acceptTerms(id: string, version: string, profileOnInsert: CustomerProfileUpsert): Promise<ICustomer> {
     const doc = await CustomerModel.findByIdAndUpdate(
       id,
