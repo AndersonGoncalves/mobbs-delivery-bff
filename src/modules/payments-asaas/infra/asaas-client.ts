@@ -195,6 +195,18 @@ export class AsaasClient {
     return result.data[0] ?? null;
   }
 
+  /** specs/0175 REQ-23 (opção C) — TODAS as cobranças com esta `externalReference`, com o status.
+   * Diferente de `findPaymentByExternalReference` (só a primeira, sem status): uma fatura da
+   * mensalidade reaberta por "Cobrar de novo" tem a cobrança estornada E a nova com a mesma
+   * referência, e a emissão precisa escolher a que ainda vale. */
+  async listPaymentsByExternalReference(externalReference: string): Promise<AsaasPaymentResult[]> {
+    const result = await this.request<{ data: { id: string; status: string }[] }>(
+      'GET',
+      `/payments?externalReference=${encodeURIComponent(externalReference)}`,
+    );
+    return result.data.map((payment) => ({ id: payment.id, status: payment.status }));
+  }
+
   /** `POST /v3/webhooks` (fase 2) — webhook ADICIONAL (uma conta aceita até 10), só pros eventos
    * de checkout; nunca mexe no webhook de Pix já criado em `createSubaccount` (zero risco pro que
    * já está em produção desde a fase 1). Registrado sob demanda, uma vez por restaurante (ver

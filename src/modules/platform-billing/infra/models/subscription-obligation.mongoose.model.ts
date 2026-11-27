@@ -28,6 +28,8 @@ const subscriptionObligationSchema = new Schema(
     asaasChargeId: { type: String },
     pixPayload: { type: String },
     pixExpiresAt: { type: Date },
+    // specs/0175 REQ-23 (opção C) — cobranças estornadas substituídas por "Cobrar de novo".
+    refundedChargeIds: { type: [String], default: undefined },
   },
   { _id: false, timestamps: true },
 );

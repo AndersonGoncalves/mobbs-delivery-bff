@@ -31,7 +31,7 @@ function setup(options: { eligible: ISubscriptionObligation[]; payer?: IBillingP
   const asaasClient = {
     createPixCharge: jest.fn().mockResolvedValue({ id: 'pay_1', status: 'PENDING' }),
     getPixQrCode: jest.fn().mockResolvedValue({ payload: '00020126...copia-e-cola' }),
-    findPaymentByExternalReference: jest.fn().mockResolvedValue(null),
+    listPaymentsByExternalReference: jest.fn().mockResolvedValue([]),
   };
   const service = new ObligationIssuanceService({ obligationRepository, billingPayerRepository, pixAvailabilityExceptionRepository, asaasClient } as never);
   return { service, obligationRepository, billingPayerRepository, pixAvailabilityExceptionRepository, asaasClient };
@@ -51,7 +51,7 @@ describe('ObligationIssuanceService.issuePending', () => {
   it('REQ-11: busca a cobrança existente antes de criar — reinício no meio da emissão não duplica', async () => {
     const obligation = buildObligation();
     const { service, asaasClient } = setup({ eligible: [obligation] });
-    asaasClient.findPaymentByExternalReference.mockResolvedValue({ id: 'pay_already_created' });
+    asaasClient.listPaymentsByExternalReference.mockResolvedValue([{ id: 'pay_already_created', status: 'PENDING' }]);
 
     await service.issuePending(new Date('2026-11-01T12:00:00Z'));
 
@@ -99,6 +99,47 @@ describe('ObligationIssuanceService.issuePending', () => {
     await service.issuePending(new Date('2026-11-01T12:00:00Z'));
 
     expect(pixAvailabilityExceptionRepository.createIfAbsent).not.toHaveBeenCalled();
+  });
+
+  describe('specs/0175 REQ-23 (opção C) — fatura reaberta por "Cobrar de novo"', () => {
+    beforeEach(() => jest.spyOn(console, 'log').mockImplementation(() => undefined));
+    afterEach(() => jest.restoreAllMocks());
+
+    it('AC-17b: nunca reaproveita a cobrança estornada — cria uma cobrança NOVA', async () => {
+      const obligation = buildObligation({ refundedChargeIds: ['pay_estornado'] });
+      const { service, asaasClient, obligationRepository } = setup({ eligible: [obligation] });
+      asaasClient.listPaymentsByExternalReference.mockResolvedValue([{ id: 'pay_estornado', status: 'REFUNDED' }]);
+      asaasClient.createPixCharge.mockResolvedValue({ id: 'pay_novo', status: 'PENDING' });
+
+      await service.issuePending(new Date('2026-11-01T12:00:00Z'));
+
+      expect(asaasClient.createPixCharge).toHaveBeenCalledTimes(1);
+      expect(obligationRepository.markIssued).toHaveBeenCalledWith('ob-1', expect.objectContaining({ asaasChargeId: 'pay_novo' }), expect.any(Date));
+    });
+
+    it('AC-17b: cobrança estornada é ignorada mesmo se o Asaas ainda não marcou como REFUNDED (está em refundedChargeIds)', async () => {
+      const obligation = buildObligation({ refundedChargeIds: ['pay_estornado'] });
+      const { service, asaasClient } = setup({ eligible: [obligation] });
+      asaasClient.listPaymentsByExternalReference.mockResolvedValue([{ id: 'pay_estornado', status: 'RECEIVED' }]);
+
+      await service.issuePending(new Date('2026-11-01T12:00:00Z'));
+
+      expect(asaasClient.createPixCharge).toHaveBeenCalledTimes(1);
+    });
+
+    it('REQ-11: reinício no meio da reemissão reaproveita a cobrança NOVA já criada, sem duplicar', async () => {
+      const obligation = buildObligation({ refundedChargeIds: ['pay_estornado'] });
+      const { service, asaasClient, obligationRepository } = setup({ eligible: [obligation] });
+      asaasClient.listPaymentsByExternalReference.mockResolvedValue([
+        { id: 'pay_estornado', status: 'REFUNDED' },
+        { id: 'pay_novo', status: 'PENDING' },
+      ]);
+
+      await service.issuePending(new Date('2026-11-01T12:00:00Z'));
+
+      expect(asaasClient.createPixCharge).not.toHaveBeenCalled();
+      expect(obligationRepository.markIssued).toHaveBeenCalledWith('ob-1', expect.objectContaining({ asaasChargeId: 'pay_novo' }), expect.any(Date));
+    });
   });
 
   describe('specs/0175 T043 — logs da emissão', () => {

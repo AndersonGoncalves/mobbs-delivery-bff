@@ -18,8 +18,12 @@ function describeObligation(obligation: ISubscriptionObligation): string {
 export interface PlatformAsaasPixClient {
   createPixCharge(customerId: string, value: number, dueDate: string, externalReference: string): Promise<{ id: string; status: string }>;
   getPixQrCode(chargeId: string): Promise<{ payload: string }>;
-  findPaymentByExternalReference(externalReference: string): Promise<{ id: string } | null>;
+  listPaymentsByExternalReference(externalReference: string): Promise<{ id: string; status: string }[]>;
 }
+
+/** specs/0175 REQ-23 (opção C) — estados de cobrança do Asaas que nunca podem ser reaproveitados
+ * na emissão (a fatura reaberta por "Cobrar de novo" precisa de uma cobrança NOVA). */
+const NON_REUSABLE_ASAAS_STATUSES = new Set(['REFUNDED', 'REFUND_REQUESTED', 'REFUND_IN_PROGRESS', 'DELETED']);
 
 /**
  * specs/0175-cobranca-assinatura-asaas REQ-9/REQ-11/REQ-12 — emite a cobrança Pix real no Asaas
@@ -57,8 +61,12 @@ export class ObligationIssuanceService {
 
       // REQ-11 — busca ANTES de criar: cobre reinício no meio da emissão ou timeout pós-criação
       // (a obligation local ficou `awaiting_issue` sem `asaasChargeId` persistido, mas a cobrança
-      // já existe de verdade no Asaas).
-      const existingPayment = await this.deps.asaasClient.findPaymentByExternalReference(obligation.id);
+      // já existe de verdade no Asaas). REQ-23 (opção C) — nunca reaproveita a cobrança estornada
+      // de uma fatura reaberta por "Cobrar de novo".
+      const refundedChargeIds = new Set(obligation.refundedChargeIds ?? []);
+      const existingPayment = (await this.deps.asaasClient.listPaymentsByExternalReference(obligation.id)).find(
+        (payment) => !refundedChargeIds.has(payment.id) && !NON_REUSABLE_ASAAS_STATUSES.has(payment.status),
+      );
       const chargeId = existingPayment ? existingPayment.id : (await this.deps.asaasClient.createPixCharge(
         payer.asaasCustomerId,
         obligation.amountCents / 100,

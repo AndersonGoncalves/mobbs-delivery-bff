@@ -99,3 +99,51 @@ describe('SubscriptionObligationMongooseRepository.getOpenSummaryByRestaurant (a
     expect(result.has('r-3')).toBe(false);
   });
 });
+
+describe('SubscriptionObligationMongooseRepository — specs/0175 REQ-23 (opção C)', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('AC-17b: reopenForReissue só age em refunded, tira Pix/cobrança antigos e guarda a cobrança estornada', async () => {
+    const findQuery = SubscriptionObligationModel.findOne({});
+    jest.spyOn(findQuery, 'lean').mockResolvedValue({ _id: 'ob-1', status: 'refunded', asaasChargeId: 'pay_estornado' });
+    const findOne = jest.spyOn(SubscriptionObligationModel, 'findOne').mockReturnValue(findQuery);
+    const updateQuery = SubscriptionObligationModel.findOneAndUpdate({}, {});
+    jest.spyOn(updateQuery, 'lean').mockResolvedValue({ _id: 'ob-1', status: 'awaiting_issue', refundedChargeIds: ['pay_estornado'] });
+    const findOneAndUpdate = jest.spyOn(SubscriptionObligationModel, 'findOneAndUpdate').mockReturnValue(updateQuery);
+
+    const result = await new SubscriptionObligationMongooseRepository().reopenForReissue('ob-1');
+
+    expect(findOne).toHaveBeenCalledWith({ _id: 'ob-1', status: 'refunded' });
+    expect(findOneAndUpdate).toHaveBeenCalledWith(
+      { _id: 'ob-1', status: 'refunded' },
+      {
+        $set: { status: 'awaiting_issue' },
+        $unset: { asaasChargeId: '', pixPayload: '', pixExpiresAt: '', issueFailureReason: '', issuedAt: '' },
+        $addToSet: { refundedChargeIds: 'pay_estornado' },
+      },
+      { new: true },
+    );
+    expect(result).toEqual(expect.objectContaining({ id: 'ob-1', status: 'awaiting_issue', refundedChargeIds: ['pay_estornado'] }));
+  });
+
+  it('AC-17b: reopenForReissue de fatura que não está refunded devolve null sem alterar nada', async () => {
+    const findQuery = SubscriptionObligationModel.findOne({});
+    jest.spyOn(findQuery, 'lean').mockResolvedValue(null);
+    jest.spyOn(SubscriptionObligationModel, 'findOne').mockReturnValue(findQuery);
+    const findOneAndUpdate = jest.spyOn(SubscriptionObligationModel, 'findOneAndUpdate');
+
+    expect(await new SubscriptionObligationMongooseRepository().reopenForReissue('ob-1')).toBeNull();
+    expect(findOneAndUpdate).not.toHaveBeenCalled();
+  });
+
+  it('AC-17b: cancelRefunded só cancela fatura refunded', async () => {
+    const updateQuery = SubscriptionObligationModel.findOneAndUpdate({}, {});
+    jest.spyOn(updateQuery, 'lean').mockResolvedValue({ _id: 'ob-1', status: 'cancelled' });
+    const findOneAndUpdate = jest.spyOn(SubscriptionObligationModel, 'findOneAndUpdate').mockReturnValue(updateQuery);
+
+    const result = await new SubscriptionObligationMongooseRepository().cancelRefunded('ob-1');
+
+    expect(findOneAndUpdate).toHaveBeenCalledWith({ _id: 'ob-1', status: 'refunded' }, { $set: { status: 'cancelled' } }, { new: true });
+    expect(result?.status).toBe('cancelled');
+  });
+});

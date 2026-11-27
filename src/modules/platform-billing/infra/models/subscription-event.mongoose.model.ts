@@ -7,7 +7,7 @@ const subscriptionEventSchema = new Schema(
     obligationId: { type: String, required: true },
     type: {
       type: String,
-      enum: ['issued', 'issue_failed', 'webhook_received', 'reconciled', 'refunded', 'partially_refunded', 'expired', 'manual_exception', 'reprocessed'],
+      enum: ['issued', 'issue_failed', 'webhook_received', 'reconciled', 'refunded', 'partially_refunded', 'expired', 'manual_exception', 'reprocessed', 'refund_decision'],
       required: true,
     },
     payload: { type: Schema.Types.Mixed },

@@ -67,6 +67,8 @@ function setup(options: { restaurants: IRestaurant[]; ordersByRestaurant?: Recor
     // restaurante cadastrado)": `GET /platform/billing/restaurants` usa a agregação em lote
     // abaixo (`buildBillingRows`), não mais `findOpenByRestaurantId` por restaurante.
     getOpenSummaryByRestaurant: jest.fn().mockResolvedValue(new Map()),
+    reopenForReissue: jest.fn(),
+    cancelRefunded: jest.fn(),
   };
   const annualSubscriptionRepository = {
     findActiveByRestaurantId: jest.fn().mockResolvedValue(null),
@@ -307,6 +309,84 @@ describe('PlatformController (specs/0106)', () => {
         payload: { reason: 'Falha reconhecida da plataforma', graceDeadline: '2026-11-15T03:00:00.000Z' },
       }));
       expect(platformBillingCycleService.recomputeAndPersist).toHaveBeenCalledWith('r-1', expect.any(Date));
+    });
+
+    describe('specs/0175 REQ-23 (opção C) — POST /platform/billing/obligations/:id/refund-decision', () => {
+      const R = 'POST /platform/billing/obligations/:id/refund-decision';
+      const admin = { email: 'admin@bsdelivery.com.br' };
+      const refunded = (overrides: Record<string, unknown> = {}) => ({
+        id: 'ob-1', restaurantId: 'r-1', status: 'refunded', asaasChargeId: 'pay_estornado',
+        dueDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000), ...overrides,
+      });
+
+      it('AC-17b: "Cobrar de novo" reabre a fatura, audita com autoria, emite o Pix novo na hora e recalcula o acesso', async () => {
+        const { routes, obligationRepository, subscriptionEventRepository, obligationIssuanceService, platformBillingCycleService, pixAvailabilityExceptionRepository } = setup({ restaurants: [buildRestaurant()] });
+        obligationRepository.findById.mockResolvedValueOnce(refunded()).mockResolvedValueOnce({ id: 'ob-1', status: 'pending', asaasChargeId: 'pay_novo' });
+        obligationRepository.reopenForReissue.mockResolvedValue({ id: 'ob-1', status: 'awaiting_issue' });
+        const json = jest.fn();
+
+        await run(routes[R], { params: { id: 'ob-1' }, body: { decision: 'charge_again', reason: 'estorno por engano' }, user: admin }, { json });
+
+        expect(obligationRepository.reopenForReissue).toHaveBeenCalledWith('ob-1');
+        expect(subscriptionEventRepository.append).toHaveBeenCalledWith(expect.objectContaining({
+          obligationId: 'ob-1', type: 'refund_decision', actor: 'admin@bsdelivery.com.br',
+          payload: { decision: 'charge_again', reason: 'estorno por engano', refundedChargeId: 'pay_estornado' },
+        }));
+        expect(obligationIssuanceService.issuePending).toHaveBeenCalledWith(expect.any(Date), 'r-1');
+        expect(pixAvailabilityExceptionRepository.setAdminOverride).not.toHaveBeenCalled(); // ainda no prazo
+        expect(platformBillingCycleService.recomputeAndPersist).toHaveBeenCalledWith('r-1', expect.any(Date));
+        expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ status: 'pending', asaasChargeId: 'pay_novo' }));
+      });
+
+      it('AC-17b: "Cobrar de novo" de fatura já vencida dá 3 dias de carência antes de emitir (nunca bloqueia sem Pix)', async () => {
+        const { routes, obligationRepository, pixAvailabilityExceptionRepository, obligationIssuanceService } = setup({ restaurants: [buildRestaurant()] });
+        obligationRepository.findById.mockResolvedValue(refunded({ dueDate: new Date('2026-01-10T03:00:00Z') }));
+        obligationRepository.reopenForReissue.mockResolvedValue({ id: 'ob-1', status: 'awaiting_issue' });
+
+        await run(routes[R], { params: { id: 'ob-1' }, body: { decision: 'charge_again' }, user: admin }, { json: jest.fn() });
+
+        expect(pixAvailabilityExceptionRepository.setAdminOverride).toHaveBeenCalledWith('ob-1', expect.any(Date), expect.any(Date));
+        const graceDeadline = pixAvailabilityExceptionRepository.setAdminOverride.mock.calls[0][1] as Date;
+        expect(graceDeadline.getTime()).toBeGreaterThan(Date.now() + 2 * 24 * 60 * 60 * 1000);
+        expect(pixAvailabilityExceptionRepository.setAdminOverride.mock.invocationCallOrder[0]).toBeLessThan(obligationIssuanceService.issuePending.mock.invocationCallOrder[0]);
+      });
+
+      it('AC-17b: "Perdoar" cancela a fatura, audita e não emite nada', async () => {
+        const { routes, obligationRepository, subscriptionEventRepository, obligationIssuanceService } = setup({ restaurants: [buildRestaurant()] });
+        obligationRepository.findById.mockResolvedValue(refunded());
+        obligationRepository.cancelRefunded.mockResolvedValue({ id: 'ob-1', status: 'cancelled' });
+
+        await run(routes[R], { params: { id: 'ob-1' }, body: { decision: 'forgive' }, user: admin }, { json: jest.fn() });
+
+        expect(obligationRepository.cancelRefunded).toHaveBeenCalledWith('ob-1');
+        expect(obligationRepository.reopenForReissue).not.toHaveBeenCalled();
+        expect(obligationIssuanceService.issuePending).not.toHaveBeenCalled();
+        expect(subscriptionEventRepository.append).toHaveBeenCalledWith(expect.objectContaining({ type: 'refund_decision', payload: expect.objectContaining({ decision: 'forgive' }) }));
+      });
+
+      it('AC-17b: decisão sobre fatura que não está estornada é recusada (409)', async () => {
+        const { routes, obligationRepository } = setup({ restaurants: [buildRestaurant()] });
+        obligationRepository.findById.mockResolvedValue(refunded({ status: 'paid' }));
+
+        await expect(run(routes[R], { params: { id: 'ob-1' }, body: { decision: 'forgive' }, user: admin }, { json: jest.fn() })).rejects.toMatchObject({ statusCode: 409 });
+        expect(obligationRepository.cancelRefunded).not.toHaveBeenCalled();
+      });
+
+      it('AC-17b: decisão concorrente (a fatura mudou entre a leitura e a gravação) é 409, sem auditar nem emitir', async () => {
+        const { routes, obligationRepository, subscriptionEventRepository, obligationIssuanceService } = setup({ restaurants: [buildRestaurant()] });
+        obligationRepository.findById.mockResolvedValue(refunded());
+        obligationRepository.reopenForReissue.mockResolvedValue(null);
+
+        await expect(run(routes[R], { params: { id: 'ob-1' }, body: { decision: 'charge_again' }, user: admin }, { json: jest.fn() })).rejects.toMatchObject({ statusCode: 409 });
+        expect(subscriptionEventRepository.append).not.toHaveBeenCalled();
+        expect(obligationIssuanceService.issuePending).not.toHaveBeenCalled();
+      });
+
+      it('decisão inválida é 400; fatura inexistente é 404', async () => {
+        const { routes } = setup({ restaurants: [] });
+        await expect(run(routes[R], { params: { id: 'ob-1' }, body: { decision: 'talvez' }, user: admin }, { json: jest.fn() })).rejects.toMatchObject({ statusCode: 400 });
+        await expect(run(routes[R], { params: { id: 'x' }, body: { decision: 'forgive' }, user: admin }, { json: jest.fn() })).rejects.toMatchObject({ statusCode: 404 });
+      });
     });
 
     it('POST /platform/billing/exceptions com obligationId inexistente é 404', async () => {

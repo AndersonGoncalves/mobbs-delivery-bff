@@ -58,5 +58,11 @@ export interface ISubscriptionObligationRepository {
   markOverdue(id: string): Promise<ISubscriptionObligation>;
   markRefunded(id: string): Promise<ISubscriptionObligation>;
   markPartiallyRefunded(id: string): Promise<ISubscriptionObligation>;
+  /** specs/0175 REQ-23 (opção C) — "Cobrar de novo": só de `refunded`; volta a `awaiting_issue`,
+   * tira o Pix/cobrança antigos e guarda a cobrança estornada em `refundedChargeIds`. `null` se a
+   * fatura não estava `refunded` (decisão já tomada ou estado errado). */
+  reopenForReissue(id: string): Promise<ISubscriptionObligation | null>;
+  /** specs/0175 REQ-23 (opção C) — "Perdoar": só de `refunded`, vira `cancelled`. `null` idem. */
+  cancelRefunded(id: string): Promise<ISubscriptionObligation | null>;
   markCancelled(id: string): Promise<ISubscriptionObligation>;
 }
