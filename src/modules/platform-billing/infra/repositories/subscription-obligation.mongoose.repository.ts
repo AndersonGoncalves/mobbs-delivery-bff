@@ -206,7 +206,8 @@ export class SubscriptionObligationMongooseRepository implements ISubscriptionOb
       { _id: id, status: 'refunded' },
       {
         $set: { status: 'awaiting_issue' },
-        $unset: { asaasChargeId: '', pixPayload: '', pixExpiresAt: '', issueFailureReason: '', issuedAt: '' },
+        // specs/0175 T046 — `paidAt` era do pagamento estornado; a fatura reaberta não está paga.
+        $unset: { asaasChargeId: '', pixPayload: '', pixExpiresAt: '', issueFailureReason: '', issuedAt: '', paidAt: '' },
         ...(current.asaasChargeId ? { $addToSet: { refundedChargeIds: current.asaasChargeId } } : {}),
       },
       { new: true },
