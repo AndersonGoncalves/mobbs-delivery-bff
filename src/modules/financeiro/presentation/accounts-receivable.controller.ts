@@ -4,6 +4,7 @@ import { NotFoundError } from 'restify-errors';
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
 import { resolvePagination } from '../../../shared/http/pagination';
+import { toInclusiveEndDate } from '../../../shared/utils/inclusive-end-date';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
 import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { IAccountReceivableRepository } from '../domain/repositories/account-receivable.repository.interface';
@@ -46,8 +47,10 @@ export class AccountsReceivableController extends BaseRouter {
       const query = parseBody(accountListQuerySchema, req.query ?? {});
       const filters = {
         from: query.from ? new Date(query.from) : undefined,
-        to: query.to ? new Date(query.to) : undefined,
+        // specs/0231 — `to` inclusivo: data pura vira o fim daquele dia (ver `toInclusiveEndDate`).
+        to: query.to ? toInclusiveEndDate(query.to) : undefined,
         search: query.search,
+        status: query.status,
       };
       const pagination = resolvePagination(query);
       if (!pagination) {

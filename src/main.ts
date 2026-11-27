@@ -770,7 +770,7 @@ server
     ),
     new SuppliersController(new SupplierMongooseRepository(), restaurantOperatorMiddleware),
     new MotoboysController(new MotoboyMongooseRepository(), restaurantOperatorMiddleware),
-    new PurchaseOrdersController(purchaseOrderRepository, receivePurchaseOrderService, restaurantOperatorMiddleware, rawMaterialRepository, productRepository),
+    new PurchaseOrdersController(purchaseOrderRepository, receivePurchaseOrderService, restaurantOperatorMiddleware, rawMaterialRepository, productRepository, new SupplierMongooseRepository()),
     new CouponsController(couponRepository, orderRepository, restaurantOperatorMiddleware),
     new CampaignsController(campaignRepository, campaignOptOutRepository, campaignDispatchService, restaurantOperatorMiddleware),
     new PromotionsController(promotionRepository, restaurantOperatorMiddleware),

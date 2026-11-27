@@ -70,4 +70,43 @@ describe('buildAccountListQuery', () => {
       description: { $regex: 'aluguel', $options: 'i' },
     });
   });
+
+  // specs/0231-filtro-datas-contas-pedidos-compra REQ-1/REQ-4 (AC-1).
+  describe('status (specs/0231)', () => {
+    const now = new Date('2026-11-27T12:00:00.000Z');
+    const twelveMonthsAgo = new Date('2025-11-27T12:00:00.000Z');
+
+    beforeEach(() => jest.useFakeTimers().setSystemTime(now));
+    afterEach(() => jest.useRealTimers());
+
+    it('AC-1: período + "aberto" → só os em aberto do período', () => {
+      const from = new Date('2026-11-01T00:00:00.000Z');
+      const to = new Date('2026-11-30T23:59:59.999Z');
+
+      expect(buildAccountListQuery('r-1', { from, to, status: 'aberto' })).toEqual({
+        restaurantId: 'r-1',
+        dueDate: { $gte: from, $lte: to },
+        status: 'aberto',
+      });
+    });
+
+    it('"aberto" sem período → todos os abertos, de qualquer idade', () => {
+      expect(buildAccountListQuery('r-1', { status: 'aberto' })).toEqual({ restaurantId: 'r-1', status: 'aberto' });
+    });
+
+    it('"pago" sem período → mantém a janela de 12 meses do default', () => {
+      expect(buildAccountListQuery('r-1', { status: 'pago' })).toEqual({
+        restaurantId: 'r-1',
+        status: 'pago',
+        dueDate: { $gte: twelveMonthsAgo },
+      });
+    });
+
+    it('AC-1: sem período e sem status → exatamente o default de antes', () => {
+      expect(buildAccountListQuery('r-1', { status: undefined })).toEqual({
+        restaurantId: 'r-1',
+        $or: [{ status: 'aberto' }, { dueDate: { $gte: twelveMonthsAgo } }],
+      });
+    });
+  });
 });

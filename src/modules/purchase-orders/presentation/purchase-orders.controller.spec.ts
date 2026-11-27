@@ -4,10 +4,11 @@ import { IPurchaseOrderRepository } from '../domain/repositories/purchase-order.
 import { IProductRepository } from '../../catalog/domain/repositories/product.repository.interface';
 import { IRawMaterialRepository } from '../../raw-materials/domain/repositories/raw-material.repository.interface';
 import { IReceivePurchaseOrderService } from '../domain/services/i-receive-purchase-order.service';
+import { ISupplierRepository } from '../../suppliers/domain/repositories/supplier.repository.interface';
 import { PurchaseOrdersController } from './purchase-orders.controller';
 
-type FakeRequest = Partial<Pick<Request, 'params' | 'body'>> & { restaurantId?: string };
-type FakeResponse = Pick<Response, 'json'>;
+type FakeRequest = Partial<Pick<Request, 'params' | 'body' | 'query'>> & { restaurantId?: string };
+type FakeResponse = Pick<Response, 'json'> & Partial<Pick<Response, 'header'>>;
 type RouteHandler = (req: FakeRequest, res: FakeResponse) => Promise<void>;
 
 function buildFakeApplication() {
@@ -55,10 +56,12 @@ describe('PurchaseOrdersController (specs/0015-estoque-compras REQ-2/REQ-3/REQ-7
       receivePurchaseOrderService?: Partial<IReceivePurchaseOrderService>;
       rawMaterialRepository?: Partial<IRawMaterialRepository>;
       productRepository?: Partial<IProductRepository>;
+      supplierRepository?: Partial<ISupplierRepository>;
     } = {},
   ) {
     const purchaseOrderRepository: Partial<IPurchaseOrderRepository> = {
       listByRestaurant: jest.fn().mockResolvedValue([buildOrder()]),
+      listByRestaurantPage: jest.fn().mockResolvedValue({ items: [buildOrder()], total: 1 }),
       create: jest.fn().mockResolvedValue(buildOrder()),
       findById: jest.fn().mockResolvedValue(buildOrder()),
       updateItemsIfNotReceived: jest.fn().mockResolvedValue(buildOrder({ totalValue: 50 })),
@@ -77,6 +80,10 @@ describe('PurchaseOrdersController (specs/0015-estoque-compras REQ-2/REQ-3/REQ-7
       findById: jest.fn().mockImplementation(async (id: string) => ({ id, restaurantId: 'r-1', tracksStock: true })),
       ...overrides.productRepository,
     };
+    const supplierRepository: Partial<ISupplierRepository> = {
+      findIdsByName: jest.fn().mockResolvedValue(['sup-1']),
+      ...overrides.supplierRepository,
+    };
     const { application, routes } = buildFakeApplication();
     new PurchaseOrdersController(
       purchaseOrderRepository as IPurchaseOrderRepository,
@@ -84,9 +91,89 @@ describe('PurchaseOrdersController (specs/0015-estoque-compras REQ-2/REQ-3/REQ-7
       restaurantOperatorMiddleware,
       rawMaterialRepository as IRawMaterialRepository,
       productRepository as IProductRepository,
+      supplierRepository as ISupplierRepository,
     ).initializeRoutes(application);
-    return { purchaseOrderRepository, receivePurchaseOrderService, routes };
+    return { purchaseOrderRepository, receivePurchaseOrderService, supplierRepository, routes };
   }
+
+  // specs/0231-filtro-datas-contas-pedidos-compra REQ-2/REQ-4/REQ-5/REQ-6 (AC-2/AC-4).
+  it('specs/0231 AC-2: GET sem filtros nem page → lista inteira (default do repositório), sem header de total', async () => {
+    const { purchaseOrderRepository, supplierRepository, routes } = setup();
+    const json = jest.fn();
+    const header = jest.fn();
+
+    await runOperatorChain(routes['GET /restaurants/me/purchase-orders'], { restaurantId: 'r-1', query: {} }, { json, header });
+
+    expect(purchaseOrderRepository.listByRestaurant).toHaveBeenCalledWith('r-1', {});
+    expect(purchaseOrderRepository.listByRestaurantPage).not.toHaveBeenCalled();
+    expect(supplierRepository.findIdsByName).not.toHaveBeenCalled();
+    expect(header).not.toHaveBeenCalled();
+    expect(json).toHaveBeenCalledWith(200, [expect.objectContaining({ id: 'po-1' })]);
+  });
+
+  it('specs/0231 AC-2: GET com período/situação/fornecedor/page filtra no servidor, pagina e manda X-Total-Count', async () => {
+    const { purchaseOrderRepository, supplierRepository, routes } = setup({
+      purchaseOrderRepository: { listByRestaurantPage: jest.fn().mockResolvedValue({ items: [buildOrder()], total: 37 }) },
+      supplierRepository: { findIdsByName: jest.fn().mockResolvedValue(['sup-1', 'sup-9']) },
+    });
+    const json = jest.fn();
+    const header = jest.fn();
+
+    await runOperatorChain(
+      routes['GET /restaurants/me/purchase-orders'],
+      {
+        restaurantId: 'r-1',
+        query: {
+          from: '2026-11-01T03:00:00.000Z',
+          to: '2026-12-01T02:59:59.999Z',
+          status: 'recebido',
+          supplier: 'distrib',
+          page: '2',
+          pageSize: '25',
+        },
+      },
+      { json, header },
+    );
+
+    expect(supplierRepository.findIdsByName).toHaveBeenCalledWith('r-1', 'distrib');
+    expect(purchaseOrderRepository.listByRestaurantPage).toHaveBeenCalledWith('r-1', { skip: 25, limit: 25 }, {
+      from: new Date('2026-11-01T03:00:00.000Z'),
+      to: new Date('2026-12-01T02:59:59.999Z'),
+      status: 'recebido',
+      supplierIds: ['sup-1', 'sup-9'],
+    });
+    expect(header).toHaveBeenCalledWith('X-Total-Count', '37');
+    expect(json).toHaveBeenCalledWith(200, [expect.objectContaining({ id: 'po-1' })]);
+  });
+
+  it('specs/0231: GET com "até" em data pura usa o fim do dia (inclusivo)', async () => {
+    const { purchaseOrderRepository, routes } = setup();
+
+    await runOperatorChain(routes['GET /restaurants/me/purchase-orders'], { restaurantId: 'r-1', query: { to: '2026-11-30' } }, { json: jest.fn() });
+
+    expect(purchaseOrderRepository.listByRestaurant).toHaveBeenCalledWith('r-1', expect.objectContaining({ to: new Date('2026-11-30T23:59:59.999Z') }));
+  });
+
+  it('specs/0231 AC-4: GET rejeita (400) "de" depois de "até", sem consultar o repositório', async () => {
+    const { purchaseOrderRepository, routes } = setup();
+
+    await expect(
+      runOperatorChain(
+        routes['GET /restaurants/me/purchase-orders'],
+        { restaurantId: 'r-1', query: { from: '2026-12-01', to: '2026-11-30' } },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(purchaseOrderRepository.listByRestaurant).not.toHaveBeenCalled();
+  });
+
+  it('specs/0231: GET rejeita (400) status desconhecido', async () => {
+    const { routes } = setup();
+
+    await expect(
+      runOperatorChain(routes['GET /restaurants/me/purchase-orders'], { restaurantId: 'r-1', query: { status: 'pago' } }, { json: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
 
   it('AC-2: POST /restaurants/me/purchase-orders cria um pedido "Aberto" com o total calculado', async () => {
     const { purchaseOrderRepository, routes } = setup();

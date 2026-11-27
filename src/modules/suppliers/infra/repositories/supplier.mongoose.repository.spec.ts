@@ -27,3 +27,17 @@ describe('SupplierMongooseRepository endereço', () => {
     expect(update).toHaveBeenCalledWith('s1', { $set: { name: 'Fornecedor', address } }, { new: true });
   });
 });
+
+// specs/0231-filtro-datas-contas-pedidos-compra REQ-2 — busca de pedidos de compra pelo nome do fornecedor.
+describe('SupplierMongooseRepository.findIdsByName', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('busca parcial/case-insensitive com regex escapado, restrita ao restaurante, e devolve só os ids', async () => {
+    const query = SupplierModel.find({});
+    jest.spyOn(query, 'lean').mockResolvedValue([{ _id: 's1' }, { _id: 's2' }]);
+    const find = jest.spyOn(SupplierModel, 'find').mockReturnValue(query);
+
+    await expect(new SupplierMongooseRepository().findIdsByName('r1', 'a.b')).resolves.toEqual(['s1', 's2']);
+    expect(find).toHaveBeenCalledWith({ restaurantId: 'r1', name: { $regex: 'a\\.b', $options: 'i' } });
+  });
+});
