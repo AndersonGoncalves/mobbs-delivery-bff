@@ -100,4 +100,43 @@ describe('ObligationIssuanceService.issuePending', () => {
 
     expect(pixAvailabilityExceptionRepository.createIfAbsent).not.toHaveBeenCalled();
   });
+
+  describe('specs/0175 T043 — logs da emissão', () => {
+    let log: jest.SpyInstance;
+    let warn: jest.SpyInstance;
+    let error: jest.SpyInstance;
+    beforeEach(() => {
+      log = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+      warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      error = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    });
+    afterEach(() => jest.restoreAllMocks());
+
+    it('emissão com sucesso registra a obrigação e a cobrança do Asaas', async () => {
+      const { service } = setup({ eligible: [buildObligation()] });
+
+      await service.issuePending(new Date('2026-11-01T12:00:00Z'));
+
+      expect(log).toHaveBeenCalledWith(expect.stringMatching(/\[platform-billing\] Pix emitido: obrigação ob-1 \(monthly, restaurante r-1, R\$ 79\.90, vence .*\) — cobrança Asaas pay_1$/));
+    });
+
+    it('pagador incompleto registra aviso (antes só ia para o banco)', async () => {
+      const { service } = setup({ eligible: [buildObligation()], payer: null });
+
+      await service.issuePending(new Date('2026-11-01T12:00:00Z'));
+
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('Pix não emitido: obrigação ob-1'));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('cadastro do pagador incompleto'));
+    });
+
+    it('falha do Asaas registra erro com o motivo (antes só ia para o banco)', async () => {
+      const { service, asaasClient } = setup({ eligible: [buildObligation()] });
+      asaasClient.getPixQrCode.mockRejectedValueOnce(new Error('Asaas API respondeu 404'));
+
+      await service.issuePending(new Date('2026-11-01T12:00:00Z'));
+
+      expect(error).toHaveBeenCalledWith(expect.stringContaining('falha ao emitir o Pix: obrigação ob-1'));
+      expect(error).toHaveBeenCalledWith(expect.stringContaining('Asaas API respondeu 404 (nova tentativa no próximo ciclo)'));
+    });
+  });
 });

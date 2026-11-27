@@ -6,6 +6,11 @@ import type { ISubscriptionObligationRepository } from '../repositories/subscrip
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** specs/0175 T043 — identificação da cobrança nos logs (sem dados do pagador). */
+function describeObligation(obligation: ISubscriptionObligation): string {
+  return `obrigação ${obligation.id} (${obligation.kind}, restaurante ${obligation.restaurantId}, R$ ${(obligation.amountCents / 100).toFixed(2)}, vence ${obligation.dueDate.toISOString().slice(0, 10)})`;
+}
+
 /** Só os 3 métodos de `AsaasClient` (`payments-asaas/infra/asaas-client.ts`) que a emissão
  * precisa — instanciado com a credencial da conta MÃE (`environment.asaas.apiKey`), nunca a
  * subconta de um restaurante (essa é a de `specs/0101`, pra receber pedidos, não pra pagar a
@@ -46,6 +51,7 @@ export class ObligationIssuanceService {
       const payer = await this.deps.billingPayerRepository.findByRestaurantId(obligation.restaurantId);
       if (!payer || !payer.completedAt) {
         await this.deps.obligationRepository.markIssueFailed(obligation.id, 'Cadastro do pagador incompleto — completar em "Planos e assinatura"', now);
+        console.warn(`[platform-billing] Pix não emitido: ${describeObligation(obligation)} — cadastro do pagador incompleto`);
         return;
       }
 
@@ -62,6 +68,7 @@ export class ObligationIssuanceService {
 
       const qrCode = await this.deps.asaasClient.getPixQrCode(chargeId);
       await this.deps.obligationRepository.markIssued(obligation.id, { asaasChargeId: chargeId, pixPayload: qrCode.payload }, now);
+      console.log(`[platform-billing] Pix emitido: ${describeObligation(obligation)} — cobrança Asaas ${chargeId}${existingPayment ? ' (já existia, reaproveitada)' : ''}`);
 
       // REQ-10 (decisão 10)/AC-5 — só cria a exceção quando o Pix válido só ficou disponível
       // DEPOIS do vencimento comercial, por falha reconhecidamente da plataforma (nunca por
@@ -72,6 +79,10 @@ export class ObligationIssuanceService {
       }
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'Erro desconhecido na emissão';
+      // specs/0175 T043 — antes o motivo ia só para o banco (`issue_failed`), sem log: falha de
+      // emissão (Asaas fora, chave inválida, QR ainda não gerado) era invisível na operação. O
+      // ciclo tenta de novo a cada 5 minutos.
+      console.error(`[platform-billing] falha ao emitir o Pix: ${describeObligation(obligation)} — ${reason} (nova tentativa no próximo ciclo)`);
       await this.deps.obligationRepository.markIssueFailed(obligation.id, reason, now);
     }
   }
