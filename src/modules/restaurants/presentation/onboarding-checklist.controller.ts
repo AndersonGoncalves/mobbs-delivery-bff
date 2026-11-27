@@ -11,8 +11,9 @@ import { IProductRepository } from '../../catalog/domain/repositories/product.re
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
 // specs/0185 — itens opcionais do checklist (os que o BFF não deriva do estado do restaurante).
+// specs/0230 REQ-2 — `pix`/`whatsapp` também: opcionais, concluem ao abrir a página.
 const visitedItemSchema = z.object({
-  key: z.enum(['catalog', 'products', 'tables', 'operators', 'rawMaterials', 'onboardingLink']),
+  key: z.enum(['catalog', 'products', 'tables', 'operators', 'rawMaterials', 'onboardingLink', 'pix', 'whatsapp']),
 }).strict();
 
 /**
@@ -43,19 +44,21 @@ export class OnboardingChecklistController extends BaseRouter {
         this.productRepository.listByRestaurant(req.restaurantId!),
       ]);
 
+      // specs/0230 REQ-3 — Pix e WhatsApp são opcionais: concluídos ao configurar OU só de abrir a página.
+      const visitedItems = found.onboardingVisitedItems ?? [];
       const items = [
         { key: 'profile', done: !!found.address },
         { key: 'catalog', done: categories.length > 0 && products.length > 0 },
         { key: 'businessHours', done: !!found.businessHoursReviewedAt },
-        { key: 'pix', done: !!found.pixKey },
+        { key: 'pix', done: !!found.pixKey || visitedItems.includes('pix') },
         // specs/0070 — WhatsApp conectado é o que envia as mensagens automáticas pro cliente; e o
         // app do cliente é considerado personalizado quando tem logo ou cor primária (nenhum dos
         // dois nasce preenchido no autocadastro).
-        { key: 'whatsapp', done: !!found.whatsappConnected },
+        { key: 'whatsapp', done: !!found.whatsappConnected || visitedItems.includes('whatsapp') },
         { key: 'customerApp', done: !!found.logoUrl || !!found.primaryColor },
       ];
 
-      res.json(200, { items, allDone: items.every((item) => item.done), visitedItems: found.onboardingVisitedItems ?? [] });
+      res.json(200, { items, allDone: items.every((item) => item.done), visitedItems });
     });
 
     application.post('/restaurants/me/onboarding-checklist/visited', ...authenticated, async (req: Request, res: Response) => {
