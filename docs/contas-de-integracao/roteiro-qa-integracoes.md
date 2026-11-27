@@ -27,12 +27,12 @@ O Asaas não é mais usado nos pagamentos dos pedidos (decisão de 24/11/2026). 
 
 ## 2. Mercado Pago (Pix automático e cartão de crédito online)
 
-⬜ **Antes de liberar (você):** já feito em 24/11/2026 — aplicação de teste "BsDelivery Teste" e
-contas de teste criadas (`./mercado-pago-hml-producao.md` §1). Só falta, na subida da homologação:
-apontar o webhook do modo de teste pra `api.hml` **com os eventos "Pagamentos" e "Order (Mercado
-Pago)"**, conferir `MERCADOPAGO_TEST_TOKEN=true` no `.env` do servidor, ligar o menu, e mandar ao QA o usuário/senha das
-contas **"Restaurante teste"** (vendedora) e **"Cliente teste"** (compradora) + os números de cartão
-de teste (painel → Cartões de teste).
+✅ **Antes de liberar (você):** feito em 26/11/2026 (`specs/0215` T021) — aplicação própria
+"BsDelivery Homologacao", contas de teste e menu ligado (`./mercado-pago-hml-producao.md` §1-§2).
+Mandar ao QA o usuário/senha da **"Cliente teste"** e da **"Cliente teste 2"** (compradoras) + o
+cartão de teste. Os restaurantes já vêm vinculados, cada um com a sua conta ("Pizzaria teste",
+"Hamburgueria teste", "Pastelaria teste"); só mande uma dessas se ele for testar o
+Desvincular/Vincular daquele restaurante.
 
 📋 **Roteiro do QA:**
 1. Abra uma **janela anônima** (Ctrl+Shift+N) e entre na retaguarda de homologação
@@ -40,8 +40,9 @@ de teste (painel → Cartões de teste).
    Mercado Pago sua que esteja logada no navegador.
 2. **Integrações → Mercado Pago → "Vincular com Mercado Pago"**. Na aba que abrir:
    - país **Brasil**;
-   - login com o **usuário** da conta **Restaurante teste** (`TESTUSER…`, não é CPF nem e-mail) e a
-     senha dela; se pedir código, use os **6 últimos dígitos do User ID** dela;
+   - login com o **usuário** da conta de teste **daquele restaurante** ("Pizzaria teste",
+     "Hamburgueria teste" ou "Pastelaria teste" — `TESTUSER…`, não é CPF nem e-mail) e a senha
+     dela. Nunca a mesma conta em dois restaurantes; se pedir código, use os **6 últimos dígitos do User ID** dela;
    - **Autorizar**. Você volta para a retaguarda com "Conta vinculada com sucesso"; feche a aba e
      clique em **"Atualizar vínculo"** na aba original.
 3. **Configurações → Formas de pagamento** → marque **"PIX"** e **"Cartão de Crédito Online"** e
@@ -68,11 +69,15 @@ de teste (painel → Cartões de teste).
 **Cartão de crédito online:**
 
 11. No app do cliente, faça um pedido com **Cartão de Crédito Online**; no checkout do Mercado Pago,
-    entre com a conta **Cliente teste** e pague com um **cartão de teste aprovado**.
+    escolha **"Entrar com a minha conta"** e entre com a **Cliente teste** (ou **Cliente teste 2**) —
+    como visitante ("Cartão" sem conta) o Mercado Pago recusa com "uma das partes é de teste". Pague
+    com o Mastercard de teste `5480 8328 0103 3311`, CVV `123`, validade `11/30`, CPF
+    `12345678909` e **titular `APRO`** (aprovado).
 12. Confirme: pedido muda pra "pago" sozinho e o aviso aparece nos logs
     (`[webhook] POST /webhooks/mercadopago → 200`).
-13. Teste também **cartão recusado** (números específicos no painel) — o pedido não deve ser
-    aprovado.
+13. Teste também **cartão recusado**: mesmo cartão com **titular `FUND`** (saldo insuficiente) ou
+    `OTHE` (erro geral) — o pedido não deve ser aprovado. Se sair do checkout sem pagar, o botão
+    **"Pagar agora"** no acompanhamento do pedido reabre o pagamento.
 14. Teste **cancelamento de pedido pago** — o valor deve ser estornado.
 
 **Confira com atenção (novo ou corrigido em 24/11/2026, `specs/0226` — primeira vez testado com
@@ -177,8 +182,8 @@ pagamento de verdade no sandbox):**
 ## Checklist rápido do que você precisa fazer ANTES de chamar o QA
 
 - [ ] Mercado Pago: aplicação e contas de teste **já criadas**; na subida, trocar a URL do webhook
-      de teste pra `api.hml`, ligar o menu e mandar ao QA usuário/senha da "Restaurante teste" e
-      da "Cliente teste" + cartões de teste (`./mercado-pago-hml-producao.md` §2)
+      de teste pra `api-hml`, ligar o menu e mandar ao QA usuário/senha da "Cliente teste" e
+      da "Cliente teste 2" + cartão de teste (feito em 26/11/2026, falta só mandar) (`./mercado-pago-hml-producao.md` §2)
 - [ ] iFood: separar `merchantId`/`clientId`/`clientSecret` da loja de teste + combinar quem gera
       o pedido de teste
 - [ ] 99Food: revincular/criar loja de teste no restaurante de homologação + combinar quem gera

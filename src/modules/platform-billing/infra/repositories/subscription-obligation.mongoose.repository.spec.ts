@@ -99,3 +99,76 @@ describe('SubscriptionObligationMongooseRepository.getOpenSummaryByRestaurant (a
     expect(result.has('r-3')).toBe(false);
   });
 });
+
+describe('SubscriptionObligationMongooseRepository — specs/0175 REQ-23 (opção C)', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('AC-17b: reopenForReissue só age em refunded, tira Pix/cobrança antigos e guarda a cobrança estornada', async () => {
+    const findQuery = SubscriptionObligationModel.findOne({});
+    jest.spyOn(findQuery, 'lean').mockResolvedValue({ _id: 'ob-1', status: 'refunded', asaasChargeId: 'pay_estornado' });
+    const findOne = jest.spyOn(SubscriptionObligationModel, 'findOne').mockReturnValue(findQuery);
+    const updateQuery = SubscriptionObligationModel.findOneAndUpdate({}, {});
+    jest.spyOn(updateQuery, 'lean').mockResolvedValue({ _id: 'ob-1', status: 'awaiting_issue', refundedChargeIds: ['pay_estornado'] });
+    const findOneAndUpdate = jest.spyOn(SubscriptionObligationModel, 'findOneAndUpdate').mockReturnValue(updateQuery);
+
+    const result = await new SubscriptionObligationMongooseRepository().reopenForReissue('ob-1');
+
+    expect(findOne).toHaveBeenCalledWith({ _id: 'ob-1', status: 'refunded' });
+    expect(findOneAndUpdate).toHaveBeenCalledWith(
+      { _id: 'ob-1', status: 'refunded' },
+      {
+        $set: { status: 'awaiting_issue' },
+        $unset: { asaasChargeId: '', pixPayload: '', pixExpiresAt: '', issueFailureReason: '', issuedAt: '', paidAt: '' },
+        $addToSet: { refundedChargeIds: 'pay_estornado' },
+      },
+      { new: true },
+    );
+    expect(result).toEqual(expect.objectContaining({ id: 'ob-1', status: 'awaiting_issue', refundedChargeIds: ['pay_estornado'] }));
+  });
+
+  it('AC-17b: reopenForReissue de fatura que não está refunded devolve null sem alterar nada', async () => {
+    const findQuery = SubscriptionObligationModel.findOne({});
+    jest.spyOn(findQuery, 'lean').mockResolvedValue(null);
+    jest.spyOn(SubscriptionObligationModel, 'findOne').mockReturnValue(findQuery);
+    const findOneAndUpdate = jest.spyOn(SubscriptionObligationModel, 'findOneAndUpdate');
+
+    expect(await new SubscriptionObligationMongooseRepository().reopenForReissue('ob-1')).toBeNull();
+    expect(findOneAndUpdate).not.toHaveBeenCalled();
+  });
+
+  it('AC-17b: cancelRefunded só cancela fatura refunded', async () => {
+    const updateQuery = SubscriptionObligationModel.findOneAndUpdate({}, {});
+    jest.spyOn(updateQuery, 'lean').mockResolvedValue({ _id: 'ob-1', status: 'cancelled' });
+    const findOneAndUpdate = jest.spyOn(SubscriptionObligationModel, 'findOneAndUpdate').mockReturnValue(updateQuery);
+
+    const result = await new SubscriptionObligationMongooseRepository().cancelRefunded('ob-1');
+
+    expect(findOneAndUpdate).toHaveBeenCalledWith({ _id: 'ob-1', status: 'refunded' }, { $set: { status: 'cancelled' } }, { new: true });
+    expect(result?.status).toBe('cancelled');
+  });
+});
+
+// specs/0175 T046 (achado na homologação, 27/11/2026) — "Cobrar de novo" numa fatura estornada.
+describe('SubscriptionObligationMongooseRepository.reopenForReissue (specs/0175 REQ-23)', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('volta para awaiting_issue, guarda a cobrança estornada e apaga Pix e data do pagamento antigo', async () => {
+    const refunded = { _id: 'o-1', status: 'refunded', asaasChargeId: 'pay_antigo', paidAt: new Date('2026-11-27T12:55:56Z') };
+    const findQuery = SubscriptionObligationModel.findOne({});
+    jest.spyOn(findQuery, 'lean').mockResolvedValue(refunded);
+    jest.spyOn(SubscriptionObligationModel, 'findOne').mockReturnValue(findQuery);
+    const updateQuery = SubscriptionObligationModel.findOneAndUpdate({}, {});
+    jest.spyOn(updateQuery, 'lean').mockResolvedValue({ _id: 'o-1', status: 'awaiting_issue', refundedChargeIds: ['pay_antigo'] });
+    const findOneAndUpdate = jest.spyOn(SubscriptionObligationModel, 'findOneAndUpdate').mockReturnValue(updateQuery);
+
+    const result = await new SubscriptionObligationMongooseRepository().reopenForReissue('o-1');
+
+    const update = findOneAndUpdate.mock.calls[0][1] as { $set: object; $unset: Record<string, unknown>; $addToSet: object };
+    expect(findOneAndUpdate.mock.calls[0][0]).toEqual({ _id: 'o-1', status: 'refunded' });
+    expect(update.$set).toEqual({ status: 'awaiting_issue' });
+    expect(update.$addToSet).toEqual({ refundedChargeIds: 'pay_antigo' });
+    expect(Object.keys(update.$unset)).toEqual(expect.arrayContaining(['asaasChargeId', 'pixPayload', 'issuedAt', 'paidAt']));
+    expect(result).toMatchObject({ status: 'awaiting_issue' });
+    expect(result?.paidAt).toBeUndefined();
+  });
+});

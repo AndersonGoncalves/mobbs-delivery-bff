@@ -30,12 +30,19 @@ cada coisa está.
 
 ### Contas de teste (painel → Contas de teste)
 
-| Conta | User ID | Papel | Uso |
+| Conta (nome no painel) | User ID | Papel | Uso |
 |---|---|---|---|
-| Seller Test User | 3874968670 | **Plataforma** — dona do token de teste (`MERCADOPAGO_PLATFORM_ACCESS_TOKEN`) | **Nunca** vincular a um restaurante (esconderia o problema do §6) |
-| **Restaurante teste** | 3874969016 | **Restaurante** (vendedor) | Vincular aos restaurantes de teste (local e homologação) |
-| **Cliente teste** | 3874969014 | **Cliente** (comprador, R$ 1.000 fictícios) | Pagar os pedidos de teste |
-| Buyer Test User | 3874757368 | Sobra (criada pelo Mercado Pago) | — |
+| **BsDelivery Homologacao** (era "Seller Test User") | 3874968670 | **Plataforma da homologação** — dona da aplicação "BsDelivery Homologacao" (nº 4990864883314933) | **Só o dono.** Nunca vincular a um restaurante nem passar ao QA |
+| **Pizzaria teste** (era "Restaurante teste") | 3874969016 | **Restaurante** (vendedor) | Vinculada à `pizzaria` da homologação (26/11/2026) |
+| **Hamburgueria teste** | 3880877540 | **Restaurante** (vendedor) | Para a `hamburgueria` da homologação |
+| **Pastelaria teste** | 3880801736 | **Restaurante** (vendedor) | Para a `pastelaria` da homologação |
+| **Cliente teste** | 3874969014 | **Cliente** (comprador, R$ 1.000 fictícios) | Pagar os pedidos de teste — **vai para o QA** |
+| **Cliente teste 2** (era "Buyer Test User") | 3874757368 | **Cliente** (comprador) | Segundo comprador — **vai para o QA** |
+
+**Uma conta de restaurante por restaurante.** O aviso do Mercado Pago acha o restaurante pela conta
+que recebeu (`findByMercadoPagoUserId`, o primeiro que encontrar): a mesma conta em dois
+restaurantes faz os pagamentos de um deles serem recusados (409 "Pagamento não pertence ao
+restaurante do pedido"). Os nomes são só apelidos no painel — trocar não afeta nada (vale o User ID).
 
 Login nas contas de teste: pelo **usuário** `TESTUSER…` completo (copiar pelo ícone no painel), não
 por CPF/e-mail; código de verificação = **6 últimos dígitos do User ID**. Fazer o vínculo numa
@@ -69,10 +76,20 @@ Todos fora do git. Client ID/Secret e token de teste foram validados contra a AP
 
 ## 2. Homologação — o que fazer
 
-Os passos longos (criar aplicação, credenciais, contas de teste) **não se repetem**.
+> **Feito em 26/11/2026 (`mobbs-delivery-app/specs/0215` T021) — a lista abaixo ficou como
+> histórico.** A homologação **não usa mais** a aplicação de produção "BsDelivery": usa a
+> aplicação própria **"BsDelivery Homologacao"** (nº 4990864883314933), criada dentro da conta de
+> teste "BsDelivery Homologacao" (o Mercado Pago só deixa contas de teste falarem com contas de
+> teste). Configuração: Checkout Pro, API de Preferences, URL de retorno da `hml`, PKCE Sim, webhook
+> nas duas abas para `api-hml` com "Pagamentos (legacy)" + "Order"; `.env.hml` com as credenciais
+> dela e `MERCADOPAGO_TEST_TOKEN=false`. Comprovado: cartão (pedidos #3/#4) e Pix automático
+> (#5/#6) aprovados e confirmados sozinhos. O comprador entra como "Cliente teste" pela opção
+> **"Entrar com a minha conta"** (como visitante o Mercado Pago recusa: "uma das partes é de
+> teste"); cartão Mastercard `5480 8328 0103 3311`, CVV 123, 11/30, titular `APRO`, CPF
+> `12345678909`. O webhook do modo de teste da aplicação de produção também aponta para `api-hml`.
 
 - [ ] Painel → Webhooks → **Modo de teste**: trocar a URL por
-      `https://api.hml.bsdelivery.com.br/webhooks/mercadopago` (o modo de teste aceita uma URL só; se
+      `https://api-hml.bsdelivery.com.br/webhooks/mercadopago` (o modo de teste aceita uma URL só; se
       voltar a testar no local, troca de novo) e marcar os eventos **"Pagamentos"** e **"Order
       (Mercado Pago)"** (o segundo é o do Pix). Conferir se a assinatura secreta continua a mesma do
       `.env.hml`; se o painel gerar outra, atualizar o `.env.hml` e o `.env` do servidor.
@@ -93,8 +110,8 @@ Os passos longos (criar aplicação, credenciais, contas de teste) **não se rep
       estorno**.
 - [ ] **Observar o risco do §6.1**: se o aviso chegar e o log mostrar 404 ao consultar um pagamento
       que existe, é a consulta com o token da plataforma — corrigir antes de produção.
-- [ ] Passar ao QA: usuário/senha da **Restaurante teste** e da **Cliente teste** + números de cartão
-      de teste (roteiro: `roteiro-qa-integracoes.md` §2).
+- [ ] Passar ao QA: usuário/senha da **Cliente teste** e da **Cliente teste 2** + cartão de teste
+      (as contas de restaurante só se ele for testar Desvincular/Vincular) (roteiro: `roteiro-qa-integracoes.md` §2).
 
 ## 3. Produção — o que fazer
 

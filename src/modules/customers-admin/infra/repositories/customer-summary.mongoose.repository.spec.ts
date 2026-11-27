@@ -83,9 +83,10 @@ describe('CustomerSummaryMongooseRepository.listByRestaurantPage (achado de audi
 
     const pipeline = aggregateSpy.mock.calls[0][0] as unknown as Array<Record<string, unknown>>;
     const unionStage = pipeline.find((stage) => '$unionWith' in stage) as {
-      $unionWith: { coll: string; pipeline: Array<{ $match?: { createdByRestaurantId?: string } }> };
+      $unionWith: { coll: string; pipeline: Array<{ $match?: Record<string, unknown> }> };
     };
     expect(unionStage.$unionWith.coll).toBe('customer');
-    expect(unionStage.$unionWith.pipeline[0].$match).toEqual({ createdByRestaurantId: 'r-1' });
+    // specs/0229 REQ-6 — criado por este restaurante OU só vinculado a ele.
+    expect(unionStage.$unionWith.pipeline[0].$match).toEqual({ $or: [{ createdByRestaurantId: 'r-1' }, { linkedRestaurantIds: 'r-1' }] });
   });
 });

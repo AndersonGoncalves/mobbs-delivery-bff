@@ -82,6 +82,18 @@ export class PlatformBillingWebhookController extends BaseRouter {
         return;
       }
 
+      // specs/0175 REQ-23 (opção C) — aviso de uma cobrança que não é a atual desta fatura (a
+      // estornada que "Cobrar de novo" substituiu, ou outra qualquer): fica registrado acima, mas
+      // nunca muda a fatura (ex. um PAYMENT_REFUNDED atrasado da cobrança antiga não pode estornar
+      // de novo a fatura reaberta).
+      const paymentId = body.payment?.id;
+      const isCurrentCharge = !paymentId || (!(obligation.refundedChargeIds ?? []).includes(paymentId) && (!obligation.asaasChargeId || obligation.asaasChargeId === paymentId));
+      if (!isCurrentCharge) {
+        console.warn(`[platform-billing] aviso ${body.event} da cobrança ${paymentId} ignorado: não é a cobrança atual da obrigação ${obligation.id}`);
+        res.json(200, { obligationId: obligation.id, status: obligation.status, ignored: true });
+        return;
+      }
+
       const now = new Date();
       if (PAID_EVENTS.has(body.event) && obligation.status !== 'paid') {
         await this.deps.obligationRepository.markPaid(obligation.id, now);

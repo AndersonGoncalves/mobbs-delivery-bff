@@ -11,7 +11,10 @@ export interface AccessStatus {
  * verdade) ou paga. Estorno total/parcial volta a abrir saldo devido (REQ-23 "reabre o saldo
  * devido"/"mantém o saldo remanescente") — por isso NÃO estão aqui, e caem no cálculo de
  * vencimento abaixo como qualquer outra dívida em aberto. */
-const NEVER_BLOCKS: ReadonlySet<SubscriptionObligationStatus> = new Set(['exempt', 'cancelled', 'paid']);
+// specs/0175 REQ-23 (opção C, 27/11/2026) — `refunded` (estorno total) aguarda a decisão do
+// administrador ("Cobrar de novo"/"Perdoar") e não bloqueia enquanto isso: o restaurante não tem
+// como pagar (o Pix antigo é de uma cobrança encerrada no Asaas). Antes bloqueava após o vencimento.
+const NEVER_BLOCKS: ReadonlySet<SubscriptionObligationStatus> = new Set(['exempt', 'cancelled', 'paid', 'refunded']);
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

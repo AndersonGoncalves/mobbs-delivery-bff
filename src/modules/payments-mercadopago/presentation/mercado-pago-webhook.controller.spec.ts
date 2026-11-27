@@ -4,10 +4,14 @@ import { IOrderRepository } from '../../orders/domain/repositories/order.reposit
 import { IPaymentRepository } from '../../orders/domain/repositories/payment.repository.interface';
 import { IRestaurantRepository } from '../../restaurants/domain/repositories/restaurant.repository.interface';
 import { IWhatsAppNotificationService } from '../../notifications/domain/services/i-whatsapp-notification.service';
-import { MercadoPagoClient } from '../infra/mercado-pago-client';
+import { MercadoPagoApiError, MercadoPagoClient } from '../infra/mercado-pago-client';
 import { MercadoPagoWebhookController } from './mercado-pago-webhook.controller';
 
-jest.mock('../infra/mercado-pago-client');
+// Cliente falso (automock), mas o erro de verdade: o webhook decide pelo `status` dele (REQ-A18).
+jest.mock('../infra/mercado-pago-client', () => ({
+  ...jest.createMockFromModule<object>('../infra/mercado-pago-client'),
+  MercadoPagoApiError: jest.requireActual('../infra/mercado-pago-client').MercadoPagoApiError,
+}));
 jest.mock('../../../shared/config/environment', () => ({
   environment: {
     mercadoPago: {
@@ -149,16 +153,79 @@ describe('MercadoPagoWebhookController (specs/0170-integracao-mercado-pago)', ()
     expect(MockedMercadoPagoClient.prototype.getPayment).not.toHaveBeenCalled();
   });
 
-  it('pedido não encontrado é 404', async () => {
-    const { routes } = setup({ orderRepository: { findById: jest.fn().mockResolvedValue(null) } });
+  it('specs/0226 AC-A18: pedido não encontrado é 200 ignorado (antes 404), sem confirmar nada', async () => {
+    const { paymentRepository, routes } = setup({ orderRepository: { findById: jest.fn().mockResolvedValue(null) } });
 
-    await expect(routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1'), { json: jest.fn(), send: jest.fn() })).rejects.toMatchObject({ statusCode: 404 });
+    const send = jest.fn();
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    await routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1'), { json: jest.fn(), send });
+    expect(send).toHaveBeenCalledWith(200);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('ignorado'));
+    warn.mockRestore();
+    expect(paymentRepository.markAsApprovedIfPending).not.toHaveBeenCalled();
   });
 
-  it('pagamento que não é creditCardOnline é 409', async () => {
-    const { routes } = setup({ paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ method: 'pix' })) } });
+  it('specs/0226 AC-A18: pagamento que não é creditCardOnline é 200 ignorado (antes 409)', async () => {
+    const { paymentRepository, routes } = setup({ paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ method: 'pix' })) } });
 
-    await expect(routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1'), { json: jest.fn(), send: jest.fn() })).rejects.toMatchObject({ statusCode: 409 });
+    const send = jest.fn();
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    await routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1'), { json: jest.fn(), send });
+    expect(send).toHaveBeenCalledWith(200);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('ignorado'));
+    warn.mockRestore();
+    expect(paymentRepository.markAsApprovedIfPending).not.toHaveBeenCalled();
+  });
+
+  it('specs/0226 AC-A18: pagamento que o Mercado Pago diz não existir (404, ex. "Simular notificação") é 200 ignorado (antes 500)', async () => {
+    MockedMercadoPagoClient.prototype.getPayment = jest
+      .fn()
+      .mockRejectedValue(new MercadoPagoApiError('Mercado Pago API (GET /v1/payments/123456) respondeu 404: {"message":"Payment not found"}', 404));
+    const { paymentRepository, orderRepository, routes } = setup();
+    const send = jest.fn();
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('123456'), { json: jest.fn(), send });
+
+    expect(send).toHaveBeenCalledWith(200);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('não encontrado no Mercado Pago'));
+    expect(orderRepository.findById).not.toHaveBeenCalled();
+    expect(paymentRepository.markAsApprovedIfPending).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('specs/0226 AC-A18: order (Pix) que o Mercado Pago diz não existir (404) é 200 ignorado', async () => {
+    MockedMercadoPagoClient.prototype.getOrder = jest.fn().mockRejectedValue(new MercadoPagoApiError('Mercado Pago API (GET /v1/orders/ORD01X) respondeu 404', 404));
+    const { routes } = setup();
+    const send = jest.fn();
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('ORD01X', { type: 'order' }), { json: jest.fn(), send });
+
+    expect(send).toHaveBeenCalledWith(200);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('order não encontrado no Mercado Pago'));
+    warn.mockRestore();
+  });
+
+  it('specs/0226 AC-A18: Mercado Pago com falha na consulta (500) continua erro, para ele reenviar e o Sentry avisar', async () => {
+    MockedMercadoPagoClient.prototype.getPayment = jest.fn().mockRejectedValue(new MercadoPagoApiError('Mercado Pago API (GET /v1/payments/pay-1) respondeu 500', 500));
+    const { routes } = setup();
+    const send = jest.fn();
+
+    await expect(routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1'), { json: jest.fn(), send })).rejects.toThrow('respondeu 500');
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('specs/0226 AC-A18: pagamento que não está mais pendente (ex. estornado) é 200 ignorado (antes 409)', async () => {
+    const { paymentRepository, routes } = setup({ paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ status: 'estornado' })) } });
+
+    const send = jest.fn();
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    await routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1'), { json: jest.fn(), send });
+    expect(send).toHaveBeenCalledWith(200);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('ignorado'));
+    warn.mockRestore();
+    expect(paymentRepository.markAsApprovedIfPending).not.toHaveBeenCalled();
   });
 
   it('reenvio pro mesmo pagamento já aprovado é 200 idempotente', async () => {
@@ -190,11 +257,17 @@ describe('MercadoPagoWebhookController (specs/0170-integracao-mercado-pago)', ()
       expect(paymentRepository.updateExternalReference).toHaveBeenCalledWith('o-1', 'mp-pay-99');
     });
 
-    it('AC-A4: pagamento de pedido de OUTRO restaurante é 409 e não confirma nada', async () => {
+    it('AC-A4/AC-A18: pagamento de pedido de OUTRO restaurante é 200 ignorado (antes 409) e não confirma nada', async () => {
       const { paymentRepository, routes } = setup({ orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ restaurantId: 'r-outro' })) } });
 
-      await expect(routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1'), { json: jest.fn(), send: jest.fn() })).rejects.toMatchObject({ statusCode: 409 });
+      const send = jest.fn();
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      await routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1'), { json: jest.fn(), send });
+      expect(send).toHaveBeenCalledWith(200);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('ignorado'));
+      warn.mockRestore();
       expect(paymentRepository.markAsApproved).not.toHaveBeenCalled();
+      expect(paymentRepository.markAsApprovedIfPending).not.toHaveBeenCalled();
     });
 
     it('conta sem restaurante vinculado (ex.: simulação do painel) é 200 ignorado, sem consultar o Mercado Pago', async () => {
@@ -210,18 +283,29 @@ describe('MercadoPagoWebhookController (specs/0170-integracao-mercado-pago)', ()
       warn.mockRestore();
     });
 
-    it('aviso sem user_id é 400', async () => {
+    it('AC-A18: aviso sem user_id é 200 ignorado (antes 400), sem consultar o Mercado Pago', async () => {
       const { routes } = setup();
 
-      await expect(routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1', { userId: null }), { json: jest.fn(), send: jest.fn() })).rejects.toMatchObject({ statusCode: 400 });
+      const send = jest.fn();
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      await routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1', { userId: null }), { json: jest.fn(), send });
+      expect(send).toHaveBeenCalledWith(200);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('ignorado'));
+      warn.mockRestore();
       expect(MockedMercadoPagoClient.prototype.getPayment).not.toHaveBeenCalled();
     });
 
-    it('REQ-A5: pagamento cobrado pelo Asaas é 409 (não confirma pelo Mercado Pago)', async () => {
+    it('REQ-A5/AC-A18: pagamento cobrado pelo Asaas é 200 ignorado (antes 409) e não confirma pelo Mercado Pago', async () => {
       const { paymentRepository, routes } = setup({ paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ provider: 'asaas' })) } });
 
-      await expect(routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1'), { json: jest.fn(), send: jest.fn() })).rejects.toMatchObject({ statusCode: 409 });
+      const send = jest.fn();
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      await routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1'), { json: jest.fn(), send });
+      expect(send).toHaveBeenCalledWith(200);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('ignorado'));
+      warn.mockRestore();
       expect(paymentRepository.markAsApproved).not.toHaveBeenCalled();
+      expect(paymentRepository.markAsApprovedIfPending).not.toHaveBeenCalled();
     });
   });
 
@@ -304,25 +388,31 @@ describe('MercadoPagoWebhookController (specs/0170-integracao-mercado-pago)', ()
       expect(json).toHaveBeenCalledWith(200, expect.anything());
     });
 
-    it('tópico order para um pedido cujo pagamento não é Pix do Mercado Pago (ex. chave manual) é 409', async () => {
+    it('AC-A18: tópico order para um pedido cujo pagamento não é Pix do Mercado Pago (ex. chave manual) é 200 ignorado (antes 409)', async () => {
       MockedMercadoPagoClient.prototype.getOrder = jest.fn().mockResolvedValue({ id: 'ORD01ABC', status: 'processed', externalReference: 'o-1' });
       const { routes } = setup({
         orderRepository: { findById: jest.fn().mockResolvedValue(pixOrder()) },
         paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ method: 'pix' })) },
       });
 
-      await expect(
-        routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('ORD01ABC', { type: 'order' }), { json: jest.fn(), send: jest.fn() }),
-      ).rejects.toMatchObject({ statusCode: 409 });
+      const send = jest.fn();
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      await routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('ORD01ABC', { type: 'order' }), { json: jest.fn(), send });
+      expect(send).toHaveBeenCalledWith(200);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('ignorado'));
+      warn.mockRestore();
     });
 
-    it('aviso de Pix (tópico payment) num pedido de cartão é 409 — Pix nunca confirma cartão', async () => {
+    it('AC-A18: aviso de Pix (tópico payment) num pedido de cartão é 200 ignorado (antes 409) — Pix nunca confirma cartão', async () => {
       MockedMercadoPagoClient.prototype.getPayment = jest.fn().mockResolvedValue({ id: '1', status: 'approved', externalReference: 'o-1', paymentMethodId: 'pix' });
       const { routes } = setup();
 
-      await expect(
-        routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('1'), { json: jest.fn(), send: jest.fn() }),
-      ).rejects.toMatchObject({ statusCode: 409 });
+      const send = jest.fn();
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      await routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('1'), { json: jest.fn(), send });
+      expect(send).toHaveBeenCalledWith(200);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('ignorado'));
+      warn.mockRestore();
     });
 
     it('assinatura do tópico order: id alfanumérico em minúsculas no manifesto (maiúsculas = 401)', async () => {

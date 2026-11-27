@@ -4,6 +4,7 @@ import {
   PurchaseOrderStatus,
 } from '../../domain/entities/purchase-order.entity';
 import { IPurchaseOrderRepository } from '../../domain/repositories/purchase-order.repository.interface';
+import { PurchaseOrderListFilters, buildPurchaseOrderListQuery } from '../../domain/build-purchase-order-list-query';
 import { PurchaseOrderModel } from '../models/purchase-order.mongoose.model';
 
 interface PurchaseOrderLeanDocument {
@@ -36,11 +37,26 @@ function toEntity(doc: PurchaseOrderLeanDocument): IPurchaseOrder {
 }
 
 export class PurchaseOrderMongooseRepository implements IPurchaseOrderRepository {
-  async listByRestaurant(restaurantId: string): Promise<IPurchaseOrder[]> {
-    const docs = await PurchaseOrderModel.find({ restaurantId })
+  async listByRestaurant(restaurantId: string, filters?: PurchaseOrderListFilters): Promise<IPurchaseOrder[]> {
+    const docs = await PurchaseOrderModel.find(buildPurchaseOrderListQuery(restaurantId, filters))
       .sort({ createdAt: -1 })
       .lean<PurchaseOrderLeanDocument[]>();
     return docs.map(toEntity);
+  }
+
+  // specs/0231-filtro-datas-contas-pedidos-compra REQ-5 — índice `{ restaurantId: 1, createdAt: -1 }`
+  // (já existente no model) cobre filtro + ordenação.
+  async listByRestaurantPage(
+    restaurantId: string,
+    pagination: { skip: number; limit: number },
+    filters?: PurchaseOrderListFilters,
+  ): Promise<{ items: IPurchaseOrder[]; total: number }> {
+    const query = buildPurchaseOrderListQuery(restaurantId, filters);
+    const [docs, total] = await Promise.all([
+      PurchaseOrderModel.find(query).sort({ createdAt: -1 }).skip(pagination.skip).limit(pagination.limit).lean<PurchaseOrderLeanDocument[]>(),
+      PurchaseOrderModel.countDocuments(query),
+    ]);
+    return { items: docs.map(toEntity), total };
   }
 
   async findById(id: string): Promise<IPurchaseOrder | null> {

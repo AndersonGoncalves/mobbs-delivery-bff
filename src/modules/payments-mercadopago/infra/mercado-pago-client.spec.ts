@@ -88,6 +88,22 @@ describe('MercadoPagoClient (specs/0170-integracao-mercado-pago)', () => {
     expect(result).toEqual({ id: 'pref-1', initPoint: 'https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=pref-1' });
   });
 
+  it('specs/0226 AC-A17: createPreference manda id, description e category_id do item quando informados', async () => {
+    mockFetchOnce(200, { id: 'pref-1', init_point: 'https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=pref-1' });
+
+    await client.createPreference('restaurante-token', {
+      orderId: 'o-7',
+      items: [{ id: 'pedido-7', title: 'Pedido #7 - Pizzaria', description: '1x Pizza Mussarela, 2x Kibe', categoryId: 'others', quantity: 1, unitPrice: 46 }],
+      notificationUrl: 'https://api.bsdelivery.com.br/webhooks/mercadopago',
+      backUrls: { success: 'https://bsdelivery.com.br/r/o-7', failure: 'https://bsdelivery.com.br/r/o-7', pending: 'https://bsdelivery.com.br/r/o-7' },
+    });
+
+    const [, options] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(JSON.parse(options.body).items).toEqual([
+      { id: 'pedido-7', title: 'Pedido #7 - Pizzaria', description: '1x Pizza Mussarela, 2x Kibe', category_id: 'others', quantity: 1, unit_price: 46, currency_id: 'BRL' },
+    ]);
+  });
+
   it('getPayment: GET /v1/payments/:id devolve id do pagamento, status e external_reference', async () => {
     mockFetchOnce(200, { id: 1234567890, status: 'approved', external_reference: 'o-1', payment_method_id: 'visa' });
 
@@ -130,6 +146,16 @@ describe('MercadoPagoClient (specs/0170-integracao-mercado-pago)', () => {
     mockFetchOnce(400, { message: 'invalid_token' });
 
     await expect(client.getPayment('token-invalido', 'pay-1')).rejects.toThrow(/400/);
+  });
+
+  it('specs/0226 REQ-A18: erro da API vira MercadoPagoApiError com o status HTTP (404 = não existe)', async () => {
+    mockFetchOnce(404, { message: 'Payment not found' });
+
+    await expect(client.getPayment('token', '123456')).rejects.toMatchObject({
+      name: 'MercadoPagoApiError',
+      status: 404,
+      message: expect.stringContaining('Mercado Pago API (GET /v1/payments/123456) respondeu 404'),
+    });
   });
 
   // specs/0226 REQ-A12 — o suporte do Mercado Pago só investiga um erro com o `x-request-id` da

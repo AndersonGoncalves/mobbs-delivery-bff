@@ -1,6 +1,7 @@
 import { ISupplier, ISupplierAddress } from '../../domain/entities/supplier.entity';
 import { ISupplierRepository, SupplierInput } from '../../domain/repositories/supplier.repository.interface';
 import { SupplierModel } from '../models/supplier.mongoose.model';
+import { escapeRegex } from '../../../../shared/utils/escape-regex';
 
 interface SupplierLeanDocument {
   _id: string;
@@ -30,6 +31,13 @@ export class SupplierMongooseRepository implements ISupplierRepository {
   async listByRestaurant(restaurantId: string): Promise<ISupplier[]> {
     const docs = await SupplierModel.find({ restaurantId }).sort({ name: 1 }).lean<SupplierLeanDocument[]>();
     return docs.map(toEntity);
+  }
+
+  async findIdsByName(restaurantId: string, search: string): Promise<string[]> {
+    const docs = await SupplierModel.find({ restaurantId, name: { $regex: escapeRegex(search), $options: 'i' } })
+      .select({ _id: 1 })
+      .lean<{ _id: string }[]>();
+    return docs.map((doc) => doc._id);
   }
 
   async findById(id: string): Promise<ISupplier | null> {

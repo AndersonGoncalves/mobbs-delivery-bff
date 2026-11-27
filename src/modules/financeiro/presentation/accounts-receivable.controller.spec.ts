@@ -148,6 +148,46 @@ describe('AccountsReceivableController', () => {
     expect(json).toHaveBeenCalledWith(200, [expect.objectContaining({ id: 'ar-1' })]);
   });
 
+  // specs/0231-filtro-datas-contas-pedidos-compra (AC-1/AC-4).
+  it('specs/0231 AC-1: GET repassa status + período (to em data pura vira o fim do dia) pro repositório paginado', async () => {
+    const { accountReceivableRepository, routes } = setup();
+    const json = jest.fn();
+    const header = jest.fn();
+
+    await runOperatorChain(
+      routes['GET /restaurants/me/accounts-receivable'],
+      { restaurantId: 'r-1', query: { from: '2026-11-01', to: '2026-11-30', status: 'aberto', page: '1', pageSize: '25' } },
+      { json, header },
+    );
+
+    expect(accountReceivableRepository.listByRestaurantPage).toHaveBeenCalledWith('r-1', { skip: 0, limit: 25 }, {
+      from: new Date('2026-11-01T00:00:00.000Z'),
+      to: new Date('2026-11-30T23:59:59.999Z'),
+      status: 'aberto',
+    });
+  });
+
+  it('specs/0231 AC-4: GET rejeita (400) "de" depois de "até", sem consultar o repositório', async () => {
+    const { accountReceivableRepository, routes } = setup();
+
+    await expect(
+      runOperatorChain(
+        routes['GET /restaurants/me/accounts-receivable'],
+        { restaurantId: 'r-1', query: { from: '2026-12-01', to: '2026-11-30' } },
+        { json: jest.fn() },
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(accountReceivableRepository.listByRestaurant).not.toHaveBeenCalled();
+  });
+
+  it('specs/0231: GET rejeita (400) status desconhecido', async () => {
+    const { routes } = setup();
+
+    await expect(
+      runOperatorChain(routes['GET /restaurants/me/accounts-receivable'], { restaurantId: 'r-1', query: { status: 'vencido' } }, { json: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
   it('AC-3: POST /restaurants/me/accounts-receivable cria um título a receber em aberto', async () => {
     const { accountReceivableRepository, routes } = setup();
     const json = jest.fn();

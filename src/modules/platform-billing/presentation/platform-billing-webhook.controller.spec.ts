@@ -210,4 +210,46 @@ describe('PlatformBillingWebhookController (specs/0175-cobranca-assinatura-asaas
     expect(send).toHaveBeenCalledWith(200);
     expect(obligationRepository.markPaid).not.toHaveBeenCalled();
   });
+
+  describe('specs/0175 REQ-23 (opção C) — aviso de cobrança que não é a atual', () => {
+    const H = "POST /webhooks/platform-billing";
+
+    it('AC-17b: PAYMENT_REFUNDED atrasado da cobrança estornada antiga não estorna de novo a fatura reaberta', async () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const { routes, obligationRepository, platformBillingCycleService } = setup({
+        obligation: buildObligation({ status: 'pending', asaasChargeId: 'pay_novo', refundedChargeIds: ['pay_antigo'] }),
+      });
+      const json = jest.fn();
+
+      await routes[H].at(-1)!(buildReq('webhook-token-1', { id: 'evt_9', event: 'PAYMENT_REFUNDED', payment: { id: 'pay_antigo', externalReference: 'ob-1' } }), { json, send: jest.fn() });
+
+      expect(obligationRepository.markRefunded).not.toHaveBeenCalled();
+      expect(platformBillingCycleService.recomputeAndPersist).not.toHaveBeenCalled();
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ ignored: true }));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('não é a cobrança atual'));
+      warn.mockRestore();
+    });
+
+    it('AC-17b: pagamento da cobrança NOVA da fatura reaberta é baixado normalmente', async () => {
+      const { routes, obligationRepository } = setup({
+        obligation: buildObligation({ status: 'pending', asaasChargeId: 'pay_novo', refundedChargeIds: ['pay_antigo'] }),
+      });
+
+      await routes[H].at(-1)!(buildReq('webhook-token-1', { id: 'evt_10', event: 'PAYMENT_RECEIVED', payment: { id: 'pay_novo', externalReference: 'ob-1' } }), { json: jest.fn(), send: jest.fn() });
+
+      expect(obligationRepository.markPaid).toHaveBeenCalledWith('ob-1', expect.any(Date));
+    });
+
+    it('AC-17b: fatura reaberta ainda sem cobrança nova (awaiting_issue) ignora aviso da cobrança estornada', async () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const { routes, obligationRepository } = setup({
+        obligation: buildObligation({ status: 'awaiting_issue', asaasChargeId: undefined, refundedChargeIds: ['pay_antigo'] }),
+      });
+
+      await routes[H].at(-1)!(buildReq('webhook-token-1', { id: 'evt_11', event: 'PAYMENT_RECEIVED', payment: { id: 'pay_antigo', externalReference: 'ob-1' } }), { json: jest.fn(), send: jest.fn() });
+
+      expect(obligationRepository.markPaid).not.toHaveBeenCalled();
+      warn.mockRestore();
+    });
+  });
 });

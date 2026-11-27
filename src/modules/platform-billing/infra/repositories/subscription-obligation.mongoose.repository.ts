@@ -28,6 +28,7 @@ function toEntity(doc: ObligationLeanDocument): ISubscriptionObligation {
     asaasChargeId: doc.asaasChargeId,
     pixPayload: doc.pixPayload,
     pixExpiresAt: doc.pixExpiresAt,
+    refundedChargeIds: doc.refundedChargeIds,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   };
@@ -195,6 +196,28 @@ export class SubscriptionObligationMongooseRepository implements ISubscriptionOb
   async markRefunded(id: string): Promise<ISubscriptionObligation> {
     const doc = await SubscriptionObligationModel.findByIdAndUpdate(id, { $set: { status: 'refunded' } }, { new: true }).lean<ObligationLeanDocument>();
     return toEntity(doc as ObligationLeanDocument);
+  }
+
+  async reopenForReissue(id: string): Promise<ISubscriptionObligation | null> {
+    // Condicional em `status: 'refunded'` — duas decisões simultâneas nunca reabrem duas vezes.
+    const current = await SubscriptionObligationModel.findOne({ _id: id, status: 'refunded' }).lean<ObligationLeanDocument>();
+    if (!current) return null;
+    const doc = await SubscriptionObligationModel.findOneAndUpdate(
+      { _id: id, status: 'refunded' },
+      {
+        $set: { status: 'awaiting_issue' },
+        // specs/0175 T046 — `paidAt` era do pagamento estornado; a fatura reaberta não está paga.
+        $unset: { asaasChargeId: '', pixPayload: '', pixExpiresAt: '', issueFailureReason: '', issuedAt: '', paidAt: '' },
+        ...(current.asaasChargeId ? { $addToSet: { refundedChargeIds: current.asaasChargeId } } : {}),
+      },
+      { new: true },
+    ).lean<ObligationLeanDocument>();
+    return doc ? toEntity(doc) : null;
+  }
+
+  async cancelRefunded(id: string): Promise<ISubscriptionObligation | null> {
+    const doc = await SubscriptionObligationModel.findOneAndUpdate({ _id: id, status: 'refunded' }, { $set: { status: 'cancelled' } }, { new: true }).lean<ObligationLeanDocument>();
+    return doc ? toEntity(doc) : null;
   }
 
   async markPartiallyRefunded(id: string): Promise<ISubscriptionObligation> {

@@ -133,6 +133,18 @@ describe('PlatformBillingController (specs/0175-cobranca-assinatura-asaas)', () 
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ pixPayload: '00020126...' }));
   });
 
+  it('specs/0175 AC-17b: fatura estornada não expõe o Pix antigo (cobrança encerrada no Asaas)', async () => {
+    const { routes } = setup({ obligations: [buildObligation({ status: 'refunded', pixPayload: '00020126...antigo' })] });
+    const pixJson = jest.fn();
+    const listJson = jest.fn();
+
+    await runChain(routes['GET /restaurants/me/billing/invoices/:id/pix'], { restaurantId: 'r-1', operatorRole: 'dono' as never, params: { id: 'ob-1' } }, { json: pixJson });
+    await runChain(routes['GET /restaurants/me/billing/invoices'], { restaurantId: 'r-1', operatorRole: 'dono' as never }, { json: listJson });
+
+    expect(pixJson).toHaveBeenCalledWith(200, expect.objectContaining({ pixPayload: undefined, status: 'refunded' }));
+    expect(listJson.mock.calls[0][1][0]).toEqual(expect.objectContaining({ status: 'refunded', pixPayload: undefined }));
+  });
+
   it('REQ-22: POST invoices/:id/verify reconcilia e devolve o estado atualizado', async () => {
     const { routes, reconciliationService } = setup();
     const json = jest.fn();

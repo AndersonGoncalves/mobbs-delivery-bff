@@ -1,3 +1,4 @@
+import { isLinkedToRestaurant } from '../../customers/domain/customer-restaurant-link';
 import type { Request, Response, Server } from 'restify';
 import { NotFoundError } from 'restify-errors';
 
@@ -48,7 +49,7 @@ export class CustomerBlockingController extends BaseRouter {
       // este restaurante — sem a guarda abaixo, bastava digitar qualquer telefone pra descobrir o
       // nome real de alguém que nunca pediu aqui, sob o pretexto de bloquear o número.
       const hasRelationship = !!customer && (
-        customer.createdByRestaurantId === req.restaurantId
+        isLinkedToRestaurant(customer, req.restaurantId!)
         || (await this.orderRepository.findManyByCustomerAndRestaurant(customer.id, req.restaurantId!)).length > 0
       );
       const blocked = await this.blockedCustomerRepository.block(req.restaurantId!, normalizedPhone, hasRelationship ? customer?.name : undefined);

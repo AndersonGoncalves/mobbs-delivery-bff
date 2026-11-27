@@ -3,13 +3,16 @@ import { BadRequestError, ConflictError, NotFoundError } from 'restify-errors';
 
 import { BaseRouter } from '../../../shared/router/base.router';
 import { parseBody } from '../../../shared/http/validate';
+import { resolvePagination } from '../../../shared/http/pagination';
+import { toInclusiveEndDate } from '../../../shared/utils/inclusive-end-date';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
 import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
 import { IProductRepository } from '../../catalog/domain/repositories/product.repository.interface';
 import { IRawMaterialRepository } from '../../raw-materials/domain/repositories/raw-material.repository.interface';
+import { ISupplierRepository } from '../../suppliers/domain/repositories/supplier.repository.interface';
 import { IPurchaseOrderRepository } from '../domain/repositories/purchase-order.repository.interface';
 import { IReceivePurchaseOrderService } from '../domain/services/i-receive-purchase-order.service';
-import { savePurchaseOrderSchema } from './purchase-order.schemas';
+import { purchaseOrderListQuerySchema, savePurchaseOrderSchema } from './purchase-order.schemas';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
@@ -25,6 +28,7 @@ export class PurchaseOrdersController extends BaseRouter {
     private readonly restaurantOperatorMiddleware: AsyncHandler,
     private readonly rawMaterialRepository: IRawMaterialRepository,
     private readonly productRepository: IProductRepository,
+    private readonly supplierRepository: ISupplierRepository,
   ) {
     super();
   }
@@ -37,9 +41,28 @@ export class PurchaseOrdersController extends BaseRouter {
       requireOperatorRole('dono', 'gerente'),
     ];
 
+    // specs/0231-filtro-datas-contas-pedidos-compra REQ-2/REQ-4/REQ-5 (AC-2) — filtros opcionais
+    // (ver `purchaseOrderListQuerySchema`); sem eles, default de `buildPurchaseOrderListQuery`
+    // (em aberto + últimos 12 meses). `supplier` busca pelo NOME: o pedido só guarda
+    // `supplierId`, então resolve antes os ids dos fornecedores DESTE restaurante que casam.
+    // `page`/`pageSize` mesmo padrão de contas a pagar: omitidos, devolve a lista inteira
+    // filtrada; informados, pagina e manda o total em `X-Total-Count`.
     application.get('/restaurants/me/purchase-orders', ...authenticated, async (req: Request, res: Response) => {
-      const orders = await this.purchaseOrderRepository.listByRestaurant(req.restaurantId!);
-      res.json(200, orders);
+      const query = parseBody(purchaseOrderListQuerySchema, req.query ?? {});
+      const filters = {
+        from: query.from ? new Date(query.from) : undefined,
+        to: query.to ? toInclusiveEndDate(query.to) : undefined,
+        status: query.status,
+        supplierIds: query.supplier ? await this.supplierRepository.findIdsByName(req.restaurantId!, query.supplier) : undefined,
+      };
+      const pagination = resolvePagination(query);
+      if (!pagination) {
+        res.json(200, await this.purchaseOrderRepository.listByRestaurant(req.restaurantId!, filters));
+        return;
+      }
+      const { items, total } = await this.purchaseOrderRepository.listByRestaurantPage(req.restaurantId!, pagination, filters);
+      res.header('X-Total-Count', String(total));
+      res.json(200, items);
     });
 
     // AC-2 — status `aberto` e `totalValue` calculados na criação.

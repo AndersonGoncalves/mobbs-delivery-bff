@@ -13,7 +13,9 @@ export type SubscriptionEventType =
   | 'partially_refunded'
   | 'expired'
   | 'manual_exception'
-  | 'reprocessed';
+  | 'reprocessed'
+  /** specs/0175 REQ-23 (opção C) — "Cobrar de novo"/"Perdoar" de uma fatura estornada. */
+  | 'refund_decision';
 
 export interface ISubscriptionEvent {
   id: string;

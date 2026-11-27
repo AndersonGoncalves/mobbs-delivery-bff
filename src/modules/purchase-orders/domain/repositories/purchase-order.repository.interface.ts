@@ -1,7 +1,16 @@
 import { IPurchaseOrder, IPurchaseOrderItem } from '../entities/purchase-order.entity';
+import { PurchaseOrderListFilters } from '../build-purchase-order-list-query';
 
 export interface IPurchaseOrderRepository {
-  listByRestaurant(restaurantId: string): Promise<IPurchaseOrder[]>;
+  /** specs/0231-filtro-datas-contas-pedidos-compra — `filters` opcional; sem ele, o default de
+   * `buildPurchaseOrderListQuery` (em aberto + últimos 12 meses). */
+  listByRestaurant(restaurantId: string, filters?: PurchaseOrderListFilters): Promise<IPurchaseOrder[]>;
+  /** specs/0231 REQ-5 — mesma query de `listByRestaurant`, paginada, com o total real. */
+  listByRestaurantPage(
+    restaurantId: string,
+    pagination: { skip: number; limit: number },
+    filters?: PurchaseOrderListFilters,
+  ): Promise<{ items: IPurchaseOrder[]; total: number }>;
   findById(id: string): Promise<IPurchaseOrder | null>;
   create(restaurantId: string, supplierId: string, items: IPurchaseOrderItem[]): Promise<IPurchaseOrder>;
   /**

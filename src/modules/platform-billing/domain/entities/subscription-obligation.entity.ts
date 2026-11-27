@@ -15,7 +15,9 @@ export type SubscriptionObligationKind = 'monthly' | 'monthly-prorated' | 'annua
  * `paid`: confirmada (webhook ou reconciliação).
  * `overdue`: vencida sem pagamento (REQ-24) — dispara bloqueio, respeitando a exceção de 3 dias.
  * `cancelled`: cobrança cancelada antes de ser paga (ex. desistência de anual não pago, REQ-16).
- * `refunded`/`partially_refunded`: ver REQ-23 — nunca produz falsa quitação.
+ * `refunded`/`partially_refunded`: ver REQ-23 — nunca produz falsa quitação. `refunded` (estorno
+ *   total) aguarda a decisão do administrador (opção C, 27/11/2026): "Cobrar de novo" volta para
+ *   `awaiting_issue` com Pix novo; "Perdoar" vira `cancelled`. Não bloqueia enquanto isso.
  */
 export type SubscriptionObligationStatus =
   | 'exempt'
@@ -58,6 +60,10 @@ export interface ISubscriptionObligation {
   asaasChargeId?: string;
   pixPayload?: string;
   pixExpiresAt?: Date;
+  /** specs/0175 REQ-23 (opção C) — cobranças do Asaas desta fatura que foram estornadas e
+   * substituídas por "Cobrar de novo": nunca reaproveitadas na emissão, e avisos delas são
+   * ignorados pelo webhook. */
+  refundedChargeIds?: string[];
 
   createdAt: Date;
   updatedAt: Date;

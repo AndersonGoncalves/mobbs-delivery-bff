@@ -181,4 +181,39 @@ describe('OnboardingChecklistController', () => {
     }
     expect(markOnboardingItemVisited).not.toHaveBeenCalled();
   });
+
+  // ---- specs/0230 — Pix e WhatsApp opcionais: concluídos ao abrir a página ----
+  it('specs/0230 AC-1: sem chave Pix e sem WhatsApp, mas com as páginas visitadas → os dois concluídos', async () => {
+    const { routes } = setup({ findById: jest.fn().mockResolvedValue(buildRestaurant({ onboardingVisitedItems: ['pix', 'whatsapp'] })) });
+    const json = jest.fn();
+
+    await runAuthenticatedChain(routes['GET /restaurants/me/onboarding-checklist'], {}, { json });
+
+    const payload = json.mock.calls[0][1] as { items: Array<{ key: string; done: boolean }> };
+    expect(payload.items.find((item) => item.key === 'pix')).toEqual({ key: 'pix', done: true });
+    expect(payload.items.find((item) => item.key === 'whatsapp')).toEqual({ key: 'whatsapp', done: true });
+  });
+
+  it('specs/0230 AC-1: sem visita e sem dado → Pix e WhatsApp continuam pendentes', async () => {
+    const { routes } = setup({ findById: jest.fn().mockResolvedValue(buildRestaurant({ onboardingVisitedItems: ['tables'] })) });
+    const json = jest.fn();
+
+    await runAuthenticatedChain(routes['GET /restaurants/me/onboarding-checklist'], {}, { json });
+
+    const payload = json.mock.calls[0][1] as { items: Array<{ key: string; done: boolean }> };
+    expect(payload.items.find((item) => item.key === 'pix')).toEqual({ key: 'pix', done: false });
+    expect(payload.items.find((item) => item.key === 'whatsapp')).toEqual({ key: 'whatsapp', done: false });
+  });
+
+  it('specs/0230 AC-3: POST visited aceita pix e whatsapp', async () => {
+    const markOnboardingItemVisited = jest.fn().mockResolvedValue(undefined);
+    const { routes } = setup({ markOnboardingItemVisited });
+
+    for (const key of ['pix', 'whatsapp']) {
+      await runAuthenticatedChain(routes['POST /restaurants/me/onboarding-checklist/visited'], { body: { key } } as FakeRequest, { send: jest.fn() } as unknown as FakeResponse);
+    }
+
+    expect(markOnboardingItemVisited).toHaveBeenNthCalledWith(1, 'r-1', 'pix');
+    expect(markOnboardingItemVisited).toHaveBeenNthCalledWith(2, 'r-1', 'whatsapp');
+  });
 });

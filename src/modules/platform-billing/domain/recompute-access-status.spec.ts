@@ -65,9 +65,17 @@ describe('recomputeAccessStatus', () => {
     expect(result.status).toBe('ok');
   });
 
-  it('REQ-23: obligation totalmente estornada reabre o saldo devido (volta a bloquear)', () => {
+  // specs/0175 REQ-23 — regra mudada pela opção C (decisão do usuário, 27/11/2026): antes o
+  // estorno total bloqueava após o vencimento, sem o restaurante ter como pagar.
+  it('AC-17b: obligation totalmente estornada aguarda decisão do administrador e NÃO bloqueia, mesmo vencida', () => {
     const refunded = buildObligation({ status: 'refunded', dueDate: localMidnight(new Date('2026-09-10T00:00:00Z')) });
     const result = recomputeAccessStatus([refunded], [], new Date('2026-11-11T00:00:00-03:00'));
+    expect(result.status).toBe('ok');
+  });
+
+  it('AC-17b: depois de "Cobrar de novo" (volta a awaiting_issue) a fatura vencida volta a bloquear', () => {
+    const reopened = buildObligation({ status: 'awaiting_issue', dueDate: localMidnight(new Date('2026-09-10T00:00:00Z')) });
+    const result = recomputeAccessStatus([reopened], [], new Date('2026-11-11T00:00:00-03:00'));
     expect(result.status).toBe('blocked');
   });
 

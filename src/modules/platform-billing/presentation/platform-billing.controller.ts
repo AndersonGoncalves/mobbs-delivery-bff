@@ -24,6 +24,12 @@ type AsyncHandler = (req: Request, res: Response) => Promise<void>;
  * `AsaasOnboardingController` (saldo/repasses). Garçom/Motoboy nunca chegam aqui. */
 const FINANCIAL_ROLES = ['dono', 'gerente', 'financeiro'] as const;
 
+/** specs/0175 REQ-23 (opção C) — fatura estornada (aguardando decisão) ou cancelada nunca expõe o
+ * Pix antigo ao restaurante: ele é de uma cobrança encerrada no Asaas. */
+function withoutClosedPix<T extends { status: string; pixPayload?: string }>(obligation: T): T {
+  return obligation.status === 'refunded' || obligation.status === 'cancelled' ? { ...obligation, pixPayload: undefined } : obligation;
+}
+
 /**
  * specs/0175-cobranca-assinatura-asaas REQ-26/REQ-30/REQ-33 — API da retaguarda pro LOJISTA
  * (dono/gerente/financeiro): simulação de planos, resumo/histórico, completar pagador, Pix e
@@ -118,13 +124,13 @@ export class PlatformBillingController extends BaseRouter {
       // /restaurants/me/operators/me` pra saber o papel (essa rota passa pelo middleware COM o
       // guard de billing, bloquearia de novo); devolve aqui, resolvido pelo mesmo middleware SEM
       // o guard que já autenticou esta rota.
-      res.json(200, { payer, openObligations, annualSubscription: subscription, accessStatus, operatorRole: req.operatorRole });
+      res.json(200, { payer, openObligations: openObligations.map(withoutClosedPix), annualSubscription: subscription, accessStatus, operatorRole: req.operatorRole });
     });
 
     // REQ-32 (histórico completo, não só o em aberto) — mesmo critério financeiro de acesso.
     application.get('/restaurants/me/billing/invoices', ...financialAuthenticated, async (req: Request, res: Response) => {
       const obligations = await this.deps.obligationRepository.findByRestaurantId(req.restaurantId!);
-      res.json(200, obligations);
+      res.json(200, obligations.map(withoutClosedPix));
     });
 
     // REQ-3/REQ-4 — só o Dono completa/corrige o cadastro do pagador (REQ-33).
@@ -136,7 +142,7 @@ export class PlatformBillingController extends BaseRouter {
 
     // REQ-18/REQ-30 — dados do Pix de uma fatura específica (nunca por `:id` de outro restaurante).
     application.get('/restaurants/me/billing/invoices/:id/pix', ...financialAuthenticated, async (req: Request, res: Response) => {
-      const obligation = await this.requireOwnObligation(req.restaurantId!, req.params.id);
+      const obligation = withoutClosedPix(await this.requireOwnObligation(req.restaurantId!, req.params.id));
       res.json(200, { pixPayload: obligation.pixPayload, amountCents: obligation.amountCents, dueDate: obligation.dueDate, status: obligation.status });
     });
 

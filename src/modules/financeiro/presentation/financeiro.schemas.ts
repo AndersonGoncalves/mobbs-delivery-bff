@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { paginationQuerySchema } from '../../../shared/http/pagination';
+import { isReversedRange } from '../../../shared/utils/inclusive-end-date';
 import { paymentMethodSchema } from '../../restaurants/presentation/restaurants.schemas';
 
 const isoDateString = z.string().refine((value) => !Number.isNaN(Date.parse(value)), 'Data inválida');
@@ -82,7 +83,13 @@ export const accountListQuerySchema = z.object({
   // clientes e estoque": filtro por descrição, pra não perder a busca já existente (hoje
   // client-side, sobre a lista inteira) ao migrar pra paginação real no servidor.
   search: z.string().min(1).optional(),
-}).merge(paginationQuerySchema);
+  // specs/0231-filtro-datas-contas-pedidos-compra REQ-1 — filtro de situação (ver regra sem
+  // datas em `buildAccountListQuery`).
+  status: z.enum(['aberto', 'pago', 'cancelado']).optional(),
+})
+  .merge(paginationQuerySchema)
+  // specs/0231 REQ-6/AC-4 — "de" depois de "até" é recusado (400), não vira lista vazia calada.
+  .refine(({ from, to }) => !isReversedRange(from, to), 'Data inicial não pode ser posterior à data final');
 
 /** specs/0127 — período ISO com início anterior ao limite final exclusivo. */
 export const motoboyPayoutPeriodSchema = z

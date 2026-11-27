@@ -1,5 +1,5 @@
 import type { Request, Response, Server } from 'restify';
-import { NotFoundError } from 'restify-errors';
+import { ConflictError, NotFoundError } from 'restify-errors';
 import { z } from 'zod';
 
 import { BaseRouter } from '../../../shared/router/base.router';
@@ -19,6 +19,7 @@ import type { ISubscriptionObligationRepository } from '../../platform-billing/d
 import type { ObligationIssuanceService } from '../../platform-billing/domain/services/obligation-issuance.service';
 import type { PlatformBillingCycleService } from '../../platform-billing/domain/services/platform-billing-cycle.service';
 import type { ReconciliationService } from '../../platform-billing/domain/services/reconciliation.service';
+import { addDaysCorridos, localMidnight } from '../../platform-billing/domain/billing-calendar';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
@@ -28,6 +29,12 @@ type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 // mão como escape-hatch operacional (mesmo comportamento de specs/0106, nunca removido) — a
 // exceção AUDITADA (motivo/autoria/prazo, REQ-32) é a rota nova `POST .../exceptions` abaixo.
 const billingChangeSchema = z.object({ status: z.enum(['ok', 'blocked']) });
+
+// specs/0175 REQ-23 (opção C) — decisão do administrador sobre uma fatura estornada.
+const refundDecisionSchema = z.object({
+  decision: z.enum(['charge_again', 'forgive']),
+  reason: z.string().trim().max(500).optional(),
+});
 
 const manualExceptionSchema = z.object({
   obligationId: z.string().min(1),
@@ -239,6 +246,45 @@ export class PlatformController extends BaseRouter {
     // acesso na hora (mesmo raciocínio do webhook, REQ-21) — a exceção não "desaparece no
     // próximo recálculo" porque fica persistida (`setAdminOverride`, sempre sobrescreve, nunca
     // é um no-op silencioso como `createIfAbsent`).
+    // specs/0175 REQ-23 (opção C, decisão do usuário 27/11/2026) — fatura estornada integralmente
+    // aguarda o administrador: "Cobrar de novo" reabre a MESMA fatura para um Pix novo (emitido
+    // na hora); "Perdoar" cancela a dívida. Só de `refunded` (409 nos demais estados, inclusive
+    // decisão repetida). Auditado com autoria.
+    application.post('/platform/billing/obligations/:id/refund-decision', ...adminAuthenticated, async (req: Request, res: Response) => {
+      const input = parseBody(refundDecisionSchema, req.body);
+      const obligation = await this.obligationRepository.findById(req.params.id);
+      if (!obligation) throw new NotFoundError('Obrigação não encontrada');
+      if (obligation.status !== 'refunded') {
+        throw new ConflictError('Só uma fatura estornada (aguardando decisão) pode ser cobrada de novo ou perdoada');
+      }
+
+      const now = new Date();
+      const updated =
+        input.decision === 'charge_again' ? await this.obligationRepository.reopenForReissue(obligation.id) : await this.obligationRepository.cancelRefunded(obligation.id);
+      if (!updated) throw new ConflictError('A fatura mudou de estado — atualize a página');
+
+      await this.subscriptionEventRepository.append({
+        obligationId: obligation.id,
+        type: 'refund_decision',
+        payload: { decision: input.decision, reason: input.reason, refundedChargeId: obligation.asaasChargeId },
+        actor: req.user!.email!,
+      });
+
+      if (input.decision === 'charge_again') {
+        // Já vencida: carência de 3 dias desde já (REQ-10), para o restaurante não ser bloqueado
+        // antes de ter o Pix novo — mesmo se a emissão abaixo falhar e ficar para o próximo ciclo.
+        const startOfDayAfterDueDate = new Date(localMidnight(obligation.dueDate).getTime() + 24 * 60 * 60 * 1000);
+        if (now.getTime() >= startOfDayAfterDueDate.getTime()) {
+          await this.pixAvailabilityExceptionRepository.setAdminOverride(obligation.id, addDaysCorridos(now, 3), now);
+        }
+        await this.obligationIssuanceService.issuePending(now, obligation.restaurantId);
+      }
+      await this.platformBillingCycleService.recomputeAndPersist(obligation.restaurantId, now);
+
+      const refreshed = await this.obligationRepository.findById(obligation.id);
+      res.json(200, refreshed);
+    });
+
     application.post('/platform/billing/exceptions', ...adminAuthenticated, async (req: Request, res: Response) => {
       const input = parseBody(manualExceptionSchema, req.body);
       const obligation = await this.obligationRepository.findById(input.obligationId);
