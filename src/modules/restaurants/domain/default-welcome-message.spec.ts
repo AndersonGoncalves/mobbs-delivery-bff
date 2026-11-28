@@ -5,6 +5,7 @@ describe('buildDefaultWelcomeMessage (specs/0094-mensagem-boas-vindas-home REQ-2
   it('AC-2: usa o ramo do tipo de negócio escolhido no cadastro', () => {
     expect(buildDefaultWelcomeMessage('pizzaria')).toContain('à nossa pizzaria!');
     expect(buildDefaultWelcomeMessage('pastelaria')).toContain('à nossa pastelaria!');
+    expect(buildDefaultWelcomeMessage('restaurante')).toContain('bem-vindo(a) ao nosso restaurante!');
   });
 
   it('AC-2: a mensagem padrão é a mesma para qualquer ramo, só muda o nome do ramo', () => {
@@ -16,7 +17,7 @@ describe('buildDefaultWelcomeMessage (specs/0094-mensagem-boas-vindas-home REQ-2
   it('gera uma mensagem para todos os tipos, sem placeholder cru', () => {
     for (const type of BUSINESS_TYPES) {
       const message = buildDefaultWelcomeMessage(type);
-      expect(message).toMatch(/^Olá, seja bem-vindo\(a\) à nossa .+!/);
+      expect(message).toMatch(/^Olá, seja bem-vindo\(a\) (à nossa|ao nosso) .+!/);
       expect(message.length).toBeLessThanOrEqual(500);
       expect(message).not.toContain('{');
     }

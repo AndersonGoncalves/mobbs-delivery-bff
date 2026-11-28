@@ -330,7 +330,7 @@ const BEBIDAS_TEMPLATE: DefaultCatalogAdditionalGroupTemplate = {
   ],
 };
 
-export const DEFAULT_CATALOGS_BY_BUSINESS_TYPE: Record<BusinessType, DefaultCatalog> = {
+const SINGLE_BUSINESS_CATALOGS: Record<Exclude<BusinessType, 'restaurante'>, DefaultCatalog> = {
   pizzaria: {
     categories: [
       {
@@ -690,4 +690,43 @@ export const DEFAULT_CATALOGS_BY_BUSINESS_TYPE: Record<BusinessType, DefaultCata
       BEBIDAS_TEMPLATE,
     ],
   },
+};
+
+/** Grupos de adicionais próprios do ramo (sem os de bebida, que são iguais em todos). */
+function ownTemplates(catalog: DefaultCatalog): DefaultCatalogAdditionalGroupTemplate[] {
+  return catalog.additionalGroupTemplates.filter((template) => template !== REFRIGERANTES_TEMPLATE && template !== BEBIDAS_TEMPLATE);
+}
+
+/** Troca o nome genérico "Adicionais" por um específico do ramo, pra não nascerem 3 grupos com o mesmo nome. */
+function renameGenericAdicionais(templates: DefaultCatalogAdditionalGroupTemplate[], newName: string): DefaultCatalogAdditionalGroupTemplate[] {
+  return templates.map((template) => (template.name === 'Adicionais' ? { ...template, name: newName } : template));
+}
+
+// Pedido explícito do usuário (27/11/2026) — 8º tipo, "Restaurante": soma o cardápio de pizzaria,
+// hamburgueria, pastelaria e lanches em geral (categoria própria de cada um), mais as categorias
+// padrão (Lanches/Bebidas/Sobremesas) uma vez só. "Lanches" próprio de lanches_gerais e o padrão se
+// juntam numa categoria só em `seedDefaultCatalog` (mesmo nome). Grupos de bebida entram uma vez; os
+// três "Adicionais" ganham nome próprio. Nenhum produto vincula "Adicionais" pelo nome, então o
+// renomear não quebra `linkedAdditionalGroupTemplateNames`.
+const RESTAURANTE_CATALOG: DefaultCatalog = {
+  categories: [
+    SINGLE_BUSINESS_CATALOGS.pizzaria.categories[0],
+    SINGLE_BUSINESS_CATALOGS.hamburgueria.categories[0],
+    SINGLE_BUSINESS_CATALOGS.pastelaria.categories[0],
+    SINGLE_BUSINESS_CATALOGS.lanches_gerais.categories[0],
+    ...extraCategories(),
+  ],
+  additionalGroupTemplates: [
+    ...ownTemplates(SINGLE_BUSINESS_CATALOGS.pizzaria),
+    ...renameGenericAdicionais(ownTemplates(SINGLE_BUSINESS_CATALOGS.hamburgueria), 'Adicionais do hambúrguer'),
+    ...renameGenericAdicionais(ownTemplates(SINGLE_BUSINESS_CATALOGS.pastelaria), 'Adicionais do pastel'),
+    ...renameGenericAdicionais(ownTemplates(SINGLE_BUSINESS_CATALOGS.lanches_gerais), 'Adicionais do lanche'),
+    REFRIGERANTES_TEMPLATE,
+    BEBIDAS_TEMPLATE,
+  ],
+};
+
+export const DEFAULT_CATALOGS_BY_BUSINESS_TYPE: Record<BusinessType, DefaultCatalog> = {
+  ...SINGLE_BUSINESS_CATALOGS,
+  restaurante: RESTAURANTE_CATALOG,
 };

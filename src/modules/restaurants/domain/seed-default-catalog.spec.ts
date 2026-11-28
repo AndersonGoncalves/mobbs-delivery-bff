@@ -81,7 +81,8 @@ describe('seedDefaultCatalog', () => {
 
   // specs/0047-ajustes-diversos-onboarding-estoque-pagamento REQ-11 — "Lanche" virou "Lanches"
   // (ajuste manual do usuário, fora desta spec, mas replicado aqui pra bater com o código real).
-  it.each(BUSINESS_TYPES)('AC-11: tipo "%s" tem as categorias na ordem [própria, Lanches, Bebidas, Sobremesas]', (businessType) => {
+  // "restaurante" soma 4 ramos (várias categorias próprias) — ordem coberta no describe dele, no fim.
+  it.each(BUSINESS_TYPES.filter((type) => type !== 'restaurante'))('AC-11: tipo "%s" tem as categorias na ordem [própria, Lanches, Bebidas, Sobremesas]', (businessType) => {
     const categoryNames = DEFAULT_CATALOGS_BY_BUSINESS_TYPE[businessType].categories.map((category) => category.categoryName);
 
     expect(categoryNames).toHaveLength(4);
@@ -248,5 +249,69 @@ describe('seedDefaultCatalog', () => {
       expect(created).toEqual(DEFAULT_RAW_MATERIALS.map((material) => material.name));
       expect(created).toEqual(expect.arrayContaining(['Queijo mussarela', 'Ovo']));
     }
+  });
+
+  // Pedido explícito do usuário (27/11/2026) — 8º tipo "restaurante" = pizzaria + hamburgueria +
+  // pastelaria + lanches em geral, sem categoria/grupo repetido.
+  describe('tipo "restaurante"', () => {
+    const ownProductsOf = (businessType: (typeof BUSINESS_TYPES)[number]) =>
+      DEFAULT_CATALOGS_BY_BUSINESS_TYPE[businessType].categories[0].products.map((product) => product.name);
+
+    it('cria as categorias próprias dos 4 ramos + as padrão, cada uma uma vez só', async () => {
+      const deps = buildDeps();
+
+      await seedDefaultCatalog('r-1', 'restaurante', deps);
+
+      const categoryNames = (deps.menuCategoryRepository.create as jest.Mock).mock.calls.map((call) => call[1]);
+      expect(categoryNames).toEqual(['Pizzas', 'Hambúrgueres', 'Pastéis', 'Lanches', 'Bebidas', 'Sobremesas']);
+    });
+
+    it('traz todos os produtos de pizzaria, hamburgueria, pastelaria e lanches em geral, sem repetir', async () => {
+      const deps = buildDeps();
+
+      await seedDefaultCatalog('r-1', 'restaurante', deps);
+
+      const productNames: string[] = (deps.productRepository.create as jest.Mock).mock.calls.map((call) => call[1].name);
+      for (const businessType of ['pizzaria', 'hamburgueria', 'pastelaria', 'lanches_gerais'] as const) {
+        expect(productNames).toEqual(expect.arrayContaining(ownProductsOf(businessType)));
+      }
+      expect(productNames).toEqual(expect.arrayContaining(['Coxinha de frango', 'Pudim de leite', 'Coca-Cola 1 litro']));
+      expect(new Set(productNames).size).toBe(productNames.length);
+    });
+
+    it('grupos de adicionais sem nome repetido: bebidas uma vez, "Adicionais" com nome de cada ramo', async () => {
+      const deps = buildDeps();
+
+      await seedDefaultCatalog('r-1', 'restaurante', deps);
+
+      const templateNames: string[] = (deps.additionalGroupTemplateRepository.create as jest.Mock).mock.calls.map((call) => call[1].name);
+      expect(new Set(templateNames).size).toBe(templateNames.length);
+      expect(templateNames).toEqual(
+        expect.arrayContaining(['Tamanho', 'Bordas', 'Sabores da Pizza', 'Ponto da carne', 'Adicionais do hambúrguer', 'Adicionais do pastel', 'Adicionais do lanche', 'Refri?', 'Bebidas?']),
+      );
+      expect(templateNames).not.toContain('Adicionais');
+    });
+
+    it('"Pizza grande 2 sabores" continua vinculada a Bordas + Sabores da Pizza + Refri?', async () => {
+      const deps = buildDeps();
+
+      await seedDefaultCatalog('r-1', 'restaurante', deps);
+
+      expect(deps.productRepository.update).toHaveBeenCalledWith(
+        'p-Pizza grande 2 sabores + Refri 1L grátis',
+        expect.objectContaining({
+          additionalGroups: expect.arrayContaining([
+            expect.objectContaining({ templateId: 'agt-Bordas' }),
+            expect.objectContaining({ templateId: 'agt-Sabores da Pizza' }),
+            expect.objectContaining({ templateId: 'agt-Refri?' }),
+          ]),
+        }),
+      );
+    });
+
+    it('não altera o catálogo dos ramos originais (o "Adicionais" da hamburgueria continua com esse nome)', () => {
+      const names = DEFAULT_CATALOGS_BY_BUSINESS_TYPE.hamburgueria.additionalGroupTemplates.map((template) => template.name);
+      expect(names).toContain('Adicionais');
+    });
   });
 });
