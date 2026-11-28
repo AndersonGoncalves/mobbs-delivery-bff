@@ -1965,6 +1965,90 @@ describe('OrdersController', () => {
     expect(cashRegisterService.addAutomaticEntry).not.toHaveBeenCalled();
   });
 
+  // specs/0234 — cartão online do app (Mercado Pago, sem `source`) segue a regra do Pix; o dos
+  // marketplaces (com `source`) continua na entrega.
+  it('specs/0234 AC-1: "confirmado" com cartão online do app lança no caixa', async () => {
+    const { cashRegisterService, routes } = setup({
+      orderRepository: {
+        findById: jest.fn().mockResolvedValue(buildOrder({ status: 'aguardandoConfirmacao', paymentMethod: 'creditCardOnline' })),
+        updateStatus: jest.fn().mockResolvedValue(buildOrder({ status: 'confirmado', paymentMethod: 'creditCardOnline' })),
+      },
+    });
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/status'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'confirmado' } },
+      { json: jest.fn() },
+    );
+
+    expect(cashRegisterService.addAutomaticEntry).toHaveBeenCalledWith({
+      restaurantId: 'r-1', orderId: 'o-1', orderNumber: 1, amount: 30, paymentMethod: 'creditCardOnline',
+    });
+  });
+
+  it('specs/0234 AC-2: "entregue" com cartão online do app NÃO lança de novo', async () => {
+    const { cashRegisterService, routes } = setup({
+      orderRepository: {
+        findById: jest.fn().mockResolvedValue(buildOrder({ status: 'saiuParaEntrega', paymentMethod: 'creditCardOnline' })),
+        updateStatus: jest.fn().mockResolvedValue(buildOrder({ status: 'entregue', paymentMethod: 'creditCardOnline' })),
+      },
+    });
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/status'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'entregue' } },
+      { json: jest.fn() },
+    );
+
+    expect(cashRegisterService.addAutomaticEntry).not.toHaveBeenCalled();
+  });
+
+  it('specs/0234 AC-5: cartão online do iFood NÃO lança em "confirmado" e lança em "entregue"', async () => {
+    const confirm = setup({
+      orderRepository: {
+        findById: jest.fn().mockResolvedValue(buildOrder({ status: 'aguardandoConfirmacao', paymentMethod: 'creditCardOnline', source: 'ifood' })),
+        updateStatus: jest.fn().mockResolvedValue(buildOrder({ status: 'confirmado', paymentMethod: 'creditCardOnline', source: 'ifood' })),
+      },
+    });
+    await runOperatorChain(
+      confirm.routes['PATCH /restaurants/me/orders/:id/status'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'confirmado' } },
+      { json: jest.fn() },
+    );
+    expect(confirm.cashRegisterService.addAutomaticEntry).not.toHaveBeenCalled();
+
+    const deliver = setup({
+      orderRepository: {
+        findById: jest.fn().mockResolvedValue(buildOrder({ status: 'saiuParaEntrega', paymentMethod: 'creditCardOnline', source: 'ifood' })),
+        updateStatus: jest.fn().mockResolvedValue(buildOrder({ status: 'entregue', paymentMethod: 'creditCardOnline', source: 'ifood' })),
+      },
+    });
+    await runOperatorChain(
+      deliver.routes['PATCH /restaurants/me/orders/:id/status'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { status: 'entregue' } },
+      { json: jest.fn() },
+    );
+    expect(deliver.cashRegisterService.addAutomaticEntry).toHaveBeenCalledWith(expect.objectContaining({ paymentMethod: 'creditCardOnline' }));
+  });
+
+  it('specs/0234 AC-3: cancelar pedido confirmado com cartão online do app lança o estorno do caixa', async () => {
+    const { cashRegisterService, routes } = setup({
+      orderRepository: {
+        findById: jest.fn().mockResolvedValue(buildOrder({ status: 'confirmado', paymentMethod: 'creditCardOnline' })),
+      },
+    });
+
+    await runOperatorChain(
+      routes['PATCH /restaurants/me/orders/:id/cancel'],
+      { restaurantId: 'r-1', params: { id: 'o-1' }, body: { reason: 'Cliente desistiu' } },
+      { json: jest.fn() },
+    );
+
+    expect(cashRegisterService.addAutomaticReversalEntry).toHaveBeenCalledWith({
+      restaurantId: 'r-1', orderId: 'o-1', orderNumber: 1, amount: 30, paymentMethod: 'creditCardOnline',
+    });
+  });
+
   it('specs/0014-financeiro REQ-5: falha no lançamento automático de caixa não impede a resposta 200 da mudança de status', async () => {
     const { cashRegisterService, routes } = setup({
       orderRepository: {

@@ -1,5 +1,6 @@
 import { PaymentMethod } from '../../../orders/domain/entities/order.entity';
 import { IOrderRepository } from '../../../orders/domain/repositories/order.repository.interface';
+import { isPaidBeforeDelivery } from '../../../orders/domain/is-paid-before-delivery';
 import { getRestaurantLocalTime, minutesSinceMidnight } from '../../../restaurants/domain/is-restaurant-open-now';
 import { IRestaurant } from '../../../restaurants/domain/entities/restaurant.entity';
 import { IRestaurantRepository } from '../../../restaurants/domain/repositories/restaurant.repository.interface';
@@ -241,7 +242,7 @@ export class CashRegisterService implements ICashRegisterService {
       }
       // specs/0213-caixa-pix-na-confirmacao REQ-7 — Pix não entra mais aqui (gatilho é
       // "confirmado", tratado no loop abaixo); as demais formas continuam por "entregue".
-      if (order.status !== 'entregue' || order.paymentMethod === 'pix') continue;
+      if (order.status !== 'entregue' || isPaidBeforeDelivery(order)) continue; // specs/0234: + cartão online do app
       await this.recordAutomaticEntry(session.id, {
         restaurantId,
         orderId: order.id,
@@ -256,8 +257,8 @@ export class CashRegisterService implements ICashRegisterService {
     // confirmado fica de fora por simplicidade (limitação conhecida, documentada em `plan.md`):
     // o par entrada+estorno já deveria existir de quando o cancelamento aconteceu ao vivo; esta
     // reconstrução cobre só a entrada "solta" de um pedido ainda em andamento ou já entregue.
-    const confirmedPixOrders = await this.orderRepository.findConfirmedPixSalesBetween(restaurantId, from, to);
-    for (const order of confirmedPixOrders) {
+    const paidBeforeDeliveryOrders = await this.orderRepository.findPaidBeforeDeliverySalesBetween(restaurantId, from, to);
+    for (const order of paidBeforeDeliveryOrders) {
       if (order.status === 'cancelado') continue;
       await this.recordAutomaticEntry(session.id, {
         restaurantId,
@@ -403,7 +404,7 @@ export class CashRegisterService implements ICashRegisterService {
       }
       // specs/0213-caixa-pix-na-confirmacao REQ-6 — Pix some daqui (fica por conta do loop
       // abaixo, que conta pelo momento de "confirmado", não de "entregue").
-      if (order.status !== 'entregue' || order.paymentMethod === 'pix') continue;
+      if (order.status !== 'entregue' || isPaidBeforeDelivery(order)) continue; // specs/0234: + cartão online do app
       salesByPaymentMethod[order.paymentMethod] += order.total;
       totalSales += order.total;
       deliverySales += order.total;
@@ -415,14 +416,14 @@ export class CashRegisterService implements ICashRegisterService {
     // + estorno se cancelam no ledger real — ambos os movimentos têm `orderId`, então nenhum dos
     // dois é somado de novo no loop de movimentos manuais logo abaixo; não somar aqui mantém o
     // total batendo com o ledger).
-    const confirmedPixOrders = await this.orderRepository.findConfirmedPixSalesBetween(
+    const paidBeforeDeliveryOrders = await this.orderRepository.findPaidBeforeDeliverySalesBetween(
       session.restaurantId,
       new Date(session.openedAt),
       periodEnd,
     );
-    for (const order of confirmedPixOrders) {
+    for (const order of paidBeforeDeliveryOrders) {
       if (order.status === 'cancelado') continue;
-      salesByPaymentMethod.pix += order.total;
+      salesByPaymentMethod[order.paymentMethod] += order.total; // specs/0234: Pix ou cartão online
       totalSales += order.total;
       deliverySales += order.total;
     }

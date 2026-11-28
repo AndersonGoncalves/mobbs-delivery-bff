@@ -73,7 +73,7 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
     };
     const orderRepository: Partial<IOrderRepository> = {
       findReceivedSalesBetween: jest.fn().mockResolvedValue([]),
-      findConfirmedPixSalesBetween: jest.fn().mockResolvedValue([]),
+      findPaidBeforeDeliverySalesBetween: jest.fn().mockResolvedValue([]),
       ...overrides.orderRepository,
     };
     const service = new CashRegisterService(
@@ -637,9 +637,9 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
           findReceivedSalesBetween: jest.fn().mockResolvedValue([
             buildDeliveredOrder({ id: 'o-3', paymentMethod: 'cash', total: 30 }),
           ]),
-          // specs/0213-caixa-pix-na-confirmacao — Pix conta por `findConfirmedPixSalesBetween`
+          // specs/0213-caixa-pix-na-confirmacao — Pix conta por `findPaidBeforeDeliverySalesBetween`
           // (gatilho "confirmado"), não por `findReceivedSalesBetween` ("entregue").
-          findConfirmedPixSalesBetween: jest.fn().mockResolvedValue([
+          findPaidBeforeDeliverySalesBetween: jest.fn().mockResolvedValue([
             buildDeliveredOrder({ id: 'o-1', paymentMethod: 'pix', total: 50 }),
             buildDeliveredOrder({ id: 'o-2', paymentMethod: 'pix', total: 50 }),
           ]),
@@ -720,6 +720,31 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
     // antigo: enquanto o caixa de ontem segue aberto (ninguém fechou ainda), um pagamento recebido
     // hoje de madrugada pertence a ele também, não só o de ontem — ver cabeçalho de
     // `cashRegisterPeriodEnd`.
+    // specs/0234 AC-1/AC-2 — o pedido confirmado pelo webhook do Mercado Pago não passa pelo
+    // controller: a sincronização da sessão lança a entrada; já entregue, lança uma vez só.
+    it('specs/0234: syncOpenSession lança o cartão online do app confirmado, uma vez só mesmo já entregue', async () => {
+      const delivered = buildDeliveredOrder({ id: 'o-entregue', orderNumber: 2, status: 'entregue', paymentMethod: 'creditCardOnline', total: 20 });
+      const { cashRegisterRepository, service } = setup({
+        orderRepository: {
+          findReceivedSalesBetween: jest.fn().mockResolvedValue([delivered]),
+          findPaidBeforeDeliverySalesBetween: jest.fn().mockResolvedValue([
+            buildDeliveredOrder({ id: 'o-confirmado', orderNumber: 1, status: 'confirmado', paymentMethod: 'creditCardOnline', total: 25.9 }),
+            delivered,
+          ]),
+        },
+      });
+
+      await service.syncOpenSession('r-1');
+
+      expect(cashRegisterRepository.addMovement).toHaveBeenCalledTimes(2);
+      expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-1', expect.objectContaining({
+        type: 'entrada', amount: 25.9, paymentMethod: 'creditCardOnline', orderId: 'o-confirmado',
+      }));
+      expect(cashRegisterRepository.addMovement).toHaveBeenCalledWith('cr-1', expect.objectContaining({
+        type: 'entrada', amount: 20, paymentMethod: 'creditCardOnline', orderId: 'o-entregue',
+      }));
+    });
+
     it('caixa pendente ainda aberto sincroniza pagamentos de antes E depois da virada do dia', async () => {
       const { service, orderRepository, cashRegisterRepository } = setup({
         cashRegisterRepository: { findById: jest.fn().mockResolvedValue(buildSession({ openedAt: '2026-09-08T11:00:00Z' })) },
@@ -741,9 +766,9 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
     it('movimento manual (sangria) sem orderId reduz a forma "dinheiro", sem duplicar venda automática de Pix', async () => {
       const { service } = setup({
         orderRepository: {
-          // specs/0213-caixa-pix-na-confirmacao — Pix agora conta por `findConfirmedPixSalesBetween`
+          // specs/0213-caixa-pix-na-confirmacao — Pix agora conta por `findPaidBeforeDeliverySalesBetween`
           // (gatilho "confirmado"), não por `findReceivedSalesBetween` ("entregue").
-          findConfirmedPixSalesBetween: jest.fn().mockResolvedValue([buildDeliveredOrder({ id: 'o-1', paymentMethod: 'pix', total: 50 })]),
+          findPaidBeforeDeliverySalesBetween: jest.fn().mockResolvedValue([buildDeliveredOrder({ id: 'o-1', paymentMethod: 'pix', total: 50 })]),
         },
         cashRegisterRepository: {
           listMovements: jest.fn().mockResolvedValue([
@@ -771,9 +796,9 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
               tablePayments: [{ id: 'pay-1', method: 'cash', amount: 16, paidAt: '2026-09-09T10:00:00.000Z' }],
             }),
           ]),
-          // specs/0213-caixa-pix-na-confirmacao — Pix conta por `findConfirmedPixSalesBetween`
+          // specs/0213-caixa-pix-na-confirmacao — Pix conta por `findPaidBeforeDeliverySalesBetween`
           // (gatilho "confirmado"), não por `findReceivedSalesBetween` ("entregue").
-          findConfirmedPixSalesBetween: jest.fn().mockResolvedValue([
+          findPaidBeforeDeliverySalesBetween: jest.fn().mockResolvedValue([
             buildDeliveredOrder({ id: 'o-delivery-1', orderType: 'delivery', paymentMethod: 'pix', total: 50 }),
           ]),
         },
@@ -861,7 +886,7 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
     it('specs/0213 AC-6: pedido Pix confirmado mas ainda não entregue entra em totalSales/salesByPaymentMethod.pix/deliverySales', async () => {
       const { service } = setup({
         orderRepository: {
-          findConfirmedPixSalesBetween: jest.fn().mockResolvedValue([
+          findPaidBeforeDeliverySalesBetween: jest.fn().mockResolvedValue([
             buildDeliveredOrder({ id: 'o-1', status: 'emPreparo', paymentMethod: 'pix', total: 50 }),
           ]),
         },
@@ -874,6 +899,42 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
       expect(summary.balanceByPaymentMethod.pix).toBe(50);
     });
 
+    // specs/0234 AC-4 — cartão online do app confirmado (ainda não entregue) conta em "Cartão
+    // (online)"; e, já entregue, não conta duas vezes (aparece nas duas buscas).
+    it('specs/0234 AC-4: cartão online do app confirmado entra no resumo em creditCardOnline, uma vez só', async () => {
+      const delivered = buildDeliveredOrder({ id: 'o-2', status: 'entregue', paymentMethod: 'creditCardOnline', total: 25.9 });
+      const { service } = setup({
+        orderRepository: {
+          findReceivedSalesBetween: jest.fn().mockResolvedValue([delivered]),
+          findPaidBeforeDeliverySalesBetween: jest.fn().mockResolvedValue([
+            buildDeliveredOrder({ id: 'o-1', status: 'confirmado', paymentMethod: 'creditCardOnline', total: 10 }),
+            delivered,
+          ]),
+        },
+      });
+
+      const summary = await service.getClosingSummary('cr-1');
+
+      expect(summary.balanceByPaymentMethod.creditCardOnline).toBe(35.9);
+      expect(summary.balanceByPaymentMethod.pix).toBe(0);
+      expect(summary.totalSales).toBe(35.9);
+      expect(summary.deliverySales).toBe(35.9);
+    });
+
+    it('specs/0234 AC-5: cartão online do iFood entregue continua contando pela entrega', async () => {
+      const { service } = setup({
+        orderRepository: {
+          findReceivedSalesBetween: jest.fn().mockResolvedValue([
+            buildDeliveredOrder({ id: 'o-1', status: 'entregue', paymentMethod: 'creditCardOnline', source: 'ifood', total: 40 }),
+          ]),
+        },
+      });
+
+      const summary = await service.getClosingSummary('cr-1');
+
+      expect(summary.balanceByPaymentMethod.creditCardOnline).toBe(40);
+    });
+
     // specs/0213 REQ-6 — pedido Pix confirmado e depois cancelado some do resumo: no ledger real
     // a entrada e o estorno têm `orderId`, então nenhum dos dois é somado pelo loop de movimentos
     // manuais; não somar aqui (nem a entrada, nem o estorno) mantém o total batendo com zero
@@ -881,7 +942,7 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
     it('specs/0213 REQ-6: pedido Pix confirmado e cancelado depois soma zero no resumo', async () => {
       const { service } = setup({
         orderRepository: {
-          findConfirmedPixSalesBetween: jest.fn().mockResolvedValue([
+          findPaidBeforeDeliverySalesBetween: jest.fn().mockResolvedValue([
             buildDeliveredOrder({ id: 'o-1', status: 'cancelado', paymentMethod: 'pix', total: 50 }),
           ]),
         },
@@ -895,7 +956,7 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
     });
 
     // specs/0213 REQ-6 — um pedido Pix que JÁ chegou em "entregue" aparece nas duas buscas
-    // (`findReceivedSalesBetween` por status "entregue", `findConfirmedPixSalesBetween` por
+    // (`findReceivedSalesBetween` por status "entregue", `findPaidBeforeDeliverySalesBetween` por
     // "confirmado" no período); precisa contar só uma vez.
     it('specs/0213 REQ-6: pedido Pix entregue não conta duas vezes mesmo aparecendo nas duas buscas', async () => {
       const { service } = setup({
@@ -903,7 +964,7 @@ describe('CashRegisterService (specs/0014-financeiro REQ-5, specs/0118-controle-
           findReceivedSalesBetween: jest.fn().mockResolvedValue([
             buildDeliveredOrder({ id: 'o-1', status: 'entregue', paymentMethod: 'pix', total: 50 }),
           ]),
-          findConfirmedPixSalesBetween: jest.fn().mockResolvedValue([
+          findPaidBeforeDeliverySalesBetween: jest.fn().mockResolvedValue([
             buildDeliveredOrder({ id: 'o-1', status: 'entregue', paymentMethod: 'pix', total: 50 }),
           ]),
         },

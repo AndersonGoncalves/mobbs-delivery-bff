@@ -158,8 +158,11 @@ export interface IOrderRepository {
    * specs/0213-caixa-pix-na-confirmacao REQ-6/REQ-7 — pedidos delivery/retirada em Pix cujo
    * `statusHistory` passou por `'confirmado'` no período (status atual pode ser qualquer um —
    * ainda em andamento, entregue, ou cancelado depois de confirmado).
+   *
+   * specs/0234 — também o cartão online do app do cliente (sem `source`, Mercado Pago): mesma regra de
+   * `isPaidBeforeDelivery`.
    */
-  findConfirmedPixSalesBetween(restaurantId: string, from: Date, to: Date): Promise<IOrder[]>;
+  findPaidBeforeDeliverySalesBetween(restaurantId: string, from: Date, to: Date): Promise<IOrder[]>;
 
   /**
    * specs/0016-clientes-retaguarda REQ-3 — histórico de pedidos de um cliente **só neste

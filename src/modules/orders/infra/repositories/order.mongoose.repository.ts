@@ -563,11 +563,12 @@ export class OrderMongooseRepository implements IOrderRepository {
    * `saiuParaEntrega`/`entregue`) ou sido cancelado depois; quem consome decide o que fazer com
    * cada caso a partir do `status` atual devolvido.
    */
-  async findConfirmedPixSalesBetween(restaurantId: string, from: Date, to: Date): Promise<IOrder[]> {
+  async findPaidBeforeDeliverySalesBetween(restaurantId: string, from: Date, to: Date): Promise<IOrder[]> {
     const docs = await OrderModel.find({
       restaurantId,
       orderType: { $ne: 'table' },
-      paymentMethod: 'pix',
+      // specs/0234 — mesma regra de `isPaidBeforeDelivery`: Pix, ou cartão online do app (sem `source`).
+      $or: [{ paymentMethod: 'pix' }, { paymentMethod: 'creditCardOnline', source: { $in: [null] } }],
       statusHistory: { $elemMatch: { status: 'confirmado', changedAt: { $gte: from, $lt: to } } },
     }).lean<OrderLeanDocument[]>();
     return docs.map(toEntity);

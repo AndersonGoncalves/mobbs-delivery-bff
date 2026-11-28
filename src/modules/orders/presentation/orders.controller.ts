@@ -42,6 +42,7 @@ import { isAutoPrintMissed } from '../domain/is-auto-print-missed';
 import { buildOrderPixCode } from '../domain/build-order-pix-code';
 import { computeOrderPricing } from '../domain/compute-order-pricing';
 import { resolveInitialOrderStatus } from '../domain/resolve-initial-order-status';
+import { isPaidBeforeDelivery } from '../domain/is-paid-before-delivery';
 import { resolveOrderItemLinkedProducts } from '../domain/resolve-order-item-linked-products';
 import { findOrderItemPriceMismatches } from '../domain/validate-order-item-price';
 import { IOrderRepository } from '../domain/repositories/order.repository.interface';
@@ -946,10 +947,11 @@ export class OrdersController extends BaseRouter {
     // dinheiro já caiu na conta do restaurante na confirmação), então lança no caixa em
     // "confirmado" em vez de "entregue"; as demais formas (dinheiro/cartão/cartão online)
     // continuam lançando só na entrega, como sempre, já que só existem fisicamente ali.
-    if (status === 'entregue' && updated.orderType !== 'table' && updated.paymentMethod !== 'pix') {
+    // specs/0234 — o cartão online do app (Mercado Pago) também já está pago na confirmação.
+    if (status === 'entregue' && updated.orderType !== 'table' && !isPaidBeforeDelivery(updated)) {
       await this.recordDeliverySaleInCashRegister(updated);
     }
-    if (status === 'confirmado' && updated.orderType !== 'table' && updated.paymentMethod === 'pix') {
+    if (status === 'confirmado' && updated.orderType !== 'table' && isPaidBeforeDelivery(updated)) {
       await this.recordDeliverySaleInCashRegister(updated);
     }
     // specs/0131-cashback-app REQ-2 / specs/0132-programa-fidelidade-app REQ-2/REQ-3 — mesmo
@@ -1051,7 +1053,8 @@ export class OrdersController extends BaseRouter {
    * aconteceu.
    */
   private async tryReverseAutomaticCashEntry(order: IOrder): Promise<void> {
-    if (order.orderType === 'table' || order.paymentMethod !== 'pix') return;
+    // specs/0234 — também o cartão online do app (Mercado Pago), que lança em "confirmado".
+    if (order.orderType === 'table' || !isPaidBeforeDelivery(order)) return;
     if (order.status === 'aguardandoConfirmacao') return;
     try {
       await this.cashRegisterService.addAutomaticReversalEntry({
