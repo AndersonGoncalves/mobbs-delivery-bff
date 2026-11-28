@@ -25,6 +25,7 @@ function setup(options: { eligible: ISubscriptionObligation[]; payer?: IBillingP
     findEligibleForIssuance: jest.fn().mockResolvedValue(options.eligible),
     markIssued: jest.fn().mockImplementation(async (id, data, now) => buildObligation({ id, status: 'pending', asaasChargeId: data.asaasChargeId, pixPayload: data.pixPayload, issuedAt: now })),
     markIssueFailed: jest.fn().mockImplementation(async (id, reason) => buildObligation({ id, status: 'issue_failed', issueFailureReason: reason })),
+    recordAsaasCharge: jest.fn().mockResolvedValue(undefined),
   };
   const billingPayerRepository = { findByRestaurantId: jest.fn().mockResolvedValue('payer' in options ? options.payer : buildPayer()) };
   const pixAvailabilityExceptionRepository = { createIfAbsent: jest.fn().mockResolvedValue({ id: 'exc-1' }), findByObligationId: jest.fn() };
@@ -57,6 +58,39 @@ describe('ObligationIssuanceService.issuePending', () => {
 
     expect(asaasClient.createPixCharge).not.toHaveBeenCalled();
     expect(asaasClient.getPixQrCode).toHaveBeenCalledWith('pay_already_created');
+  });
+
+  // specs/0175 T054 — achado na homologação (28/11/2026, hamburgueria).
+  it('T054: grava o id da cobrança ANTES do QR; QR com erro do Asaas registra o motivo legível', async () => {
+    const { service, asaasClient, obligationRepository } = setup({ eligible: [buildObligation()] });
+    asaasClient.getPixQrCode.mockRejectedValue(
+      new Error('Asaas API (GET /payments/pay_1/pixQrCode) respondeu 400: {"errors":[{"code":"invalid_action","description":"Ocorreu um erro desconhecido. Por favor, tente novamente."}]}'),
+    );
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    await service.issuePending(new Date('2026-11-01T12:00:00Z'));
+
+    expect(obligationRepository.recordAsaasCharge).toHaveBeenCalledWith('ob-1', 'pay_1');
+    expect(obligationRepository.markIssued).not.toHaveBeenCalled();
+    expect(obligationRepository.markIssueFailed).toHaveBeenCalledWith(
+      'ob-1',
+      'Cobrança pay_1 criada no Asaas, mas o QR do Pix não foi gerado: o Asaas respondeu "Ocorreu um erro desconhecido. Por favor, tente novamente."',
+      expect.any(Date),
+    );
+  });
+
+  it('T054: QR sem resposta a tempo vira "o Asaas não respondeu a tempo"; cobrança já gravada não é regravada', async () => {
+    const { service, asaasClient, obligationRepository } = setup({ eligible: [buildObligation({ asaasChargeId: 'pay_old', status: 'issue_failed' })] });
+    asaasClient.listPaymentsByExternalReference.mockResolvedValue([{ id: 'pay_old', status: 'PENDING' }]);
+    const timeout = new Error('The operation was aborted due to timeout');
+    timeout.name = 'TimeoutError';
+    asaasClient.getPixQrCode.mockRejectedValue(timeout);
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    await service.issuePending(new Date('2026-11-01T12:00:00Z'));
+
+    expect(obligationRepository.recordAsaasCharge).not.toHaveBeenCalled();
+    expect(obligationRepository.markIssueFailed).toHaveBeenCalledWith('ob-1', 'Cobrança pay_old criada no Asaas, mas o QR do Pix não foi gerado: o Asaas não respondeu a tempo', expect.any(Date));
   });
 
   it('REQ-4: pagador sem cadastro completo não tenta emitir — fica como pendência acionável', async () => {

@@ -57,6 +57,8 @@ export interface ISubscriptionObligationRepository {
 
   markIssued(id: string, data: { asaasChargeId: string; pixPayload: string }, now: Date): Promise<ISubscriptionObligation>;
   markIssueFailed(id: string, reason: string, now: Date): Promise<ISubscriptionObligation>;
+  /** specs/0175 T054 — guarda o id da cobrança do Asaas assim que ela existe, antes do QR do Pix. */
+  recordAsaasCharge(id: string, asaasChargeId: string): Promise<void>;
   markPaid(id: string, paidAt: Date): Promise<ISubscriptionObligation>;
   markOverdue(id: string): Promise<ISubscriptionObligation>;
   markRefunded(id: string): Promise<ISubscriptionObligation>;

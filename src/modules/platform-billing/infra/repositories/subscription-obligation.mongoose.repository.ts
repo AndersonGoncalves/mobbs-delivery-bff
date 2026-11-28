@@ -191,6 +191,10 @@ export class SubscriptionObligationMongooseRepository implements ISubscriptionOb
     return toEntity(doc as ObligationLeanDocument);
   }
 
+  async recordAsaasCharge(id: string, asaasChargeId: string): Promise<void> {
+    await SubscriptionObligationModel.updateOne({ _id: id }, { $set: { asaasChargeId } });
+  }
+
   async markPaid(id: string, paidAt: Date): Promise<ISubscriptionObligation> {
     const doc = await SubscriptionObligationModel.findByIdAndUpdate(id, { $set: { status: 'paid', paidAt } }, { new: true }).lean<ObligationLeanDocument>();
     return toEntity(doc as ObligationLeanDocument);

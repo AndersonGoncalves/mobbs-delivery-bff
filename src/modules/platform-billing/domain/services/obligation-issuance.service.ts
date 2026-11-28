@@ -6,6 +6,14 @@ import type { ISubscriptionObligationRepository } from '../repositories/subscrip
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** specs/0175 T054 — motivo legível pro painel: tempo esgotado ou a mensagem do próprio Asaas. */
+function describeAsaasFailure(error: unknown): string {
+  if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) return 'o Asaas não respondeu a tempo';
+  const message = error instanceof Error ? error.message : String(error);
+  const description = /"description":"([^"]+)"/.exec(message)?.[1];
+  return description ? `o Asaas respondeu "${description}"` : message;
+}
+
 /** specs/0175 T043 — identificação da cobrança nos logs (sem dados do pagador). */
 function describeObligation(obligation: ISubscriptionObligation): string {
   return `obrigação ${obligation.id} (${obligation.kind}, restaurante ${obligation.restaurantId}, R$ ${(obligation.amountCents / 100).toFixed(2)}, vence ${obligation.dueDate.toISOString().slice(0, 10)})`;
@@ -74,7 +82,16 @@ export class ObligationIssuanceService {
         obligation.id,
       )).id;
 
-      const qrCode = await this.deps.asaasClient.getPixQrCode(chargeId);
+      // specs/0175 T054 (achado na homologação, 28/11/2026) — a cobrança já existe no Asaas: guarda o id
+      // ANTES do QR, pra ele aparecer no painel e o webhook/estorno acharem a cobrança mesmo se o QR falhar.
+      if (obligation.asaasChargeId !== chargeId) await this.deps.obligationRepository.recordAsaasCharge(obligation.id, chargeId);
+
+      let qrCode: { payload: string };
+      try {
+        qrCode = await this.deps.asaasClient.getPixQrCode(chargeId);
+      } catch (error) {
+        throw new Error(`Cobrança ${chargeId} criada no Asaas, mas o QR do Pix não foi gerado: ${describeAsaasFailure(error)}`);
+      }
       await this.deps.obligationRepository.markIssued(obligation.id, { asaasChargeId: chargeId, pixPayload: qrCode.payload }, now);
       console.log(`[platform-billing] Pix emitido: ${describeObligation(obligation)} — cobrança Asaas ${chargeId}${existingPayment ? ' (já existia, reaproveitada)' : ''}`);
 

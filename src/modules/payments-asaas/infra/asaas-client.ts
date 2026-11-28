@@ -1,5 +1,8 @@
 import { fetchWithTimeout } from '../../../shared/utils/fetch-with-timeout';
 
+/** specs/0175 T054 — tempo de espera próprio do QR do Pix (o Asaas pode demorar para gerá-lo). */
+const PIX_QR_CODE_TIMEOUT_MS = 45_000;
+
 /**
  * specs/0101-integracao-asaas (fase 1, só Pix) — cliente HTTP pro Asaas, `fetch` nativo (mesmo
  * padrão de `GooglePlacesService`, sem SDK/axios). Contrato conferido na documentação oficial
@@ -99,12 +102,12 @@ export class AsaasClient {
     private readonly baseUrl: string,
   ) {}
 
-  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  private async request<T>(method: string, path: string, body?: unknown, timeoutMs?: number): Promise<T> {
     const response = await fetchWithTimeout(`${this.baseUrl}${path}`, {
       method,
       headers: { 'Content-Type': 'application/json', access_token: this.apiKey },
       body: body === undefined ? undefined : JSON.stringify(body),
-    });
+    }, timeoutMs);
 
     if (!response.ok) {
       const responseBody = await response.text().catch(() => '');
@@ -158,7 +161,9 @@ export class AsaasClient {
   /** `GET /v3/payments/:id/pixQrCode` — só `payload` (copia-e-cola) importa aqui: o app já
    * desenha o próprio QR a partir da string, igual já faz com o Pix local. */
   async getPixQrCode(chargeId: string): Promise<AsaasPixQrCodeResult> {
-    const result = await this.request<{ payload: string }>('GET', `/payments/${chargeId}/pixQrCode`);
+    // specs/0175 T054 — achado na homologação (28/11/2026): o QR pode levar ~30 s no Asaas (sandbox);
+    // com os 10 s padrão a resposta real (inclusive o erro) nunca chegava.
+    const result = await this.request<{ payload: string }>('GET', `/payments/${chargeId}/pixQrCode`, undefined, PIX_QR_CODE_TIMEOUT_MS);
     return { payload: result.payload };
   }
 
