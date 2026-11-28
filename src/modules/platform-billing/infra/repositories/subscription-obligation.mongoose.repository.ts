@@ -57,11 +57,12 @@ export class SubscriptionObligationMongooseRepository implements ISubscriptionOb
   // Achado de auditoria pré-produção (31/10/2026) — "painel administrativo da plataforma (1
   // query por restaurante cadastrado)": agregação ÚNICA pra TODOS os restaurantes, em vez de
   // `findOpenByRestaurantId` chamada uma vez por restaurante (`PlatformController.buildBillingRow`).
-  async getOpenSummaryByRestaurant(): Promise<Map<string, { openObligationsCount: number; totalDueCents: number; hasPendingTechnicalIssue: boolean }>> {
+  async getOpenSummaryByRestaurant(): Promise<Map<string, { openObligationsCount: number; totalDueCents: number; overdueCents: number; hasPendingTechnicalIssue: boolean }>> {
     const results = await SubscriptionObligationModel.aggregate<{
       _id: string;
       openObligationsCount: number;
       totalDueCents: number;
+      overdueCents: number;
       hasPendingTechnicalIssue: boolean;
     }>([
       { $match: { status: { $in: OPEN_STATUSES } } },
@@ -70,6 +71,8 @@ export class SubscriptionObligationMongooseRepository implements ISubscriptionOb
           _id: '$restaurantId',
           openObligationsCount: { $sum: 1 },
           totalDueCents: { $sum: '$amountCents' },
+          // specs/0175 T053 — só o que já venceu (o resto do total está "a vencer").
+          overdueCents: { $sum: { $cond: [{ $eq: ['$status', 'overdue'] }, '$amountCents', 0] } },
           hasPendingTechnicalIssue: { $max: { $eq: ['$status', 'issue_failed'] } },
         },
       },
@@ -77,9 +80,14 @@ export class SubscriptionObligationMongooseRepository implements ISubscriptionOb
     return new Map(
       results.map((result) => [
         result._id,
-        { openObligationsCount: result.openObligationsCount, totalDueCents: result.totalDueCents, hasPendingTechnicalIssue: result.hasPendingTechnicalIssue },
+        { openObligationsCount: result.openObligationsCount, totalDueCents: result.totalDueCents, overdueCents: result.overdueCents ?? 0, hasPendingTechnicalIssue: result.hasPendingTechnicalIssue },
       ]),
     );
+  }
+
+  async findAnnualNotCancelled(): Promise<ISubscriptionObligation[]> {
+    const docs = await SubscriptionObligationModel.find({ kind: { $in: ['annual-initial', 'annual-renewal'] }, status: { $ne: 'cancelled' } }).lean<ObligationLeanDocument[]>();
+    return docs.map(toEntity);
   }
 
   async findEligibleForIssuance(restaurantId?: string): Promise<ISubscriptionObligation[]> {

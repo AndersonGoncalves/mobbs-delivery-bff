@@ -94,8 +94,8 @@ describe('SubscriptionObligationMongooseRepository.getOpenSummaryByRestaurant (a
     const result = await repository.getOpenSummaryByRestaurant();
 
     expect(aggregateSpy).toHaveBeenCalledTimes(1);
-    expect(result.get('r-1')).toEqual({ openObligationsCount: 2, totalDueCents: 15980, hasPendingTechnicalIssue: true });
-    expect(result.get('r-2')).toEqual({ openObligationsCount: 1, totalDueCents: 5000, hasPendingTechnicalIssue: false });
+    expect(result.get('r-1')).toEqual({ openObligationsCount: 2, totalDueCents: 15980, overdueCents: 0, hasPendingTechnicalIssue: true });
+    expect(result.get('r-2')).toEqual({ openObligationsCount: 1, totalDueCents: 5000, overdueCents: 0, hasPendingTechnicalIssue: false });
     expect(result.has('r-3')).toBe(false);
   });
 });

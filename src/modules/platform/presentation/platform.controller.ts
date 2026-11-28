@@ -20,6 +20,8 @@ import type { ObligationIssuanceService } from '../../platform-billing/domain/se
 import type { PlatformBillingCycleService } from '../../platform-billing/domain/services/platform-billing-cycle.service';
 import type { ReconciliationService } from '../../platform-billing/domain/services/reconciliation.service';
 import { addDaysCorridos, localMidnight } from '../../platform-billing/domain/billing-calendar';
+import { annualStandingOf, type AnnualStanding } from '../../platform-billing/domain/annual-standing';
+import type { ISubscriptionObligation } from '../../platform-billing/domain/entities/subscription-obligation.entity';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 
@@ -54,10 +56,21 @@ export interface PlatformRestaurantRow {
   slug: string;
   tier: 'free' | 'pro' | 'premium';
   status: 'ok' | 'blocked';
+  /** specs/0175 T053 — `annual` só com ano anual PAGO em vigor (mesmo com a renovação cancelada). */
   cycle: 'monthly' | 'annual';
+  /** specs/0175 T053 — `awaiting_payment`: contratou o anual e ainda não pagou. */
+  annualStatus: 'none' | 'active' | 'awaiting_payment';
+  /** Faixa do anual (pago ou a pagar); ausente sem anual. */
+  annualTier?: 'free' | 'pro' | 'premium';
   revenueCents: number;
   lastDeliveredAt: string | null;
   blocked: boolean;
+}
+
+function groupByRestaurant(obligations: ISubscriptionObligation[]): Map<string, ISubscriptionObligation[]> {
+  const grouped = new Map<string, ISubscriptionObligation[]>();
+  for (const obligation of obligations) grouped.set(obligation.restaurantId, [...(grouped.get(obligation.restaurantId) ?? []), obligation]);
+  return grouped;
 }
 
 /**
@@ -92,8 +105,9 @@ export class PlatformController extends BaseRouter {
     // Ajuste explícito do usuário (02/11/2026) — mesmo achado do `cycle` em `buildRows`/`toRow`
     // abaixo: aqui é só 1 restaurante, então `findActiveByRestaurantId` direto em vez do Set em
     // lote.
-    const isAnnual = Boolean(await this.annualSubscriptionRepository.findActiveByRestaurantId(restaurant.id));
-    return this.toRow(restaurant, month, settings, revenueCents, lastDelivered, isAnnual);
+    // specs/0175 T053 — situação anual pelas faturas (ano pago em vigor x contratado sem pagar).
+    const standing = annualStandingOf(await this.obligationRepository.findByRestaurantId(restaurant.id), new Date());
+    return this.toRow(restaurant, month, settings, revenueCents, lastDelivered, standing);
   }
 
   // Achado crítico de auditoria pré-produção (31/10/2026) — "painel da plataforma: 1 query
@@ -105,11 +119,13 @@ export class PlatformController extends BaseRouter {
   // N+1 não existe.
   private async buildRows(restaurants: IRestaurant[], month: string, settings: BillingSettings): Promise<PlatformRestaurantRow[]> {
     const { start, end } = monthRange(month);
-    const [revenueByRestaurant, lastDeliveredByRestaurant, activeAnnualRestaurantIds] = await Promise.all([
+    const [revenueByRestaurant, lastDeliveredByRestaurant, annualObligations] = await Promise.all([
       this.orderRepository.getMonthlyRevenueCentsByRestaurant(start, end),
       this.orderRepository.getLastDeliveredAtByRestaurant(),
-      this.annualSubscriptionRepository.getActiveRestaurantIds(),
+      this.obligationRepository.findAnnualNotCancelled(),
     ]);
+    const annualByRestaurant = groupByRestaurant(annualObligations);
+    const now = new Date();
     return restaurants.map((restaurant) =>
       this.toRow(
         restaurant,
@@ -117,7 +133,7 @@ export class PlatformController extends BaseRouter {
         settings,
         revenueByRestaurant.get(restaurant.id) ?? 0,
         lastDeliveredByRestaurant.get(restaurant.id) ?? null,
-        activeAnnualRestaurantIds.has(restaurant.id),
+        annualStandingOf(annualByRestaurant.get(restaurant.id) ?? [], now),
       ),
     );
   }
@@ -128,7 +144,7 @@ export class PlatformController extends BaseRouter {
     settings: BillingSettings,
     revenueCents: number,
     lastDelivered: Date | null,
-    isAnnual: boolean,
+    standing: AnnualStanding | null,
   ): PlatformRestaurantRow {
     const billing = restaurant.billing ?? defaultBilling(month);
     return {
@@ -143,7 +159,11 @@ export class PlatformController extends BaseRouter {
       // nele, então um restaurante com assinatura anual REAL continuava aparecendo "Mensal"
       // aqui. `IAnnualSubscriptionRepository` (mesma fonte de `hasLegacyAnnualConflict` em
       // `buildBillingRows`) é quem manda de verdade.
-      cycle: isAnnual ? 'annual' : 'monthly',
+      // specs/0175 T053 — e só com o ano PAGO em vigor: contratado sem pagar continua mensal
+      // (`annualStatus: 'awaiting_payment'`), e a renovação cancelada com ano pago continua anual.
+      cycle: standing?.status === 'active' ? 'annual' : 'monthly',
+      annualStatus: standing?.status ?? 'none',
+      ...(standing ? { annualTier: standing.tier } : {}),
       revenueCents,
       lastDeliveredAt: lastDelivered ? lastDelivered.toISOString() : null,
       blocked: isBillingBlocked(restaurant.billing),
@@ -211,7 +231,11 @@ export class PlatformController extends BaseRouter {
       const [payer, obligations, annualSubscription] = await Promise.all([
         this.billingPayerRepository.findByRestaurantId(restaurant.id),
         this.obligationRepository.findByRestaurantId(restaurant.id),
-        this.annualSubscriptionRepository.findActiveByRestaurantId(restaurant.id),
+        // specs/0175 T053 — com a renovação cancelada a assinatura continua aparecendo ("renovação
+        // cancelada") — antes sumia do detalhe.
+        this.annualSubscriptionRepository.findActiveByRestaurantId(restaurant.id).then(
+          async (active) => active ?? (await this.annualSubscriptionRepository.findByRestaurantId(restaurant.id))[0] ?? null,
+        ),
       ]);
       const obligationsWithEvents = await Promise.all(
         obligations.map(async (obligation) => ({ ...obligation, events: await this.subscriptionEventRepository.listByObligation(obligation.id) })),
@@ -314,16 +338,21 @@ export class PlatformController extends BaseRouter {
    * `findOpenByRestaurantId`/`findActiveByRestaurantId` por restaurante.
    */
   private async buildBillingRows(restaurants: IRestaurant[]) {
-    const [openSummaryByRestaurant, activeAnnualRestaurantIds] = await Promise.all([
+    const [openSummaryByRestaurant, activeAnnualRestaurantIds, annualObligations] = await Promise.all([
       this.obligationRepository.getOpenSummaryByRestaurant(),
       this.annualSubscriptionRepository.getActiveRestaurantIds(),
+      this.obligationRepository.findAnnualNotCancelled(),
     ]);
+    const annualByRestaurant = groupByRestaurant(annualObligations);
+    const now = new Date();
     return restaurants.map((restaurant) => {
       const openSummary = openSummaryByRestaurant.get(restaurant.id);
+      const standing = annualStandingOf(annualByRestaurant.get(restaurant.id) ?? [], now);
       // REQ-34/AC-25 — `cycle: 'annual'` legado (anterior a esta integração) sem
       // `IAnnualSubscription` real por trás nunca é convertido automaticamente; aparece aqui
       // como pendência pro administrador conferir manualmente.
-      const hasLegacyAnnualConflict = restaurant.billing?.cycle === 'annual' && !activeAnnualRestaurantIds.has(restaurant.id);
+      // specs/0175 T053 — ano pago em vigor também conta (renovação cancelada não é conflito).
+      const hasLegacyAnnualConflict = restaurant.billing?.cycle === 'annual' && !activeAnnualRestaurantIds.has(restaurant.id) && standing?.status !== 'active';
       return {
         id: restaurant.id,
         name: restaurant.name,
@@ -331,9 +360,11 @@ export class PlatformController extends BaseRouter {
         status: restaurant.billing?.status ?? 'ok',
         // Ajuste explícito do usuário (02/11/2026) — mesmo achado de `toRow` acima: `cycle` de
         // verdade vem da assinatura anual real, não do campo legado `restaurant.billing.cycle`.
-        cycle: activeAnnualRestaurantIds.has(restaurant.id) ? 'annual' : 'monthly',
+        cycle: standing?.status === 'active' ? 'annual' : 'monthly',
+        annualStatus: standing?.status ?? 'none',
         openObligationsCount: openSummary?.openObligationsCount ?? 0,
         totalDueCents: openSummary?.totalDueCents ?? 0,
+        overdueCents: openSummary?.overdueCents ?? 0,
         hasPendingTechnicalIssue: openSummary?.hasPendingTechnicalIssue ?? false,
         hasLegacyAnnualConflict,
       };

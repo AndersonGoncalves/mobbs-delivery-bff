@@ -67,12 +67,14 @@ function setup(options: { restaurants: IRestaurant[]; ordersByRestaurant?: Recor
     // restaurante cadastrado)": `GET /platform/billing/restaurants` usa a agregação em lote
     // abaixo (`buildBillingRows`), não mais `findOpenByRestaurantId` por restaurante.
     getOpenSummaryByRestaurant: jest.fn().mockResolvedValue(new Map()),
+    findAnnualNotCancelled: jest.fn().mockResolvedValue([]),
     reopenForReissue: jest.fn(),
     cancelRefunded: jest.fn(),
   };
   const annualSubscriptionRepository = {
     findActiveByRestaurantId: jest.fn().mockResolvedValue(null),
     getActiveRestaurantIds: jest.fn().mockResolvedValue(new Set()),
+    findByRestaurantId: jest.fn().mockResolvedValue([]),
   };
   const billingPayerRepository = { findByRestaurantId: jest.fn().mockResolvedValue(null) };
   const subscriptionEventRepository = { append: jest.fn().mockResolvedValue({ event: {}, wasAlreadyRecorded: false }), listByObligation: jest.fn().mockResolvedValue([]) };
@@ -401,6 +403,69 @@ describe('PlatformController (specs/0106)', () => {
       const req = { body: { obligationId: 'ob-1', reason: '', graceDeadline: '2026-11-15T03:00:00.000Z' }, user: { email: 'admin@bsdelivery.com.br' } };
 
       await expect(run(routes['POST /platform/billing/exceptions'], req, { json: jest.fn() })).rejects.toMatchObject({ statusCode: 400 });
+    });
+  });
+
+  // specs/0175 T053 — achado na homologação (28/11/2026): Plano/Ciclo/Dívida da lista não batiam com a
+  // situação real do anual.
+  describe('specs/0175 T053 — situação anual na lista da plataforma', () => {
+    const paidAnnual = (restaurantId: string, overrides: Record<string, unknown> = {}) => ({
+      id: `ob-${restaurantId}`, restaurantId, kind: 'annual-initial', tier: 'pro', status: 'paid', amountCents: 79900,
+      coveragePeriod: { start: new Date('2026-11-27T03:00:00Z'), end: new Date(Date.now() + 300 * 86_400_000) }, ...overrides,
+    });
+
+    it('anual pago → cycle annual/active com a faixa; contratado sem pagar → mensal/awaiting_payment; sem anual → none', async () => {
+      const { routes, obligationRepository } = setup({
+        restaurants: [buildRestaurant({ id: 'pago' }), buildRestaurant({ id: 'apagar', slug: 'b' }), buildRestaurant({ id: 'mensal', slug: 'c' })],
+      });
+      obligationRepository.findAnnualNotCancelled.mockResolvedValue([paidAnnual('pago'), paidAnnual('apagar', { status: 'issue_failed', coveragePeriod: undefined })]);
+      const json = jest.fn();
+
+      await run(routes['GET /platform/restaurants'], {}, { json });
+
+      const rows = json.mock.calls[0][1];
+      expect(rows[0]).toMatchObject({ id: 'pago', cycle: 'annual', annualStatus: 'active', annualTier: 'pro' });
+      expect(rows[1]).toMatchObject({ id: 'apagar', cycle: 'monthly', annualStatus: 'awaiting_payment', annualTier: 'pro' });
+      expect(rows[2]).toMatchObject({ id: 'mensal', cycle: 'monthly', annualStatus: 'none' });
+      expect(rows[2].annualTier).toBeUndefined();
+    });
+
+    it('renovação cancelada com o ano pago em vigor continua anual (antes voltava a "Mensal")', async () => {
+      const { routes, obligationRepository, annualSubscriptionRepository } = setup({ restaurants: [buildRestaurant({ id: 'r-1' })] });
+      annualSubscriptionRepository.getActiveRestaurantIds.mockResolvedValue(new Set());
+      obligationRepository.findAnnualNotCancelled.mockResolvedValue([paidAnnual('r-1')]);
+      const json = jest.fn();
+
+      await run(routes['GET /platform/restaurants'], {}, { json });
+
+      expect(json.mock.calls[0][1][0]).toMatchObject({ cycle: 'annual', annualStatus: 'active' });
+    });
+
+    it('lista de cobrança separa o vencido do total em aberto e não acusa conflito legado com o ano pago', async () => {
+      const billing = { referenceMonth: '2026-11', currentTier: 'free' as const, notified75Percent: false, notifiedTierUpgrade: false, status: 'ok' as const, cycle: 'annual' as const };
+      const { routes, obligationRepository } = setup({ restaurants: [buildRestaurant({ id: 'r-1', billing })] });
+      obligationRepository.getOpenSummaryByRestaurant.mockResolvedValue(
+        new Map([['r-1', { openObligationsCount: 2, totalDueCents: 87890, overdueCents: 7990, hasPendingTechnicalIssue: false }]]),
+      );
+      obligationRepository.findAnnualNotCancelled.mockResolvedValue([paidAnnual('r-1')]);
+      const json = jest.fn();
+
+      await run(routes['GET /platform/billing/restaurants'], {}, { json });
+
+      expect(json).toHaveBeenCalledWith(200, [
+        expect.objectContaining({ totalDueCents: 87890, overdueCents: 7990, cycle: 'annual', annualStatus: 'active', hasLegacyAnnualConflict: false }),
+      ]);
+    });
+
+    it('detalhe devolve a assinatura com a renovação cancelada', async () => {
+      const { routes, annualSubscriptionRepository } = setup({ restaurants: [buildRestaurant({ id: 'r-1' })] });
+      const cancelled = { id: 'sub-1', restaurantId: 'r-1', renewalActive: false };
+      annualSubscriptionRepository.findByRestaurantId.mockResolvedValue([cancelled]);
+      const json = jest.fn();
+
+      await run(routes['GET /platform/billing/restaurants/:id'], { params: { id: 'r-1' } }, { json });
+
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ annualSubscription: cancelled }));
     });
   });
 });

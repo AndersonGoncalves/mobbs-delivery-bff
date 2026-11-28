@@ -38,7 +38,10 @@ export interface ISubscriptionObligationRepository {
    * `hasPendingTechnicalIssue` — a correção anterior (`GET /platform/restaurants`) não cobriu
    * esta rota irmã. Agregação ÚNICA pra TODOS os restaurantes de uma vez.
    */
-  getOpenSummaryByRestaurant(): Promise<Map<string, { openObligationsCount: number; totalDueCents: number; hasPendingTechnicalIssue: boolean }>>;
+  getOpenSummaryByRestaurant(): Promise<Map<string, { openObligationsCount: number; totalDueCents: number; overdueCents: number; hasPendingTechnicalIssue: boolean }>>;
+  /** specs/0175 T053 — faturas ANUAIS (adesão/renovação) não canceladas de todos os restaurantes, numa
+   * query só, pra situação anual da lista da plataforma (`annualStandingOf`). */
+  findAnnualNotCancelled(): Promise<ISubscriptionObligation[]>;
   /** `awaiting_issue`/`issue_failed` — elegíveis pra emissão (REQ-9/REQ-12). Filtra por
    * restaurante quando informado (reprocessamento administrativo de uma loja, REQ-32). */
   findEligibleForIssuance(restaurantId?: string): Promise<ISubscriptionObligation[]>;
