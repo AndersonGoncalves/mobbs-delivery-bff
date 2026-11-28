@@ -8,7 +8,7 @@ const subscriptionObligationSchema = new Schema(
   {
     _id: { type: String, default: () => randomUUID() },
     restaurantId: { type: String, required: true },
-    kind: { type: String, enum: ['monthly', 'monthly-prorated', 'annual-initial', 'annual-renewal'], required: true },
+    kind: { type: String, enum: ['monthly', 'monthly-prorated', 'annual-initial', 'annual-renewal', 'refund-difference'], required: true },
     referenceMonth: { type: String },
     coveragePeriod: { type: coveragePeriodSchema },
     tier: { type: String, enum: ['free', 'pro', 'premium'], required: true },
@@ -30,6 +30,10 @@ const subscriptionObligationSchema = new Schema(
     pixExpiresAt: { type: Date },
     // specs/0175 REQ-23 (opção C) — cobranças estornadas substituídas por "Cobrar de novo".
     refundedChargeIds: { type: [String], default: undefined },
+    // specs/0175 T058 — estorno parcial: quanto voltou, quanto a plataforma já decidiu e a origem da diferença.
+    partialRefundCents: { type: Number },
+    partialRefundAcknowledgedCents: { type: Number },
+    originObligationId: { type: String },
   },
   { _id: false, timestamps: true },
 );

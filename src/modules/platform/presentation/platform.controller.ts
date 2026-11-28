@@ -33,8 +33,9 @@ type AsyncHandler = (req: Request, res: Response) => Promise<void>;
 const billingChangeSchema = z.object({ status: z.enum(['ok', 'blocked']) });
 
 // specs/0175 REQ-23 (opção C) — decisão do administrador sobre uma fatura estornada.
+// specs/0175 T058 (opção B) — estorno PARCIAL: "Cobrar a diferença" (`charge_difference`) ou "Ciente" (`acknowledge`).
 const refundDecisionSchema = z.object({
-  decision: z.enum(['charge_again', 'forgive']),
+  decision: z.enum(['charge_again', 'forgive', 'charge_difference', 'acknowledge']),
   reason: z.string().trim().max(500).optional(),
 });
 
@@ -282,8 +283,44 @@ export class PlatformController extends BaseRouter {
       const input = parseBody(refundDecisionSchema, req.body);
       const obligation = await this.obligationRepository.findById(req.params.id);
       if (!obligation) throw new NotFoundError('Obrigação não encontrada');
+
+      // specs/0175 T058 (opção B, decisão do usuário 28/11/2026) — estorno PARCIAL.
+      if (obligation.status === 'partially_refunded') {
+        if (input.decision !== 'charge_difference' && input.decision !== 'acknowledge') {
+          throw new ConflictError('Estorno parcial: as decisões são "Cobrar a diferença" ou "Ciente"');
+        }
+        const now = new Date();
+        const differenceCents = (obligation.partialRefundCents ?? 0) - (obligation.partialRefundAcknowledgedCents ?? 0);
+        const resolved = await this.obligationRepository.resolvePartialRefund(obligation.id);
+        if (!resolved) throw new ConflictError('A fatura mudou de estado — atualize a página');
+        await this.subscriptionEventRepository.append({
+          obligationId: obligation.id,
+          type: 'refund_decision',
+          payload: { decision: input.decision, reason: input.reason, partialRefundCents: obligation.partialRefundCents, differenceCents },
+          actor: req.user!.email!,
+        });
+        if (input.decision === 'charge_difference' && differenceCents > 0) {
+          await this.obligationRepository.createRefundDifference({
+            restaurantId: obligation.restaurantId,
+            originObligationId: obligation.id,
+            tier: obligation.tier,
+            settingsVersionId: obligation.settingsVersionId,
+            amountCents: differenceCents,
+            // Mesmo prazo do Pix da adesão anual (5 dias corridos, ajuste de 02/11/2026).
+            dueDate: addDaysCorridos(localMidnight(now), 5),
+          });
+          await this.obligationIssuanceService.issuePending(now, obligation.restaurantId);
+        }
+        await this.platformBillingCycleService.recomputeAndPersist(obligation.restaurantId, now);
+        res.json(200, await this.obligationRepository.findById(obligation.id));
+        return;
+      }
+
       if (obligation.status !== 'refunded') {
         throw new ConflictError('Só uma fatura estornada (aguardando decisão) pode ser cobrada de novo ou perdoada');
+      }
+      if (input.decision !== 'charge_again' && input.decision !== 'forgive') {
+        throw new ConflictError('Estorno total: as decisões são "Cobrar de novo" ou "Perdoar"');
       }
 
       const now = new Date();

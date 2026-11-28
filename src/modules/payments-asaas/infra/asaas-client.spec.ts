@@ -147,7 +147,14 @@ describe('AsaasClient (specs/0101-integracao-asaas, fase 1)', () => {
     const result = await client.getPayment('pay_1');
 
     expect(global.fetch).toHaveBeenCalledWith('https://api-sandbox.asaas.com/v3/payments/pay_1', expect.objectContaining({ method: 'GET' }));
-    expect(result).toEqual({ id: 'pay_1', status: 'CONFIRMED' });
+    expect(result).toEqual({ id: 'pay_1', status: 'CONFIRMED', value: undefined, refundedValue: 0 });
+  });
+
+  // specs/0175 T058 — estorno parcial: a cobrança continua RECEIVED e os estornos vêm em `refunds`.
+  it('getPayment: soma só os estornos concluídos (DONE) em refundedValue', async () => {
+    mockFetchOnce(200, { id: 'pay_1', status: 'RECEIVED', value: 799, refunds: [{ status: 'DONE', value: 100 }, { status: 'PENDING', value: 50 }] });
+
+    expect(await client.getPayment('pay_1')).toEqual({ id: 'pay_1', status: 'RECEIVED', value: 799, refundedValue: 100 });
   });
 
   it('getBalance: GET /finance/balance', async () => {

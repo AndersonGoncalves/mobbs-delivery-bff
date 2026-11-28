@@ -128,7 +128,8 @@ export class AnnualSubscriptionService {
     let latest: Date | null = null;
     for (const obligation of obligations) {
       if (obligation.kind !== 'annual-initial' && obligation.kind !== 'annual-renewal') continue;
-      if (obligation.status !== 'paid' || !obligation.coveragePeriod) continue;
+      // specs/0175 T058 — estorno parcial mantém o ano pago.
+      if ((obligation.status !== 'paid' && obligation.status !== 'partially_refunded') || !obligation.coveragePeriod) continue;
       const end = new Date(obligation.coveragePeriod.end);
       if (end.getTime() <= now.getTime()) continue;
       if (!latest || end.getTime() > latest.getTime()) latest = end;

@@ -17,6 +17,8 @@ function setup(options: { obligations: ISubscriptionObligation[]; observers?: un
     markPaid: jest.fn().mockImplementation(async (id, paidAt) => buildObligation({ id, status: 'paid', paidAt })),
     markOverdue: jest.fn().mockImplementation(async (id) => buildObligation({ id, status: 'overdue' })),
     markRefunded: jest.fn().mockImplementation(async (id) => buildObligation({ id, status: 'refunded' })),
+    markPartiallyRefunded: jest.fn().mockImplementation(async (id, cents) => buildObligation({ id, status: 'partially_refunded', partialRefundCents: cents })),
+    findByRestaurantId: jest.fn().mockResolvedValue(options.obligations),
   };
   const subscriptionEventRepository = { append: jest.fn().mockResolvedValue({ event: { id: 'ev-1' }, wasAlreadyRecorded: false }) };
   const asaasClient = { getPayment: jest.fn() };
@@ -116,5 +118,63 @@ describe('ReconciliationService.reconcile', () => {
     await service.reconcile(new Date('2026-11-05T00:00:00Z'));
 
     expect(asaasClient.getPayment).not.toHaveBeenCalled();
+  });
+});
+
+// specs/0175 T058 — achado na homologação (28/11/2026, pastelaria): estorno parcial de R$ 100 ficava invisível.
+describe('ReconciliationService — estorno parcial (T058)', () => {
+  const annualPaid = (overrides: Partial<ISubscriptionObligation> = {}) =>
+    buildObligation({ id: 'ob-annual', kind: 'annual-initial', referenceMonth: undefined, amountCents: 79900, status: 'paid', asaasChargeId: 'pay_9', ...overrides });
+
+  it('fatura paga com parte devolvida vira partially_refunded com o valor devolvido (sem "despagar")', async () => {
+    const { service, obligationRepository, asaasClient } = setup({ obligations: [annualPaid()] });
+    asaasClient.getPayment.mockResolvedValue({ id: 'pay_9', status: 'RECEIVED', refundedValue: 100 });
+    jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await service.reconcile(new Date('2026-11-28T18:00:00Z'), { obligationId: 'ob-annual' });
+
+    expect(obligationRepository.markPartiallyRefunded).toHaveBeenCalledWith('ob-annual', 10000);
+    expect(obligationRepository.markPaid).not.toHaveBeenCalled();
+    expect(obligationRepository.markRefunded).not.toHaveBeenCalled();
+  });
+
+  it('estorno parcial já decidido ("Ciente"/"Cobrar a diferença") não volta a pedir decisão', async () => {
+    const { service, obligationRepository, asaasClient } = setup({ obligations: [annualPaid({ partialRefundCents: 10000, partialRefundAcknowledgedCents: 10000 })] });
+    asaasClient.getPayment.mockResolvedValue({ id: 'pay_9', status: 'RECEIVED', refundedValue: 100 });
+
+    await service.reconcile(new Date(), { obligationId: 'ob-annual' });
+
+    expect(obligationRepository.markPartiallyRefunded).not.toHaveBeenCalled();
+  });
+
+  it('novo estorno depois da decisão (valor devolvido aumentou) pede decisão de novo', async () => {
+    const { service, obligationRepository, asaasClient } = setup({ obligations: [annualPaid({ partialRefundCents: 10000, partialRefundAcknowledgedCents: 10000 })] });
+    asaasClient.getPayment.mockResolvedValue({ id: 'pay_9', status: 'RECEIVED', refundedValue: 150 });
+    jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await service.reconcile(new Date(), { obligationId: 'ob-annual' });
+
+    expect(obligationRepository.markPartiallyRefunded).toHaveBeenCalledWith('ob-annual', 15000);
+  });
+
+  it('fatura já partially_refunded com o mesmo valor fica como está (não volta a "paga")', async () => {
+    const { service, obligationRepository, asaasClient } = setup({ obligations: [annualPaid({ status: 'partially_refunded', partialRefundCents: 10000 })] });
+    asaasClient.getPayment.mockResolvedValue({ id: 'pay_9', status: 'RECEIVED', refundedValue: 100 });
+
+    await service.reconcile(new Date(), { obligationId: 'ob-annual' });
+
+    expect(obligationRepository.markPartiallyRefunded).not.toHaveBeenCalled();
+    expect(obligationRepository.markPaid).not.toHaveBeenCalled();
+  });
+
+  it('"Reprocessar" de uma loja também revisa as faturas pagas dela (onde o estorno parcial aparece)', async () => {
+    const { service, obligationRepository, asaasClient } = setup({ obligations: [] });
+    obligationRepository.findByRestaurantId.mockResolvedValue([annualPaid()]);
+    asaasClient.getPayment.mockResolvedValue({ id: 'pay_9', status: 'RECEIVED', refundedValue: 100 });
+    jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await service.reconcile(new Date(), { restaurantId: 'r-1' });
+
+    expect(obligationRepository.markPartiallyRefunded).toHaveBeenCalledWith('ob-annual', 10000);
   });
 });

@@ -70,6 +70,8 @@ function setup(options: { restaurants: IRestaurant[]; ordersByRestaurant?: Recor
     findAnnualNotCancelled: jest.fn().mockResolvedValue([]),
     reopenForReissue: jest.fn(),
     cancelRefunded: jest.fn(),
+    resolvePartialRefund: jest.fn().mockResolvedValue({ id: 'ob-1', status: 'paid' }),
+    createRefundDifference: jest.fn().mockResolvedValue({ id: 'ob-diff', status: 'awaiting_issue' }),
   };
   const annualSubscriptionRepository = {
     findActiveByRestaurantId: jest.fn().mockResolvedValue(null),
@@ -396,6 +398,62 @@ describe('PlatformController (specs/0106)', () => {
         monthly.annualSubscriptionRepository.findActiveByRestaurantId.mockResolvedValue({ id: 'sub-1', renewalActive: true });
         await run(monthly.routes[R], { params: { id: 'ob-1' }, body: { decision: 'forgive' }, user: admin }, { json: jest.fn() });
         expect(monthly.annualSubscriptionRepository.cancelRenewal).not.toHaveBeenCalled();
+      });
+
+      // specs/0175 T058 (opção B) — estorno PARCIAL.
+      const partial = (overrides: Record<string, unknown> = {}) => refunded({
+        status: 'partially_refunded', kind: 'annual-initial', tier: 'pro', settingsVersionId: 'v1', amountCents: 79900, partialRefundCents: 10000, ...overrides,
+      });
+
+      it('T058: "Cobrar a diferença" resolve o estorno parcial, cria a fatura da diferença (R$ 100) e emite o Pix na hora', async () => {
+        const { routes, obligationRepository, obligationIssuanceService, subscriptionEventRepository, platformBillingCycleService } = setup({ restaurants: [buildRestaurant()] });
+        obligationRepository.findById.mockResolvedValue(partial());
+
+        await run(routes[R], { params: { id: 'ob-1' }, body: { decision: 'charge_difference' }, user: admin }, { json: jest.fn() });
+
+        expect(obligationRepository.resolvePartialRefund).toHaveBeenCalledWith('ob-1');
+        expect(obligationRepository.createRefundDifference).toHaveBeenCalledWith(expect.objectContaining({
+          restaurantId: 'r-1', originObligationId: 'ob-1', amountCents: 10000, tier: 'pro', settingsVersionId: 'v1', dueDate: expect.any(Date),
+        }));
+        expect(obligationIssuanceService.issuePending).toHaveBeenCalledWith(expect.any(Date), 'r-1');
+        expect(subscriptionEventRepository.append).toHaveBeenCalledWith(expect.objectContaining({ type: 'refund_decision', payload: expect.objectContaining({ decision: 'charge_difference', differenceCents: 10000 }) }));
+        expect(platformBillingCycleService.recomputeAndPersist).toHaveBeenCalledWith('r-1', expect.any(Date));
+      });
+
+      it('T058: "Ciente" resolve sem criar cobrança; só a diferença ainda não decidida é cobrada numa 2ª vez', async () => {
+        const ack = setup({ restaurants: [buildRestaurant()] });
+        ack.obligationRepository.findById.mockResolvedValue(partial());
+        await run(ack.routes[R], { params: { id: 'ob-1' }, body: { decision: 'acknowledge' }, user: admin }, { json: jest.fn() });
+        expect(ack.obligationRepository.resolvePartialRefund).toHaveBeenCalledWith('ob-1');
+        expect(ack.obligationRepository.createRefundDifference).not.toHaveBeenCalled();
+        expect(ack.obligationIssuanceService.issuePending).not.toHaveBeenCalled();
+
+        const second = setup({ restaurants: [buildRestaurant()] });
+        second.obligationRepository.findById.mockResolvedValue(partial({ partialRefundCents: 15000, partialRefundAcknowledgedCents: 10000 }));
+        await run(second.routes[R], { params: { id: 'ob-1' }, body: { decision: 'charge_difference' }, user: admin }, { json: jest.fn() });
+        expect(second.obligationRepository.createRefundDifference).toHaveBeenCalledWith(expect.objectContaining({ amountCents: 5000 }));
+      });
+
+      it('T058: decisões trocadas são recusadas (409) — parcial só aceita diferença/ciente; total só cobrar de novo/perdoar', async () => {
+        const p = setup({ restaurants: [buildRestaurant()] });
+        p.obligationRepository.findById.mockResolvedValue(partial());
+        await expect(run(p.routes[R], { params: { id: 'ob-1' }, body: { decision: 'forgive' }, user: admin }, { json: jest.fn() })).rejects.toMatchObject({ statusCode: 409 });
+        expect(p.obligationRepository.resolvePartialRefund).not.toHaveBeenCalled();
+
+        const t = setup({ restaurants: [buildRestaurant()] });
+        t.obligationRepository.findById.mockResolvedValue(refunded());
+        await expect(run(t.routes[R], { params: { id: 'ob-1' }, body: { decision: 'acknowledge' }, user: admin }, { json: jest.fn() })).rejects.toMatchObject({ statusCode: 409 });
+        expect(t.obligationRepository.cancelRefunded).not.toHaveBeenCalled();
+      });
+
+      it('T058: decisão concorrente sobre o estorno parcial é 409, sem auditar nem cobrar', async () => {
+        const { routes, obligationRepository, subscriptionEventRepository } = setup({ restaurants: [buildRestaurant()] });
+        obligationRepository.findById.mockResolvedValue(partial());
+        obligationRepository.resolvePartialRefund.mockResolvedValue(null);
+
+        await expect(run(routes[R], { params: { id: 'ob-1' }, body: { decision: 'charge_difference' }, user: admin }, { json: jest.fn() })).rejects.toMatchObject({ statusCode: 409 });
+        expect(subscriptionEventRepository.append).not.toHaveBeenCalled();
+        expect(obligationRepository.createRefundDifference).not.toHaveBeenCalled();
       });
 
       it('AC-17b: decisão sobre fatura que não está estornada é recusada (409)', async () => {

@@ -79,6 +79,9 @@ export interface AsaasCheckoutResult {
 export interface AsaasPaymentResult {
   id: string;
   status: string;
+  /** specs/0175 T058 — valor da cobrança e total já devolvido (estornos `DONE`), em reais. Só no `getPayment`. */
+  value?: number;
+  refundedValue?: number;
 }
 
 export interface AsaasBalanceResult {
@@ -233,8 +236,13 @@ export class AsaasClient {
    * específica, pra reconciliação (`ReconciliationService`): webhook perdido/atrasado,
    * pagamento durante indisponibilidade, estorno total/parcial. */
   async getPayment(chargeId: string): Promise<AsaasPaymentResult> {
-    const result = await this.request<{ id: string; status: string }>('GET', `/payments/${chargeId}`);
-    return { id: result.id, status: result.status };
+    const result = await this.request<{ id: string; status: string; value?: number; refunds?: { status?: string; value?: number }[] | null }>(
+      'GET',
+      `/payments/${chargeId}`,
+    );
+    // specs/0175 T058 — estorno parcial: o Asaas mantém a cobrança "RECEIVED" e lista os estornos em `refunds`.
+    const refundedValue = (result.refunds ?? []).filter((refund) => refund.status === 'DONE').reduce((sum, refund) => sum + (refund.value ?? 0), 0);
+    return { id: result.id, status: result.status, value: result.value, refundedValue };
   }
 
   /** `GET /v3/finance/balance` (fase 2, REQ-7) — saldo disponível da subconta. */

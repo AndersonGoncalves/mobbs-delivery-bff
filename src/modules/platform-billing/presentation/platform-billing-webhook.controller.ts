@@ -14,6 +14,8 @@ import type { IObligationPaymentObserver } from '../domain/services/i-obligation
 const PAID_EVENTS = new Set(['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED']);
 const REFUNDED_EVENTS = new Set(['PAYMENT_REFUNDED']);
 const OVERDUE_EVENTS = new Set(['PAYMENT_OVERDUE']);
+/** specs/0175 T058 — estorno parcial: a cobrança continua "RECEIVED"; o valor devolvido vem da reconciliação. */
+const PARTIALLY_REFUNDED_EVENTS = new Set(['PAYMENT_PARTIALLY_REFUNDED']);
 
 interface AsaasPaymentWebhookBody {
   id?: string;
@@ -42,6 +44,8 @@ export class PlatformBillingWebhookController extends BaseRouter {
       // specs/0205-comissao-revendedor plan.md — notificados depois de markPaid/markRefunded;
       // `platform-billing` não conhece quem os implementa (hoje, `resellers`).
       observers: IObligationPaymentObserver[];
+      /** specs/0175 T058 — consulta o Asaas pra saber quanto foi devolvido num estorno parcial. */
+      reconciliationService?: { reconcile(now: Date, filter?: { obligationId?: string }): Promise<void> };
     },
   ) {
     super();
@@ -106,7 +110,9 @@ export class PlatformBillingWebhookController extends BaseRouter {
         // por conta própria.
         await this.deps.obligationRepository.markRefunded(obligation.id);
         for (const observer of this.deps.observers) await observer.onObligationRefunded(obligation);
-      } else if (OVERDUE_EVENTS.has(body.event) && obligation.status !== 'overdue' && obligation.status !== 'paid') {
+      } else if (PARTIALLY_REFUNDED_EVENTS.has(body.event)) {
+        await this.deps.reconciliationService?.reconcile(now, { obligationId: obligation.id });
+      } else if (OVERDUE_EVENTS.has(body.event) && obligation.status !== 'overdue' && obligation.status !== 'paid' && obligation.status !== 'partially_refunded') {
         // Achado de auditoria (06/11/2026, confirmado 09/11/2026) — o Asaas não garante ordem de
         // entrega de webhook: um PAYMENT_OVERDUE chegando DEPOIS de um PAYMENT_CONFIRMED/RECEIVED
         // já processado não pode rebaixar quem já pagou (bloquearia um cliente recém-pago na hora,

@@ -20,7 +20,8 @@ export function annualStandingOf(obligations: ISubscriptionObligation[], now: Da
   let awaiting: ISubscriptionObligation | null = null;
   for (const obligation of obligations) {
     if (!ANNUAL_KINDS.has(obligation.kind)) continue;
-    if (obligation.status === 'paid' && obligation.coveragePeriod) {
+    // specs/0175 T058 — estorno parcial mantém o ano pago (só parte voltou).
+    if ((obligation.status === 'paid' || obligation.status === 'partially_refunded') && obligation.coveragePeriod) {
       const end = new Date(obligation.coveragePeriod.end);
       if (end.getTime() > now.getTime() && (!active || end.getTime() > active.coverageEnd.getTime())) active = { tier: obligation.tier, coverageEnd: end };
     } else if (AWAITING_PAYMENT_STATUSES.has(obligation.status)) {

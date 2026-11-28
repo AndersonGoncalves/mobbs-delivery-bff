@@ -14,7 +14,8 @@ export interface AccessStatus {
 // specs/0175 REQ-23 (opção C, 27/11/2026) — `refunded` (estorno total) aguarda a decisão do
 // administrador ("Cobrar de novo"/"Perdoar") e não bloqueia enquanto isso: o restaurante não tem
 // como pagar (o Pix antigo é de uma cobrança encerrada no Asaas). Antes bloqueava após o vencimento.
-const NEVER_BLOCKS: ReadonlySet<SubscriptionObligationStatus> = new Set(['exempt', 'cancelled', 'paid', 'refunded']);
+// specs/0175 T058 — `partially_refunded`: foi paga e só parte voltou; aguarda a decisão da plataforma sem bloquear.
+const NEVER_BLOCKS: ReadonlySet<SubscriptionObligationStatus> = new Set(['exempt', 'cancelled', 'paid', 'refunded', 'partially_refunded']);
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -56,7 +57,7 @@ export function recomputeAccessStatus(
   const activeAnnualCoverage = obligations.find(
     (obligation) =>
       (obligation.kind === 'annual-initial' || obligation.kind === 'annual-renewal') &&
-      obligation.status === 'paid' &&
+      (obligation.status === 'paid' || obligation.status === 'partially_refunded') &&
       obligation.coveragePeriod !== undefined &&
       obligation.coveragePeriod.start.getTime() <= now.getTime() &&
       now.getTime() < obligation.coveragePeriod.end.getTime(),

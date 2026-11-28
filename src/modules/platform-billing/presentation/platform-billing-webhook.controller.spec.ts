@@ -25,7 +25,7 @@ function buildObligation(overrides: Partial<ISubscriptionObligation> = {}): ISub
   };
 }
 
-function setup(overrides: { obligation?: ISubscriptionObligation | null; wasAlreadyRecorded?: boolean; observers?: unknown[] } = {}) {
+function setup(overrides: { obligation?: ISubscriptionObligation | null; wasAlreadyRecorded?: boolean; observers?: unknown[]; reconciliationService?: unknown } = {}) {
   const stored = { current: overrides.obligation === undefined ? buildObligation() : overrides.obligation };
   const obligationRepository = {
     findById: jest.fn().mockImplementation(async () => stored.current),
@@ -41,6 +41,7 @@ function setup(overrides: { obligation?: ISubscriptionObligation | null; wasAlre
   new PlatformBillingWebhookController({
     obligationRepository, subscriptionEventRepository, platformBillingCycleService, webhookToken: 'webhook-token-1',
     observers: overrides.observers ?? [],
+    reconciliationService: overrides.reconciliationService,
   } as never).initializeRoutes(application);
   return { routes, obligationRepository, subscriptionEventRepository, platformBillingCycleService };
 }
@@ -251,5 +252,32 @@ describe('PlatformBillingWebhookController (specs/0175-cobranca-assinatura-asaas
       expect(obligationRepository.markPaid).not.toHaveBeenCalled();
       warn.mockRestore();
     });
+  });
+
+  // specs/0175 T058 — estorno parcial: o valor devolvido vem da reconciliação (consulta ao Asaas).
+  it('T058: PAYMENT_PARTIALLY_REFUNDED reconcilia a fatura (sem marcar estorno total nem vencimento)', async () => {
+    const reconciliationService = { reconcile: jest.fn().mockResolvedValue(undefined) };
+    const { routes, obligationRepository, platformBillingCycleService } = setup({ obligation: buildObligation({ status: 'paid' }), reconciliationService });
+
+    await routes['POST /webhooks/platform-billing'].at(-1)!(
+      buildReq('webhook-token-1', { event: 'PAYMENT_PARTIALLY_REFUNDED', payment: { id: 'pay_1', externalReference: 'ob-1' } }),
+      { json: jest.fn(), send: jest.fn() },
+    );
+
+    expect(reconciliationService.reconcile).toHaveBeenCalledWith(expect.any(Date), { obligationId: 'ob-1' });
+    expect(obligationRepository.markRefunded).not.toHaveBeenCalled();
+    expect(obligationRepository.markOverdue).not.toHaveBeenCalled();
+    expect(platformBillingCycleService.recomputeAndPersist).toHaveBeenCalledWith('r-1', expect.any(Date));
+  });
+
+  it('T058: PAYMENT_OVERDUE atrasado não rebaixa fatura estornada parcialmente (foi paga)', async () => {
+    const { routes, obligationRepository } = setup({ obligation: buildObligation({ status: 'partially_refunded' }) });
+
+    await routes['POST /webhooks/platform-billing'].at(-1)!(
+      buildReq('webhook-token-1', { event: 'PAYMENT_OVERDUE', payment: { id: 'pay_1', externalReference: 'ob-1' } }),
+      { json: jest.fn(), send: jest.fn() },
+    );
+
+    expect(obligationRepository.markOverdue).not.toHaveBeenCalled();
   });
 });

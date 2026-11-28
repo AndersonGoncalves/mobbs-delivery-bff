@@ -6,7 +6,7 @@ import type { IObligationPaymentObserver } from './i-obligation-payment-observer
 /** Só o método de `AsaasClient` que a reconciliação precisa — consulta por id direto (a
  * obligation já tem `asaasChargeId` persistido, diferente da emissão, que ainda não sabe o id). */
 export interface PlatformAsaasPaymentClient {
-  getPayment(chargeId: string): Promise<{ id: string; status: string }>;
+  getPayment(chargeId: string): Promise<{ id: string; status: string; refundedValue?: number }>;
 }
 
 // Valores reais do campo `status` de um pagamento Asaas (verificado em
@@ -44,6 +44,14 @@ export class ReconciliationService {
     for (const obligation of pending) {
       await this.reconcileOne(obligation, now);
     }
+    // specs/0175 T058 — reprocessamento de UMA loja também revisa as faturas já pagas/estornadas parcialmente
+    // (o estorno parcial chega numa fatura paga, que a varredura geral nunca revisita).
+    if (filter.restaurantId) {
+      const settled = (await this.deps.obligationRepository.findByRestaurantId(filter.restaurantId)).filter(
+        (obligation) => (obligation.status === 'paid' || obligation.status === 'partially_refunded') && obligation.asaasChargeId,
+      );
+      for (const obligation of settled) await this.reconcileOne(obligation, now);
+    }
   }
 
   private async reconcileOne(obligation: ISubscriptionObligation, now: Date): Promise<void> {
@@ -59,6 +67,22 @@ export class ReconciliationService {
     });
 
     if (PAID_STATUSES.has(payment.status)) {
+      // specs/0175 T058 — estorno PARCIAL: o Asaas mantém "RECEIVED" e devolve parte. Só pede decisão de novo se
+      // o valor devolvido mudou desde a última decisão; nunca "despaga" (o plano continua valendo).
+      const refundedCents = Math.round((payment.refundedValue ?? 0) * 100);
+      const isPartialRefund = refundedCents > 0 && refundedCents < obligation.amountCents;
+      if (isPartialRefund && refundedCents > (obligation.partialRefundAcknowledgedCents ?? 0)) {
+        if (obligation.status !== 'partially_refunded' || obligation.partialRefundCents !== refundedCents) {
+          if (obligation.status !== 'paid' && obligation.status !== 'partially_refunded') {
+            await this.deps.obligationRepository.markPaid(obligation.id, now);
+            for (const observer of this.deps.observers) await observer.onObligationPaid(obligation);
+          }
+          await this.deps.obligationRepository.markPartiallyRefunded(obligation.id, refundedCents);
+          console.warn(`[platform-billing] estorno parcial de R$ ${(refundedCents / 100).toFixed(2)} na obrigação ${obligation.id} — aguardando decisão da plataforma`);
+        }
+        return;
+      }
+      if (obligation.status === 'partially_refunded') return;
       if (obligation.status !== 'paid') {
         await this.deps.obligationRepository.markPaid(obligation.id, now);
         for (const observer of this.deps.observers) await observer.onObligationPaid(obligation);

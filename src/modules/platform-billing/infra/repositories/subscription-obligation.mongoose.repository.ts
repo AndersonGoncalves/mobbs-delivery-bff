@@ -29,6 +29,9 @@ function toEntity(doc: ObligationLeanDocument): ISubscriptionObligation {
     pixPayload: doc.pixPayload,
     pixExpiresAt: doc.pixExpiresAt,
     refundedChargeIds: doc.refundedChargeIds,
+    partialRefundCents: doc.partialRefundCents,
+    partialRefundAcknowledgedCents: doc.partialRefundAcknowledgedCents,
+    originObligationId: doc.originObligationId,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   };
@@ -233,9 +236,32 @@ export class SubscriptionObligationMongooseRepository implements ISubscriptionOb
     return doc ? toEntity(doc) : null;
   }
 
-  async markPartiallyRefunded(id: string): Promise<ISubscriptionObligation> {
-    const doc = await SubscriptionObligationModel.findByIdAndUpdate(id, { $set: { status: 'partially_refunded' } }, { new: true }).lean<ObligationLeanDocument>();
+  async markPartiallyRefunded(id: string, refundedCents: number): Promise<ISubscriptionObligation> {
+    const doc = await SubscriptionObligationModel.findByIdAndUpdate(
+      id,
+      { $set: { status: 'partially_refunded', partialRefundCents: refundedCents } },
+      { new: true },
+    ).lean<ObligationLeanDocument>();
     return toEntity(doc as ObligationLeanDocument);
+  }
+
+  async resolvePartialRefund(id: string): Promise<ISubscriptionObligation | null> {
+    // Condicional em `partially_refunded` — duas decisões simultâneas nunca resolvem duas vezes.
+    const current = await SubscriptionObligationModel.findOne({ _id: id, status: 'partially_refunded' }).lean<ObligationLeanDocument>();
+    if (!current) return null;
+    const doc = await SubscriptionObligationModel.findOneAndUpdate(
+      { _id: id, status: 'partially_refunded' },
+      { $set: { status: 'paid', partialRefundAcknowledgedCents: current.partialRefundCents ?? 0 } },
+      { new: true },
+    ).lean<ObligationLeanDocument>();
+    return doc ? toEntity(doc) : null;
+  }
+
+  async createRefundDifference(input: {
+    restaurantId: string; originObligationId: string; tier: ISubscriptionObligation['tier']; settingsVersionId: string; amountCents: number; dueDate: Date;
+  }): Promise<ISubscriptionObligation> {
+    const doc = await SubscriptionObligationModel.create({ ...input, kind: 'refund-difference', status: 'awaiting_issue' });
+    return toEntity(doc.toObject() as ObligationLeanDocument);
   }
 
   async markCancelled(id: string): Promise<ISubscriptionObligation> {

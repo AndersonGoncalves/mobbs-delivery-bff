@@ -707,6 +707,7 @@ server
       platformBillingCycleService,
       webhookToken: environment.platformBilling.webhookToken ?? '',
       observers: [resellerCommissionObligationObserver],
+      reconciliationService,
     }),
     // specs/0113-parametrizacao-faixas-cobranca.
     new BillingSettingsController(

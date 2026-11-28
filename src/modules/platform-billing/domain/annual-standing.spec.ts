@@ -29,4 +29,8 @@ describe('annualStandingOf (specs/0175 T053)', () => {
     expect(annualStandingOf([obligation({ status: 'cancelled' })], now)).toBeNull();
     expect(annualStandingOf([obligation({ kind: 'monthly', status: 'pending' })], now)).toBeNull();
   });
+
+  it('T058: ano estornado parcialmente continua active', () => {
+    expect(annualStandingOf([obligation({ status: 'partially_refunded' })], now)?.status).toBe('active');
+  });
 });

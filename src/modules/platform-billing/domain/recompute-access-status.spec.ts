@@ -138,4 +138,15 @@ describe('recomputeAccessStatus', () => {
     const result = recomputeAccessStatus([annualRefunded], [], new Date('2027-01-01T00:00:00-03:00'));
     expect(result.cycle).toBe('monthly');
   });
+
+  // specs/0175 T058 — estorno parcial: foi paga e só parte voltou; nunca bloqueia e mantém o ano pago.
+  it('T058: fatura estornada parcialmente não bloqueia, mesmo vencida, e mantém o ciclo anual', () => {
+    const annual = buildObligation({
+      kind: 'annual-initial', referenceMonth: undefined, amountCents: 79900, status: 'partially_refunded',
+      dueDate: localMidnight(new Date('2026-12-03T12:00:00Z')),
+      coveragePeriod: { start: localMidnight(new Date('2026-11-28T12:00:00Z')), end: localMidnight(new Date('2027-11-28T12:00:00Z')) },
+    });
+
+    expect(recomputeAccessStatus([annual], [], new Date('2026-12-20T12:00:00Z'))).toEqual({ status: 'ok', cycle: 'annual' });
+  });
 });

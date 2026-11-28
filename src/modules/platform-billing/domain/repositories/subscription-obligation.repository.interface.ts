@@ -62,7 +62,15 @@ export interface ISubscriptionObligationRepository {
   markPaid(id: string, paidAt: Date): Promise<ISubscriptionObligation>;
   markOverdue(id: string): Promise<ISubscriptionObligation>;
   markRefunded(id: string): Promise<ISubscriptionObligation>;
-  markPartiallyRefunded(id: string): Promise<ISubscriptionObligation>;
+  /** specs/0175 T058 — estorno parcial detectado (total devolvido em centavos). */
+  markPartiallyRefunded(id: string, refundedCents: number): Promise<ISubscriptionObligation>;
+  /** specs/0175 T058 — decisão sobre o estorno parcial: volta a `paid` e guarda o valor decidido; `null` se a
+   * fatura não está mais `partially_refunded` (decisão concorrente). */
+  resolvePartialRefund(id: string): Promise<ISubscriptionObligation | null>;
+  /** specs/0175 T058 — "Cobrar a diferença": fatura nova só com o valor devolvido, aguardando emissão. */
+  createRefundDifference(input: {
+    restaurantId: string; originObligationId: string; tier: ISubscriptionObligation['tier']; settingsVersionId: string; amountCents: number; dueDate: Date;
+  }): Promise<ISubscriptionObligation>;
   /** specs/0175 REQ-23 (opção C) — "Cobrar de novo": só de `refunded`; volta a `awaiting_issue`,
    * tira o Pix/cobrança antigos e guarda a cobrança estornada em `refundedChargeIds`. `null` se a
    * fatura não estava `refunded` (decisão já tomada ou estado errado). */

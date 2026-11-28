@@ -1,6 +1,7 @@
 import type { BillingTier } from '../../../billing/domain/billing';
 
-export type SubscriptionObligationKind = 'monthly' | 'monthly-prorated' | 'annual-initial' | 'annual-renewal';
+/** specs/0175 T058 — `refund-difference`: cobrança da diferença devolvida num estorno PARCIAL ("Cobrar a diferença"). */
+export type SubscriptionObligationKind = 'monthly' | 'monthly-prorated' | 'annual-initial' | 'annual-renewal' | 'refund-difference';
 
 /**
  * specs/0175-cobranca-assinatura-asaas REQ-6/REQ-7/REQ-13/REQ-15/REQ-17 — a unidade cobrável,
@@ -54,6 +55,12 @@ export interface ISubscriptionObligation {
   paidAt?: Date;
   /** Motivo da última falha de emissão (`issue_failed`) — pendência acionável, REQ-12. */
   issueFailureReason?: string;
+  /** specs/0175 T058 — total já devolvido pelo Asaas num estorno parcial (centavos). */
+  partialRefundCents?: number;
+  /** specs/0175 T058 — quanto desse estorno parcial a plataforma já decidiu (não volta a pedir decisão). */
+  partialRefundAcknowledgedCents?: number;
+  /** specs/0175 T058 — só `kind === 'refund-difference'`: a fatura de origem do estorno parcial. */
+  originObligationId?: string;
 
   // Preenchidos quando a cobrança existe de verdade no Asaas.
   /** Id do PAGAMENTO no Asaas — nunca de checkout/preferência (não existe aqui, é sempre Pix direto). */
