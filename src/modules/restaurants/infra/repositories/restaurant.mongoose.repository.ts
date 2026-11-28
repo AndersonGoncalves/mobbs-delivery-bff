@@ -327,9 +327,9 @@ export class RestaurantMongooseRepository implements IRestaurantRepository {
     return doc ? toEntity(doc) : null;
   }
 
-  async findByMercadoPagoUserId(mercadoPagoUserId: string): Promise<IRestaurant | null> {
-    const doc = await RestaurantModel.findOne({ mercadoPagoUserId }).lean<RestaurantLeanDocument>();
-    return doc ? toEntity(doc) : null;
+  async findAllByMercadoPagoUserId(mercadoPagoUserId: string): Promise<IRestaurant[]> {
+    const docs = await RestaurantModel.find({ mercadoPagoUserId }).lean<RestaurantLeanDocument[]>();
+    return docs.map(toEntity);
   }
 
   async findByReferralCode(code: string): Promise<IRestaurant | null> {

@@ -119,8 +119,9 @@ export interface IRestaurantRepository {
     referralCode?: string;
   }): Promise<IRestaurant>;
   findBySlug(slug: string): Promise<IRestaurant | null>;
-  /** specs/0226 REQ-A4 — restaurante vinculado a esta conta Mercado Pago (`user_id` do webhook). */
-  findByMercadoPagoUserId(mercadoPagoUserId: string): Promise<IRestaurant | null>;
+  /** specs/0226 REQ-A4 — restaurantes vinculados a esta conta Mercado Pago (`user_id` do webhook).
+   * specs/0233 REQ-1 — lista: o dono pode vincular mais de uma loja à mesma conta. */
+  findAllByMercadoPagoUserId(mercadoPagoUserId: string): Promise<IRestaurant[]>;
   /** specs/0106 REQ-2 — todos os restaurantes (painel da plataforma). */
   listAll(): Promise<IRestaurant[]>;
   /**

@@ -42,6 +42,11 @@ import { MercadoPagoApiError, MercadoPagoClient } from '../infra/mercado-pago-cl
  * meio, pagamento que não está mais pendente, aviso sem `user_id`): 200 + log com o motivo. Antes
  * eram 400/404/409, o Mercado Pago reenviava e o indicador "Notificações entregues com sucesso"
  * caía (25% em 26/11/2026). Só a assinatura inválida continua com erro (401).
+ *
+ * specs/0233 — a mesma conta Mercado Pago pode estar vinculada a mais de uma loja do mesmo dono.
+ * Antes o aviso caía sempre na PRIMEIRA loja (`findOne`) e o pedido da outra era ignorado como "de
+ * outro restaurante" — pagamento nunca confirmado. Agora o pagamento é consultado com o token de uma
+ * das lojas da conta (tentando a próxima em 401/403) e o restaurante é o DONO DO PEDIDO entre elas.
  */
 export class MercadoPagoWebhookController extends BaseRouter {
   constructor(
@@ -107,8 +112,10 @@ export class MercadoPagoWebhookController extends BaseRouter {
         this.ignore(res, body.type, resourceId, 'aviso sem user_id');
         return;
       }
-      const restaurant = await this.restaurantRepository.findByMercadoPagoUserId(mercadoPagoUserId);
-      if (!restaurant?.mercadoPagoAccessToken) {
+      const linkedRestaurants = (await this.restaurantRepository.findAllByMercadoPagoUserId(mercadoPagoUserId)).filter(
+        (candidate) => !!candidate.mercadoPagoAccessToken,
+      );
+      if (linkedRestaurants.length === 0) {
         // Conta que não está vinculada a nenhum restaurante (ex.: a própria conta da aplicação,
         // ou o "Simular notificação" do painel): nada a fazer aqui — 200 pra não gerar reenvio.
         console.warn(`[mercadopago] aviso ${body.type} ${resourceId} de uma conta (${mercadoPagoUserId}) sem restaurante vinculado — ignorado`);
@@ -124,20 +131,34 @@ export class MercadoPagoWebhookController extends BaseRouter {
       let refused = false;
       let isPix: boolean;
       let mercadoPagoPaymentId: string | undefined;
-      try {
+      const fetchResource = async (accessToken: string): Promise<void> => {
         if (body.type === 'order') {
-          const mpOrder = await client.getOrder(restaurant.mercadoPagoAccessToken, resourceId);
+          const mpOrder = await client.getOrder(accessToken, resourceId);
           externalReference = mpOrder.externalReference;
           paid = mpOrder.status === 'processed';
           isPix = true; // só o Pix usa a API de Orders (o cartão segue na de Preferences, specs/0225)
         } else {
-          const mpPayment = await client.getPayment(restaurant.mercadoPagoAccessToken, resourceId);
+          const mpPayment = await client.getPayment(accessToken, resourceId);
           externalReference = mpPayment.externalReference;
           paid = mpPayment.status === 'approved';
           isPix = mpPayment.paymentMethodId === 'pix';
           // specs/0226 REQ-A19 — só o cartão: o Pix recusado não existe (vence ou é cancelado).
           refused = !isPix && mpPayment.status === 'rejected';
           mercadoPagoPaymentId = mpPayment.id;
+        }
+      };
+      try {
+        // specs/0233 REQ-3 — todas as lojas da lista são da mesma conta: qualquer token válido
+        // enxerga o pagamento. Token inválido/revogado (401/403) numa delas → tenta a próxima.
+        for (let index = 0; ; index += 1) {
+          try {
+            await fetchResource(linkedRestaurants[index].mercadoPagoAccessToken!);
+            break;
+          } catch (error) {
+            const isLast = index === linkedRestaurants.length - 1;
+            const isTokenError = error instanceof MercadoPagoApiError && (error.status === 401 || error.status === 403);
+            if (isLast || !isTokenError) throw error;
+          }
         }
       } catch (error) {
         // specs/0226 REQ-A18 (ampliação de 27/11/2026) — o próprio Mercado Pago diz que o
@@ -160,8 +181,10 @@ export class MercadoPagoWebhookController extends BaseRouter {
         this.ignore(res, body.type, resourceId, `pedido ${externalReference} não encontrado`);
         return;
       }
-      if (order.restaurantId !== restaurant.id) {
-        this.ignore(res, body.type, resourceId, `pedido #${order.orderNumber} não pertence ao restaurante da conta ${mercadoPagoUserId}`);
+      // specs/0233 REQ-1/REQ-2 — a loja é a dona do pedido, entre as vinculadas à conta do aviso.
+      const restaurant = linkedRestaurants.find((candidate) => candidate.id === order.restaurantId);
+      if (!restaurant) {
+        this.ignore(res, body.type, resourceId, `pedido #${order.orderNumber} não pertence a nenhum restaurante da conta ${mercadoPagoUserId}`);
         return;
       }
 

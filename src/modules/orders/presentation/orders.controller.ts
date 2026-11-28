@@ -1116,7 +1116,9 @@ export class OrdersController extends BaseRouter {
 
     // specs/0170-integracao-mercado-pago (REQ-2) — some da resposta depois de aprovado, mesmo
     // raciocínio do `pixCode` acima (evita reabrir a WebView de um pagamento já concluído).
-    const checkoutUrl = order.paymentMethod === 'creditCardOnline' && payment.status === 'pendente' ? payment.checkoutUrl : undefined;
+    // specs/0226 REQ-A20 — também com o cartão RECUSADO: o cliente tenta outro cartão no mesmo checkout.
+    const canRetryCard = payment.status === 'pendente' || payment.status === 'recusado';
+    const checkoutUrl = order.paymentMethod === 'creditCardOnline' && canRetryCard ? payment.checkoutUrl : undefined;
 
     return { ...order, payment: this.toPaymentSummary(payment), pixCode, checkoutUrl };
   }

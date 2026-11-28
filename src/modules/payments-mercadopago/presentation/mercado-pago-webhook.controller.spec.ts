@@ -95,7 +95,7 @@ describe('MercadoPagoWebhookController (specs/0170-integracao-mercado-pago)', ()
     };
     const restaurantRepository: Partial<IRestaurantRepository> = {
       findById: jest.fn().mockResolvedValue({ id: 'r-1', name: 'Prime Pizza' }),
-      findByMercadoPagoUserId: jest.fn().mockResolvedValue({ id: 'r-1', name: 'Prime Pizza', mercadoPagoAccessToken: 'restaurant-token-1', mercadoPagoUserId: SELLER_USER_ID }),
+      findAllByMercadoPagoUserId: jest.fn().mockResolvedValue([{ id: 'r-1', name: 'Prime Pizza', mercadoPagoAccessToken: 'restaurant-token-1', mercadoPagoUserId: SELLER_USER_ID }]),
       ...overrides.restaurantRepository,
     };
     const whatsAppNotificationService: Partial<IWhatsAppNotificationService> = {
@@ -282,7 +282,7 @@ describe('MercadoPagoWebhookController (specs/0170-integracao-mercado-pago)', ()
 
       await routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1'), { json: jest.fn(), send: jest.fn() });
 
-      expect(restaurantRepository.findByMercadoPagoUserId).toHaveBeenCalledWith(SELLER_USER_ID);
+      expect(restaurantRepository.findAllByMercadoPagoUserId).toHaveBeenCalledWith(SELLER_USER_ID);
       expect(MockedMercadoPagoClient.prototype.getPayment).toHaveBeenCalledWith('restaurant-token-1', 'pay-1');
     });
 
@@ -308,7 +308,7 @@ describe('MercadoPagoWebhookController (specs/0170-integracao-mercado-pago)', ()
     });
 
     it('conta sem restaurante vinculado (ex.: simulação do painel) é 200 ignorado, sem consultar o Mercado Pago', async () => {
-      const { paymentRepository, routes } = setup({ restaurantRepository: { findByMercadoPagoUserId: jest.fn().mockResolvedValue(null) } });
+      const { paymentRepository, routes } = setup({ restaurantRepository: { findAllByMercadoPagoUserId: jest.fn().mockResolvedValue([]) } });
       const send = jest.fn();
       const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 
@@ -459,6 +459,88 @@ describe('MercadoPagoWebhookController (specs/0170-integracao-mercado-pago)', ()
       await expect(
         routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('ORD01ABC', { type: 'order', xSignature: upperSignature }), { json: jest.fn(), send: jest.fn() }),
       ).rejects.toMatchObject({ statusCode: 401 });
+    });
+  });
+
+  // specs/0233 — mesma conta Mercado Pago vinculada a mais de uma loja.
+  describe('specs/0233 — mais de uma loja na mesma conta do Mercado Pago', () => {
+    const lojaA = { id: 'r-1', name: 'Pizzaria', mercadoPagoAccessToken: 'token-loja-a', mercadoPagoUserId: SELLER_USER_ID };
+    const lojaB = { id: 'r-2', name: 'Hamburgueria', mercadoPagoAccessToken: 'token-loja-b', mercadoPagoUserId: SELLER_USER_ID };
+
+    it('AC-1: aviso de pedido da SEGUNDA loja da conta confirma o pagamento dela (antes era ignorado)', async () => {
+      const { paymentRepository, routes } = setup({
+        restaurantRepository: { findAllByMercadoPagoUserId: jest.fn().mockResolvedValue([lojaA, lojaB]), findById: jest.fn().mockResolvedValue(lojaB) },
+        orderRepository: {
+          findById: jest.fn().mockResolvedValue(buildOrder({ restaurantId: 'r-2' })),
+          updateStatus: jest.fn().mockImplementation((id, status) => Promise.resolve(buildOrder({ id, status, restaurantId: 'r-2' }))),
+        },
+      });
+      const json = jest.fn();
+
+      await routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1'), { json, send: jest.fn() });
+
+      expect(paymentRepository.markAsApprovedIfPending).toHaveBeenCalledWith('o-1');
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ payment: { method: 'creditCardOnline', status: 'aprovado' } }));
+    });
+
+    it('AC-2: pedido de uma loja que NÃO está na conta é 200 ignorado, sem confirmar', async () => {
+      const { paymentRepository, routes } = setup({
+        restaurantRepository: { findAllByMercadoPagoUserId: jest.fn().mockResolvedValue([lojaA, lojaB]) },
+        orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ restaurantId: 'r-3' })) },
+      });
+      const send = jest.fn();
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+      await routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1'), { json: jest.fn(), send });
+
+      expect(send).toHaveBeenCalledWith(200);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('não pertence a nenhum restaurante da conta'));
+      warn.mockRestore();
+      expect(paymentRepository.markAsApprovedIfPending).not.toHaveBeenCalled();
+    });
+
+    it('AC-3: token de uma loja inválido (401) → consulta com o token da outra loja da mesma conta', async () => {
+      MockedMercadoPagoClient.prototype.getPayment = jest
+        .fn()
+        .mockRejectedValueOnce(new MercadoPagoApiError('invalid_token', 401))
+        .mockResolvedValueOnce({ id: 'mp-pay-99', status: 'approved', externalReference: 'o-1' });
+      const { paymentRepository, routes } = setup({ restaurantRepository: { findAllByMercadoPagoUserId: jest.fn().mockResolvedValue([lojaB, lojaA]), findById: jest.fn().mockResolvedValue(lojaA) } });
+
+      await routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1'), { json: jest.fn(), send: jest.fn() });
+
+      expect(MockedMercadoPagoClient.prototype.getPayment).toHaveBeenNthCalledWith(1, 'token-loja-b', 'pay-1');
+      expect(MockedMercadoPagoClient.prototype.getPayment).toHaveBeenNthCalledWith(2, 'token-loja-a', 'pay-1');
+      expect(paymentRepository.markAsApprovedIfPending).toHaveBeenCalledWith('o-1');
+    });
+
+    it('token inválido em TODAS as lojas da conta → erro (o Mercado Pago reenvia depois)', async () => {
+      MockedMercadoPagoClient.prototype.getPayment = jest.fn().mockRejectedValue(new MercadoPagoApiError('invalid_token', 401));
+      const { paymentRepository, routes } = setup({ restaurantRepository: { findAllByMercadoPagoUserId: jest.fn().mockResolvedValue([lojaA, lojaB]) } });
+
+      await expect(routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1'), { json: jest.fn(), send: jest.fn() })).rejects.toBeInstanceOf(MercadoPagoApiError);
+      expect(MockedMercadoPagoClient.prototype.getPayment).toHaveBeenCalledTimes(2);
+      expect(paymentRepository.markAsApprovedIfPending).not.toHaveBeenCalled();
+    });
+
+    it('404 (pagamento inexistente) não tenta o token da outra loja: 200 ignorado', async () => {
+      MockedMercadoPagoClient.prototype.getPayment = jest.fn().mockRejectedValue(new MercadoPagoApiError('not_found', 404));
+      const { routes } = setup({ restaurantRepository: { findAllByMercadoPagoUserId: jest.fn().mockResolvedValue([lojaA, lojaB]) } });
+      const send = jest.fn();
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+      await routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1'), { json: jest.fn(), send });
+
+      expect(send).toHaveBeenCalledWith(200);
+      expect(MockedMercadoPagoClient.prototype.getPayment).toHaveBeenCalledTimes(1);
+      warn.mockRestore();
+    });
+
+    it('loja vinculada sem token (vínculo incompleto) é pulada', async () => {
+      const { routes } = setup({ restaurantRepository: { findAllByMercadoPagoUserId: jest.fn().mockResolvedValue([{ ...lojaB, mercadoPagoAccessToken: undefined }, lojaA]), findById: jest.fn().mockResolvedValue(lojaA) } });
+
+      await routes['POST /webhooks/mercadopago'].at(-1)!(buildReq('pay-1'), { json: jest.fn(), send: jest.fn() });
+
+      expect(MockedMercadoPagoClient.prototype.getPayment).toHaveBeenCalledWith('token-loja-a', 'pay-1');
     });
   });
 });

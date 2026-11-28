@@ -3251,6 +3251,18 @@ describe('OrdersController', () => {
       expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ checkoutUrl: 'https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=pref-1' }));
     });
 
+    it('specs/0226 REQ-A20: GET /orders/:id expõe checkoutUrl com o cartão RECUSADO (tentar outro cartão)', async () => {
+      const { routes } = setup({
+        orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ paymentMethod: 'creditCardOnline' })) },
+        paymentRepository: { findByOrderId: jest.fn().mockResolvedValue(buildPayment({ method: 'creditCardOnline', status: 'recusado', checkoutUrl: 'https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=pref-1' })) },
+      });
+      const json = jest.fn();
+
+      await runAuthenticatedChain(routes['GET /orders/:id'], { params: { id: 'o-1' }, user: { uid: 'customer-1' } }, { json });
+
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ checkoutUrl: 'https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=pref-1' }));
+    });
+
     it('GET /orders/:id não expõe checkoutUrl quando o pagamento já foi aprovado', async () => {
       const { routes } = setup({
         orderRepository: { findById: jest.fn().mockResolvedValue(buildOrder({ paymentMethod: 'creditCardOnline' })) },
