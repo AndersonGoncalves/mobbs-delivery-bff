@@ -80,6 +80,26 @@ function toMovementEntity(doc: MovementLeanDocument): ICashMovementEntry {
   };
 }
 
+/**
+ * `_id` determinístico dos movimentos automáticos — trava de duplicidade no índice único (dois avisos do
+ * mesmo pagamento chegando juntos gravam uma entrada só; ver `createMovementDoc`).
+ *
+ * specs/0213 T011 (achado na homologação, 28/11/2026) — antes, TODO movimento com `orderId` usava
+ * `sale:<sessão>:<pagamento ou pedido>`, inclusive o estorno: o estorno de um pedido cuja venda estava
+ * na mesma sessão gerava o MESMO `_id`, e `createMovementDoc` devolvia a entrada existente em silêncio
+ * — o estorno nunca era gravado. Agora:
+ * - venda (`entrada`): `sale:<sessão>:<pagamento ou pedido>` (como antes);
+ * - estorno do pedido inteiro (`saida` sem `paymentId`): `reversal:<sessão>:<pedido>` — uma vez por pedido;
+ * - troco a devolver de mesa (`saida` com `paymentId`, specs/0214): sem `_id` fixo — pode acontecer mais
+ *   de uma vez no mesmo pagamento, quem chama garante que não repete.
+ */
+function automaticMovementId(sessionId: string, input: NewCashMovementInput): string | undefined {
+  if (!input.orderId) return undefined;
+  if (input.type === 'entrada') return `sale:${sessionId}:${input.paymentId ?? input.orderId}`;
+  if (input.paymentId) return undefined;
+  return `reversal:${sessionId}:${input.orderId}`;
+}
+
 export class CashRegisterMongooseRepository implements ICashRegisterRepository {
   /** Caixa aberto na data civil atual, nunca um caixa pendente de outra data (esse caso é
    * `findPendingSessions`, de propósito: uma sessão presa de um dia anterior precisa do aviso
@@ -170,7 +190,7 @@ export class CashRegisterMongooseRepository implements ICashRegisterRepository {
   }
 
   async addMovement(sessionId: string, input: NewCashMovementInput): Promise<ICashMovementEntry> {
-    const id = input.orderId ? `sale:${sessionId}:${input.paymentId ?? input.orderId}` : undefined;
+    const id = automaticMovementId(sessionId, input);
     const reserved = await CashRegisterSessionModel.findOneAndUpdate(
       { _id: sessionId, status: 'aberto' },
       { $inc: { movementVersion: 1, movementWrites: 1 } },

@@ -131,6 +131,57 @@ describe('persistência concorrente do caixa (sem banco real)', () => {
     expect(stored.size).toBe(1);
   });
 
+  // specs/0213 T011 — achado na homologação (28/11/2026): o estorno tinha o mesmo `_id` da venda e era
+  // descartado em silêncio; o "troco a devolver" de mesa também.
+  describe('specs/0213 T011 — estorno não colide com a venda do mesmo pedido', () => {
+    function fakeStore() {
+      const stored = new Map<string, Record<string, unknown>>();
+      let seq = 0;
+      jest.spyOn(CashRegisterSessionModel, 'findOneAndUpdate').mockReturnValue(lean(session()) as never);
+      jest.spyOn(CashRegisterSessionModel, 'updateOne').mockResolvedValue({} as never);
+      jest.spyOn(CashMovementEntryModel, 'create').mockImplementation((async (input: { _id?: string }) => {
+        const id = input._id ?? `auto-${(seq += 1)}`;
+        if (stored.has(id)) throw { code: 11000 };
+        const doc = { ...input, _id: id, createdAt: new Date() };
+        stored.set(id, doc);
+        return { toObject: () => doc };
+      }) as never);
+      jest.spyOn(CashMovementEntryModel, 'findById').mockImplementation(((id: string) => lean(stored.get(id))) as never);
+      return stored;
+    }
+
+    it('venda + estorno do mesmo pedido na mesma sessão gravam os dois', async () => {
+      const stored = fakeStore();
+      const repository = new CashRegisterMongooseRepository();
+
+      await repository.addMovement('s', { type: 'entrada', amount: 3, description: 'Venda #14 (Pix)', orderId: 'o-14', paymentMethod: 'pix' });
+      await repository.addMovement('s', { type: 'saida', amount: 3, description: 'Estorno - Venda #14 (Pix)', orderId: 'o-14', paymentMethod: 'pix' });
+
+      expect([...stored.values()].map((doc) => doc.type)).toEqual(['entrada', 'saida']);
+    });
+
+    it('o estorno do pedido continua sendo gravado uma vez só (dois cancelamentos simultâneos)', async () => {
+      const stored = fakeStore();
+      const repository = new CashRegisterMongooseRepository();
+      const reversal = { type: 'saida' as const, amount: 3, description: 'Estorno - Venda #14 (Pix)', orderId: 'o-14', paymentMethod: 'pix' };
+
+      await Promise.all([repository.addMovement('s', reversal), repository.addMovement('s', reversal)]);
+
+      expect(stored.size).toBe(1);
+    });
+
+    it('troco a devolver de mesa (saída com paymentId) grava junto da entrada do mesmo pagamento, e pode repetir', async () => {
+      const stored = fakeStore();
+      const repository = new CashRegisterMongooseRepository();
+
+      await repository.addMovement('s', { type: 'entrada', amount: 50, description: 'Mesa/balcão #8 (Dinheiro)', orderId: 'o-8', paymentId: 'pay-1', paymentMethod: 'cash' });
+      await repository.addMovement('s', { type: 'saida', amount: 5, description: 'Troco a devolver - Mesa/balcão #8 (Dinheiro)', orderId: 'o-8', paymentId: 'pay-1', paymentMethod: 'cash' });
+      await repository.addMovement('s', { type: 'saida', amount: 2, description: 'Troco a devolver - Mesa/balcão #8 (Dinheiro)', orderId: 'o-8', paymentId: 'pay-1', paymentMethod: 'cash' });
+
+      expect([...stored.values()].map((doc) => [doc.type, doc.amount])).toEqual([['entrada', 50], ['saida', 5], ['saida', 2]]);
+    });
+  });
+
   it('duas conferências simultâneas não sobrescrevem o primeiro fechamento', async () => {
     const repository = new CashRegisterMongooseRepository();
     const state = session();
