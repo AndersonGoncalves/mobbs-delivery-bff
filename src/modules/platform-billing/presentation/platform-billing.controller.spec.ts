@@ -2,7 +2,7 @@ import type { Request, Response, Server } from 'restify';
 import { DEFAULT_BILLING_SETTINGS } from '../../billing/domain/billing';
 import { localMidnight } from '../domain/billing-calendar';
 import type { ISubscriptionObligation } from '../domain/entities/subscription-obligation.entity';
-import { AnnualAdhesionAlreadyActiveError, AnnualSubscriptionService } from '../domain/services/annual-subscription.service';
+import { AnnualAdhesionAlreadyActiveError, AnnualRenewalNotReactivatableError, AnnualSubscriptionService } from '../domain/services/annual-subscription.service';
 import { BillingPayerService } from '../domain/services/billing-payer.service';
 import { ReconciliationService } from '../domain/services/reconciliation.service';
 import { PlatformBillingController } from './platform-billing.controller';
@@ -61,6 +61,8 @@ function setup(overrides: { obligations?: ISubscriptionObligation[] } = {}) {
   jest.spyOn(annualSubscriptionService, 'subscribe').mockResolvedValue({ subscription: { id: 'sub-1' } as never, obligation: buildObligation() });
   jest.spyOn(annualSubscriptionService, 'cancelRenewal').mockResolvedValue({ id: 'sub-1', renewalActive: false } as never);
   jest.spyOn(annualSubscriptionService, 'withdrawUnpaidAnnual').mockResolvedValue(undefined);
+  jest.spyOn(annualSubscriptionService, 'findCurrent').mockResolvedValue(null);
+  jest.spyOn(annualSubscriptionService, 'reactivateRenewal').mockResolvedValue({ subscription: { id: 'sub-1', renewalActive: true } as never, coverageEnd: new Date('2027-11-27T03:00:00Z') });
 
   const reconciliationService = new ReconciliationService({} as never);
   jest.spyOn(reconciliationService, 'reconcile').mockResolvedValue(undefined);
@@ -229,5 +231,40 @@ describe('PlatformBillingController (specs/0175-cobranca-assinatura-asaas)', () 
     await runChain(routes['GET /restaurants/me/billing/summary'], { restaurantId: 'r-1', operatorRole: 'financeiro' as never }, { json });
 
     expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ operatorRole: 'financeiro' }));
+  });
+
+  // specs/0175 REQ-37/REQ-38 — achado na homologação (28/11/2026).
+  it('AC-27: resumo devolve a assinatura com a renovação cancelada e o fim do ano pago', async () => {
+    const { routes, annualSubscriptionService } = setup();
+    const cancelled = { id: 'sub-1', restaurantId: 'r-1', renewalActive: false, joinedAt: new Date(), createdAt: new Date(), updatedAt: new Date() };
+    const coverageEnd = new Date('2027-11-27T03:00:00Z');
+    jest.spyOn(annualSubscriptionService, 'findCurrent').mockResolvedValue({ subscription: cancelled, coverageEnd });
+    const json = jest.fn();
+
+    await runChain(routes['GET /restaurants/me/billing/summary'], { restaurantId: 'r-1', operatorRole: 'dono' as never }, { json });
+
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ annualSubscription: cancelled, annualCoverageEnd: coverageEnd }));
+  });
+
+  it('AC-28: POST annual/reactivate (Dono) religa a renovação', async () => {
+    const { routes, annualSubscriptionService } = setup();
+    const json = jest.fn();
+
+    await runChain(routes['POST /restaurants/me/billing/annual/reactivate'], { restaurantId: 'r-1', operatorRole: 'dono' as never, user: { uid: 'u-1' } }, { json });
+
+    expect(annualSubscriptionService.reactivateRenewal).toHaveBeenCalledWith('r-1', expect.any(Date));
+    expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ accessUntil: new Date('2027-11-27T03:00:00Z') }));
+  });
+
+  it('AC-28: reativar sem renovação cancelada/ano pago vira 409; Gerente/Caixa não reativam (403)', async () => {
+    const { routes, annualSubscriptionService } = setup();
+    jest.spyOn(annualSubscriptionService, 'reactivateRenewal').mockRejectedValue(new AnnualRenewalNotReactivatableError());
+
+    await expect(
+      runChain(routes['POST /restaurants/me/billing/annual/reactivate'], { restaurantId: 'r-1', operatorRole: 'dono' as never }, { json: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    await expect(
+      runChain(routes['POST /restaurants/me/billing/annual/reactivate'], { restaurantId: 'r-1', operatorRole: 'financeiro' as never }, { json: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 403 });
   });
 });

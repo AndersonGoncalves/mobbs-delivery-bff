@@ -2,7 +2,7 @@ import { DEFAULT_BILLING_SETTINGS } from '../../../billing/domain/billing';
 import { addCalendarYear, localMidnight } from '../billing-calendar';
 import type { IAnnualSubscription } from '../entities/annual-subscription.entity';
 import type { ISubscriptionObligation } from '../entities/subscription-obligation.entity';
-import { AnnualAdhesionAlreadyActiveError, AnnualSubscriptionService } from './annual-subscription.service';
+import { AnnualAdhesionAlreadyActiveError, AnnualRenewalNotReactivatableError, AnnualSubscriptionService } from './annual-subscription.service';
 import { CloseMonthlyBillingService } from './close-monthly-billing.service';
 
 function buildSubscription(overrides: Partial<IAnnualSubscription> = {}): IAnnualSubscription {
@@ -22,6 +22,7 @@ function setup(options: { orders?: { total: number }[] } = {}) {
     findByRestaurantId: jest.fn().mockResolvedValue([]),
     create: jest.fn().mockImplementation(async (restaurantId, joinedAt) => buildSubscription({ restaurantId, joinedAt })),
     cancelRenewal: jest.fn().mockImplementation(async (id, cancelledAt, cancelledBy) => buildSubscription({ id, renewalActive: false, cancelledAt, cancelledBy })),
+    reactivateRenewal: jest.fn().mockImplementation(async (id) => buildSubscription({ id, renewalActive: true })),
   };
   const obligationRepository = {
     upsertAnnual: jest.fn().mockImplementation(async (input) => buildObligation({ ...input, status: 'awaiting_issue' })),
@@ -172,5 +173,69 @@ describe('AnnualSubscriptionService.withdrawUnpaidAnnual (AC-12)', () => {
 
     expect(obligationRepository.markCancelled).toHaveBeenCalledWith('ob-1');
     expect(annualSubscriptionRepository.cancelRenewal).toHaveBeenCalledWith('sub-1', new Date('2026-10-25T00:00:00Z'), 'dono@primepizza.com');
+  });
+});
+
+// specs/0175 REQ-37/REQ-38 — achado na homologação (28/11/2026): cancelar a renovação de um anual pago
+// fazia o restaurante "sumir" do anual (telas em Gratuito, adesão liberada de novo).
+describe('AnnualSubscriptionService — renovação cancelada com ano pago em vigor (REQ-37/REQ-38)', () => {
+  const now = new Date('2026-11-28T15:00:00Z');
+  const paidAnnual = buildObligation({
+    status: 'paid',
+    coveragePeriod: { start: localMidnight(new Date('2026-11-27T12:00:00Z')), end: localMidnight(new Date('2027-11-27T12:00:00Z')) },
+  });
+  const cancelled = buildSubscription({ renewalActive: false, cancelledAt: now, cancelledBy: 'dono@x.com' });
+
+  it('AC-27: findCurrent devolve a assinatura com a renovação cancelada enquanto o ano pago vale', async () => {
+    const { service, annualSubscriptionRepository, obligationRepository } = setup();
+    obligationRepository.findByRestaurantId.mockResolvedValue([paidAnnual]);
+    annualSubscriptionRepository.findByRestaurantId.mockResolvedValue([cancelled]);
+
+    const current = await service.findCurrent('r-1', now);
+
+    expect(current?.subscription.renewalActive).toBe(false);
+    expect(current?.coverageEnd).toEqual(paidAnnual.coveragePeriod!.end);
+  });
+
+  it('findCurrent: renovação cancelada SEM ano pago em vigor (desistência ou ano vencido) → nenhuma', async () => {
+    const { service, annualSubscriptionRepository, obligationRepository } = setup();
+    obligationRepository.findByRestaurantId.mockResolvedValue([buildObligation({ status: 'cancelled', coveragePeriod: paidAnnual.coveragePeriod })]);
+    annualSubscriptionRepository.findByRestaurantId.mockResolvedValue([cancelled]);
+
+    expect(await service.findCurrent('r-1', now)).toBeNull();
+    expect(await service.findCurrent('r-1', new Date('2027-12-01T12:00:00Z'))).toBeNull();
+  });
+
+  it('AC-27: aderir de novo com o ano pago em vigor é recusado (não cobra o mesmo ano duas vezes)', async () => {
+    const { service, obligationRepository } = setup();
+    obligationRepository.findByRestaurantId.mockResolvedValue([paidAnnual]);
+
+    await expect(service.subscribe('r-1', now)).rejects.toThrow(AnnualAdhesionAlreadyActiveError);
+    expect(obligationRepository.upsertAnnual).not.toHaveBeenCalled();
+  });
+
+  it('AC-28: reativar religa a renovação, sem criar cobrança', async () => {
+    const { service, annualSubscriptionRepository, obligationRepository } = setup();
+    obligationRepository.findByRestaurantId.mockResolvedValue([paidAnnual]);
+    annualSubscriptionRepository.findByRestaurantId.mockResolvedValue([cancelled]);
+
+    const result = await service.reactivateRenewal('r-1', now);
+
+    expect(annualSubscriptionRepository.reactivateRenewal).toHaveBeenCalledWith('sub-1');
+    expect(result.subscription.renewalActive).toBe(true);
+    expect(result.coverageEnd).toEqual(paidAnnual.coveragePeriod!.end);
+    expect(obligationRepository.upsertAnnual).not.toHaveBeenCalled();
+  });
+
+  it('AC-28: reativar com a renovação já ativa, ou sem ano pago em vigor, é recusado', async () => {
+    const active = setup();
+    active.obligationRepository.findByRestaurantId.mockResolvedValue([paidAnnual]);
+    active.annualSubscriptionRepository.findActiveByRestaurantId.mockResolvedValue(buildSubscription());
+    await expect(active.service.reactivateRenewal('r-1', now)).rejects.toThrow(AnnualRenewalNotReactivatableError);
+
+    const expired = setup();
+    expired.annualSubscriptionRepository.findByRestaurantId.mockResolvedValue([cancelled]);
+    await expect(expired.service.reactivateRenewal('r-1', now)).rejects.toThrow(AnnualRenewalNotReactivatableError);
+    expect(expired.annualSubscriptionRepository.reactivateRenewal).not.toHaveBeenCalled();
   });
 });

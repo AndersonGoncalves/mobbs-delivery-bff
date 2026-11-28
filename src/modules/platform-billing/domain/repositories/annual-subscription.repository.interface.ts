@@ -16,4 +16,6 @@ export interface IAnnualSubscriptionRepository {
   findByRestaurantId(restaurantId: string): Promise<IAnnualSubscription[]>;
   create(restaurantId: string, joinedAt: Date): Promise<IAnnualSubscription>;
   cancelRenewal(id: string, cancelledAt: Date, cancelledBy: string): Promise<IAnnualSubscription>;
+  /** specs/0175 REQ-38 — religa a renovação (`renewalActive: true`, sem `cancelledAt`/`cancelledBy`). */
+  reactivateRenewal(id: string): Promise<IAnnualSubscription>;
 }

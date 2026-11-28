@@ -13,7 +13,7 @@ import type { IPixAvailabilityExceptionRepository } from '../domain/repositories
 import type { ISubscriptionObligationRepository } from '../domain/repositories/subscription-obligation.repository.interface';
 import type { IBillingPayerRepository } from '../domain/repositories/billing-payer.repository.interface';
 import type { AnnualSubscriptionService } from '../domain/services/annual-subscription.service';
-import { AnnualAdhesionAlreadyActiveError } from '../domain/services/annual-subscription.service';
+import { AnnualAdhesionAlreadyActiveError, AnnualRenewalNotReactivatableError } from '../domain/services/annual-subscription.service';
 import type { BillingPayerService } from '../domain/services/billing-payer.service';
 import type { ReconciliationService } from '../domain/services/reconciliation.service';
 import { completeBillingPayerSchema } from './platform-billing.schemas';
@@ -110,10 +110,12 @@ export class PlatformBillingController extends BaseRouter {
     application.get('/restaurants/me/billing/summary', ...financialAuthenticated, async (req: Request, res: Response) => {
       const restaurantId = req.restaurantId!;
       const now = new Date();
-      const [payer, openObligations, subscription] = await Promise.all([
+      // specs/0175 REQ-37 — assinatura VIGENTE (inclui a renovação cancelada com ano pago em vigor) +
+      // fim do ano pago, pra regularização e planos mostrarem o anual em vez de "Gratuito".
+      const [payer, openObligations, currentAnnual] = await Promise.all([
         this.deps.billingPayerRepository.findByRestaurantId(restaurantId),
         this.deps.obligationRepository.findOpenByRestaurantId(restaurantId),
-        this.deps.annualSubscriptionRepository.findActiveByRestaurantId(restaurantId),
+        this.deps.annualSubscriptionService.findCurrent(restaurantId, now),
       ]);
       const exceptions = (
         await Promise.all(openObligations.map((o) => this.deps.pixAvailabilityExceptionRepository.findByObligationId(o.id)))
@@ -124,7 +126,14 @@ export class PlatformBillingController extends BaseRouter {
       // /restaurants/me/operators/me` pra saber o papel (essa rota passa pelo middleware COM o
       // guard de billing, bloquearia de novo); devolve aqui, resolvido pelo mesmo middleware SEM
       // o guard que já autenticou esta rota.
-      res.json(200, { payer, openObligations: openObligations.map(withoutClosedPix), annualSubscription: subscription, accessStatus, operatorRole: req.operatorRole });
+      res.json(200, {
+        payer,
+        openObligations: openObligations.map(withoutClosedPix),
+        annualSubscription: currentAnnual?.subscription ?? null,
+        annualCoverageEnd: currentAnnual?.coverageEnd ?? null,
+        accessStatus,
+        operatorRole: req.operatorRole,
+      });
     });
 
     // REQ-32 (histórico completo, não só o em aberto) — mesmo critério financeiro de acesso.
@@ -161,6 +170,17 @@ export class PlatformBillingController extends BaseRouter {
         res.json(201, obligation);
       } catch (error) {
         if (error instanceof AnnualAdhesionAlreadyActiveError) throw new ConflictError(error.message);
+        throw error;
+      }
+    });
+
+    // specs/0175 REQ-38 — "Reativar renovação" (só o Dono): renovação cancelada + ano pago em vigor.
+    application.post('/restaurants/me/billing/annual/reactivate', ...ownerAuthenticated, async (req: Request, res: Response) => {
+      try {
+        const { subscription, coverageEnd } = await this.deps.annualSubscriptionService.reactivateRenewal(req.restaurantId!, new Date());
+        res.json(200, { subscription, accessUntil: coverageEnd });
+      } catch (error) {
+        if (error instanceof AnnualRenewalNotReactivatableError) throw new ConflictError(error.message);
         throw error;
       }
     });

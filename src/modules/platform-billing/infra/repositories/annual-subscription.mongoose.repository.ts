@@ -53,4 +53,13 @@ export class AnnualSubscriptionMongooseRepository implements IAnnualSubscription
     ).lean<AnnualSubscriptionLeanDocument>();
     return toEntity(doc as AnnualSubscriptionLeanDocument);
   }
+
+  async reactivateRenewal(id: string): Promise<IAnnualSubscription> {
+    const doc = await AnnualSubscriptionModel.findByIdAndUpdate(
+      id,
+      { $set: { renewalActive: true }, $unset: { cancelledAt: 1, cancelledBy: 1 } },
+      { new: true },
+    ).lean<AnnualSubscriptionLeanDocument>();
+    return toEntity(doc as AnnualSubscriptionLeanDocument);
+  }
 }

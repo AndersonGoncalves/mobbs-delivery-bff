@@ -13,6 +13,14 @@ export class AnnualAdhesionAlreadyActiveError extends Error {
   }
 }
 
+/** specs/0175 REQ-38 — "Reativar renovação" só vale com a renovação cancelada e o ano pago em vigor. */
+export class AnnualRenewalNotReactivatableError extends Error {
+  constructor() {
+    super('Não há renovação cancelada com ano pago em vigor para reativar.');
+    this.name = 'AnnualRenewalNotReactivatableError';
+  }
+}
+
 /**
  * specs/0175-cobranca-assinatura-asaas REQ-13..REQ-17 — adesão/renovação/cancelamento do ciclo
  * anual. Nunca chama o Asaas diretamente (emissão real do Pix é sempre
@@ -34,6 +42,9 @@ export class AnnualSubscriptionService {
   async subscribe(restaurantId: string, now: Date): Promise<{ subscription: IAnnualSubscription; obligation: ISubscriptionObligation }> {
     const existing = await this.deps.annualSubscriptionRepository.findActiveByRestaurantId(restaurantId);
     if (existing) throw new AnnualAdhesionAlreadyActiveError();
+    // specs/0175 REQ-37 — renovação cancelada, mas o ano já pago ainda vale: aderir de novo cobraria
+    // outra vez o mesmo período (achado na homologação, 28/11/2026). O caminho é "Reativar renovação".
+    if (await this.paidCoverageEnd(restaurantId, now)) throw new AnnualAdhesionAlreadyActiveError();
 
     const joinedAt = localMidnight(now);
     const month = monthKeyOf(now);
@@ -111,6 +122,45 @@ export class AnnualSubscriptionService {
    * obligation) continua valendo até o fim, sem estorno automático. A volta ao mensal, a partir
    * do fim da cobertura, é tratada pelo fechamento mensal de rotina (que volta a fechar
    * normalmente qualquer mês fora de uma cobertura anual ativa) — nenhuma ação adicional aqui. */
+  /** specs/0175 REQ-37 — fim do ano anual PAGO ainda em vigor (o mais distante), ou `null`. */
+  async paidCoverageEnd(restaurantId: string, now: Date): Promise<Date | null> {
+    const obligations = await this.deps.obligationRepository.findByRestaurantId(restaurantId);
+    let latest: Date | null = null;
+    for (const obligation of obligations) {
+      if (obligation.kind !== 'annual-initial' && obligation.kind !== 'annual-renewal') continue;
+      if (obligation.status !== 'paid' || !obligation.coveragePeriod) continue;
+      const end = new Date(obligation.coveragePeriod.end);
+      if (end.getTime() <= now.getTime()) continue;
+      if (!latest || end.getTime() > latest.getTime()) latest = end;
+    }
+    return latest;
+  }
+
+  /**
+   * specs/0175 REQ-37 — assinatura anual VIGENTE do restaurante: a com renovação ativa ou, se a
+   * renovação foi cancelada, a mais recente enquanto o ano pago ainda vale. Antes só a ativa contava,
+   * e cancelar a renovação fazia as telas tratarem o restaurante como Gratuito.
+   */
+  async findCurrent(restaurantId: string, now: Date): Promise<{ subscription: IAnnualSubscription; coverageEnd: Date | null } | null> {
+    const [active, coverageEnd] = await Promise.all([
+      this.deps.annualSubscriptionRepository.findActiveByRestaurantId(restaurantId),
+      this.paidCoverageEnd(restaurantId, now),
+    ]);
+    if (active) return { subscription: active, coverageEnd };
+    if (!coverageEnd) return null;
+    const [latest] = await this.deps.annualSubscriptionRepository.findByRestaurantId(restaurantId);
+    return latest ? { subscription: latest, coverageEnd } : null;
+  }
+
+  /** specs/0175 REQ-38 — religa a renovação cancelada enquanto o ano pago vale; nenhuma cobrança agora
+   * (a renovação continua sendo emitida no aniversário, `issueRenewalIfDue`). */
+  async reactivateRenewal(restaurantId: string, now: Date): Promise<{ subscription: IAnnualSubscription; coverageEnd: Date }> {
+    const current = await this.findCurrent(restaurantId, now);
+    if (!current || current.subscription.renewalActive || !current.coverageEnd) throw new AnnualRenewalNotReactivatableError();
+    const subscription = await this.deps.annualSubscriptionRepository.reactivateRenewal(current.subscription.id);
+    return { subscription, coverageEnd: current.coverageEnd };
+  }
+
   async cancelRenewal(subscription: IAnnualSubscription, now: Date, cancelledBy: string): Promise<IAnnualSubscription> {
     return this.deps.annualSubscriptionRepository.cancelRenewal(subscription.id, now, cancelledBy);
   }
