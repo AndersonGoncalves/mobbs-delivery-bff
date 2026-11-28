@@ -165,6 +165,10 @@ export class PlatformBillingController extends BaseRouter {
 
     // REQ-13/AC-7 — só o Dono contrata (REQ-33).
     application.post('/restaurants/me/billing/annual/subscribe', ...ownerAuthenticated, async (req: Request, res: Response) => {
+      // specs/0175 REQ-4 / T050 (achado na homologação, 28/11/2026) — sem pagador completo o Asaas não
+      // emite o Pix: a adesão criava uma fatura de R$ 799 presa em "Aguardando emissão". Pede os dados antes.
+      const payer = await this.deps.billingPayerRepository.findByRestaurantId(req.restaurantId!);
+      if (!payer?.completedAt) throw new ConflictError('Complete os dados do pagador antes de contratar o plano anual.');
       try {
         const { obligation } = await this.deps.annualSubscriptionService.subscribe(req.restaurantId!, new Date());
         res.json(201, obligation);

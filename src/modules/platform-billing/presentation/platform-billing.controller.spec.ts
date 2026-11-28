@@ -41,7 +41,7 @@ function buildObligation(overrides: Partial<ISubscriptionObligation> = {}): ISub
 
 function setup(overrides: { obligations?: ISubscriptionObligation[] } = {}) {
   const billingSettingsRepository = { get: jest.fn().mockResolvedValue(DEFAULT_BILLING_SETTINGS), update: jest.fn() };
-  const billingPayerRepository = { findByRestaurantId: jest.fn().mockResolvedValue(null), save: jest.fn() };
+  const billingPayerRepository = { findByRestaurantId: jest.fn().mockResolvedValue({ id: 'payer-1', restaurantId: 'r-1', completedAt: new Date() }), save: jest.fn() };
   const obligationRepository = {
     findById: jest.fn().mockImplementation(async (id: string) => (overrides.obligations ?? [buildObligation()]).find((o) => o.id === id) ?? null),
     findByRestaurantId: jest.fn().mockResolvedValue(overrides.obligations ?? [buildObligation()]),
@@ -74,7 +74,7 @@ function setup(overrides: { obligations?: ISubscriptionObligation[] } = {}) {
     annualSubscriptionRepository, pixAvailabilityExceptionRepository, billingPayerService, annualSubscriptionService, reconciliationService, orderRepository,
   } as never).initializeRoutes(application);
 
-  return { routes, obligationRepository, annualSubscriptionRepository, annualSubscriptionService, reconciliationService, billingPayerService };
+  return { routes, obligationRepository, annualSubscriptionRepository, annualSubscriptionService, reconciliationService, billingPayerService, billingPayerRepository };
 }
 
 describe('PlatformBillingController (specs/0175-cobranca-assinatura-asaas)', () => {
@@ -165,6 +165,22 @@ describe('PlatformBillingController (specs/0175-cobranca-assinatura-asaas)', () 
 
     expect(annualSubscriptionService.subscribe).toHaveBeenCalledWith('r-1', expect.any(Date));
     expect(json).toHaveBeenCalledWith(201, expect.anything());
+  });
+
+  it('specs/0175 T050: contratar o anual sem pagador completo é recusado (409) e nada é criado', async () => {
+    const { routes, annualSubscriptionService, billingPayerRepository } = setup();
+    billingPayerRepository.findByRestaurantId.mockResolvedValue(null);
+
+    await expect(
+      runChain(routes['POST /restaurants/me/billing/annual/subscribe'], { restaurantId: 'r-1', operatorRole: 'dono' as never }, { json: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect(annualSubscriptionService.subscribe).not.toHaveBeenCalled();
+
+    billingPayerRepository.findByRestaurantId.mockResolvedValue({ id: 'payer-1', restaurantId: 'r-1' });
+    await expect(
+      runChain(routes['POST /restaurants/me/billing/annual/subscribe'], { restaurantId: 'r-1', operatorRole: 'dono' as never }, { json: jest.fn() }),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect(annualSubscriptionService.subscribe).not.toHaveBeenCalled();
   });
 
   it('adesão duplicada vira 409', async () => {
