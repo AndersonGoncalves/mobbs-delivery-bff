@@ -67,14 +67,16 @@ function setup(overrides: { obligations?: ISubscriptionObligation[] } = {}) {
   const reconciliationService = new ReconciliationService({} as never);
   jest.spyOn(reconciliationService, 'reconcile').mockResolvedValue(undefined);
 
+  const obligationIssuanceService = { issuePending: jest.fn().mockResolvedValue(undefined) };
   const restaurantOperatorMiddlewareWithoutBillingGuard = jest.fn();
   const { application, routes } = buildFakeApplication();
   new PlatformBillingController({
     restaurantOperatorMiddlewareWithoutBillingGuard, billingSettingsRepository, billingPayerRepository, obligationRepository,
     annualSubscriptionRepository, pixAvailabilityExceptionRepository, billingPayerService, annualSubscriptionService, reconciliationService, orderRepository,
+    obligationIssuanceService,
   } as never).initializeRoutes(application);
 
-  return { routes, obligationRepository, annualSubscriptionRepository, annualSubscriptionService, reconciliationService, billingPayerService, billingPayerRepository };
+  return { routes, obligationRepository, annualSubscriptionRepository, annualSubscriptionService, reconciliationService, billingPayerService, billingPayerRepository, obligationIssuanceService };
 }
 
 describe('PlatformBillingController (specs/0175-cobranca-assinatura-asaas)', () => {
@@ -167,14 +169,39 @@ describe('PlatformBillingController (specs/0175-cobranca-assinatura-asaas)', () 
     expect(json).toHaveBeenCalledWith(201, expect.anything());
   });
 
+  it('specs/0175 T056: contratar o anual já dispara a emissão do Pix daquela loja (sem esperar o ciclo)', async () => {
+    const { routes, obligationIssuanceService } = setup();
+    const json = jest.fn();
+
+    await runChain(routes['POST /restaurants/me/billing/annual/subscribe'], { restaurantId: 'r-1', operatorRole: 'dono' as never, user: { uid: 'u-1' } }, { json });
+
+    expect(json).toHaveBeenCalledWith(201, expect.anything());
+    expect(obligationIssuanceService.issuePending).toHaveBeenCalledWith(expect.any(Date), 'r-1');
+  });
+
+  it('specs/0175 T056: falha na emissão imediata não derruba a contratação (fica pro ciclo)', async () => {
+    const { routes, obligationIssuanceService } = setup();
+    obligationIssuanceService.issuePending.mockRejectedValue(new Error('Asaas fora'));
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const json = jest.fn();
+
+    await runChain(routes['POST /restaurants/me/billing/annual/subscribe'], { restaurantId: 'r-1', operatorRole: 'dono' as never, user: { uid: 'u-1' } }, { json });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(json).toHaveBeenCalledWith(201, expect.anything());
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('emissão imediata'), expect.any(Error));
+    errorSpy.mockRestore();
+  });
+
   it('specs/0175 T050: contratar o anual sem pagador completo é recusado (409) e nada é criado', async () => {
-    const { routes, annualSubscriptionService, billingPayerRepository } = setup();
+    const { routes, annualSubscriptionService, billingPayerRepository, obligationIssuanceService } = setup();
     billingPayerRepository.findByRestaurantId.mockResolvedValue(null);
 
     await expect(
       runChain(routes['POST /restaurants/me/billing/annual/subscribe'], { restaurantId: 'r-1', operatorRole: 'dono' as never }, { json: jest.fn() }),
     ).rejects.toMatchObject({ statusCode: 409 });
     expect(annualSubscriptionService.subscribe).not.toHaveBeenCalled();
+    expect(obligationIssuanceService.issuePending).not.toHaveBeenCalled();
 
     billingPayerRepository.findByRestaurantId.mockResolvedValue({ id: 'payer-1', restaurantId: 'r-1' });
     await expect(

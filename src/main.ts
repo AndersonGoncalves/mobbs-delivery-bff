@@ -699,6 +699,7 @@ server
       annualSubscriptionService,
       reconciliationService,
       orderRepository,
+      obligationIssuanceService,
     }),
     new PlatformBillingWebhookController({
       obligationRepository,

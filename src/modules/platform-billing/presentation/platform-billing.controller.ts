@@ -52,6 +52,8 @@ export class PlatformBillingController extends BaseRouter {
       annualSubscriptionService: AnnualSubscriptionService;
       reconciliationService: ReconciliationService;
       orderRepository: { findDeliveredByRestaurantBetween(restaurantId: string, start: Date, end: Date): Promise<{ total: number }[]> };
+      /** specs/0175 T056 — emissão imediata do Pix ao contratar (opcional; sem ele fica pro ciclo de 5 min). */
+      obligationIssuanceService?: { issuePending(now: Date, restaurantId?: string): Promise<void> };
     },
   ) {
     super();
@@ -172,6 +174,13 @@ export class PlatformBillingController extends BaseRouter {
       try {
         const { obligation } = await this.deps.annualSubscriptionService.subscribe(req.restaurantId!, new Date());
         res.json(201, obligation);
+        // specs/0175 T056 (pedido do usuário, 28/11/2026) — tenta emitir o Pix já, sem esperar o ciclo de
+        // 5 min. Em segundo plano: o QR do Asaas pode demorar; a tela atualiza a fatura sozinha. Falha fica
+        // registrada na fatura e o ciclo tenta de novo, como sempre.
+        const restaurantId = req.restaurantId!;
+        void this.deps.obligationIssuanceService?.issuePending(new Date(), restaurantId).catch((error: unknown) => {
+          console.error(`[platform-billing] emissão imediata após contratar o anual falhou (restaurante ${restaurantId}):`, error);
+        });
       } catch (error) {
         if (error instanceof AnnualAdhesionAlreadyActiveError) throw new ConflictError(error.message);
         throw error;
