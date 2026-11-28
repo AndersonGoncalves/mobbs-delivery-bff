@@ -150,13 +150,15 @@ export class AsaasClient {
 
   /** `POST /v3/payments` — `externalReference` é o NOSSO id de pedido; o webhook devolve esse
    * mesmo valor, o que evita ter que resolver o pedido por `id` da cobrança do Asaas. */
-  async createPixCharge(customerId: string, value: number, dueDate: string, externalReference: string): Promise<AsaasPixChargeResult> {
+  async createPixCharge(customerId: string, value: number, dueDate: string, externalReference: string, description?: string): Promise<AsaasPixChargeResult> {
     const result = await this.request<{ id: string; status: string }>('POST', '/payments', {
       customer: customerId,
       billingType: 'PIX',
       value,
       dueDate,
       externalReference,
+      // specs/0175 T059 — aparece na fatura do Asaas; omitido quando não informado.
+      ...(description ? { description } : {}),
     });
     return { id: result.id, status: result.status };
   }

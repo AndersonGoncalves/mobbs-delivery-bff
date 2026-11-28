@@ -60,6 +60,15 @@ describe('AsaasClient (specs/0101-integracao-asaas, fase 1)', () => {
     expect(result).toEqual({ id: 'pay_1', status: 'PENDING' });
   });
 
+  it('createPixCharge: envia a descrição quando informada (specs/0175 T059)', async () => {
+    mockFetchOnce(200, { id: 'pay_1', status: 'PENDING' });
+
+    await client.createPixCharge('cus_1', 100, '2026-12-03', 'ob-1', 'BsDelivery — diferença de estorno parcial da assinatura');
+
+    const [, options] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(JSON.parse(options.body).description).toBe('BsDelivery — diferença de estorno parcial da assinatura');
+  });
+
   it('getPixQrCode: GET /payments/:id/pixQrCode devolve só o payload', async () => {
     mockFetchOnce(200, { payload: '00020126...copia-e-cola', encodedImage: 'base64...', expirationDate: '2026-10-23 23:59:59' });
 

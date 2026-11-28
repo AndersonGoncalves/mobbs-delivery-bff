@@ -1,4 +1,5 @@
 import { addDaysCorridos, localMidnight } from '../billing-calendar';
+import { obligationChargeDescription } from '../obligation-charge-description';
 import type { ISubscriptionObligation } from '../entities/subscription-obligation.entity';
 import type { IBillingPayerRepository } from '../repositories/billing-payer.repository.interface';
 import type { IPixAvailabilityExceptionRepository } from '../repositories/pix-availability-exception.repository.interface';
@@ -24,7 +25,7 @@ function describeObligation(obligation: ISubscriptionObligation): string {
  * subconta de um restaurante (essa é a de `specs/0101`, pra receber pedidos, não pra pagar a
  * assinatura). */
 export interface PlatformAsaasPixClient {
-  createPixCharge(customerId: string, value: number, dueDate: string, externalReference: string): Promise<{ id: string; status: string }>;
+  createPixCharge(customerId: string, value: number, dueDate: string, externalReference: string, description?: string): Promise<{ id: string; status: string }>;
   getPixQrCode(chargeId: string): Promise<{ payload: string }>;
   listPaymentsByExternalReference(externalReference: string): Promise<{ id: string; status: string }[]>;
 }
@@ -80,6 +81,7 @@ export class ObligationIssuanceService {
         obligation.amountCents / 100,
         obligation.dueDate.toISOString().slice(0, 10),
         obligation.id,
+        obligationChargeDescription(obligation),
       )).id;
 
       // specs/0175 T054 (achado na homologação, 28/11/2026) — a cobrança já existe no Asaas: guarda o id

@@ -45,7 +45,7 @@ describe('ObligationIssuanceService.issuePending', () => {
 
     await service.issuePending(new Date('2026-11-01T12:00:00Z'));
 
-    expect(asaasClient.createPixCharge).toHaveBeenCalledWith('cus_1', 79.9, '2026-11-10', 'ob-1');
+    expect(asaasClient.createPixCharge).toHaveBeenCalledWith('cus_1', 79.9, '2026-11-10', 'ob-1', expect.stringMatching(/^BsDelivery — /));
     expect(obligationRepository.markIssued).toHaveBeenCalledWith('ob-1', { asaasChargeId: 'pay_1', pixPayload: '00020126...copia-e-cola' }, expect.any(Date));
   });
 
