@@ -172,3 +172,20 @@ describe('SubscriptionObligationMongooseRepository.reopenForReissue (specs/0175 
     expect(result?.paidAt).toBeUndefined();
   });
 });
+
+// specs/0175 T055 — achado na homologação (28/11/2026): a fatura paga continuava com o motivo da falha de
+// emissão anterior ("The operation was aborted due to timeout").
+describe('SubscriptionObligationMongooseRepository.markPaid (specs/0175 T055)', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('marca paga e apaga o motivo de falha de emissão anterior', async () => {
+    const update = jest.spyOn(SubscriptionObligationModel, 'findByIdAndUpdate').mockReturnValue({
+      lean: jest.fn().mockResolvedValue({ _id: 'ob-1', status: 'paid' }),
+    } as never);
+    const paidAt = new Date('2026-11-28T16:45:04Z');
+
+    await new SubscriptionObligationMongooseRepository().markPaid('ob-1', paidAt);
+
+    expect(update).toHaveBeenCalledWith('ob-1', { $set: { status: 'paid', paidAt }, $unset: { issueFailureReason: 1 } }, { new: true });
+  });
+});

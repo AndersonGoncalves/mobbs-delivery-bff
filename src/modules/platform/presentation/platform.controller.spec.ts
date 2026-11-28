@@ -75,6 +75,7 @@ function setup(options: { restaurants: IRestaurant[]; ordersByRestaurant?: Recor
     findActiveByRestaurantId: jest.fn().mockResolvedValue(null),
     getActiveRestaurantIds: jest.fn().mockResolvedValue(new Set()),
     findByRestaurantId: jest.fn().mockResolvedValue([]),
+    cancelRenewal: jest.fn().mockResolvedValue({ id: 'sub-1', renewalActive: false }),
   };
   const billingPayerRepository = { findByRestaurantId: jest.fn().mockResolvedValue(null) };
   const subscriptionEventRepository = { append: jest.fn().mockResolvedValue({ event: {}, wasAlreadyRecorded: false }), listByObligation: jest.fn().mockResolvedValue([]) };
@@ -366,6 +367,37 @@ describe('PlatformController (specs/0106)', () => {
         expect(subscriptionEventRepository.append).toHaveBeenCalledWith(expect.objectContaining({ type: 'refund_decision', payload: expect.objectContaining({ decision: 'forgive' }) }));
       });
 
+      // specs/0175 T055 — achado na homologação (28/11/2026, hamburgueria).
+      it('T055: perdoar o único ano anual encerra a assinatura (sem renovação de um ano nunca pago)', async () => {
+        const { routes, obligationRepository, annualSubscriptionRepository } = setup({ restaurants: [buildRestaurant()] });
+        obligationRepository.findById.mockResolvedValue(refunded({ kind: 'annual-initial' }));
+        obligationRepository.cancelRefunded.mockResolvedValue({ id: 'ob-1', status: 'cancelled' });
+        obligationRepository.findByRestaurantId.mockResolvedValue([{ id: 'ob-1', restaurantId: 'r-1', kind: 'annual-initial', status: 'cancelled', tier: 'pro' }]);
+        annualSubscriptionRepository.findActiveByRestaurantId.mockResolvedValue({ id: 'sub-1', restaurantId: 'r-1', renewalActive: true });
+
+        await run(routes[R], { params: { id: 'ob-1' }, body: { decision: 'forgive' }, user: admin }, { json: jest.fn() });
+
+        expect(annualSubscriptionRepository.cancelRenewal).toHaveBeenCalledWith('sub-1', expect.any(Date), 'admin@bsdelivery.com.br');
+      });
+
+      it('T055: perdoar com outro ano anual PAGO em vigor, ou uma fatura mensal, não mexe na assinatura', async () => {
+        const paidYear = { id: 'ob-0', restaurantId: 'r-1', kind: 'annual-initial', status: 'paid', tier: 'pro', coveragePeriod: { start: new Date(), end: new Date(Date.now() + 100 * 86_400_000) } };
+        const withPaidYear = setup({ restaurants: [buildRestaurant()] });
+        withPaidYear.obligationRepository.findById.mockResolvedValue(refunded({ kind: 'annual-renewal' }));
+        withPaidYear.obligationRepository.cancelRefunded.mockResolvedValue({ id: 'ob-1', status: 'cancelled' });
+        withPaidYear.obligationRepository.findByRestaurantId.mockResolvedValue([paidYear]);
+        withPaidYear.annualSubscriptionRepository.findActiveByRestaurantId.mockResolvedValue({ id: 'sub-1', renewalActive: true });
+        await run(withPaidYear.routes[R], { params: { id: 'ob-1' }, body: { decision: 'forgive' }, user: admin }, { json: jest.fn() });
+        expect(withPaidYear.annualSubscriptionRepository.cancelRenewal).not.toHaveBeenCalled();
+
+        const monthly = setup({ restaurants: [buildRestaurant()] });
+        monthly.obligationRepository.findById.mockResolvedValue(refunded({ kind: 'monthly' }));
+        monthly.obligationRepository.cancelRefunded.mockResolvedValue({ id: 'ob-1', status: 'cancelled' });
+        monthly.annualSubscriptionRepository.findActiveByRestaurantId.mockResolvedValue({ id: 'sub-1', renewalActive: true });
+        await run(monthly.routes[R], { params: { id: 'ob-1' }, body: { decision: 'forgive' }, user: admin }, { json: jest.fn() });
+        expect(monthly.annualSubscriptionRepository.cancelRenewal).not.toHaveBeenCalled();
+      });
+
       it('AC-17b: decisão sobre fatura que não está estornada é recusada (409)', async () => {
         const { routes, obligationRepository } = setup({ restaurants: [buildRestaurant()] });
         obligationRepository.findById.mockResolvedValue(refunded({ status: 'paid' }));
@@ -455,6 +487,19 @@ describe('PlatformController (specs/0106)', () => {
       expect(json).toHaveBeenCalledWith(200, [
         expect.objectContaining({ totalDueCents: 87890, overdueCents: 7990, cycle: 'annual', annualStatus: 'active', hasLegacyAnnualConflict: false }),
       ]);
+    });
+
+    it('T055: detalhe devolve a situação anual (ano pago em vigor → active + fim; sem ano pago → none)', async () => {
+      const { routes, obligationRepository } = setup({ restaurants: [buildRestaurant({ id: 'r-1' })] });
+      obligationRepository.findByRestaurantId.mockResolvedValue([paidAnnual('r-1')]);
+      const json = jest.fn();
+      await run(routes['GET /platform/billing/restaurants/:id'], { params: { id: 'r-1' } }, { json });
+      expect(json).toHaveBeenCalledWith(200, expect.objectContaining({ annualStatus: 'active', annualCoverageEnd: expect.any(Date) }));
+
+      obligationRepository.findByRestaurantId.mockResolvedValue([paidAnnual('r-1', { status: 'cancelled' })]);
+      const json2 = jest.fn();
+      await run(routes['GET /platform/billing/restaurants/:id'], { params: { id: 'r-1' } }, { json: json2 });
+      expect(json2).toHaveBeenCalledWith(200, expect.objectContaining({ annualStatus: 'none', annualCoverageEnd: null }));
     });
 
     it('detalhe devolve a assinatura com a renovação cancelada', async () => {

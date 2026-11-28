@@ -3,6 +3,7 @@ import { findDeliveryFeeZone } from '../domain/find-delivery-fee-zone';
 import type { Request, Response, Server } from 'restify';
 
 import { BaseRouter } from '../../../shared/router/base.router';
+import { environment } from '../../../shared/config/environment';
 import { parseBody } from '../../../shared/http/validate';
 import { firebaseAuthMiddleware } from '../../../shared/http/firebase-auth.middleware';
 import { requireOperatorRole } from '../../../shared/http/require-operator-role.middleware';
@@ -16,6 +17,11 @@ import {
 } from './restaurants.schemas';
 
 type AsyncHandler = (req: Request, res: Response) => Promise<void>;
+
+/** specs/0029 T048 — origem pública das lojas no ambiente atual, sem barra no fim. */
+function publicAppOrigin(): string {
+  return environment.publicApp.baseUrl.replace(/\/+$/, '');
+}
 
 /**
  * `/restaurants/resolve/:slug` é público (specs/0009-resolucao-restaurante REQ-1) — usado antes
@@ -125,8 +131,10 @@ export class RestaurantsController extends BaseRouter {
       res.json(200, {
         slug: found.slug,
         // specs/0037-roteamento-por-caminho — canal web resolve por caminho, não mais subdomínio.
-        webUrl: `https://bsdelivery.com.br/${found.slug}`,
-        nativeLink: `https://bsdelivery.com.br/r/${found.slug}`,
+        // specs/0029 T048 — origem do ambiente (`PUBLIC_APP_BASE_URL`); antes era o domínio de produção
+        // fixo, e a homologação mostrava o endereço de produção no onboarding.
+        webUrl: `${publicAppOrigin()}/${found.slug}`,
+        nativeLink: `${publicAppOrigin()}/r/${found.slug}`,
       });
     });
 

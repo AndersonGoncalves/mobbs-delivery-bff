@@ -1,4 +1,5 @@
 import type { Request, Response, Server } from 'restify';
+import { environment } from '../../../shared/config/environment';
 
 import { IRestaurantRepository } from '../domain/repositories/restaurant.repository.interface';
 import { RestaurantsController } from './restaurants.controller';
@@ -881,6 +882,26 @@ describe('RestaurantsController', () => {
         webUrl: 'https://bsdelivery.com.br/primepizza',
         nativeLink: 'https://bsdelivery.com.br/r/primepizza',
       });
+    });
+
+    // specs/0029 T048 — relato do usuário (28/11/2026): a homologação mostrava o endereço de produção.
+    it('T048: GET /restaurants/me/onboarding usa a origem do ambiente (homologação), sem barra dupla', async () => {
+      const original = environment.publicApp.baseUrl;
+      environment.publicApp.baseUrl = 'https://hml.bsdelivery.com.br/';
+      try {
+        const { routes } = setup();
+        const json = jest.fn();
+
+        await runAuthenticatedChain(routes['GET /restaurants/me/onboarding'], {}, { json });
+
+        expect(json).toHaveBeenCalledWith(200, {
+          slug: 'primepizza',
+          webUrl: 'https://hml.bsdelivery.com.br/primepizza',
+          nativeLink: 'https://hml.bsdelivery.com.br/r/primepizza',
+        });
+      } finally {
+        environment.publicApp.baseUrl = original;
+      }
     });
 
     it('AC-11: PUT /restaurants/me/slug troca o slug', async () => {

@@ -241,10 +241,14 @@ export class PlatformController extends BaseRouter {
         obligations.map(async (obligation) => ({ ...obligation, events: await this.subscriptionEventRepository.listByObligation(obligation.id) })),
       );
 
+      // specs/0175 T055 — o painel mostra o Ciclo pela situação real do anual (ano pago x aguardando).
+      const standing = annualStandingOf(obligations, new Date());
       res.json(200, {
         restaurant: { id: restaurant.id, name: restaurant.name, slug: restaurant.slug, billing: restaurant.billing },
         payer,
         annualSubscription,
+        annualStatus: standing?.status ?? 'none',
+        annualCoverageEnd: standing?.status === 'active' ? standing.coverageEnd : null,
         obligations: obligationsWithEvents,
       });
     });
@@ -302,6 +306,15 @@ export class PlatformController extends BaseRouter {
           await this.pixAvailabilityExceptionRepository.setAdminOverride(obligation.id, addDaysCorridos(now, 3), now);
         }
         await this.obligationIssuanceService.issuePending(now, obligation.restaurantId);
+      }
+      // specs/0175 T055 (achado na homologação, 28/11/2026) — perdoar o ÚNICO ano anual (estornado)
+      // deixava a assinatura com a renovação ativa: o anual "continuava" e, no aniversário, sairia a
+      // cobrança de renovação de um ano nunca pago. Sem ano pago em vigor, encerra a assinatura (mesmo
+      // efeito da desistência antes de pagar).
+      if (input.decision === 'forgive' && (obligation.kind === 'annual-initial' || obligation.kind === 'annual-renewal')) {
+        const standing = annualStandingOf(await this.obligationRepository.findByRestaurantId(obligation.restaurantId), now);
+        const activeSubscription = standing?.status === 'active' ? null : await this.annualSubscriptionRepository.findActiveByRestaurantId(obligation.restaurantId);
+        if (activeSubscription) await this.annualSubscriptionRepository.cancelRenewal(activeSubscription.id, now, req.user!.email!);
       }
       await this.platformBillingCycleService.recomputeAndPersist(obligation.restaurantId, now);
 

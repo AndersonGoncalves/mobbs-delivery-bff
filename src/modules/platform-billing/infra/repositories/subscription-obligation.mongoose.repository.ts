@@ -196,7 +196,8 @@ export class SubscriptionObligationMongooseRepository implements ISubscriptionOb
   }
 
   async markPaid(id: string, paidAt: Date): Promise<ISubscriptionObligation> {
-    const doc = await SubscriptionObligationModel.findByIdAndUpdate(id, { $set: { status: 'paid', paidAt } }, { new: true }).lean<ObligationLeanDocument>();
+    // specs/0175 T055 — paga: o motivo de uma falha de emissão anterior não vale mais (ficava "tempo esgotado").
+    const doc = await SubscriptionObligationModel.findByIdAndUpdate(id, { $set: { status: 'paid', paidAt }, $unset: { issueFailureReason: 1 } }, { new: true }).lean<ObligationLeanDocument>();
     return toEntity(doc as ObligationLeanDocument);
   }
 
